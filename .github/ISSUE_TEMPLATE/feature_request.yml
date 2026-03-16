@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a concrete improvement to the harness, evaluator workflow, dashboard, or developer experience.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow or limitation is motivating this request?
+      placeholder: Describe the current friction or missing capability.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the change you want, not just the symptom.
+      placeholder: Describe the desired behavior or interface.
+    validations:
+      required: true
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: How would we know this is complete and useful?
+      placeholder: Clear acceptance criteria.
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Relevant context, alternatives considered, or related runs/issues.
+      placeholder: Optional supporting detail.
