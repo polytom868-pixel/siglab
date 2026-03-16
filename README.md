@@ -16,6 +16,34 @@ and can promote selected winners into runnable generated strategy packages.
 - Exposes a lightweight dashboard with separate run, run-detail, and experiment-detail views.
 - Can export selected experiments into generated Wayfinder strategy packages.
 
+## Under Construction
+
+This repository is usable, but several parts are still moving and should be
+treated as experimental:
+
+- `perp_multi_asset_carry`:
+  - the family is “carry in spirit,” but its ranked execution model, default
+    feature mix, and planner guidance are still evolving
+  - expect behavior, defaults, and memory surfaces around carry experiments to
+    keep changing
+- Live export and deployment:
+  - live export is currently implemented only for selected `directional_perps`
+    families
+  - generated strategies still depend on `wayfinder_autolab` runtime helpers
+  - scheduling a runner job is an operator workflow, not a production-ready
+    deployment system
+  - `--live` only disables `dry_run`; it should not be read as “production safe”
+- LLM search coverage:
+  - the main workspace/planner/writer/Optuna loop is currently wired for
+    `directional_perps`
+  - carry/PT/lending families outside that loop can still compile and backtest,
+    but they are not yet on the same mature orchestration path
+- Artifact and prompt surfaces:
+  - recent-trial ledgers, reflection packets, benchmark observation files, and
+    dashboard views are still being refined
+  - older artifacts may not expose the same retained-series or decomposition
+    fields as newer runs
+
 ## Current Live Support
 
 Backtest/search support currently includes:
@@ -36,6 +64,10 @@ Live export support currently includes:
 
 Carry/PT/lending families are still searchable and backtestable, but are marked
 `unsupported` for live promotion until their execution bodies are implemented.
+
+The `perp_multi_asset_carry` family should be treated as research-active rather
+than stable. Its semantics are documented in the manifests and prompts, but the
+family is still under active iteration.
 
 ## Quickstart
 
@@ -352,6 +384,11 @@ source control and should not be committed.
 
 ## Promoting A Winner To Live
 
+Warning:
+Live promotion is still under construction. It is best understood as a thin
+export-and-runner bridge for operator-supervised testing, not a hardened
+deployment system.
+
 ### Export Only
 
 ```bash
@@ -405,6 +442,8 @@ Defaults:
 - exported strategies default to `dry_run`
 - scheduling creates an `update` runner job
 - deposit/funding is still a separate explicit action
+- exported strategies are coupled to the current `wayfinder_autolab` runtime
+- only selected `directional_perps` families are supported
 
 ## Runner Operations
 
@@ -425,7 +464,7 @@ run from the autolab Poetry environment.
 Run the test suite:
 
 ```bash
-poetry run python -m unittest discover -s tests
+poetry run pytest --maxfail=1 -q
 ```
 
 Useful checks:
