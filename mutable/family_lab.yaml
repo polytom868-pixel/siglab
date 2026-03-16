@@ -1,0 +1,254 @@
+tracks:
+  directional_perps:
+    families:
+      perp_multi_asset_decision:
+        capabilities:
+          signal_shape: single_asset_cross_sectional
+          execution_profile: ranked_directional
+          diagnostic_adapter: perp_cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: directional
+        defaults:
+          long_count: 2
+          short_count: 2
+          gross_target: 1.0
+          min_abs_score: 0.2
+        feature_weights:
+          price_return_24h: 0.16
+          price_return_72h: 0.12
+          price_return_168h: 0.08
+          ema_gap_12_26: 0.18
+          macd_hist_12_26_9: 0.14
+          rsi_centered_14: 0.10
+          donchian_position_20: 0.12
+          donchian_width_20: -0.08
+          trend_strength_72h: 0.10
+          realized_vol_168h: -0.10
+          funding_72h_mean: 0.05
+      perp_pair_trade_unlevered:
+        capabilities:
+          signal_shape: basket_neutral
+          execution_profile: basket_neutral_spread
+          diagnostic_adapter: perp_cross_sectional
+          policy_schema: pair_stateful
+          prompt_module: basket_neutral
+        defaults:
+          gross_target: 1.0
+          max_gross_target: 1.0
+          min_abs_score: 0.2
+          entry_abs_score: 0.2
+          exit_abs_score: 0.1
+          flip_abs_score: 0.24
+          max_holding_bars: 72
+          cooldown_bars: 6
+          signal_leverage_scale: 1.0
+        feature_weights:
+          pair_ratio_return_24h: -0.08
+          pair_ratio_return_72h: -0.12
+          pair_ratio_return_168h: -0.10
+          pair_return_spread_6h: 0.06
+          pair_return_spread_24h: 0.08
+          pair_return_spread_72h: 0.04
+          pair_trend_strength_72h: -0.10
+          pair_realized_vol_168h: -0.08
+          pair_vol_spread_24h: -0.03
+          pair_vol_ratio_24h: -0.02
+          pair_ema_gap_12_26: -0.20
+          pair_ema_gap_spread_12_26: 0.04
+          pair_ema_slope_spread_24: 0.06
+          pair_macd_hist_12_26_9: -0.14
+          pair_rsi_centered_14: -0.08
+          pair_rsi_spread_14: -0.04
+          pair_residual_z_60: -0.12
+          pair_residual_momentum_24h: -0.05
+          pair_spread_vol_72h: -0.06
+          pair_corr_72h: 0.03
+          pair_beta_stability_72h: -0.05
+          pair_trend_efficiency_spread_72h: 0.04
+          asset_1_funding_carry_to_vol: -0.05
+          asset_2_funding_carry_to_vol: 0.05
+          pair_carry_to_vol_spread: -0.04
+          funding_spread_24h_mean: -0.04
+          funding_spread_72h_mean: -0.07
+          funding_spread_168h_mean: -0.03
+          funding_spread_dispersion_72h: -0.03
+          funding_accel_spread_24h: -0.02
+          funding_spread_flip_prob_14d: 0.02
+      perp_pair_trade_levered:
+        capabilities:
+          signal_shape: basket_neutral
+          execution_profile: basket_neutral_spread
+          diagnostic_adapter: perp_cross_sectional
+          policy_schema: pair_stateful
+          prompt_module: basket_neutral
+        defaults:
+          gross_target: 1.0
+          max_gross_target: 3.0
+          min_abs_score: 0.15
+          entry_abs_score: 0.15
+          exit_abs_score: 0.08
+          flip_abs_score: 0.2
+          max_holding_bars: 48
+          cooldown_bars: 4
+          signal_leverage_scale: 0.75
+        feature_weights:
+          pair_ratio_return_24h: -0.08
+          pair_ratio_return_72h: -0.12
+          pair_ratio_return_168h: -0.10
+          pair_return_spread_6h: 0.08
+          pair_return_spread_24h: 0.10
+          pair_return_spread_72h: 0.06
+          pair_trend_strength_72h: -0.10
+          pair_realized_vol_168h: -0.08
+          pair_vol_spread_24h: -0.03
+          pair_vol_ratio_24h: -0.02
+          pair_ema_gap_12_26: -0.20
+          pair_ema_gap_spread_12_26: 0.06
+          pair_ema_slope_spread_24: 0.08
+          pair_macd_hist_12_26_9: -0.14
+          pair_rsi_centered_14: -0.08
+          pair_rsi_spread_14: -0.04
+          pair_residual_z_60: -0.10
+          pair_residual_momentum_24h: -0.04
+          pair_spread_vol_72h: -0.06
+          pair_corr_72h: 0.03
+          pair_beta_stability_72h: -0.05
+          pair_trend_efficiency_spread_72h: 0.05
+          asset_1_funding_carry_to_vol: -0.05
+          asset_2_funding_carry_to_vol: 0.05
+          pair_carry_to_vol_spread: -0.04
+          funding_spread_24h_mean: -0.04
+          funding_spread_72h_mean: -0.07
+          funding_spread_168h_mean: -0.03
+          funding_spread_dispersion_72h: -0.03
+          funding_accel_spread_24h: -0.02
+          funding_spread_flip_prob_14d: 0.02
+      perp_basket_neutral_unlevered:
+        capabilities:
+          signal_shape: basket_neutral
+          execution_profile: basket_neutral_spread
+          diagnostic_adapter: perp_cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: basket_neutral
+        defaults:
+          long_count: 2
+          short_count: 2
+          gross_target: 1.0
+          min_abs_score: 0.18
+        feature_weights:
+          price_return_24h: -0.10
+          price_return_72h: -0.08
+          ema_gap_12_26: -0.12
+          rsi_centered_14: -0.08
+          trend_strength_72h: -0.05
+          realized_vol_168h: -0.08
+          funding_72h_mean: -0.08
+          funding_accel_24h: -0.04
+          funding_carry_to_vol: -0.10
+      perp_basket_neutral_levered:
+        capabilities:
+          signal_shape: basket_neutral
+          execution_profile: basket_neutral_spread
+          diagnostic_adapter: perp_cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: basket_neutral
+        defaults:
+          long_count: 2
+          short_count: 2
+          gross_target: 1.2
+          min_abs_score: 0.14
+        feature_weights:
+          price_return_24h: 0.10
+          price_return_72h: 0.12
+          ema_gap_12_26: 0.14
+          macd_hist_12_26_9: 0.12
+          rsi_centered_14: 0.06
+          realized_vol_168h: -0.06
+          funding_72h_mean: -0.05
+          funding_carry_to_vol: -0.07
+          funding_accel_24h: -0.02
+      perp_multi_asset_carry:
+        capabilities:
+          signal_shape: single_asset_cross_sectional
+          execution_profile: ranked_carry
+          diagnostic_adapter: perp_cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: carry
+        defaults:
+          long_count: 2
+          short_count: 2
+          gross_target: 1.0
+          min_abs_score: 0.12
+        feature_weights:
+          funding_72h_mean: -0.22
+          funding_168h_mean: -0.16
+          funding_flip_prob_14d: -0.06
+          funding_accel_24h: -0.05
+          funding_carry_to_vol: -0.18
+          realized_vol_168h: -0.08
+          price_return_24h: 0.08
+          price_return_72h: 0.06
+          relative_momentum_24h: 0.10
+          relative_momentum_72h: 0.08
+          breadth_adjusted_relative_momentum_24h: 0.07
+          trend_strength_72h: 0.06
+          ema_gap_12_26: 0.05
+          price_return_vol_adj_24h: 0.05
+  market_neutral_carry:
+    families:
+      basis_spread:
+        capabilities:
+          signal_shape: single_asset_cross_sectional
+          execution_profile: basis_hedged
+          diagnostic_adapter: perp_cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: carry
+        defaults:
+          selection_count: 2
+          gross_target: 1.0
+        feature_weights:
+          funding_72h_mean: 0.55
+          funding_168h_mean: 0.25
+          funding_flip_prob_14d: -0.30
+          realized_vol_168h: -0.10
+      stable_pt_ladder:
+        defaults:
+          selection_count: 3
+          gross_target: 0.9
+        feature_weights:
+          pt_discount_to_par: 0.35
+          implied_minus_underlying_apy: 0.35
+          expiry_roll_down: 0.20
+          tvl_momentum_30d: 0.10
+      pt_yield_rotation:
+        defaults:
+          selection_count: 2
+          gross_target: 0.8
+          hedge_mode: perp
+          hedge_ratio: 0.75
+        feature_weights:
+          implied_minus_underlying_apy: 0.20
+          implied_apy_level: 0.20
+          underlying_apy_level: 0.15
+          expiry_roll_down: 0.20
+          pt_discount_to_par: 0.15
+          tvl_momentum_30d: 0.10
+      lending_carry_rotation:
+        capabilities:
+          signal_shape: single_asset_cross_sectional
+          execution_profile: ranked_carry
+          diagnostic_adapter: cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: carry
+        defaults:
+          selection_count: 2
+          gross_target: 0.8
+          hedge_mode: perp
+          hedge_ratio: 0.75
+        feature_weights:
+          lending_carry_level: 0.30
+          lending_reward_apr: 0.15
+          lending_base_yield_apy: 0.10
+          lending_utilization: -0.10
+          lending_supply_tvl_momentum_168h: 0.20
+          lending_carry_to_util: 0.15

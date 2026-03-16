@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "wayfinder-autolab"
+version = "0.1.0"
+description = "Autonomous strategy search on top of Wayfinder backtesting"
+authors = ["Wayfinder Foundation"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "wayfinder_autolab" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+httpx = "^0.28.1"
+numpy = "^1.26.0"
+pandas = "^2.2.0"
+pyarrow = "^20.0.0"
+pyyaml = "^6.0.2"
+optuna = "^4.5.0"
+wayfinder-paths = { git = "https://github.com/WayfinderFoundation/wayfinder-paths-sdk.git", branch = "main" }
+
+[tool.poetry.scripts]
+autolab = "wayfinder_autolab.cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

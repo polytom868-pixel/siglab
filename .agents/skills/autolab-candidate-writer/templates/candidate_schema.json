@@ -1,0 +1,38 @@
+{
+  "track": "directional_perps",
+  "family": "perp_multi_asset_carry",
+  "hypothesis": "short string",
+  "neutrality_basis": "none",
+  "features": [
+    "relative_carry_z_72h",
+    "carry_term_structure_24_168"
+  ],
+  "universe": {
+    "basis_groups": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "HYPE"
+    ],
+    "max_symbols": 4,
+    "lookback_days": 365,
+    "interval": "1h"
+  },
+  "risk": {
+    "max_asset_weight": 0.35,
+    "rebalance_threshold": 0.03,
+    "max_leverage": 1.0
+  },
+  "regime_gates": {
+    "entry": [
+      {
+        "expression": "market_volatility_168h",
+        "max": 0.0085
+      }
+    ],
+    "exit_on_break": true
+  },
+  "params": {
+    "trade_style": "hybrid"
+  }
+}

@@ -1,0 +1,1944 @@
+from __future__ import annotations
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+
+from wayfinder_autolab.models import CandidateGraph
+from wayfinder_autolab.orchestration.optimizer_runner import OptunaOptimizerRunner
+from wayfinder_autolab.orchestration.planner_runner import ResearchPlannerRunner
+from wayfinder_autolab.orchestration.reflector_runner import ReflectionRunner
+from wayfinder_autolab.orchestration.trials import (
+    promotion_rank,
+    score_diagnosis,
+    summarize_generalization,
+    summarize_return_attribution,
+)
+from wayfinder_autolab.orchestration.writer_runner import CandidateWriterRunner
+from wayfinder_autolab.search.lineage import LineageStore
+from wayfinder_autolab.search.mutate import CandidateMutator
+from wayfinder_autolab.tools import (
+    inspect_feature,
+    open_workspace_file,
+    search_features,
+    search_workspace,
+    suggest_feature_set,
+)
+from wayfinder_autolab.workspace import WorkspaceBuilder
+from wayfinder_autolab.workspace.cards import dump_frontmatter, parse_frontmatter
+
+
+class WorkspaceFlowTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.repo_root = Path(__file__).resolve().parents[1]
+
+    def _settings(self, tmp: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            root_dir=self.repo_root,
+            artifact_dir=Path(tmp) / "artifacts",
+            lineage_db_path=Path(tmp) / "lineage.db",
+        )
+
+    def test_session_initializer_and_iteration_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-1",
+                family_scope=None,
+            )
+            self.assertTrue((session.root / "RUNBOOK.md").exists())
+            self.assertTrue((session.manifests_dir / "constraints.md").exists())
+            self.assertTrue((session.manifests_dir / "regime_catalog.md").exists())
+            self.assertTrue((session.manifests_dir / "policy_surface.md").exists())
+            self.assertTrue((session.manifests_dir / "family" / "perp_multi_asset_carry.json").exists())
+            self.assertTrue((session.manifests_dir / "features" / "feature_surface.md").exists())
+            self.assertTrue((session.manifests_dir / "features" / "feature_catalog.jsonl").exists())
+            self.assertTrue((session.manifests_dir / "features" / "family" / "perp_multi_asset_carry.json").exists())
+            self.assertTrue((session.cookbooks_dir / "carry_patterns.md").exists())
+            self.assertTrue((session.indexes_dir / "experiment_index.jsonl").exists())
+            self.assertTrue((session.current_dir / "incumbent_candidate.yaml").exists())
+            self.assertTrue((session.current_dir / "family_incumbents.json").exists())
+            self.assertTrue((session.current_dir / "recent_trials.md").exists())
+            self.assertTrue((session.indexes_dir / "trial_index.jsonl").exists())
+            runbook = (session.root / "RUNBOOK.md").read_text()
+            carry_manifest = (session.manifests_dir / "family" / "perp_multi_asset_carry.md").read_text()
+            carry_cookbook = (session.cookbooks_dir / "carry_patterns.md").read_text()
+            self.assertIn("current/recent_trials.md", runbook)
+            self.assertNotIn("current/thesis_ledger.json", runbook)
+            self.assertIn("## Formula operators", carry_manifest)
+            self.assertIn("Novel feature formulas are allowed", carry_manifest)
+            self.assertIn("## Alias definitions", carry_manifest)
+            self.assertIn("relative_carry_z_72h", carry_manifest)
+            self.assertIn("carry in spirit", carry_manifest)
+            self.assertIn("cross-sectional ranked long/short book", carry_manifest)
+            self.assertIn("not limited to funding-only features", carry_manifest)
+            self.assertIn("Carry Plus Relative Momentum", carry_cookbook)
+            self.assertIn("relative_momentum_24h", carry_cookbook)
+            self.assertIn("Carry Plus Trend Quality", carry_cookbook)
+
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            state = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=1,
+                phase_label="burn_in",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {
+                        "bundle_id": "bundle-1",
+                        "as_of": "2026-03-14T00:00:00Z",
+                        "symbols": ["BTC", "ETH"],
+                    },
+                    "perp_snapshot": [{"symbol": "BTC", "price": 100.0}],
+                },
+            )
+            self.assertTrue((session.current_dir / "SESSION_STATE.json").exists())
+            self.assertTrue((session.root / "TASK.md").exists())
+            self.assertEqual(state["session_state"]["run_session_id"], "session-1")
+            self.assertEqual(state["session_state"]["current_parent_hash"], parent.strategy_hash())
+
+    def test_recent_trials_render_uses_coarse_result_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-results-only",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            candidate_hash = parent.strategy_hash()
+            (session.cards_dir / "reflections" / f"{candidate_hash}.md").write_text(
+                "---\nfamily: perp_multi_asset_carry\n---\n\n"
+                "What changed: kept the carry structure intact.\n"
+                "Why it failed/worked: validation held up but audit did not.\n"
+            )
+            entry = builder._trial_entry_from_row(
+                session=session,
+                row={
+                    "candidate_hash": candidate_hash,
+                    "family": parent.family,
+                    "passed": False,
+                    "created_at": "2026-03-16T05:00:00Z",
+                    "summary": {
+                        "aggregate_score": 5.25,
+                        "validation_available": True,
+                        "validation_total_return": 0.02,
+                        "pre_audit_canonical_total_return": 0.015,
+                        "audit_available": True,
+                        "audit_total_return": -0.01,
+                    },
+                        "research_summary": {
+                        "trial": {
+                            "patch_summary": ["params.min_abs_score: 0.12 -> 0.14"],
+                            "optimized_param_summary": ["risk.max_asset_weight: 0.35 -> 0.30"],
+                            "return_driver": "price_dominant",
+                            "return_driver_source": "decomposition",
+                            "exposure_profile": "net_long",
+                            "price_contribution": 0.2872,
+                            "carry_contribution": 0.0315,
+                            "tx_cost_contribution": -0.012,
+                            "best_regime_context": "market_volatility/high_volatility",
+                            "worst_regime_context": "funding_regime/funding_compressed",
+                            "fragility_penalty": 2.5,
+                            "promotion_score": 2.75,
+                            "audit_alignment": "negative",
+                            "fragility_label": "fragile",
+                            "stability_status": "fragile",
+                            "stability_pass_fraction": 0.5,
+                            "motif_audit_streak": 2,
+                            "score_diagnosis": score_diagnosis(
+                                {
+                                    "aggregate_score": 5.25,
+                                    "median_sharpe": 1.1,
+                                    "median_total_return": 0.04,
+                                    "median_calmar": 1.2,
+                                    "asset_breadth": 3,
+                                    "profitable_window_pct": 0.5,
+                                    "worst_max_drawdown": -0.08,
+                                    "validation_total_return": 0.02,
+                                    "pre_audit_canonical_total_return": 0.015,
+                                },
+                                {
+                                    "aggregate_score": 5.5,
+                                    "median_sharpe": 1.3,
+                                    "median_total_return": 0.045,
+                                    "median_calmar": 1.3,
+                                    "asset_breadth": 3,
+                                    "profitable_window_pct": 0.55,
+                                    "worst_max_drawdown": -0.07,
+                                    "validation_total_return": 0.03,
+                                    "pre_audit_canonical_total_return": 0.02,
+                                },
+                            ),
+                        },
+                    },
+                },
+            )
+
+            self.assertIsNotNone(entry)
+            self.assertEqual(entry["validation_result"], "positive")
+            self.assertEqual(entry["pre_audit_result"], "positive")
+            self.assertEqual(entry["audit_result"], "negative")
+
+            rendered = builder._render_recent_trials([entry])
+            self.assertIn("validation=`positive` pre_audit=`positive` audit=`negative`", rendered)
+            self.assertIn("driver=`price_dominant` exposure=`net_long`", rendered)
+            self.assertIn("price=`+28.72%` carry=`+3.15%` tx=`-1.20%`", rendered)
+            self.assertIn("best=`market_volatility/high_volatility`", rendered)
+            self.assertIn("worst=`funding_regime/funding_compressed`", rendered)
+            self.assertIn("audit_alignment=`negative`", rendered)
+            self.assertIn("fragility=`fragile`", rendered)
+            self.assertIn("promotion_score=`2.750`", rendered)
+            self.assertIn("pass_fraction=`50.00%`", rendered)
+            self.assertIn("motif_audit_streak=`2`", rendered)
+            self.assertNotIn("aggregate_score_delta", rendered)
+            self.assertNotIn("Validation delta=", rendered)
+            self.assertNotIn("pre-audit delta=", rendered)
+
+    def test_summarize_return_attribution_uses_price_carry_decomposition(self) -> None:
+        attribution = summarize_return_attribution(
+            {
+                "pre_audit_canonical_total_return": 0.30,
+            },
+            {
+                "metrics_by_period": {
+                    "columns": ["equity", "fee_amount", "funding_amount"],
+                    "rows": [
+                        [1.0, 0.0, 0.0],
+                        [1.3, 0.012, -0.0315],
+                    ],
+                },
+                "pre_audit_drawdown_pack": {
+                    "dominant_position_direction": "net_long",
+                    "top_feature_contributors": [
+                        {"feature": "price_return_24h"},
+                        {"feature": "funding_72h_mean"},
+                    ],
+                },
+                "pre_audit_context_pack": {
+                    "trade_regime_pack": {
+                        "market_volatility": {
+                            "best_label": "high_volatility",
+                            "worst_label": "low_volatility",
+                        },
+                    },
+                },
+            },
+        )
+
+        self.assertEqual(attribution["return_driver"], "price_dominant")
+        self.assertEqual(attribution["return_driver_source"], "decomposition")
+        self.assertEqual(attribution["exposure_profile"], "net_long")
+        self.assertAlmostEqual(attribution["price_contribution"], 0.2805)
+        self.assertAlmostEqual(attribution["carry_contribution"], 0.0315)
+        self.assertAlmostEqual(attribution["tx_cost_contribution"], -0.012)
+        self.assertEqual(attribution["best_regime_context"], "market_volatility/high_volatility")
+        self.assertEqual(attribution["worst_regime_context"], "market_volatility/low_volatility")
+
+    def test_summarize_generalization_penalizes_fragility(self) -> None:
+        generalization = summarize_generalization(
+            {
+                "aggregate_score": 10.0,
+                "validation_total_return": 0.04,
+                "pre_audit_canonical_total_return": 0.09,
+                "audit_available": True,
+                "audit_total_return": -0.02,
+                "active_bar_fraction": 0.05,
+            },
+            stability_pack={"status": "fragile", "passed_fraction": 0.5, "stability_penalty": 1.25},
+        )
+
+        self.assertGreater(generalization["fragility_penalty"], 0.0)
+        self.assertLess(generalization["promotion_score"], 10.0)
+        self.assertEqual(generalization["audit_alignment"], "negative")
+        self.assertEqual(generalization["fragility_label"], "fragile")
+        self.assertAlmostEqual(generalization["fragility_pack"]["generalization_gap"], 0.05)
+        self.assertAlmostEqual(generalization["fragility_pack"]["activity_shortfall"], 0.10)
+
+    def test_promotion_rank_prefers_higher_promotion_score(self) -> None:
+        higher_raw = (
+            {"aggregate_score": 11.0, "validation_total_return": 0.02, "pre_audit_canonical_total_return": 0.03},
+            {"promotion_score": 8.5},
+        )
+        lower_raw_better_generalization = (
+            {"aggregate_score": 10.2, "validation_total_return": 0.04, "pre_audit_canonical_total_return": 0.05},
+            {"promotion_score": 9.4},
+        )
+
+        self.assertGreater(
+            promotion_rank(*lower_raw_better_generalization),
+            promotion_rank(*higher_raw),
+        )
+
+    def test_optuna_warm_start_filters_incompatible_gate_thresholds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            settings.optuna_trials = 3
+            lineage = LineageStore(settings.lineage_db_path)
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            session = SimpleNamespace(track="directional_perps", families=["perp_multi_asset_carry"])
+            current_payload = mutator.load_seed_candidates("directional_perps", family="perp_multi_asset_carry")[0].canonical_dict()
+            current_payload["regime_gates"] = {
+                "entry": [{"expression": "funding_dispersion_72h", "min": 0.00001}],
+                "exit_on_break": True,
+            }
+
+            matching_payload = json.loads(json.dumps(current_payload))
+            matching_payload["params"]["min_abs_score"] = 0.14
+            matching_payload["regime_gates"]["entry"][0]["min"] = 0.00002
+            mismatched_payload = json.loads(json.dumps(current_payload))
+            mismatched_payload["params"]["min_abs_score"] = 0.16
+            mismatched_payload["regime_gates"]["entry"][0] = {
+                "expression": "market_volatility_168h",
+                "min": 0.007,
+            }
+
+            for payload, aggregate in ((matching_payload, 7.0), (mismatched_payload, 6.0)):
+                candidate = mutator._validate_candidate(
+                    candidate=CandidateGraph.from_dict(payload),
+                    track="directional_perps",
+                    allowed_families=["perp_multi_asset_carry"],
+                    allowed_features_by_family=mutator._allowed_features_by_family("directional_perps"),
+                    family_defaults=mutator._family_defaults("directional_perps"),
+                )
+                evaluation = {
+                    "candidate_hash": candidate.strategy_hash(),
+                    "candidate": candidate.canonical_dict(),
+                    "summary": {"aggregate_score": aggregate, "passed": True},
+                }
+                lineage.record(
+                    evaluation=evaluation,
+                    parent_hash=None,
+                    research_summary={},
+                    artifact_path="artifact.json",
+                )
+
+            runner = OptunaOptimizerRunner(
+                settings=settings,
+                evaluator=SimpleNamespace(),
+                mutator=mutator,
+                lineage=lineage,
+            )
+            optuna_space = {
+                "family": "perp_multi_asset_carry",
+                "parameters": [
+                    {"path": "params.min_abs_score", "kind": "float", "low": 0.05, "high": 0.30, "default": 0.12},
+                    {
+                        "path": "regime_gates.entry[0].min",
+                        "kind": "float",
+                        "low": 0.000001,
+                        "high": 0.00005,
+                        "default": 0.00001,
+                    },
+                ],
+            }
+
+            seeds = runner._warm_start_params(
+                session=session,
+                family="perp_multi_asset_carry",
+                candidate_payload=current_payload,
+                optuna_space=optuna_space,
+            )
+
+            self.assertTrue(
+                any(seed.get("regime_gates.entry[0].min") == 0.00002 for seed in seeds)
+            )
+            self.assertTrue(
+                all(seed.get("regime_gates.entry[0].min") != 0.007 for seed in seeds)
+            )
+
+    def test_optuna_stability_sweep_penalizes_neighbor_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            settings.optuna_trials = 3
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            lineage = LineageStore(settings.lineage_db_path)
+            session = SimpleNamespace(track="directional_perps", families=["perp_multi_asset_carry"])
+            candidate_payload = mutator.load_seed_candidates("directional_perps", family="perp_multi_asset_carry")[0].canonical_dict()
+
+            class FakeEvaluator:
+                async def evaluate(self, candidate, fast_mode=False):  # noqa: ANN001, ARG002
+                    min_abs_score = float(candidate.canonical_dict()["params"]["min_abs_score"])
+                    passed = min_abs_score >= 0.12
+                    aggregate = 9.7 if passed else 7.0
+                    return {
+                        "summary": {
+                            "aggregate_score": aggregate,
+                            "passed": passed,
+                            "validation_total_return": 0.03 if passed else -0.01,
+                            "pre_audit_canonical_total_return": 0.04 if passed else 0.0,
+                            "active_bar_fraction": 0.25 if passed else 0.08,
+                        }
+                    }
+
+            runner = OptunaOptimizerRunner(
+                settings=settings,
+                evaluator=FakeEvaluator(),
+                mutator=mutator,
+                lineage=lineage,
+            )
+            stability = self.async_run(
+                runner._stability_sweep(
+                    session=session,
+                    candidate_payload=candidate_payload,
+                    optuna_space={
+                        "family": "perp_multi_asset_carry",
+                        "parameters": [
+                            {"path": "params.min_abs_score", "kind": "float", "low": 0.05, "high": 0.30, "default": 0.12}
+                        ],
+                    },
+                    best_summary={
+                        "aggregate_score": 10.0,
+                        "passed": True,
+                        "validation_total_return": 0.04,
+                        "pre_audit_canonical_total_return": 0.05,
+                        "active_bar_fraction": 0.25,
+                    },
+                )
+            )
+
+            self.assertEqual(stability["neighbor_count"], 2)
+            self.assertEqual(stability["status"], "fragile")
+            self.assertAlmostEqual(stability["passed_fraction"], 0.5)
+            self.assertGreaterEqual(stability["stability_penalty"], 1.0)
+
+    def test_workspace_search_and_open(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-2",
+                family_scope=None,
+            )
+            probe_ref = builder.record_probe(
+                session=session,
+                iteration_number=1,
+                probe_type="probe_feature_forward_stats",
+                family="perp_multi_asset_carry",
+                universe=["BTC", "ETH", "SOL", "HYPE"],
+                bundle_id="bundle-1",
+                arguments={"feature": "relative_carry_z_72h"},
+                result={"ok": True, "signal": "carry"},
+                tracking_tags=["carry", "probe"],
+            )
+
+            search_result = search_workspace(
+                workspace_root=session.root,
+                query="relative carry",
+                kind="probe",
+                family="perp_multi_asset_carry",
+                limit=5,
+            )
+            self.assertTrue(search_result["ok"])
+            self.assertGreaterEqual(len(search_result["matches"]), 1)
+            self.assertEqual(search_result["matches"][0]["path"], probe_ref)
+
+            open_result = open_workspace_file(
+                workspace_root=session.root,
+                path=probe_ref,
+                section="Result",
+                max_chars=1000,
+            )
+            self.assertTrue(open_result["ok"])
+            self.assertIn("carry", open_result["content"])
+
+            feature_search = search_features(
+                workspace_root=session.root,
+                query="relative carry dispersion",
+                family="perp_multi_asset_carry",
+                limit=5,
+            )
+            self.assertTrue(feature_search["ok"])
+            self.assertTrue(any(match["name"] == "relative_carry_z_72h" for match in feature_search["matches"]))
+
+            inspected = inspect_feature(
+                workspace_root=session.root,
+                name="relative_carry_z_72h",
+                family="perp_multi_asset_carry",
+            )
+            self.assertTrue(inspected["ok"])
+            self.assertEqual(inspected["feature"]["formula"], "div(relative_carry_72h,clip(funding_dispersion_72h,0.000001,1.0))")
+
+            suggested = suggest_feature_set(
+                workspace_root=session.root,
+                family="perp_multi_asset_carry",
+                hypothesis="carry edge needs one orthogonal co movement or funding dispersion regime discriminator",
+                avoid=["funding_72h_mean"],
+                limit=4,
+            )
+            self.assertTrue(suggested["ok"])
+            self.assertGreaterEqual(len(suggested["suggestions"]), 1)
+            self.assertNotIn("funding_72h_mean", [item["name"] for item in suggested["suggestions"]])
+
+    def test_planner_embedded_yaml_overrides_generic_frontmatter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            settings.kimi_timeout_s = 30.0
+            settings.kimi_max_tool_rounds = 5
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_text_with_tools(self, **_kwargs: object) -> str:
+                    return """---
+decision: refine_current_family
+search_mode: branch_same_family
+target_family: perp_multi_asset_carry
+target_universe: [BTC, ETH, SOL, HYPE]
+core_hypothesis: generic top-level note
+informative_test: generic top-level test
+expected_success: [better validation robustness]
+expected_failure: [no measurable change]
+evidence_paths: []
+tools_used: []
+tracking_tags: [perp_multi_asset_carry]
+must_answer: Does one concrete regime discriminator improve pre-audit return without making validation negative for `perp_multi_asset_carry`?
+required_feature_roles: [one core_carry feature, one orthogonal_regime feature]
+forbidden_motifs: [second pure trend overlay]
+gate_intent: {}
+writer_inputs: [manifests/family/perp_multi_asset_carry.md]
+---
+
+```yaml
+---
+target_family: perp_multi_asset_carry
+must_answer: Does adding a market_volatility_168h gate improve pre-audit return above 0.336 while keeping validation positive for `perp_multi_asset_carry`?
+required_features:
+  - funding_carry_to_vol
+  - market_volatility_168h
+required_gate_dimensions:
+  - market_volatility_168h
+forbidden_motifs:
+  - perp_multi_asset_carry|unspecified|core_carry+funding+orthogonal_regime|funding_dispersion_72h
+---
+```
+
+## Diagnosis
+Use the embedded spec, not the generic one.
+"""
+
+            class FakeHypothesisSandbox:
+                def kimi_tools(self, **_kwargs: object) -> list[object]:
+                    return []
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-planner-merge",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=1,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            runner = ResearchPlannerRunner(
+                settings=settings,
+                kimi=kimi,  # type: ignore[arg-type]
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+                web_researcher=SimpleNamespace(is_configured=False),
+                workspace_builder=builder,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    iteration_number=1,
+                    parent=parent,
+                    market_bundle={"bundle_id": "bundle-1"},
+                    iteration_paths=iteration_paths,
+                )
+            )
+            self.assertEqual(
+                result.frontmatter["required_features"],
+                ["funding_carry_to_vol", "market_volatility_168h"],
+            )
+            self.assertEqual(
+                result.frontmatter["required_gate_dimensions"],
+                ["market_volatility_168h"],
+            )
+            self.assertIn("0.336", result.frontmatter["must_answer"])
+
+    def test_planner_contract_keeps_only_explicit_binding_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            settings.kimi_timeout_s = 30.0
+            settings.kimi_max_tool_rounds = 5
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_text_with_tools(self, **_kwargs: object) -> str:
+                    return """## Diagnosis
+Carry works on BTC/ETH/SOL/HYPE, but the recent carry_term_structure stack did not.
+
+## Proposed next experiment
+Stay in `perp_multi_asset_carry` and test a funding dispersion gate on the winning universe.
+
+## Suggested Gate Spec
+```yaml
+family: perp_multi_asset_carry
+regime_gates:
+  entry:
+    - expression: funding_dispersion_72h
+      min: 0.000005
+```
+
+## Must Answer
+Does a funding_dispersion_72h gate improve pre-audit return without making validation negative?
+"""
+
+            class FakeHypothesisSandbox:
+                def kimi_tools(self, **_kwargs: object) -> list[object]:
+                    return []
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-planner-explicit",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=1,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            runner = ResearchPlannerRunner(
+                settings=settings,
+                kimi=kimi,  # type: ignore[arg-type]
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+                web_researcher=SimpleNamespace(is_configured=False),
+                workspace_builder=builder,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    iteration_number=1,
+                    parent=parent,
+                    market_bundle={"bundle_id": "bundle-1"},
+                    iteration_paths=iteration_paths,
+                )
+            )
+            self.assertEqual(result.frontmatter["target_family"], "perp_multi_asset_carry")
+            self.assertEqual(result.frontmatter["required_feature_roles"], [])
+            self.assertEqual(result.frontmatter["required_features"], [])
+            self.assertEqual(result.frontmatter["required_gate_dimensions"], ["funding_dispersion_72h"])
+            self.assertEqual(
+                result.frontmatter["planner_regime_gates"]["entry"][0]["min"],
+                0.000005,
+            )
+
+    def test_writer_runner_retries_with_validator_feedback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.calls: list[list[dict[str, str]]] = []
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **kwargs: object) -> dict[str, object]:
+                    messages = list(kwargs["messages"])  # type: ignore[index]
+                    self.calls.append(messages)
+                    if len(self.calls) == 1:
+                        return {
+                            "track": "directional_perps",
+                            "family": "perp_multi_asset_carry",
+                            "hypothesis": "bad first pass",
+                            "neutrality_basis": "none",
+                            "features": ["not_a_real_feature"],
+                            "universe": {"basis_groups": ["BTC"], "max_symbols": 1},
+                            "risk": {"max_leverage": 9.0},
+                            "regime_gates": {"entry": []},
+                            "params": {"long_count": 0, "short_count": 0},
+                            "unsupported_key": "extra",
+                        }
+                    return {
+                        "track": "directional_perps",
+                        "family": "perp_multi_asset_carry",
+                        "hypothesis": "fixed second pass",
+                        "neutrality_basis": "none",
+                        "features": ["relative_carry_z_72h", "carry_term_structure_24_168"],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                        "regime_gates": {"entry": [], "exit_on_break": True},
+                        "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                    }
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-3",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=1,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                dump_frontmatter(
+                    {
+                        "decision": "test_carry",
+                        "search_mode": "refine",
+                        "target_family": "perp_multi_asset_carry",
+                        "target_universe": ["BTC", "ETH", "SOL", "HYPE"],
+                        "core_hypothesis": "Carry remains best.",
+                        "informative_test": "Use relative carry plus term structure.",
+                        "expected_success": ["better carry robustness"],
+                        "expected_failure": ["no change"],
+                        "evidence_paths": [],
+                        "tools_used": [],
+                        "tracking_tags": ["carry"],
+                        "must_answer": "Return one clean carry candidate.",
+                        "required_feature_roles": ["one core_carry feature"],
+                        "forbidden_motifs": [],
+                        "gate_intent": {},
+                        "writer_inputs": ["manifests/family/perp_multi_asset_carry.md"],
+                    },
+                    "## Proposed next experiment\nUse a clean carry candidate.",
+                )
+            )
+
+            runner = CandidateWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    kimi_timeout_s=30.0,
+                ),
+                kimi=kimi,  # type: ignore[arg-type]
+                mutator=mutator,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+            self.assertEqual(result.candidate_payload["family"], "perp_multi_asset_carry")
+            self.assertIn("relative_carry_z_72h", result.candidate_payload["features"])
+            self.assertIn("carry_term_structure_24_168", result.candidate_payload["features"])
+            self.assertGreaterEqual(len(kimi.calls), 2)
+            repair_messages = [
+                messages[-1]["content"]
+                for messages in kimi.calls[1:]
+                if messages and messages[-1]["role"] == "user"
+            ]
+            self.assertTrue(any("Repair packet" in content for content in repair_messages))
+            self.assertTrue(any("unsupported top-level keys" in content for content in repair_messages))
+            trace = json.loads(result.trace_path.read_text())
+            self.assertIn("inputs", trace)
+            self.assertIn("outputs", trace)
+            self.assertIn("conversation_messages", trace)
+            self.assertEqual(trace["outputs"]["candidate_payload"]["family"], "perp_multi_asset_carry")
+            self.assertIn("initial_user_prompt", trace["inputs"])
+            self.assertIn("Regime gate contract", trace["inputs"]["initial_user_prompt"])
+            self.assertIn("Family Contract", trace["inputs"]["initial_user_prompt"])
+            self.assertTrue(result.base_candidate_path.exists())
+            self.assertEqual(result.structure_spec["continuous_tuning_owner"], "optuna")
+            self.assertTrue((iteration_paths["structure_spec_path"]).exists())
+            self.assertTrue((iteration_paths["candidate_patch_path"]).exists())
+            self.assertTrue((iteration_paths["candidate_after_patch_path"]).exists())
+            patch_payload = json.loads(iteration_paths["candidate_patch_path"].read_text())
+            self.assertGreaterEqual(patch_payload["change_count"], 1)
+            self.assertIn("repair_packet_path", trace["outputs"])
+            self.assertIsNotNone(trace["outputs"]["latest_repair_packet"])
+            self.assertTrue(any(msg["role"] == "user" for msg in trace["conversation_messages"]))
+
+    def test_writer_runner_repairs_planner_writer_family_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.calls: list[list[dict[str, str]]] = []
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **kwargs: object) -> dict[str, object]:
+                    messages = list(kwargs["messages"])  # type: ignore[index]
+                    self.calls.append(messages)
+                    if len(self.calls) == 1:
+                        return {
+                            "track": "directional_perps",
+                            "family": "perp_basket_neutral_levered",
+                            "hypothesis": "wrong family first pass",
+                            "neutrality_basis": "dollar_neutral",
+                            "features": ["relative_carry_z_72h", "funding_dispersion_72h"],
+                            "universe": {
+                                "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                                "max_symbols": 4,
+                                "lookback_days": 365,
+                                "interval": "1h",
+                            },
+                            "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                            "regime_gates": {"entry": [], "exit_on_break": True},
+                            "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                        }
+                    return {
+                        "track": "directional_perps",
+                        "family": "perp_multi_asset_carry",
+                        "hypothesis": "carry with one orthogonal regime feature",
+                        "neutrality_basis": "none",
+                        "features": ["relative_carry_z_72h", "funding_dispersion_72h"],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                        "regime_gates": {"entry": [], "exit_on_break": True},
+                        "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                    }
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-3b",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=2,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                dump_frontmatter(
+                    {
+                        "decision": "return_to_carry",
+                        "search_mode": "branch_same_family",
+                        "target_family": "perp_multi_asset_carry",
+                        "target_trade_style": None,
+                        "target_universe": ["BTC", "ETH", "SOL", "HYPE"],
+                        "core_hypothesis": "Carry remains the best family.",
+                        "informative_test": "Use one carry core plus one orthogonal regime discriminator.",
+                        "expected_success": ["stay in carry while adding regime fit"],
+                        "expected_failure": ["no improvement"],
+                        "evidence_paths": [],
+                        "tools_used": [],
+                        "tracking_tags": ["carry"],
+                        "must_answer": "Return to perp_multi_asset_carry and test one orthogonal regime feature.",
+                        "required_feature_roles": [
+                            "one core_carry feature",
+                            "one orthogonal_regime feature",
+                        ],
+                        "forbidden_motifs": ["second pure trend overlay"],
+                        "gate_intent": {},
+                        "writer_inputs": [
+                            "manifests/family/perp_multi_asset_carry.md",
+                            "manifests/family/perp_multi_asset_carry.json",
+                        ],
+                    },
+                    "## Proposed next experiment\nReturn to carry.",
+                )
+            )
+
+            runner = CandidateWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    kimi_timeout_s=30.0,
+                ),
+                kimi=kimi,  # type: ignore[arg-type]
+                mutator=mutator,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+            self.assertEqual(result.candidate_payload["family"], "perp_multi_asset_carry")
+            trace = json.loads(result.trace_path.read_text())
+            first_attempt = trace["attempts"][0]
+            self.assertTrue(first_attempt["conformance_issues"])
+            self.assertIn("family mismatch", first_attempt["conformance_issues"][0])
+            self.assertEqual(trace["outputs"]["candidate_payload"]["family"], "perp_multi_asset_carry")
+
+    def test_planner_runner_keeps_body_when_frontmatter_is_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = SimpleNamespace(
+                root_dir=self.repo_root,
+                artifact_dir=Path(tmp) / "artifacts",
+                lineage_db_path=Path(tmp) / "lineage.db",
+                kimi_timeout_s=30.0,
+                kimi_max_tool_rounds=25,
+            )
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True, "tool_rounds_used": 0}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_text_with_tools(self, **_kwargs: object) -> str:
+                    return (
+                        "---\n"
+                        "family: perp_multi_asset_carry\n"
+                        "open_question: Test whether co-movement is the missing state variable.\n"
+                        "---\n\n"
+                        "## Diagnosis\n"
+                        "The previous carry winner is still the best anchor, but the next test should add one orthogonal state variable.\n\n"
+                        "## Proposed next experiment\n"
+                        "Keep the family and test co_movement_72h as a regime discriminator.\n"
+                    )
+
+            class FakeHypothesisSandbox:
+                def kimi_tools(self, **_kwargs: object) -> list[object]:
+                    return []
+
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=CandidateMutator(settings, kimi=SimpleNamespace()),
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-4",
+                family_scope=None,
+            )
+            parent = CandidateMutator(settings, kimi=SimpleNamespace()).load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=4,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+
+            runner = ResearchPlannerRunner(
+                settings=settings,
+                kimi=FakeKimi(),  # type: ignore[arg-type]
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+                web_researcher=SimpleNamespace(is_configured=False),
+                workspace_builder=builder,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    iteration_number=4,
+                    parent=parent,
+                    market_bundle={"bundle_id": "bundle-1"},
+                    iteration_paths=iteration_paths,
+                )
+            )
+
+            saved_frontmatter, saved_body = parse_frontmatter(result.research_note_path.read_text())
+            self.assertEqual(saved_frontmatter["family"], "perp_multi_asset_carry")
+            self.assertIn("co_movement_72h", saved_body)
+            self.assertNotIn("The planner response was invalid", saved_body)
+            planner_contract = json.loads(result.planner_contract_path.read_text())
+            self.assertEqual(planner_contract["target_family"], "perp_multi_asset_carry")
+            self.assertTrue(planner_contract["must_answer"].startswith("Does "))
+            self.assertIn("validation", planner_contract["must_answer"])
+            trace = json.loads(result.trace_path.read_text())
+            self.assertEqual(trace["outputs"]["planner_contract"]["target_family"], "perp_multi_asset_carry")
+            self.assertEqual(trace["outputs"]["raw_frontmatter"]["family"], "perp_multi_asset_carry")
+            self.assertIn("co_movement_72h", trace["outputs"]["raw_research_note"])
+            self.assertIn("current/incumbent_candidate.yaml", trace["inputs"]["default_context_files"])
+            self.assertIn("current/family_incumbents.json", trace["inputs"]["default_context_files"])
+            self.assertIn("current/recent_trials.md", trace["inputs"]["default_context_files"])
+            self.assertIn("manifests/regime_catalog.md", trace["inputs"]["default_context_files"])
+            self.assertIn("manifests/policy_surface.md", trace["inputs"]["default_context_files"])
+            self.assertIn("manifests/features/feature_surface.md", trace["inputs"]["default_context_files"])
+
+    def test_planner_runner_retries_parse_failures_with_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = SimpleNamespace(
+                root_dir=self.repo_root,
+                artifact_dir=Path(tmp) / "artifacts",
+                lineage_db_path=Path(tmp) / "lineage.db",
+                kimi_timeout_s=30.0,
+                kimi_max_tool_rounds=25,
+            )
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.calls: list[dict[str, object]] = []
+                    self.last_trace = {"ok": True, "tool_rounds_used": 0}
+                    self.last_exchange = {"ok": True}
+                    self._responses = [
+                        (
+                            "---\n"
+                            "family: perp_multi_asset_carry\n"
+                            "must_answer: Does co_movement_72h help: yes or no?\n"
+                            "target_family: perp_multi_asset_carry\n"
+                            "---\n\n"
+                            "## Diagnosis\n"
+                            "Broken YAML on purpose.\n"
+                        ),
+                        (
+                            "---\n"
+                            "family: perp_multi_asset_carry\n"
+                            "open_question: Test whether co_movement_72h improves validation.\n"
+                            "---\n\n"
+                            "## Diagnosis\n"
+                            "The previous carry winner is still the best anchor.\n\n"
+                            "## Proposed next experiment\n"
+                            "Keep the family and test co_movement_72h as a regime discriminator.\n"
+                        ),
+                    ]
+
+                async def complete_text_with_tools(self, **kwargs: object) -> str:
+                    self.calls.append(
+                        {
+                            "user_prompt": str(kwargs["user_prompt"]),
+                            "tool_count": len(list(kwargs["tools"])),  # type: ignore[arg-type]
+                        }
+                    )
+                    return self._responses[len(self.calls) - 1]
+
+            class FakeHypothesisSandbox:
+                def kimi_tools(self, **_kwargs: object) -> list[object]:
+                    return []
+
+            kimi = FakeKimi()
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=CandidateMutator(settings, kimi=SimpleNamespace()),
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-4b",
+                family_scope=None,
+            )
+            parent = CandidateMutator(settings, kimi=SimpleNamespace()).load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=4,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+
+            runner = ResearchPlannerRunner(
+                settings=settings,
+                kimi=kimi,  # type: ignore[arg-type]
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+                web_researcher=SimpleNamespace(is_configured=False),
+                workspace_builder=builder,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    iteration_number=4,
+                    parent=parent,
+                    market_bundle={"bundle_id": "bundle-1"},
+                    iteration_paths=iteration_paths,
+                )
+            )
+
+            self.assertTrue(result.repaired)
+            self.assertEqual(len(kimi.calls), 2)
+            self.assertTrue(all(int(call["tool_count"]) > 0 for call in kimi.calls))
+            self.assertIn("Failure Packet", str(kimi.calls[1]["user_prompt"]))
+            saved_frontmatter, saved_body = parse_frontmatter(result.research_note_path.read_text())
+            self.assertEqual(saved_frontmatter["family"], "perp_multi_asset_carry")
+            self.assertIn("co_movement_72h", saved_body)
+            planner_contract = json.loads(result.planner_contract_path.read_text())
+            self.assertEqual(planner_contract["target_family"], "perp_multi_asset_carry")
+            trace = json.loads(result.trace_path.read_text())
+            self.assertEqual(len(trace["planner_attempts"]), 2)
+            self.assertFalse(trace["planner_attempts"][0]["success"])
+            self.assertEqual(
+                trace["planner_attempts"][0]["error"]["error_type"],
+                "planner_note_semantic_failure",
+            )
+            self.assertTrue(trace["planner_attempts"][1]["success"])
+
+    def test_writer_runner_preserves_required_named_feature(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.calls: list[list[dict[str, str]]] = []
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **kwargs: object) -> dict[str, object]:
+                    messages = list(kwargs["messages"])  # type: ignore[index]
+                    self.calls.append(messages)
+                    if len(self.calls) == 1:
+                        return {
+                            "track": "directional_perps",
+                            "family": "perp_multi_asset_carry",
+                            "hypothesis": "missing the named feature",
+                            "neutrality_basis": "none",
+                            "features": ["relative_carry_z_72h", "carry_term_structure_24_168"],
+                            "universe": {
+                                "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                                "max_symbols": 4,
+                                "lookback_days": 365,
+                                "interval": "1h",
+                            },
+                            "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                            "regime_gates": {"entry": [], "exit_on_break": True},
+                            "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                        }
+                    return {
+                        "track": "directional_perps",
+                        "family": "perp_multi_asset_carry",
+                        "hypothesis": "now includes the named feature",
+                        "neutrality_basis": "none",
+                        "features": ["relative_carry_z_72h", "co_movement_72h"],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                        "regime_gates": {
+                            "entry": [{"expression": "co_movement_72h", "min": 0.2}],
+                            "exit_on_break": True,
+                        },
+                        "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                    }
+
+            class FakeHypothesisSandbox:
+                async def _tool_probe_candidate_gate_impact(self, **_kwargs: object) -> dict[str, object]:
+                    return {
+                        "ok": True,
+                        "warnings": [],
+                        "gate_coverage": {"configured": True},
+                        "selector_train_comparison": {
+                            "delta": {
+                                "median_total_return": 0.01,
+                                "median_sharpe": 0.1,
+                            }
+                        },
+                    }
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-5",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=5,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                dump_frontmatter(
+                    {
+                        "decision": "test_named_feature",
+                        "search_mode": "branch_same_family",
+                        "target_family": "perp_multi_asset_carry",
+                        "target_universe": ["BTC", "ETH", "SOL", "HYPE"],
+                        "core_hypothesis": "Co-movement should matter if the gate is causal.",
+                        "informative_test": "Test co_movement_72h directly.",
+                        "expected_success": ["better validation robustness"],
+                        "expected_failure": ["no measurable change"],
+                        "evidence_paths": [],
+                        "tools_used": [],
+                        "tracking_tags": ["carry"],
+                        "must_answer": "Does `co_movement_72h` improve pre-audit return without making validation negative for `perp_multi_asset_carry`?",
+                        "required_feature_roles": ["one core_carry feature", "one orthogonal_regime feature"],
+                        "required_features": ["co_movement_72h"],
+                        "forbidden_motifs": [],
+                        "gate_intent": {"type": "suppress_bad_regime", "target_dimension": "co_movement"},
+                        "required_gate_dimensions": ["co_movement"],
+                        "writer_inputs": ["manifests/family/perp_multi_asset_carry.md"],
+                    },
+                    "## Proposed next experiment\nUse co_movement_72h directly.",
+                )
+            )
+
+            runner = CandidateWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    kimi_timeout_s=30.0,
+                ),
+                kimi=kimi,  # type: ignore[arg-type]
+                mutator=mutator,
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+            trace = json.loads(result.trace_path.read_text())
+            self.assertTrue(
+                any(
+                    "missing required named feature" in issue
+                    for issue in trace["attempts"][0]["conformance_issues"]
+                )
+            )
+            self.assertIn("co_movement_72h", result.candidate_payload["features"])
+
+    def test_writer_runner_treats_empty_regime_gates_as_semantic_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **_kwargs: object) -> dict[str, object]:
+                    return {
+                        "track": "directional_perps",
+                        "family": "perp_multi_asset_carry",
+                        "hypothesis": "Test asymmetric book construction without regime gates.",
+                        "neutrality_basis": "none",
+                        "features": [
+                            "funding_168h_mean",
+                            "funding_72h_mean",
+                            "funding_accel_24h",
+                            "funding_carry_to_vol",
+                            "funding_z_168h",
+                            "realized_vol_168h",
+                        ],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {
+                            "max_asset_weight": 0.35,
+                            "rebalance_threshold": 0.03,
+                            "max_leverage": 1.0,
+                        },
+                        "regime_gates": {"entry": [], "exit_on_break": True},
+                        "params": {
+                            "gross_target": 1.0,
+                            "long_count": 3,
+                            "short_count": 1,
+                            "min_abs_score": 0.12,
+                        },
+                    }
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-empty-gates",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=6,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            iteration_paths["planner_contract_path"].write_text(
+                json.dumps(
+                    {
+                        "target_family": "perp_multi_asset_carry",
+                        "must_answer": "Does asymmetric 3L/1S improve carry returns without regime gates?",
+                        "required_variation_axis": "non_regime",
+                        "required_feature_roles": ["one core_carry feature", "one non_regime_axis feature"],
+                        "planner_regime_gates": {},
+                    },
+                    indent=2,
+                )
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                "## Proposed next experiment\n"
+                "Stay in perp_multi_asset_carry and test 3L/1S book construction with no regime gate.\n"
+            )
+
+            runner = CandidateWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    kimi_timeout_s=30.0,
+                ),
+                kimi=kimi,  # type: ignore[arg-type]
+                mutator=mutator,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+            self.assertTrue(result.accepted)
+            trace = json.loads(result.trace_path.read_text())
+            self.assertEqual(trace["attempts"][0]["material_changed_fields"], [])
+            self.assertFalse(trace["attempts"][0]["material_drift"])
+
+    def test_builder_marks_non_regime_axis_after_regime_focused_carry_streak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            rows = [
+                {
+                    "family": "perp_multi_asset_carry",
+                    "candidate": {
+                        "family": "perp_multi_asset_carry",
+                        "features": ["funding_72h_mean", "co_movement_72h"],
+                        "regime_gates": {"entry": [{"expression": "co_movement_72h", "min": 0.2}]},
+                    },
+                    "research_summary": {"run_context": {"deterministic": False}},
+                },
+                {
+                    "family": "perp_multi_asset_carry",
+                    "candidate": {
+                        "family": "perp_multi_asset_carry",
+                        "features": ["funding_carry_to_vol", "trend_strength_72h"],
+                        "regime_gates": {"entry": [{"expression": "trend_strength_72h", "max": 0.4}]},
+                    },
+                    "research_summary": {"run_context": {"deterministic": False}},
+                },
+            ]
+            guidance = builder._carry_variation_guidance(rows=rows)
+            self.assertEqual(guidance["required_variation_axis"], "non_regime")
+
+    def test_writer_prompt_includes_exact_planner_gate_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **_kwargs: object) -> dict[str, object]:
+                    return {
+                        "track": "directional_perps",
+                        "family": "perp_multi_asset_carry",
+                        "hypothesis": "copy the planner gate literally",
+                        "neutrality_basis": "none",
+                        "features": [
+                            "funding_168h_mean",
+                            "funding_72h_mean",
+                            "funding_carry_to_vol",
+                            "funding_dispersion_72h",
+                            "realized_vol_168h",
+                        ],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                        "regime_gates": {
+                            "entry": [{"expression": "funding_dispersion_72h", "min": 1e-06}],
+                            "exit_on_break": True,
+                        },
+                        "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                    }
+
+            class FakeHypothesisSandbox:
+                async def _tool_probe_candidate_gate_impact(self, **_kwargs: object) -> dict[str, object]:
+                    return {
+                        "ok": True,
+                        "warnings": [],
+                        "gate_coverage": {"configured": True, "combined_active_fraction": 0.3},
+                        "selector_train_comparison": {
+                            "delta": {
+                                "median_total_return": 0.01,
+                                "median_sharpe": 0.05,
+                            }
+                        },
+                    }
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-exact-gate",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=5,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                dump_frontmatter(
+                    {
+                        "decision": "test_exact_gate_copy",
+                        "search_mode": "branch_same_family",
+                        "target_family": "perp_multi_asset_carry",
+                        "target_universe": ["BTC", "ETH", "SOL", "HYPE"],
+                        "core_hypothesis": "Keep the carry core and use a permissive funding dispersion gate.",
+                        "informative_test": "Use the planner-provided threshold literally.",
+                        "expected_success": ["better validation robustness"],
+                        "expected_failure": ["no measurable change"],
+                        "evidence_paths": [],
+                        "tools_used": [],
+                        "tracking_tags": ["carry"],
+                        "must_answer": "Does a permissive funding_dispersion_72h gate help without killing activity?",
+                        "required_feature_roles": ["one core_carry feature", "one orthogonal_regime feature"],
+                        "required_features": ["funding_dispersion_72h"],
+                        "required_gate_dimensions": ["funding_dispersion_72h"],
+                        "regime_gates": {
+                            "entry": [{"expression": "funding_dispersion_72h", "min": 1e-06}],
+                            "exit_on_break": True,
+                        },
+                        "writer_inputs": ["manifests/family/perp_multi_asset_carry.md"],
+                    },
+                    "## Suggested gate spec\nUse the exact gate threshold from frontmatter.",
+                )
+            )
+
+            runner = CandidateWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    kimi_timeout_s=30.0,
+                ),
+                kimi=kimi,  # type: ignore[arg-type]
+                mutator=mutator,
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+            trace = json.loads(result.trace_path.read_text())
+            self.assertIn("## Exact Planner Gate Spec", trace["inputs"]["initial_user_prompt"])
+            self.assertIn("min: 0.000001", trace["inputs"]["initial_user_prompt"])
+            self.assertEqual(
+                trace["inputs"]["planner_contract"]["planner_regime_gates"]["entry"][0]["min"],
+                1e-06,
+            )
+            self.assertIsNotNone(result.candidate_payload)
+            self.assertEqual(result.candidate_payload["regime_gates"]["entry"][0]["min"], 1e-06)
+
+    def test_writer_runner_rejects_negative_gate_lint_deltas(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.calls: list[list[dict[str, str]]] = []
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **kwargs: object) -> dict[str, object]:
+                    messages = list(kwargs["messages"])  # type: ignore[index]
+                    self.calls.append(messages)
+                    if len(self.calls) == 1:
+                        return {
+                            "track": "directional_perps",
+                            "family": "perp_multi_asset_carry",
+                            "hypothesis": "bad gate first pass",
+                            "neutrality_basis": "none",
+                            "features": ["relative_carry_z_72h", "funding_dispersion_72h"],
+                            "universe": {
+                                "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                                "max_symbols": 4,
+                                "lookback_days": 365,
+                                "interval": "1h",
+                            },
+                            "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                            "regime_gates": {
+                                "entry": [{"expression": "funding_dispersion_72h", "min": 0.00001}],
+                                "exit_on_break": True,
+                            },
+                            "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                        }
+                    return {
+                        "track": "directional_perps",
+                        "family": "perp_multi_asset_carry",
+                        "hypothesis": "keep the named gate after repairing the harmful threshold",
+                        "neutrality_basis": "none",
+                        "features": ["relative_carry_z_72h", "funding_dispersion_72h"],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                        "regime_gates": {
+                            "entry": [{"expression": "funding_dispersion_72h", "min": 0.00001}],
+                            "exit_on_break": True,
+                        },
+                        "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                    }
+
+            class FakeHypothesisSandbox:
+                def __init__(self) -> None:
+                    self.calls = 0
+
+                async def _tool_probe_candidate_gate_impact(self, **_kwargs: object) -> dict[str, object]:
+                    self.calls += 1
+                    if self.calls == 1:
+                        return {
+                            "ok": True,
+                            "warnings": [],
+                            "gate_coverage": {"configured": True},
+                            "selector_train_comparison": {
+                                "delta": {
+                                    "median_total_return": -0.02,
+                                    "median_sharpe": -0.15,
+                                }
+                            },
+                        }
+                    return {
+                        "ok": True,
+                        "warnings": [],
+                        "gate_coverage": {"configured": False},
+                        "selector_train_comparison": {"delta": {}},
+                    }
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-6",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=6,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                dump_frontmatter(
+                    {
+                        "decision": "test_gate_lint",
+                        "search_mode": "branch_same_family",
+                        "target_family": "perp_multi_asset_carry",
+                        "target_universe": ["BTC", "ETH", "SOL", "HYPE"],
+                        "core_hypothesis": "Try a funding dispersion gate.",
+                        "informative_test": "See whether the gate helps.",
+                        "expected_success": ["better validation robustness"],
+                        "expected_failure": ["no measurable change"],
+                        "evidence_paths": [],
+                        "tools_used": [],
+                        "tracking_tags": ["carry"],
+                        "must_answer": "Does gating on `funding_dispersion_72h` improve pre-audit return without making validation negative for `perp_multi_asset_carry`?",
+                        "required_feature_roles": ["one core_carry feature", "one orthogonal_regime feature"],
+                        "required_gate_dimensions": ["funding_dispersion_72h"],
+                        "forbidden_motifs": [],
+                        "gate_intent": {"type": "suppress_bad_regime", "target_dimension": "funding_dispersion_72h"},
+                        "writer_inputs": ["manifests/family/perp_multi_asset_carry.md"],
+                    },
+                    "## Proposed next experiment\nUse a funding dispersion gate.",
+                )
+            )
+
+            runner = CandidateWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    kimi_timeout_s=30.0,
+                ),
+                kimi=kimi,  # type: ignore[arg-type]
+                mutator=mutator,
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+            trace = json.loads(result.trace_path.read_text())
+            self.assertTrue(any("negative_selector_train_return_delta" in issue for issue in trace["attempts"][0]["hard_issues"]))
+            self.assertEqual(result.candidate_payload["regime_gates"]["entry"][0]["expression"], "funding_dispersion_72h")
+
+    def test_writer_runner_soft_fails_after_unrepaired_gate_lint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **_kwargs: object) -> dict[str, object]:
+                    return {
+                        "track": "directional_perps",
+                        "family": "perp_multi_asset_carry",
+                        "hypothesis": "still bad after repair",
+                        "neutrality_basis": "none",
+                        "features": ["funding_carry_to_vol", "market_volatility_168h"],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {"max_asset_weight": 0.35, "rebalance_threshold": 0.03, "max_leverage": 1.0},
+                        "regime_gates": {
+                            "entry": [{"expression": "market_volatility_168h", "max": 0.0085}],
+                            "exit_on_break": True,
+                        },
+                        "params": {"long_count": 2, "short_count": 2, "gross_target": 1.0},
+                    }
+
+            class FakeHypothesisSandbox:
+                provider = None
+
+                async def _tool_probe_candidate_gate_impact(self, **_kwargs: object) -> dict[str, object]:
+                    return {
+                        "ok": True,
+                        "warnings": [],
+                        "gate_coverage": {"configured": True, "combined_active_fraction": 0.76},
+                        "selector_train_comparison": {
+                            "delta": {
+                                "median_total_return": 0.01,
+                                "median_sharpe": -0.2,
+                            }
+                        },
+                    }
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-soft-fail",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=7,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                dump_frontmatter(
+                    {
+                        "decision": "test_gate_lint_soft_fail",
+                        "search_mode": "branch_same_family",
+                        "target_family": "perp_multi_asset_carry",
+                        "target_universe": ["BTC", "ETH", "SOL", "HYPE"],
+                        "core_hypothesis": "Try market volatility as the gate dimension.",
+                        "informative_test": "See whether the gate helps.",
+                        "expected_success": ["better validation robustness"],
+                        "expected_failure": ["no measurable change"],
+                        "evidence_paths": [],
+                        "tools_used": [],
+                        "tracking_tags": ["carry"],
+                        "must_answer": "Does gating on `market_volatility_168h` improve pre-audit return without making validation negative for `perp_multi_asset_carry`?",
+                        "required_feature_roles": ["one core_carry feature", "one orthogonal_regime feature"],
+                        "required_gate_dimensions": ["market_volatility_168h"],
+                        "forbidden_motifs": [],
+                        "gate_intent": {"type": "suppress_bad_regime", "target_dimension": "market_volatility_168h"},
+                        "writer_inputs": ["manifests/family/perp_multi_asset_carry.md"],
+                    },
+                    "## Proposed next experiment\nUse a market volatility gate.",
+                )
+            )
+
+            runner = CandidateWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    kimi_timeout_s=30.0,
+                ),
+                kimi=kimi,  # type: ignore[arg-type]
+                mutator=mutator,
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+            )
+            runner._activity_lint = self.async_identity({"ok": True, "active_bar_fraction": 0.25, "median_active_asset_count": 3.0})  # type: ignore[method-assign]
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+            self.assertFalse(result.accepted)
+            self.assertIsNotNone(result.failure_reason)
+            self.assertIsNone(result.candidate_path)
+            trace = json.loads(result.trace_path.read_text())
+            self.assertFalse(trace["outputs"]["accepted"])
+            self.assertIn("negative_selector_train_sharpe_delta", json.dumps(trace["outputs"]["latest_repair_packet"]))
+
+    def test_reflector_runner_keeps_raw_body_and_backfills_missing_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = SimpleNamespace(
+                root_dir=self.repo_root,
+                artifact_dir=Path(tmp) / "artifacts",
+                lineage_db_path=Path(tmp) / "lineage.db",
+                kimi_timeout_s=30.0,
+            )
+            lineage = LineageStore(settings.lineage_db_path)
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-reflector-raw",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=8,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_text(self, **_kwargs: object) -> str:
+                    return (
+                        "---\n"
+                        "family: perp_multi_asset_carry\n"
+                        "verdict: promising_but_fragile\n"
+                        "---\n\n"
+                        "What changed: kept carry core fixed and added a volatility floor.\n"
+                        "Why it failed/worked: this improved validation but not enough to make the gate reusable.\n"
+                        "Do not repeat: single-factor volatility ceilings.\n"
+                        "Next test: interact funding level with volatility instead of another standalone gate.\n"
+                    )
+
+            runner = ReflectionRunner(
+                settings=settings,
+                kimi=FakeKimi(),  # type: ignore[arg-type]
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    candidate_hash="candidate-1",
+                    iteration_paths=iteration_paths,
+                    evaluation_packet={
+                        "family": "perp_multi_asset_carry",
+                        "candidate": {
+                            "features": ["relative_carry_z_72h", "market_volatility_168h"],
+                            "regime_gates": {"entry": [{"expression": "market_volatility_168h", "min": 0.001}]},
+                        },
+                        "summary": {"pre_audit_canonical_total_return": 0.02},
+                        "parent_delta": {"pre_audit_canonical_total_return_delta": 0.01},
+                        "dominant_failure_mode": "fragile_gate",
+                        "failed_motif_signature": "carry|vol_floor",
+                        "suggested_next_move": "test_interaction_gate_funding_level_x_volatility_168h",
+                        "evidence_paths": ["cards/experiments/candidate-1.md"],
+                        "recent_completed_runs": [],
+                    },
+                )
+            )
+
+            saved_frontmatter, saved_body = parse_frontmatter(result.lesson_card_path.read_text())
+            self.assertEqual(saved_frontmatter["family"], "perp_multi_asset_carry")
+            self.assertEqual(saved_frontmatter["verdict"], "promising_but_fragile")
+            self.assertEqual(saved_frontmatter["failure_mode"], "fragile_gate")
+            self.assertEqual(
+                saved_frontmatter["one_next_test"],
+                "test_interaction_gate_funding_level_x_volatility_168h",
+            )
+            self.assertIn("kept carry core fixed and added a volatility floor", saved_body)
+            self.assertIn("single-factor volatility ceilings", saved_body)
+
+            trace = json.loads(result.trace_path.read_text())
+            self.assertIn("raw_reflection", trace)
+            self.assertIn("saved_frontmatter", trace)
+            self.assertIn("saved_body", trace)
+            self.assertIsNone(trace["frontmatter_parse_error"])
+
+    def async_run(self, awaitable):
+        import asyncio
+
+        return asyncio.run(awaitable)
+
+    def async_identity(self, value):
+        async def _runner(*_args, **_kwargs):
+            return value
+
+        return _runner
+
+
+if __name__ == "__main__":
+    unittest.main()
