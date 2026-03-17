@@ -614,11 +614,6 @@ class ResearchPlannerRunner:
                 ]
             )
 
-        allowed_features = self.workspace_builder.mutator._allowed_features_by_family(
-            session.track,
-            family=[target_family],
-        ).get(target_family, [])
-
         if not str(contract.get("core_hypothesis") or "").strip():
             contract["core_hypothesis"] = self._section_or_fallback(
                 note_body_text,

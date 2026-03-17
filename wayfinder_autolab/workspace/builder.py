@@ -693,7 +693,6 @@ class WorkspaceBuilder:
             self.record_experiment(session=session, candidate_hash=candidate_hash, iteration_number=index)
 
     def _ensure_skill_mirror(self) -> None:
-        agents_dir = self.settings.root_dir / ".agents" / "skills"
         claude_dir = self.settings.root_dir / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
         target = claude_dir / "skills"

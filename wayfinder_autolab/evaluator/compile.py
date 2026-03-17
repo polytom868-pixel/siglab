@@ -23,7 +23,6 @@ from wayfinder_autolab.families import (
 )
 from wayfinder_autolab.models import CandidateGraph, CompiledChild
 from wayfinder_autolab.settings import AutolabSettings
-from wayfinder_autolab.track_registry import storage_track_name
 from wayfinder_paths.core.backtesting import convert_to_spot
 
 PAIR_TRADE_FAMILIES = {

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from wayfinder_autolab.workspace.builder import WorkspaceBuilder, WorkspaceSession
 

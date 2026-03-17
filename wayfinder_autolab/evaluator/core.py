@@ -8,7 +8,6 @@ import pandas as pd
 
 from wayfinder_autolab.data.providers import MarketDataProvider
 from wayfinder_autolab.evaluator.compile import (
-    PAIR_TRADE_FAMILIES,
     PAIR_STATEFUL_POLICY_SCHEMA,
     _build_pair_trade_positions,
     compile_candidate,
@@ -97,7 +96,6 @@ class ResearchEvaluator:
         window_results: list[dict[str, Any]] = []
         for leverage in leverage_tiers:
             for window_spec in selector_windows:
-                label = str(window_spec["label"])
                 start_idx = int(window_spec["start_idx"])
                 end_idx = int(window_spec["end_idx"])
                 prices = prices_all.iloc[start_idx:end_idx]
