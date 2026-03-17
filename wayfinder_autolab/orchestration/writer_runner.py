@@ -839,7 +839,6 @@ class CandidateWriterRunner:
             return normalized
         rewritten_entries: list[Any] = []
         for gate in actual_entries:
-            gate_entry = gate
             gate_expression = ""
             if isinstance(gate, str):
                 gate_expression = gate.strip()

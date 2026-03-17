@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
