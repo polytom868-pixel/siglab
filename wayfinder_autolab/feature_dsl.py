@@ -503,7 +503,8 @@ def _binary(
     operation: Any,
 ) -> pd.DataFrame:
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
-        return operation(left, right)
+        left_frame, right_frame = _aligned_pair(left, right)
+        return operation(left_frame, right_frame)
     if isinstance(left, pd.DataFrame):
         return operation(left, right)
     if isinstance(right, pd.DataFrame):
@@ -518,12 +519,56 @@ def _aligned_pair(
     right: pd.DataFrame | float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
-        return left.align(right, join="outer", fill_value=np.nan)
+        return _aligned_frame_pair(left, right)
     if isinstance(left, pd.DataFrame):
         return left, pd.DataFrame(float(right), index=left.index, columns=left.columns)
     if isinstance(right, pd.DataFrame):
         return pd.DataFrame(float(left), index=right.index, columns=right.columns), right
     raise ValueError("At least one argument must be a dataframe")
+
+
+def _aligned_frame_pair(left: pd.DataFrame, right: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    left_indexed, right_indexed = left.align(right, join="outer", axis=0)
+    left_columns = list(left.columns)
+    right_columns = list(right.columns)
+    if left_columns == right_columns:
+        return (
+            left_indexed.reindex(columns=left_columns),
+            right_indexed.reindex(columns=right_columns),
+        )
+    if len(left_columns) == 1 and left_columns[0] not in right_columns:
+        target_columns = right_columns
+        return (
+            _broadcast_single_column_frame(left_indexed, target_columns=target_columns),
+            right_indexed.reindex(columns=target_columns),
+        )
+    if len(right_columns) == 1 and right_columns[0] not in left_columns:
+        target_columns = left_columns
+        return (
+            left_indexed.reindex(columns=target_columns),
+            _broadcast_single_column_frame(right_indexed, target_columns=target_columns),
+        )
+    common_columns = [column for column in left_columns if column in right_columns]
+    if common_columns:
+        return (
+            left_indexed.reindex(columns=common_columns),
+            right_indexed.reindex(columns=common_columns),
+        )
+    return left_indexed.align(right_indexed, join="outer", axis=1, fill_value=np.nan)
+
+
+def _broadcast_single_column_frame(
+    frame: pd.DataFrame,
+    *,
+    target_columns: list[str],
+) -> pd.DataFrame:
+    if len(frame.columns) != 1:
+        raise ValueError("broadcast_single_column_frame requires exactly one column")
+    series = frame.iloc[:, 0]
+    return pd.DataFrame(
+        {column: series for column in target_columns},
+        index=frame.index,
+    ).reindex(columns=target_columns)
 
 
 def _truthy_frame(value: pd.DataFrame | float) -> pd.DataFrame:
