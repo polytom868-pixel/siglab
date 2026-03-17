@@ -1,5 +1,6 @@
 {
   "system": {
+    "api_base_url": "https://strategies.wayfinder.ai/api/v1",
     "api_key": ""
   }
 }
