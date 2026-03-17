@@ -9,15 +9,42 @@ from wayfinder_autolab.cli import (
     _agent_safe_memory_packet,
     _agent_safe_recent_results,
     _external_research_from_llm_trace,
+    _require_wayfinder_config,
     _strip_audit_fields,
     _tool_only_external_research,
     _write_run_reflection,
 )
+from wayfinder_autolab.settings import AutolabSettings
 from wayfinder_autolab.models import CandidateGraph
 from wayfinder_autolab.search.lineage import LineageStore
 
 
 class CliAgentSafetyTests(unittest.TestCase):
+    def test_require_wayfinder_config_points_to_example_config(self) -> None:
+        settings = AutolabSettings(
+            root_dir=Path("/tmp"),
+            wayfinder_config_path=Path("/tmp/missing-config.json"),
+            generated_strategy_dir=Path("/tmp/generated_strategies"),
+            data_lake_dir=Path("/tmp/lake"),
+            artifact_dir=Path("/tmp/artifacts"),
+            live_dir=Path("/tmp/live"),
+            lineage_db_path=Path("/tmp/autolab_test.db"),
+            wayfinder_api_key_override=None,
+            kimi_api_key=None,
+            kimi_model="kimi-k2.5",
+            kimi_base_url="https://api.moonshot.ai/v1",
+            kimi_max_tokens=1024,
+            kimi_temperature=1.0,
+            kimi_top_p=0.95,
+            kimi_timeout_s=30.0,
+            population_size=1,
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            _require_wayfinder_config(settings)
+
+        self.assertIn("config.example.json", str(ctx.exception))
+
     def test_strip_audit_fields_removes_audit_keys_recursively(self) -> None:
         payload = {
             "audit_total_return": 0.12,
