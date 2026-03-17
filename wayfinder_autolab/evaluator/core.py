@@ -1715,12 +1715,27 @@ def _serialize_series(series: pd.Series, digits: int = 8) -> dict[str, Any]:
 
 
 def _serialize_metrics_frame(frame: pd.DataFrame, digits: int = 8) -> dict[str, Any]:
+    normalized = frame.copy()
+    if "fee_amount" not in normalized.columns:
+        if "cost" in normalized.columns:
+            normalized["fee_amount"] = pd.to_numeric(
+                normalized["cost"],
+                errors="coerce",
+            ).fillna(0.0)
+        else:
+            normalized["fee_amount"] = 0.0
+    if "funding_amount" not in normalized.columns:
+        normalized["funding_amount"] = 0.0
+    if "cash_balance" not in normalized.columns:
+        normalized["cash_balance"] = np.nan
+    if "margin_headroom" not in normalized.columns:
+        normalized["margin_headroom"] = np.nan
     return {
-        "index": [timestamp.isoformat() for timestamp in frame.index],
-        "columns": list(frame.columns),
+        "index": [timestamp.isoformat() for timestamp in normalized.index],
+        "columns": list(normalized.columns),
         "rows": [
             [_safe_float(value, digits=digits) for value in row]
-            for row in frame.itertuples(index=False, name=None)
+            for row in normalized.itertuples(index=False, name=None)
         ],
     }
 

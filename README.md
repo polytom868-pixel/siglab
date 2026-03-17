@@ -123,7 +123,8 @@ fail fast if the config file is missing.
 
 `config.example.json` is a valid minimal starting point. If you set
 `WAYFINDER_API_KEY` in `.env`, it is fine for `config.json` to keep
-`system.api_key` empty.
+`system.api_key` empty. It also includes the current Wayfinder API base URL:
+`https://strategies.wayfinder.ai/api/v1`.
 
 Useful optional settings:
 
