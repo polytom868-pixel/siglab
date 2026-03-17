@@ -1,9 +1,9 @@
 # Wayfinder Autolab
 
-[Website](https://strategies.wayfinder.ai/)
-[Discord](https://discord.com/invite/aiwayfinder)
-[X](https://x.com/AIWayfinder)
-[License: MIT](LICENSE)
+[![Website](https://img.shields.io/badge/website-strategies.wayfinder.ai-2563eb.svg)](https://strategies.wayfinder.ai/)
+[![Discord](https://img.shields.io/badge/discord-join-7289da.svg)](https://discord.com/invite/aiwayfinder)
+[![X](https://img.shields.io/badge/x-@AIWayfinder-111111.svg)](https://x.com/AIWayfinder)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ```
                        ░▒▓█  W A Y F I N D E R  █▓▒░
@@ -558,4 +558,3 @@ supported.
 - Live directional-perp export is thin and delegates its signal logic back to
 autolab runtime helpers to keep research and live logic aligned.
 - Carry-family live execution is intentionally not wired yet.
-
