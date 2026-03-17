@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any
 
 
@@ -33,6 +34,13 @@ DEFAULT_GENERALIZATION_WEIGHTS: dict[str, float] = {
     "generalization_gap": 6.0,
     "audit_gap": 6.0,
     "activity_shortfall": 8.0,
+    "turnover_mean": 3.0,
+    "tx_cost_share": 1.5,
+    "selector_return_std": 8.0,
+    "selector_sharpe_std": 0.75,
+    "selector_unprofitable_share": 2.0,
+    "extreme_param_edge": 1.5,
+    "low_bar_count": 2.0,
 }
 
 
@@ -167,9 +175,15 @@ def summarize_return_attribution(
 def summarize_generalization(
     summary: dict[str, Any] | None,
     *,
+    evaluation: dict[str, Any] | None = None,
+    optuna_space: dict[str, Any] | None = None,
+    tuned_params: dict[str, Any] | None = None,
     stability_pack: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = dict(summary or {})
+    evaluation = dict(evaluation or {})
+    optuna_space = dict(optuna_space or {})
+    tuned_params = dict(tuned_params or {})
     stability_pack = dict(stability_pack or {})
 
     aggregate_score = _float_or_none(summary.get("aggregate_score"))
@@ -179,6 +193,29 @@ def summarize_generalization(
     audit_available = bool(summary.get("audit_available")) if "audit_available" in summary else audit_total_return is not None
     active_bar_fraction = _float_or_none(
         summary.get("active_bar_fraction", summary.get("policy_active_bar_fraction"))
+    )
+    canonical_run = dict(evaluation.get("canonical_run") or {})
+    metrics_by_period = dict(canonical_run.get("metrics_by_period") or {})
+    total_bar_count = _bar_count(metrics_by_period, canonical_run)
+    active_bar_count = _active_bar_count(
+        active_bar_fraction=active_bar_fraction,
+        total_bar_count=total_bar_count,
+    )
+    turnover_mean = _metric_mean(metrics_by_period, "turnover")
+    fee_total = _metric_total(metrics_by_period, "fee_amount")
+    tx_cost_share = _tx_cost_share(
+        fee_total=fee_total,
+        pre_audit_total_return=pre_audit_total_return,
+    )
+    window_variation = _selector_window_variation(evaluation)
+    selector_return_std = _float_or_none(window_variation.get("return_std"))
+    selector_sharpe_std = _float_or_none(window_variation.get("sharpe_std"))
+    selector_profitable_window_pct = _float_or_none(
+        window_variation.get("profitable_window_pct", summary.get("profitable_window_pct"))
+    )
+    extreme_param_penalty = _extreme_param_penalty(
+        optuna_space=optuna_space,
+        tuned_params=tuned_params,
     )
 
     negative_validation_penalty = max(0.0, -(validation_total_return or 0.0)) * DEFAULT_GENERALIZATION_WEIGHTS["negative_validation"]
@@ -205,6 +242,42 @@ def summarize_generalization(
         else 0.0
     )
     activity_penalty = activity_shortfall * DEFAULT_GENERALIZATION_WEIGHTS["activity_shortfall"]
+    turnover_penalty = (
+        max(0.0, turnover_mean - 0.10) * DEFAULT_GENERALIZATION_WEIGHTS["turnover_mean"]
+        if turnover_mean is not None
+        else 0.0
+    )
+    tx_cost_penalty = (
+        max(0.0, tx_cost_share - 0.35) * DEFAULT_GENERALIZATION_WEIGHTS["tx_cost_share"]
+        if tx_cost_share is not None
+        else 0.0
+    )
+    selector_variation_penalty = 0.0
+    if selector_return_std is not None:
+        selector_variation_penalty += max(
+            0.0,
+            selector_return_std - 0.03,
+        ) * DEFAULT_GENERALIZATION_WEIGHTS["selector_return_std"]
+    if selector_sharpe_std is not None:
+        selector_variation_penalty += max(
+            0.0,
+            selector_sharpe_std - 0.75,
+        ) * DEFAULT_GENERALIZATION_WEIGHTS["selector_sharpe_std"]
+    if selector_profitable_window_pct is not None:
+        selector_variation_penalty += max(
+            0.0,
+            0.5 - selector_profitable_window_pct,
+        ) * DEFAULT_GENERALIZATION_WEIGHTS["selector_unprofitable_share"]
+    low_bar_shortfall = (
+        max(0.0, 72.0 - float(active_bar_count))
+        if active_bar_count is not None
+        else 0.0
+    )
+    low_bar_penalty = (
+        (low_bar_shortfall / 72.0) * DEFAULT_GENERALIZATION_WEIGHTS["low_bar_count"]
+        if low_bar_shortfall > 0.0
+        else 0.0
+    )
     stability_penalty = _float_or_none(stability_pack.get("stability_penalty")) or 0.0
 
     fragility_penalty = (
@@ -213,6 +286,11 @@ def summarize_generalization(
         + generalization_gap_penalty
         + audit_gap_penalty
         + activity_penalty
+        + turnover_penalty
+        + tx_cost_penalty
+        + selector_variation_penalty
+        + extreme_param_penalty
+        + low_bar_penalty
         + stability_penalty
     )
     promotion_score = (
@@ -230,6 +308,8 @@ def summarize_generalization(
         stability_pack=stability_pack,
         audit_alignment=audit_alignment,
         audit_available=audit_available,
+        audit_total_return=audit_total_return,
+        active_bar_count=active_bar_count,
     )
 
     return {
@@ -246,9 +326,22 @@ def summarize_generalization(
             "audit_gap_penalty": audit_gap_penalty,
             "activity_shortfall": activity_shortfall,
             "activity_penalty": activity_penalty,
+            "turnover_mean": turnover_mean,
+            "turnover_penalty": turnover_penalty,
+            "tx_cost_share": tx_cost_share,
+            "tx_cost_penalty": tx_cost_penalty,
+            "selector_return_std": selector_return_std,
+            "selector_sharpe_std": selector_sharpe_std,
+            "selector_profitable_window_pct": selector_profitable_window_pct,
+            "selector_variation_penalty": selector_variation_penalty,
+            "extreme_param_penalty": extreme_param_penalty,
+            "active_bar_count": active_bar_count,
+            "low_bar_shortfall": low_bar_shortfall,
+            "low_bar_penalty": low_bar_penalty,
             "stability_penalty": stability_penalty,
             "weights": dict(DEFAULT_GENERALIZATION_WEIGHTS),
             "active_bar_fraction": active_bar_fraction,
+            "total_bar_count": total_bar_count,
             "validation_total_return": validation_total_return,
             "pre_audit_canonical_total_return": pre_audit_total_return,
             "audit_total_return": audit_total_return if audit_available else None,
@@ -493,6 +586,154 @@ def _metric_total(frame: Any, column_name: str, *, use_last: bool = False) -> fl
     return values[-1] if use_last else sum(values)
 
 
+def _metric_mean(frame: Any, column_name: str) -> float | None:
+    if not isinstance(frame, dict):
+        return None
+    columns = list(frame.get("columns") or [])
+    rows = list(frame.get("rows") or [])
+    if column_name not in columns or not rows:
+        return None
+    index = columns.index(column_name)
+    values: list[float] = []
+    for row in rows:
+        if not isinstance(row, list) or index >= len(row):
+            continue
+        value = _float_or_none(row[index])
+        if value is not None:
+            values.append(value)
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _bar_count(frame: dict[str, Any], canonical_run: dict[str, Any]) -> int:
+    index = list(frame.get("index") or [])
+    if index:
+        return len(index)
+    equity_curve = dict(canonical_run.get("equity_curve") or {})
+    return len(list(equity_curve.get("index") or []))
+
+
+def _active_bar_count(*, active_bar_fraction: float | None, total_bar_count: int) -> int | None:
+    if active_bar_fraction is None or total_bar_count <= 0:
+        return None
+    return max(0, int(round(active_bar_fraction * total_bar_count)))
+
+
+def _tx_cost_share(
+    *,
+    fee_total: float | None,
+    pre_audit_total_return: float | None,
+) -> float | None:
+    if fee_total is None:
+        return None
+    denominator = max(abs(pre_audit_total_return or 0.0), 0.02)
+    if denominator <= 0.0:
+        return None
+    return abs(fee_total) / denominator
+
+
+def _selector_window_variation(evaluation: dict[str, Any]) -> dict[str, float | None]:
+    rows = [
+        row
+        for row in list(evaluation.get("windows") or [])
+        if bool(row.get("used_for_selector"))
+    ]
+    if not rows:
+        return {
+            "return_std": None,
+            "sharpe_std": None,
+            "profitable_window_pct": None,
+        }
+    returns = [
+        value
+        for value in (
+            _float_or_none(dict(row.get("stats") or {}).get("total_return"))
+            for row in rows
+        )
+        if value is not None
+    ]
+    sharpe = [
+        value
+        for value in (
+            _float_or_none(dict(row.get("stats") or {}).get("sharpe"))
+            for row in rows
+        )
+        if value is not None
+    ]
+    profitable_window_pct = (
+        sum(1 for value in returns if value > 0.0) / len(returns)
+        if returns
+        else None
+    )
+    return {
+        "return_std": _population_std(returns),
+        "sharpe_std": _population_std(sharpe),
+        "profitable_window_pct": profitable_window_pct,
+    }
+
+
+def _population_std(values: list[float]) -> float | None:
+    if not values:
+        return None
+    if len(values) == 1:
+        return 0.0
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return math.sqrt(max(variance, 0.0))
+
+
+def _extreme_param_penalty(
+    *,
+    optuna_space: dict[str, Any],
+    tuned_params: dict[str, Any],
+) -> float:
+    parameters = list(optuna_space.get("parameters") or [])
+    if not parameters or not tuned_params:
+        return 0.0
+    components: list[float] = []
+    for item in parameters:
+        path = str(item.get("path") or "")
+        if path not in tuned_params:
+            continue
+        normalized = _normalized_param_position(
+            value=tuned_params.get(path),
+            low=item.get("low"),
+            high=item.get("high"),
+            log=bool(item.get("log")),
+        )
+        if normalized is None:
+            continue
+        edge_distance = min(normalized, 1.0 - normalized)
+        components.append(max(0.0, 0.12 - edge_distance) / 0.12)
+    if not components:
+        return 0.0
+    return (sum(components) / len(components)) * DEFAULT_GENERALIZATION_WEIGHTS["extreme_param_edge"]
+
+
+def _normalized_param_position(
+    *,
+    value: Any,
+    low: Any,
+    high: Any,
+    log: bool,
+) -> float | None:
+    numeric = _float_or_none(value)
+    low_value = _float_or_none(low)
+    high_value = _float_or_none(high)
+    if numeric is None or low_value is None or high_value is None or high_value <= low_value:
+        return None
+    if log and numeric > 0.0 and low_value > 0.0 and high_value > 0.0:
+        numerator = math.log(numeric) - math.log(low_value)
+        denominator = math.log(high_value) - math.log(low_value)
+    else:
+        numerator = numeric - low_value
+        denominator = high_value - low_value
+    if denominator <= 0.0:
+        return None
+    return max(0.0, min(1.0, numerator / denominator))
+
+
 def _return_driver_label(
     price_contribution: float | None,
     carry_contribution: float | None,
@@ -614,9 +855,15 @@ def _fragility_label(
     stability_pack: dict[str, Any],
     audit_alignment: str,
     audit_available: bool,
+    audit_total_return: float | None = None,
+    active_bar_count: int | None = None,
 ) -> str:
     if not audit_available and not stability_pack:
         return "untested"
+    if active_bar_count is not None and active_bar_count < 72:
+        return "fragile"
+    if audit_available and audit_total_return is not None and audit_total_return < -0.02:
+        return "fragile"
     if audit_alignment in {"negative", "mismatch"}:
         return "fragile"
     if stability_pack and (

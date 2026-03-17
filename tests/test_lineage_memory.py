@@ -192,6 +192,75 @@ class LineageMemoryTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["candidate_hash"], llm_child.strategy_hash())
 
+    def test_run_local_scope_filters_recent_dashboard_and_best(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "lineage.db"
+            lineage = LineageStore(db_path)
+
+            first = CandidateGraph.from_dict(
+                _candidate_payload(
+                    track="directional_perps",
+                    family="perp_multi_asset_carry",
+                    assets=["BTC", "ETH", "SOL", "HYPE"],
+                    features=["funding_72h_mean"],
+                )
+            )
+            second = CandidateGraph.from_dict(
+                _candidate_payload(
+                    track="directional_perps",
+                    family="perp_multi_asset_carry",
+                    assets=["BTC", "ETH", "SOL", "HYPE"],
+                    features=["funding_168h_mean"],
+                )
+            )
+
+            for candidate, run_session_id, score in (
+                (first, "run-1", 4.0),
+                (second, "run-2", 7.5),
+            ):
+                lineage.record(
+                    evaluation={
+                        "candidate": candidate.canonical_dict(),
+                        "candidate_hash": candidate.strategy_hash(),
+                        "summary": {
+                            "aggregate_score": score,
+                            "median_sharpe": 0.5,
+                            "median_cagr": 0.03,
+                            "median_total_return": 0.02,
+                            "passed": True,
+                            "gate_reasons": [],
+                        },
+                    },
+                    parent_hash=None,
+                    research_summary={
+                        "track": "directional_perps",
+                        "run_context": {
+                            "run_session_id": run_session_id,
+                            "phase_label": "main",
+                            "deterministic": False,
+                        },
+                    },
+                    artifact_path=None,
+                )
+
+            self.assertEqual(len(lineage.recent("directional_perps", limit=5)), 2)
+            self.assertEqual(
+                len(lineage.recent("directional_perps", limit=5, run_session_id="run-1")),
+                1,
+            )
+            self.assertEqual(
+                lineage.best("directional_perps", run_session_id="run-1")["candidate_hash"],
+                first.strategy_hash(),
+            )
+            self.assertEqual(
+                lineage.best("directional_perps", run_session_id="run-2")["candidate_hash"],
+                second.strategy_hash(),
+            )
+            self.assertEqual(
+                [row["candidate_hash"] for row in lineage.dashboard_rows(track="directional_perps", run_session_id="run-1")],
+                [first.strategy_hash()],
+            )
+
     def test_dashboard_rows_keep_repeat_evaluations_while_recent_stays_unique(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "lineage.db"

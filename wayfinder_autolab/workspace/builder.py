@@ -50,6 +50,7 @@ class WorkspaceSession:
     track: str
     run_session_id: str
     families: list[str]
+    memory_scope: str
 
     @property
     def current_dir(self) -> Path:
@@ -96,12 +97,18 @@ class WorkspaceBuilder:
         self.lineage = lineage
         self.mutator = mutator
 
+    def _session_scope_kwargs(self, session: WorkspaceSession) -> dict[str, str]:
+        if session.memory_scope == "track_global":
+            return {}
+        return {"run_session_id": session.run_session_id}
+
     def initialize_session(
         self,
         *,
         track: str,
         run_session_id: str,
         family_scope: str | list[str] | None,
+        memory_scope: str = "run_local",
     ) -> WorkspaceSession:
         families = self.mutator._allowed_families(track, family=family_scope)
         root = self.settings.artifact_dir / track / "workspaces" / run_session_id
@@ -110,6 +117,7 @@ class WorkspaceBuilder:
             track=track,
             run_session_id=run_session_id,
             families=families,
+            memory_scope=memory_scope,
         )
         self._ensure_layout(session)
         self._ensure_skill_mirror()
@@ -134,7 +142,10 @@ class WorkspaceBuilder:
     ) -> dict[str, Any]:
         bundle = dict(market_summary.get("market_bundle") or {})
         bundle_id = str(bundle.get("bundle_id") or "")
-        rows = self.lineage.dashboard_rows(track=session.track)
+        rows = self.lineage.dashboard_rows(
+            track=session.track,
+            **self._session_scope_kwargs(session),
+        )
         frontier_digest = self._frontier_digest(session=session, rows=rows)
         previous_state = self._read_session_state(session)
         parent_changed = str(previous_state.get("current_parent_hash") or "") != parent.strategy_hash()
@@ -184,6 +195,7 @@ class WorkspaceBuilder:
         )
         session_state = {
             "run_session_id": session.run_session_id,
+            "memory_scope": session.memory_scope,
             "iteration_number": int(iteration_number),
             "current_parent_hash": parent.strategy_hash(),
             "current_parent_family": parent.family,
@@ -459,7 +471,10 @@ class WorkspaceBuilder:
         return relative_path(path, session.root)
 
     def refresh_frontier_files(self, session: WorkspaceSession) -> None:
-        rows = self.lineage.dashboard_rows(track=session.track)
+        rows = self.lineage.dashboard_rows(
+            track=session.track,
+            **self._session_scope_kwargs(session),
+        )
         frontier_digest = self._frontier_digest(session=session, rows=rows)
         self._write_if_changed(
             session.current_dir / "frontier_brief.md",
@@ -480,12 +495,12 @@ class WorkspaceBuilder:
         )
         self._write_if_changed(
             session.current_dir / "incumbent_candidate.yaml",
-            self._render_incumbent_candidate(track=session.track),
+            self._render_incumbent_candidate(session=session),
         )
         self._write_if_changed(
             session.current_dir / "family_incumbents.json",
             json.dumps(
-                self._family_incumbents_payload(track=session.track, families=session.families),
+                self._family_incumbents_payload(session=session),
                 indent=2,
                 ensure_ascii=True,
                 default=str,
@@ -685,7 +700,10 @@ class WorkspaceBuilder:
         ensure_index(session.indexes_dir / "trial_index.jsonl")
 
     def _materialize_existing_cards(self, session: WorkspaceSession) -> None:
-        rows = self.lineage.dashboard_rows(track=session.track)
+        rows = self.lineage.dashboard_rows(
+            track=session.track,
+            **self._session_scope_kwargs(session),
+        )
         for index, row in enumerate(rows, start=1):
             candidate_hash = str(row.get("candidate_hash") or "")
             if not candidate_hash:
@@ -929,23 +947,25 @@ class WorkspaceBuilder:
 
         return dump_frontmatter(frontmatter, body)
 
-    def _render_incumbent_candidate(self, *, track: str) -> str:
-        best = self.lineage.best(track)
+    def _render_incumbent_candidate(self, *, session: WorkspaceSession) -> str:
+        best = self.lineage.best(
+            session.track,
+            run_session_id=session.run_session_id if session.memory_scope != "track_global" else None,
+        )
         if best is not None:
             payload = dict(best.get("candidate") or {})
         else:
-            payload = self._seed_candidate_payload(track=track, family=None)
+            payload = self._seed_candidate_payload(track=session.track, family=None)
         return dump_yaml_block(payload) + "\n"
 
     def _family_incumbents_payload(
         self,
         *,
-        track: str,
-        families: list[str],
+        session: WorkspaceSession,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {}
-        for family in families:
-            best_row = self._best_lineage_row(track=track, family=family)
+        for family in session.families:
+            best_row = self._best_lineage_row(session=session, family=family)
             if best_row is not None:
                 payload[family] = {
                     "source": "lineage",
@@ -957,7 +977,7 @@ class WorkspaceBuilder:
                     "experiment_ref": f"cards/experiments/{best_row.get('candidate_hash')}.md",
                 }
                 continue
-            seed_payload = self._seed_candidate_payload(track=track, family=family)
+            seed_payload = self._seed_candidate_payload(track=session.track, family=family)
             payload[family] = {
                 "source": "seed",
                 "candidate_hash": None,
@@ -1242,10 +1262,14 @@ class WorkspaceBuilder:
     def _best_lineage_row(
         self,
         *,
-        track: str,
+        session: WorkspaceSession,
         family: str,
     ) -> dict[str, Any] | None:
-        rows = self.lineage.dashboard_rows(track=track, family=family)
+        rows = self.lineage.dashboard_rows(
+            track=session.track,
+            family=family,
+            run_session_id=session.run_session_id if session.memory_scope != "track_global" else None,
+        )
         if not rows:
             return None
         rows.sort(

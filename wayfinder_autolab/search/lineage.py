@@ -428,8 +428,9 @@ class LineageStore:
         *,
         limit: int = 5,
         include_deterministic: bool = True,
+        run_session_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        rows = self._track_experiments(track)
+        rows = self._track_experiments(track, run_session_id=run_session_id)
         if not include_deterministic:
             rows = [row for row in rows if not self._is_deterministic_experiment(row)]
         return rows[:limit]
@@ -441,8 +442,9 @@ class LineageStore:
         parent: CandidateGraph,
         market_bundle: dict[str, Any] | None,
         limit: int = 3,
+        run_session_id: str | None = None,
     ) -> dict[str, Any]:
-        experiments_all = self._track_experiments(track)
+        experiments_all = self._track_experiments(track, run_session_id=run_session_id)
         llm_phase_rows = [
             row for row in experiments_all if not self._is_deterministic_experiment(row)
         ]
@@ -482,11 +484,15 @@ class LineageStore:
             diagnostics_by_hash=diagnostics_by_hash,
             rows_by_hash=rows_by_hash,
         )
-        query_cards = self._relevant_query_cards(
-            track=track,
-            parent=parent_payload,
-            market_bundle=market_bundle,
-            limit=limit,
+        query_cards = (
+            []
+            if run_session_id
+            else self._relevant_query_cards(
+                track=track,
+                parent=parent_payload,
+                market_bundle=market_bundle,
+                limit=limit,
+            )
         )
 
         return {
@@ -544,27 +550,28 @@ class LineageStore:
             "query_cards": query_cards,
         }
 
-    def best(self, track: str) -> dict[str, Any] | None:
-        track_names = matching_track_names(track)
-        placeholders = ",".join("?" for _ in track_names)
-        with self._connect() as connection:
-            row = connection.execute(
-                f"""
-                SELECT candidate_hash, candidate_json, aggregate_score, promoted
-                FROM experiments
-                WHERE track IN ({placeholders}) AND passed = 1
-                ORDER BY promoted DESC, aggregate_score DESC, created_at DESC
-                LIMIT 1
-                """,
-                track_names,
-            ).fetchone()
-        if row is None:
+    def best(self, track: str, *, run_session_id: str | None = None) -> dict[str, Any] | None:
+        rows = [
+            row
+            for row in self._track_experiments(track, run_session_id=run_session_id)
+            if bool(row.get("passed"))
+        ]
+        if not rows:
             return None
+        rows.sort(
+            key=lambda row: (
+                int(bool(row.get("promoted"))),
+                float(row.get("aggregate_score") or -1e18),
+                str(row.get("created_at") or ""),
+            ),
+            reverse=True,
+        )
+        row = rows[0]
         return {
-            "candidate_hash": row[0],
-            "candidate": self._candidate_payload(row[1]),
-            "aggregate_score": row[2],
-            "promoted": bool(row[3]),
+            "candidate_hash": row.get("candidate_hash"),
+            "candidate": dict(row.get("candidate") or {}),
+            "aggregate_score": row.get("aggregate_score"),
+            "promoted": bool(row.get("promoted")),
         }
 
     def list_rows(self, *, track: str | None, limit: int) -> list[dict[str, Any]]:
@@ -682,6 +689,7 @@ class LineageStore:
         *,
         track: str | None = None,
         family: str | None = None,
+        run_session_id: str | None = None,
     ) -> list[dict[str, Any]]:
         query = (
             """
@@ -741,6 +749,8 @@ class LineageStore:
                     "promotion": self.promotion(row[4]),
                 }
             )
+        if run_session_id:
+            payload_rows = self._filter_run_scope(payload_rows, run_session_id=run_session_id)
         return payload_rows
 
     def experiment_detail(self, candidate_hash: str) -> dict[str, Any] | None:
@@ -822,6 +832,7 @@ class LineageStore:
                         or ("external_agent" if benchmark_mode else "autolab_harness")
                     ),
                     "run_label": str(run_context.get("run_label") or run_session_id),
+                    "memory_scope": str(run_context.get("memory_scope") or "track_global"),
                     "run_kind": "benchmark" if benchmark_mode else "harness",
                     "benchmark_mode": benchmark_mode,
                     "benchmark_deck": run_context.get("benchmark_deck"),
@@ -865,6 +876,7 @@ class LineageStore:
                     "track": meta["track"],
                     "agent_label": meta["agent_label"],
                     "run_kind": meta["run_kind"],
+                    "memory_scope": meta["memory_scope"],
                     "benchmark_mode": meta["benchmark_mode"],
                     "benchmark_deck": meta["benchmark_deck"],
                     "phase_labels": sorted(meta["phase_labels"]),
@@ -927,7 +939,12 @@ class LineageStore:
         payload["track"] = canonical_track_name(payload.get("track")) or payload.get("track")
         return payload
 
-    def _track_experiments(self, track: str) -> list[dict[str, Any]]:
+    def _track_experiments(
+        self,
+        track: str,
+        *,
+        run_session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         track_names = matching_track_names(track)
         placeholders = ",".join("?" for _ in track_names)
         with self._connect() as connection:
@@ -951,7 +968,29 @@ class LineageStore:
                 """,
                 tuple(track_names),
             ).fetchall()
-        return [self._experiment_row_payload(row) for row in rows]
+        payloads = [self._experiment_row_payload(row) for row in rows]
+        if run_session_id:
+            payloads = self._filter_run_scope(payloads, run_session_id=run_session_id)
+        return payloads
+
+    def _row_run_session_id(self, row: dict[str, Any]) -> str:
+        research_summary = dict(row.get("research_summary") or {})
+        run_context = dict(research_summary.get("run_context") or {})
+        return str(run_context.get("run_session_id") or "").strip()
+
+    def _filter_run_scope(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        run_session_id: str,
+    ) -> list[dict[str, Any]]:
+        target = str(run_session_id or "").strip()
+        if not target:
+            return list(rows)
+        return [
+            row for row in rows
+            if self._row_run_session_id(row) == target
+        ]
 
     def _experiment_row_payload(self, row: tuple[Any, ...]) -> dict[str, Any]:
         return {

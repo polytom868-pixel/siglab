@@ -434,7 +434,12 @@ class ResearchPlannerRunner:
 
         sandbox_tools = {
             tool.name: tool
-            for tool in self.hypothesis_sandbox.kimi_tools(track=session.track, parent=parent)
+            for tool in self.hypothesis_sandbox.kimi_tools(
+                track=session.track,
+                parent=parent,
+                memory_scope=session.memory_scope,
+                run_session_id=session.run_session_id,
+            )
             if tool.name in {
                 "probe_feature_forward_stats",
                 "probe_candidate_gate_impact",
