@@ -241,7 +241,7 @@ Each generation:
 
 1. Picks a parent from lineage.
 2. Builds live market context from Delta Lab, Pendle, lending surfaces, and public fallbacks.
-3. Runs Tavily-backed web research and optional Kimi tool use.
+3. Runs optional Tavily-backed web research when `TAVILY_API_KEY` is configured, plus optional Kimi tool use.
 4. Asks Kimi for bounded candidate mutations.
 5. Compiles each candidate into prices, target positions, and cashflow inputs.
 6. Runs Wayfinder backtests.
