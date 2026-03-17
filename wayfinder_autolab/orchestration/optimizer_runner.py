@@ -69,7 +69,12 @@ class OptunaOptimizerRunner:
         if not list(optuna_space.get("parameters") or []):
             summary = {"aggregate_score": None}
             score = score_diagnosis(summary, incumbent_summary or {})
-            generalization = summarize_generalization(summary, stability_pack={"status": "skipped_no_params"})
+            generalization = summarize_generalization(
+                summary,
+                optuna_space=optuna_space,
+                tuned_params={},
+                stability_pack={"status": "skipped_no_params"},
+            )
             iteration_paths["optuna_best_path"].write_text(
                 json.dumps(
                     {
@@ -81,7 +86,12 @@ class OptunaOptimizerRunner:
                         "promotion_score": generalization.get("promotion_score"),
                         "fragility_pack": generalization.get("fragility_pack"),
                         "stability_pack": generalization.get("stability_pack"),
-                        "objective_value": self._objective(summary, stability_pack={"status": "skipped_no_params"}),
+                        "objective_value": self._objective(
+                            summary,
+                            optuna_space=optuna_space,
+                            tuned_params={},
+                            stability_pack={"status": "skipped_no_params"},
+                        ),
                         "search_skipped": True,
                     },
                     indent=2,
@@ -97,7 +107,12 @@ class OptunaOptimizerRunner:
                 optuna_space=optuna_space,
                 score_diagnosis=score,
                 trial_count=0,
-                objective_value=self._objective(summary, stability_pack={"status": "skipped_no_params"}),
+                objective_value=self._objective(
+                    summary,
+                    optuna_space=optuna_space,
+                    tuned_params={},
+                    stability_pack={"status": "skipped_no_params"},
+                ),
                 fragility_penalty=float(generalization.get("fragility_penalty") or 0.0),
                 promotion_score=generalization.get("promotion_score"),
                 fragility_pack=dict(generalization.get("fragility_pack") or {}),
@@ -136,12 +151,21 @@ class OptunaOptimizerRunner:
             try:
                 evaluation = await self.evaluator.evaluate(candidate, fast_mode=True)
                 summary = dict(evaluation.get("summary") or {})
-                objective_details = self._objective_details(summary)
+                objective_details = self._objective_details(
+                    summary,
+                    evaluation=evaluation,
+                    optuna_space=optuna_space,
+                    tuned_params=params,
+                )
                 objective_value = float(objective_details.get("objective") or -1e18)
                 trial_status = "ok"
             except Exception as exc:  # noqa: BLE001
                 summary = {}
-                objective_details = self._objective_details(summary)
+                objective_details = self._objective_details(
+                    summary,
+                    optuna_space=optuna_space,
+                    tuned_params=params,
+                )
                 objective_value = -1e9
                 trial_status = f"error:{type(exc).__name__}"
             study.tell(trial, objective_value)
@@ -186,7 +210,12 @@ class OptunaOptimizerRunner:
         iteration_paths["optuna_trials_path"].write_text(
             "\n".join(json.dumps(row, ensure_ascii=True, default=str) for row in trial_rows) + ("\n" if trial_rows else "")
         )
-        objective_details = self._objective_details(best_summary or {}, stability_pack=stability_pack)
+        objective_details = self._objective_details(
+            best_summary or {},
+            optuna_space=optuna_space,
+            tuned_params=best_params,
+            stability_pack=stability_pack,
+        )
         diagnosis = score_diagnosis(best_summary or {}, incumbent_summary or {})
         iteration_paths["optuna_best_path"].write_text(
             json.dumps(
@@ -222,19 +251,42 @@ class OptunaOptimizerRunner:
             stability_pack=stability_pack,
         )
 
-    def _objective(self, summary: dict[str, Any], *, stability_pack: dict[str, Any] | None = None) -> float:
-        details = self._objective_details(summary, stability_pack=stability_pack)
+    def _objective(
+        self,
+        summary: dict[str, Any],
+        *,
+        evaluation: dict[str, Any] | None = None,
+        optuna_space: dict[str, Any] | None = None,
+        tuned_params: dict[str, Any] | None = None,
+        stability_pack: dict[str, Any] | None = None,
+    ) -> float:
+        details = self._objective_details(
+            summary,
+            evaluation=evaluation,
+            optuna_space=optuna_space,
+            tuned_params=tuned_params,
+            stability_pack=stability_pack,
+        )
         return float(details.get("objective") or -1e18)
 
     def _objective_details(
         self,
         summary: dict[str, Any],
         *,
+        evaluation: dict[str, Any] | None = None,
+        optuna_space: dict[str, Any] | None = None,
+        tuned_params: dict[str, Any] | None = None,
         stability_pack: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         aggregate = float(summary.get("aggregate_score") or -1e9)
         gate_penalty = 20.0 if not bool(summary.get("passed")) else 0.0
-        generalization = summarize_generalization(summary, stability_pack=stability_pack)
+        generalization = summarize_generalization(
+            summary,
+            evaluation=evaluation,
+            optuna_space=optuna_space,
+            tuned_params=tuned_params,
+            stability_pack=stability_pack,
+        )
         objective = aggregate - gate_penalty - float(generalization.get("fragility_penalty") or 0.0)
         return {
             "objective": objective,
@@ -275,7 +327,15 @@ class OptunaOptimizerRunner:
         seeded: list[dict[str, Any]] = []
         rows = [
             row
-            for row in self.lineage.dashboard_rows(track=session.track, family=family)
+            for row in self.lineage.dashboard_rows(
+                track=session.track,
+                family=family,
+                run_session_id=(
+                    session.run_session_id
+                    if getattr(session, "memory_scope", "track_global") != "track_global"
+                    else None
+                ),
+            )
             if bool(row.get("passed"))
         ]
         rows.sort(
@@ -361,7 +421,15 @@ class OptunaOptimizerRunner:
         if not neighbor_payloads:
             return {"status": "skipped_not_movable", "neighbor_count": 0}
 
-        central_objective = self._objective(best_summary)
+        central_objective = self._objective(
+            best_summary,
+            optuna_space=optuna_space,
+            tuned_params={
+                str(item.get("path") or ""): get_path_value(candidate_payload, str(item.get("path") or ""))
+                for item in parameters
+                if str(item.get("path") or "")
+            },
+        )
         results: list[dict[str, Any]] = []
         for label, payload in neighbor_payloads:
             validated_payload = self._validated_payload(session=session, payload=payload)
@@ -369,7 +437,16 @@ class OptunaOptimizerRunner:
             try:
                 evaluation = await self.evaluator.evaluate(candidate, fast_mode=True)
                 summary = dict(evaluation.get("summary") or {})
-                objective = self._objective(summary)
+                objective = self._objective(
+                    summary,
+                    evaluation=evaluation,
+                    optuna_space=optuna_space,
+                    tuned_params={
+                        str(item.get("path") or ""): get_path_value(validated_payload, str(item.get("path") or ""))
+                        for item in parameters
+                        if str(item.get("path") or "")
+                    },
+                )
                 passed = bool(summary.get("passed"))
                 status = "ok"
             except Exception as exc:  # noqa: BLE001

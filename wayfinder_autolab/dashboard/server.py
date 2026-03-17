@@ -216,6 +216,7 @@ class DashboardApp:
                     "track": track_name,
                     "agent_label": "autolab_harness",
                     "run_kind": "harness",
+                    "memory_scope": str(payload.get("memory_scope") or "track_global"),
                     "benchmark_mode": False,
                     "benchmark_deck": None,
                     "phase_labels": [str(payload.get("phase_label") or "starting")],

@@ -54,6 +54,8 @@ class HypothesisSandbox:
         *,
         track: str,
         parent: CandidateGraph,
+        memory_scope: str = "track_global",
+        run_session_id: str | None = None,
     ) -> list[KimiTool]:
         if track != "directional_perps":
             return []
@@ -233,6 +235,8 @@ class HypothesisSandbox:
                 handler=lambda arguments: self._tool_inspect_pre_audit_candidate(
                     track=track,
                     arguments=arguments,
+                    memory_scope=memory_scope,
+                    run_session_id=run_session_id,
                 ),
             ),
             KimiTool(
@@ -269,6 +273,8 @@ class HypothesisSandbox:
                 handler=lambda arguments: self._tool_summarize_experiment_frontier(
                     track=track,
                     arguments=arguments,
+                    memory_scope=memory_scope,
+                    run_session_id=run_session_id,
                 ),
             ),
             KimiTool(
@@ -439,6 +445,8 @@ class HypothesisSandbox:
         *,
         track: str,
         arguments: dict[str, Any],
+        memory_scope: str,
+        run_session_id: str | None,
     ) -> dict[str, Any]:
         candidate_hash = str(arguments.get("candidate_hash") or "").strip()
         if not candidate_hash:
@@ -505,6 +513,7 @@ class HypothesisSandbox:
                 lineage=self._lineage,
                 track=track,
                 candidate_hash=candidate_hash,
+                run_session_id=run_session_id if memory_scope == "run_local" else None,
             ),
             "episode_filter": {
                 "applied": {key: value for key, value in filters.items() if value},
@@ -524,13 +533,19 @@ class HypothesisSandbox:
         *,
         track: str,
         arguments: dict[str, Any],
+        memory_scope: str,
+        run_session_id: str | None,
     ) -> dict[str, Any]:
         family_filter = str(arguments.get("family") or "").strip() or None
         top_n = _sanitize_limit(arguments.get("top_n"), default=5)
         recent_limit = _sanitize_limit(arguments.get("recent_limit"), default=8)
         include_deterministic = bool(arguments.get("include_deterministic", True))
 
-        rows = self._lineage.dashboard_rows(track=track, family=family_filter)
+        rows = self._lineage.dashboard_rows(
+            track=track,
+            family=family_filter,
+            run_session_id=run_session_id if memory_scope == "run_local" else None,
+        )
         if not include_deterministic:
             rows = [row for row in rows if not self._lineage._is_deterministic_experiment(row)]
         if not rows:
@@ -1978,8 +1993,9 @@ def _candidate_lineage_summary(
     lineage: LineageStore,
     track: str,
     candidate_hash: str,
+    run_session_id: str | None = None,
 ) -> dict[str, Any]:
-    rows = lineage.dashboard_rows(track=track)
+    rows = lineage.dashboard_rows(track=track, run_session_id=run_session_id)
     by_hash = {
         str(row.get("candidate_hash") or ""): row
         for row in rows

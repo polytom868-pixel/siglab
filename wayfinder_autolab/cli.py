@@ -78,6 +78,12 @@ def main() -> None:
         default=1,
         help="Number of generations to run per selected track. Use 0 for infinite.",
     )
+    run_parser.add_argument(
+        "--memory-scope",
+        choices=["run_local", "track_global"],
+        default=None,
+        help="Whether planner/search memory is isolated to this run or shared across the whole track.",
+    )
     run_parser.add_argument("--skip-llm", action="store_true")
     run_parser.add_argument("--agent-label", default="autolab_harness")
 
@@ -177,11 +183,49 @@ def main() -> None:
         return
 
 
+def _resolve_memory_scope(*, explicit: str | None, default: str | None) -> str:
+    scope = str(explicit or default or "run_local").strip().lower()
+    if scope not in {"run_local", "track_global"}:
+        return "run_local"
+    return scope
+
+
+def _lineage_scope_kwargs(*, memory_scope: str, run_session_id: str) -> dict[str, str]:
+    if memory_scope == "track_global":
+        return {}
+    return {"run_session_id": run_session_id}
+
+
+def _promotion_eligible(
+    *,
+    summary: dict[str, Any],
+    trial_context: dict[str, Any] | None,
+) -> bool:
+    summary = dict(summary or {})
+    trial_context = dict(trial_context or {})
+    if not bool(summary.get("passed")):
+        return False
+    if str(trial_context.get("fragility_label") or "").strip().lower() == "fragile":
+        return False
+    audit_total_return = summary.get("audit_total_return")
+    if audit_total_return is not None and float(audit_total_return) < -0.02:
+        return False
+    fragility_pack = dict(trial_context.get("fragility_pack") or {})
+    active_bar_count = fragility_pack.get("active_bar_count")
+    if active_bar_count is not None and int(active_bar_count) < 72:
+        return False
+    return True
+
+
 async def run_command(args: argparse.Namespace) -> None:
     settings = load_settings()
     _require_wayfinder_config(settings)
     settings.ensure_runtime_directories()
     selected_families = _parse_family_scope(args.family, args.families)
+    memory_scope = _resolve_memory_scope(
+        explicit=getattr(args, "memory_scope", None),
+        default=getattr(settings, "memory_scope", "run_local"),
+    )
     if selected_families and args.track == "all":
         raise SystemExit("--family/--families require a single --track value")
     if args.track == "all":
@@ -237,6 +281,7 @@ async def run_command(args: argparse.Namespace) -> None:
         track="directional_perps",
         run_session_id=run_session_id,
         family_scope=selected_families,
+        memory_scope=memory_scope,
     )
     workspace_hooks = WorkspaceHooks(
         builder=workspace_builder,
@@ -270,6 +315,7 @@ async def run_command(args: argparse.Namespace) -> None:
                 writer_runner=writer_runner,
                 optimizer_runner=optimizer_runner,
                 reflector_runner=reflector_runner,
+                memory_scope=memory_scope,
             )
         next_iteration = await _run_directional_perps_iterations(
             settings=settings,
@@ -294,6 +340,7 @@ async def run_command(args: argparse.Namespace) -> None:
             writer_runner=writer_runner,
             optimizer_runner=optimizer_runner,
             reflector_runner=reflector_runner,
+            memory_scope=memory_scope,
         )
     finally:
         await web_researcher.close()
@@ -324,6 +371,7 @@ async def _run_directional_perps_iterations(
     writer_runner: CandidateWriterRunner,
     optimizer_runner: OptunaOptimizerRunner,
     reflector_runner: ReflectionRunner,
+    memory_scope: str,
 ) -> int:
     iteration_iter = count(start_iteration) if iterations == 0 else range(start_iteration, start_iteration + iterations)
     last_iteration = start_iteration
@@ -332,19 +380,29 @@ async def _run_directional_perps_iterations(
     for iteration_number in iteration_iter:
         last_iteration = iteration_number
         print(f"[run:{phase_label}] iteration={iteration_number}")
+        scope_kwargs = _lineage_scope_kwargs(
+            memory_scope=memory_scope,
+            run_session_id=run_session_id,
+        )
         seed_candidates = mutator.load_seed_candidates(track, family=family_scope)
-        recent_rows = lineage.recent(track, limit=500)
+        recent_rows = lineage.recent(track, limit=500, **scope_kwargs)
         if skip_llm:
             parent = pick_deterministic_parent(
                 track=track,
                 lineage=lineage,
                 seed_candidates=seed_candidates,
                 iteration_number=iteration_number,
+                run_session_id=scope_kwargs.get("run_session_id"),
             )
         else:
-            parent = pick_parent(track, lineage, seed_candidates)
+            parent = pick_parent(
+                track,
+                lineage,
+                seed_candidates,
+                run_session_id=scope_kwargs.get("run_session_id"),
+            )
         parent_hash = parent.strategy_hash()
-        best = lineage.best(track)
+        best = lineage.best(track, **scope_kwargs)
         print(
             f"[{track}] parent={parent.family} {parent_hash} recent_best={best['aggregate_score']:.4f}"
             if best is not None
@@ -358,6 +416,7 @@ async def _run_directional_perps_iterations(
             "deterministic": bool(skip_llm),
             "llm_phase": not bool(skip_llm),
             "force_novelty": False,
+            "memory_scope": memory_scope,
         }
         provider.begin_iteration_bundle(track=track, parent=parent)
         try:
@@ -418,6 +477,7 @@ async def _run_directional_perps_iterations(
                     parent=parent,
                     lineage=lineage,
                     mutator=mutator,
+                    run_session_id=scope_kwargs.get("run_session_id"),
                 )
                 workspace_builder.store_evidence_cache(
                     session=workspace_session,
@@ -462,7 +522,11 @@ async def _run_directional_perps_iterations(
                         f"reason={writer_result.failure_reason or 'writer_rejected_candidate'}"
                     )
                     continue
-                incumbent_detail = _incumbent_detail(lineage=lineage, track=track)
+                incumbent_detail = _incumbent_detail(
+                    lineage=lineage,
+                    track=track,
+                    run_session_id=scope_kwargs.get("run_session_id"),
+                )
                 try:
                     optimization_result = await optimizer_runner.run(
                         session=workspace_session,
@@ -487,7 +551,7 @@ async def _run_directional_perps_iterations(
                 )
                 validated = CandidateGraph.from_dict(optimized_payload)
                 if validated.strategy_hash() in {
-                    row["candidate_hash"] for row in lineage.recent(track, limit=500)
+                    row["candidate_hash"] for row in lineage.recent(track, limit=500, **scope_kwargs)
                 }:
                     print(f"[{track}] duplicate candidate {validated.strategy_hash()} skipped")
                     continue
@@ -527,10 +591,14 @@ async def _run_directional_perps_iterations(
                     "stability_pack": dict(optimization_result.stability_pack or {}),
                     "audit_alignment": summarize_generalization(
                         optimization_result.best_summary,
+                        optuna_space=dict(optimization_result.optuna_space or {}),
+                        tuned_params=dict(optimization_result.best_params or {}),
                         stability_pack=optimization_result.stability_pack,
                     ).get("audit_alignment"),
                     "fragility_label": summarize_generalization(
                         optimization_result.best_summary,
+                        optuna_space=dict(optimization_result.optuna_space or {}),
+                        tuned_params=dict(optimization_result.best_params or {}),
                         stability_pack=optimization_result.stability_pack,
                     ).get("fragility_label"),
                 }
@@ -588,6 +656,9 @@ async def _run_directional_perps_iterations(
                     evaluated_trial_context.update(
                         summarize_generalization(
                             evaluation.get("summary"),
+                            evaluation=evaluation,
+                            optuna_space=dict(optimization_result.optuna_space or {}) if optimization_result is not None else None,
+                            tuned_params=dict(optimization_result.best_params or {}) if optimization_result is not None else None,
                             stability_pack=dict(optimization_result.stability_pack or {}) if optimization_result is not None else {},
                         )
                     )
@@ -601,6 +672,7 @@ async def _run_directional_perps_iterations(
                         lineage=lineage,
                         track=track,
                         candidate_payload=dict(evaluation.get("candidate") or {}),
+                        run_session_id=scope_kwargs.get("run_session_id"),
                     )
                     research_summary["trial"] = evaluated_trial_context
                 artifact_path = _write_artifact(settings, track, evaluation)
@@ -624,6 +696,7 @@ async def _run_directional_perps_iterations(
                         workspace_session=workspace_session,
                         current_state=current_state,
                         trial_context=research_summary.get("trial"),
+                        run_session_id=scope_kwargs.get("run_session_id"),
                     )
                     reflection_result = await reflector_runner.run(
                         session=workspace_session,
@@ -655,7 +728,10 @@ async def _run_directional_perps_iterations(
                     f" passed={summary['passed']}"
                 )
 
-                if summary["passed"]:
+                if summary["passed"] and _promotion_eligible(
+                    summary=summary,
+                    trial_context=dict(research_summary.get("trial") or {}),
+                ):
                     if best_passing is None:
                         best_passing = evaluation
                         best_passing_trial_context = dict(research_summary.get("trial") or {})
@@ -1153,8 +1229,13 @@ def _minimal_research_summary(
     }
 
 
-def _incumbent_detail(*, lineage: LineageStore, track: str) -> dict[str, Any] | None:
-    best = lineage.best(track)
+def _incumbent_detail(
+    *,
+    lineage: LineageStore,
+    track: str,
+    run_session_id: str | None = None,
+) -> dict[str, Any] | None:
+    best = lineage.best(track, run_session_id=run_session_id)
     if best is None:
         return None
     candidate_hash = str(best.get("candidate_hash") or "")
@@ -1170,8 +1251,9 @@ def _base_candidate_payload_for_family(
     parent: CandidateGraph,
     lineage: LineageStore,
     mutator: CandidateMutator,
+    run_session_id: str | None = None,
 ) -> dict[str, Any]:
-    family_rows = lineage.dashboard_rows(track=track, family=family)
+    family_rows = lineage.dashboard_rows(track=track, family=family, run_session_id=run_session_id)
     if family_rows:
         family_rows.sort(
             key=lambda row: (
@@ -1197,12 +1279,18 @@ def _motif_audit_streak(
     track: str,
     candidate_payload: dict[str, Any],
     limit: int = 40,
+    run_session_id: str | None = None,
 ) -> int:
     from wayfinder_autolab.orchestration.contracts import motif_signature
 
     target_motif = motif_signature(candidate_payload)
     streak = 0
-    for row in lineage.recent(track, limit=limit, include_deterministic=False):
+    for row in lineage.recent(
+        track,
+        limit=limit,
+        include_deterministic=False,
+        run_session_id=run_session_id,
+    ):
         row_candidate = dict(row.get("candidate") or {})
         if motif_signature(row_candidate) != target_motif:
             continue
@@ -1232,6 +1320,7 @@ def _reflection_evaluation_packet(
     workspace_session: Any,
     current_state: dict[str, Any],
     trial_context: dict[str, Any] | None = None,
+    run_session_id: str | None = None,
 ) -> dict[str, Any]:
     from wayfinder_autolab.orchestration.contracts import motif_signature
 
@@ -1293,7 +1382,12 @@ def _reflection_evaluation_packet(
         else (str(gate_reasons[0]) if gate_reasons else "needs_follow_up")
     )
     recent_rows = []
-    for row in lineage.recent(str(evaluation.get("track") or ""), limit=12, include_deterministic=False):
+    for row in lineage.recent(
+        str(evaluation.get("track") or ""),
+        limit=12,
+        include_deterministic=False,
+        run_session_id=run_session_id,
+    ):
         if str(row.get("candidate_hash") or "") == str(evaluation.get("candidate_hash") or ""):
             continue
         row_candidate = _strip_audit_fields(dict(row.get("candidate") or {}))

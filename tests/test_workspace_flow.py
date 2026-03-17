@@ -107,6 +107,61 @@ class WorkspaceFlowTests(unittest.TestCase):
             self.assertEqual(state["session_state"]["run_session_id"], "session-1")
             self.assertEqual(state["session_state"]["current_parent_hash"], parent.strategy_hash())
 
+    def test_workspace_defaults_to_run_local_isolation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            lineage = LineageStore(settings.lineage_db_path)
+            mutator = CandidateMutator(settings, kimi=SimpleNamespace())
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+
+            archived = mutator.load_seed_candidates("directional_perps", family="perp_multi_asset_carry")[0]
+            lineage.record(
+                evaluation={
+                    "candidate": archived.canonical_dict(),
+                    "candidate_hash": archived.strategy_hash(),
+                    "summary": {
+                        "aggregate_score": 6.0,
+                        "median_sharpe": 1.0,
+                        "median_cagr": 0.04,
+                        "median_total_return": 0.03,
+                        "passed": True,
+                        "gate_reasons": [],
+                    },
+                },
+                parent_hash=None,
+                research_summary={
+                    "track": "directional_perps",
+                    "run_context": {
+                        "run_session_id": "older-run",
+                        "phase_label": "main",
+                        "deterministic": False,
+                    },
+                },
+                artifact_path="artifact.json",
+            )
+
+            isolated = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="new-run",
+                family_scope=None,
+            )
+            self.assertEqual(isolated.memory_scope, "run_local")
+            self.assertEqual(len(list((isolated.cards_dir / "experiments").glob("*.md"))), 0)
+            self.assertIn("No completed trials yet.", (isolated.current_dir / "recent_trials.md").read_text())
+
+            global_session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="global-run",
+                family_scope=None,
+                memory_scope="track_global",
+            )
+            self.assertEqual(global_session.memory_scope, "track_global")
+            self.assertTrue((global_session.cards_dir / "experiments" / f"{archived.strategy_hash()}.md").exists())
+
     def test_recent_trials_render_uses_coarse_result_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = self._settings(tmp)
@@ -271,6 +326,58 @@ class WorkspaceFlowTests(unittest.TestCase):
         self.assertEqual(generalization["fragility_label"], "fragile")
         self.assertAlmostEqual(generalization["fragility_pack"]["generalization_gap"], 0.05)
         self.assertAlmostEqual(generalization["fragility_pack"]["activity_shortfall"], 0.10)
+
+    def test_summarize_generalization_penalizes_turnover_extremes_and_low_bar_count(self) -> None:
+        generalization = summarize_generalization(
+            {
+                "aggregate_score": 9.0,
+                "validation_total_return": 0.03,
+                "pre_audit_canonical_total_return": 0.025,
+                "audit_available": True,
+                "audit_total_return": 0.0,
+                "active_bar_fraction": 0.02,
+            },
+            evaluation={
+                "windows": [
+                    {"used_for_selector": True, "stats": {"total_return": 0.08, "sharpe": 1.8}},
+                    {"used_for_selector": True, "stats": {"total_return": -0.03, "sharpe": 0.2}},
+                    {"used_for_selector": True, "stats": {"total_return": 0.01, "sharpe": 0.7}},
+                ],
+                "canonical_run": {
+                    "metrics_by_period": {
+                        "index": ["t1", "t2", "t3", "t4", "t5"],
+                        "columns": ["equity", "turnover", "fee_amount", "funding_amount"],
+                        "rows": [
+                            [1.0, 0.12, 0.0, 0.0],
+                            [1.01, 0.14, 0.003, -0.001],
+                            [1.0, 0.16, 0.003, -0.001],
+                            [1.02, 0.18, 0.003, -0.001],
+                            [1.025, 0.12, 0.003, -0.001],
+                        ],
+                    },
+                },
+            },
+            optuna_space={
+                "parameters": [
+                    {"path": "params.min_abs_score", "kind": "float", "low": 0.05, "high": 0.30, "default": 0.12},
+                    {"path": "risk.max_leverage", "kind": "float", "low": 0.5, "high": 2.0, "default": 1.0},
+                ]
+            },
+            tuned_params={
+                "params.min_abs_score": 0.29,
+                "risk.max_leverage": 1.98,
+            },
+            stability_pack={"status": "ok", "passed_fraction": 1.0, "stability_penalty": 0.0},
+        )
+
+        fragility_pack = generalization["fragility_pack"]
+        self.assertGreater(fragility_pack["turnover_penalty"], 0.0)
+        self.assertGreater(fragility_pack["tx_cost_penalty"], 0.0)
+        self.assertGreater(fragility_pack["selector_variation_penalty"], 0.0)
+        self.assertGreater(fragility_pack["extreme_param_penalty"], 0.0)
+        self.assertGreater(fragility_pack["low_bar_penalty"], 0.0)
+        self.assertEqual(fragility_pack["active_bar_count"], 0)
+        self.assertEqual(generalization["fragility_label"], "fragile")
 
     def test_promotion_rank_prefers_higher_promotion_score(self) -> None:
         higher_raw = (

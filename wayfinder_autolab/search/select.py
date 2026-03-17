@@ -161,8 +161,10 @@ def pick_parent(
     track: str,
     lineage: LineageStore,
     seed_candidates: list[CandidateGraph],
+    *,
+    run_session_id: str | None = None,
 ) -> CandidateGraph:
-    rows = lineage.recent(track, limit=200)
+    rows = lineage.recent(track, limit=200, run_session_id=run_session_id)
     if not rows:
         return seed_candidates[0]
 
@@ -345,8 +347,9 @@ def pick_deterministic_parent(
     seed_candidates: list[CandidateGraph],
     *,
     iteration_number: int,
+    run_session_id: str | None = None,
 ) -> CandidateGraph:
-    recent_rows = lineage.recent(track, limit=500)
+    recent_rows = lineage.recent(track, limit=500, run_session_id=run_session_id)
     deterministic_rows = [row for row in recent_rows if _is_deterministic_row(row)]
     archive_counts = _archive_counts(deterministic_rows)
     row_scores = _row_quality_by_hash(deterministic_rows)

@@ -40,6 +40,7 @@ class AutolabSettings:
     kimi_timeout_s: float
     population_size: int
     optuna_trials: int = 20
+    memory_scope: str = "run_local"
     kimi_thinking: str | None = None
     kimi_max_tool_rounds: int = 25
     tracks: tuple[str, ...] = CANONICAL_TRACKS
@@ -94,6 +95,7 @@ def load_settings() -> AutolabSettings:
         kimi_max_tool_rounds=int(_get("KIMI_MAX_TOOL_ROUNDS", "25")),
         population_size=int(_get("AUTOLAB_POPULATION_SIZE", "4")),
         optuna_trials=int(_get("AUTOLAB_OPTUNA_TRIALS", "20")),
+        memory_scope=str(_get("AUTOLAB_MEMORY_SCOPE", "run_local")),
         tavily_api_key=_get("TAVILY_API_KEY"),
         tavily_base_url=str(_get("TAVILY_BASE_URL", "https://api.tavily.com")),
         tavily_max_results=int(_get("TAVILY_MAX_RESULTS", "5")),

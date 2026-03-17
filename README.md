@@ -1,7 +1,34 @@
 # Wayfinder Autolab
 
+
+
+```
+                       ░▒▓█  W A Y F I N D E R  █▓▒░
+        ┌───────────────────────────────────────────────────────┐
+        │                                                       │
+        │  ╔═══╗                 score                          │
+        │  ║ ◉ ║  AUTOLAB v1       ▲                      ◆     │
+        │  ╚═══╝  ──────────       │ ·       ◆   ·      ◆       │
+        │  status: SEARCHING       │·    · ◆     ◆   ◆          │
+        │  mode:   MUTATE          │ · · ◆    ◆ ◆               │
+        │  drift:  -0.03σ          │· ◆  ◆◆◆                    │
+        │                          │◆·◆◆                        │
+        │                          │◆◆                          │
+        │                          └────────────────── gen ──►  │
+        │                                                       │
+        │  ┌ LINEAGE ────────────────────────────────────────┐  │
+        │  │ gen 000 ── gen 014 ──┬── gen 027 ── gen 031 ──► │  │
+        │  │                      └── gen 022 ── [pruned]    │  │
+        │  └─────────────────────────────────────────────────┘  │
+        │                                                       │
+        │  search ──► backtest ──► reflect ──► mutate ──► ↻     │
+        │                                                       │
+        │  ░░ i do not sleep. i do not eat. i backtest. ░░      │
+        └───────────────────────────────────────────────────────┘
+```
+
 `wayfinder-autolab` is a bounded research loop on top of the
-[`wayfinder-paths-sdk`](https://github.com/WayfinderFoundation/wayfinder-paths-sdk).
+`[wayfinder-paths-sdk](https://github.com/WayfinderFoundation/wayfinder-paths-sdk)`.
 It searches structured strategy graphs, backtests them with Wayfinder's
 backtesting engine, keeps lineage and artifacts, exposes a local dashboard,
 and can promote selected winners into runnable generated strategy packages.
@@ -23,26 +50,26 @@ treated as experimental:
 
 - `perp_multi_asset_carry`:
   - the family is “carry in spirit,” but its ranked execution model, default
-    feature mix, and planner guidance are still evolving
+  feature mix, and planner guidance are still evolving
   - expect behavior, defaults, and memory surfaces around carry experiments to
-    keep changing
+  keep changing
 - Live export and deployment:
   - live export is currently implemented only for selected `directional_perps`
-    families
+  families
   - generated strategies still depend on `wayfinder_autolab` runtime helpers
   - scheduling a runner job is an operator workflow, not a production-ready
-    deployment system
+  deployment system
   - `--live` only disables `dry_run`; it should not be read as “production safe”
 - LLM search coverage:
   - the main workspace/planner/writer/Optuna loop is currently wired for
-    `directional_perps`
+  `directional_perps`
   - carry/PT/lending families outside that loop can still compile and backtest,
-    but they are not yet on the same mature orchestration path
+  but they are not yet on the same mature orchestration path
 - Artifact and prompt surfaces:
   - recent-trial ledgers, reflection packets, benchmark observation files, and
-    dashboard views are still being refined
+  dashboard views are still being refined
   - older artifacts may not expose the same retained-series or decomposition
-    fields as newer runs
+  fields as newer runs
 
 ## Current Live Support
 
@@ -101,6 +128,10 @@ cp config.example.json config.json
 cp .env.example .env
 ```
 
+To get a Wayfinder API key, go to
+`[https://strategies.wayfinder.ai/](https://strategies.wayfinder.ai/)`,
+connect your wallet to create an account, and create an API key there.
+
 Then edit `.env` and set the values you need. Important variables:
 
 ```bash
@@ -130,10 +161,26 @@ Useful optional settings:
 
 ```bash
 AUTOLAB_POPULATION_SIZE=4
+AUTOLAB_OPTUNA_TRIALS=20
+AUTOLAB_MEMORY_SCOPE=run_local
 KIMI_MAX_TOOL_ROUNDS=6
 TAVILY_MAX_RESULTS=5
 WEB_EXPLORE_RESULTS_PER_QUERY=2
 ```
+
+## Tuning Guide
+
+For the main user-editable levers, see
+`[docs/tuning-guide.md](docs/tuning-guide.md)`.
+
+That guide points to:
+
+- runtime knobs in `.env`
+- run-scope and search controls in the CLI
+- family defaults in `mutable/family_lab.yaml`
+- seeded assets, universes, and params in `mutable/graph_lab.yaml`
+- feature aliases and formulas in `mutable/feature_lab.dsl` and
+`mutable/feature_lab.yaml`
 
 ### 3. Inspect The Current Research Surface
 
@@ -344,7 +391,7 @@ Then use the deck like this:
 poetry run autolab benchmark-eval --deck directional_perps_external
 ```
 
-4. Inspect the returned status plus `results.tsv`
+1. Inspect the returned status plus `results.tsv`
 
 If the result is `keep`, the benchmark command advances the incumbent. If the
 result is `discard`, `invalid`, or `crash`, the benchmark command restores
@@ -502,9 +549,10 @@ poetry run python -m py_compile wayfinder_autolab/cli.py
 
 - The core backtester is Wayfinder SDK code, not a custom autolab engine.
 - Search-time `promoted` means “selected inside the research loop”; live
-  promotion metadata is stored separately.
+promotion metadata is stored separately.
 - If Delta Lab is rate-limited, autolab falls back to public data sources where
-  supported.
+supported.
 - Live directional-perp export is thin and delegates its signal logic back to
-  autolab runtime helpers to keep research and live logic aligned.
+autolab runtime helpers to keep research and live logic aligned.
 - Carry-family live execution is intentionally not wired yet.
+
