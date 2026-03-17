@@ -17,7 +17,12 @@ wayfinder_autolab.db
 lineage.db
 new_empty_check.db
 dashboard_*.log
-live/
+/live/
+!wayfinder_autolab/live/
+!wayfinder_autolab/live/__init__.py
+!wayfinder_autolab/live/exporter.py
+!wayfinder_autolab/live/runtime.py
+!wayfinder_autolab/live/generated_strategies/
 benchmarks/*/state.json
 benchmarks/*/results.tsv
 benchmarks/*/observation.md

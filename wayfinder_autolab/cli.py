@@ -328,9 +328,6 @@ async def _run_directional_perps_iterations(
     iteration_iter = count(start_iteration) if iterations == 0 else range(start_iteration, start_iteration + iterations)
     last_iteration = start_iteration
     track = "directional_perps"
-    allowed_families = mutator._allowed_families(track, family=family_scope)
-    allowed_features_by_family = mutator._allowed_features_by_family(track, family=family_scope)
-    family_defaults = mutator._family_defaults(track, family=family_scope)
 
     for iteration_number in iteration_iter:
         last_iteration = iteration_number
@@ -901,7 +898,6 @@ async def inspect_command(args: argparse.Namespace) -> None:
             parent = pick_parent(track, lineage, mutator.load_seed_candidates(track))
             provider.begin_iteration_bundle(track=track, parent=parent)
             try:
-                recent_results = lineage.recent(track, limit=20)
                 summary = await provider.build_research_summary(track, parent)
                 summary["external_research"] = _tool_only_external_research(
                     web_researcher=web_researcher
@@ -1088,7 +1084,8 @@ def _require_wayfinder_config(settings: Any) -> Path:
     if not config_path.exists():
         raise SystemExit(
             "WAYFINDER_CONFIG_PATH is required for this command and must point to an existing file. "
-            f"Tried: {config_path}"
+            f"Tried: {config_path}. Create it with `cp config.example.json config.json` "
+            "or point WAYFINDER_CONFIG_PATH at an existing Wayfinder config."
         )
     settings.wayfinder_config_path = config_path
     return config_path
