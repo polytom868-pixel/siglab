@@ -719,6 +719,12 @@ class ResearchPlannerRunner:
         merged = dict(base)
         if not isinstance(fragment, dict):
             return merged
+        family_alias = str(fragment.get("family") or "").strip()
+        if family_alias and not str(fragment.get("target_family") or "").strip():
+            fragment = {
+                **fragment,
+                "target_family": family_alias,
+            }
         list_keys = {
             "target_universe",
             "expected_success",
