@@ -1,6 +1,9 @@
 # Wayfinder Autolab
 
-
+[Website](https://strategies.wayfinder.ai/)
+[Discord](https://discord.com/invite/aiwayfinder)
+[X](https://x.com/AIWayfinder)
+[License: MIT](LICENSE)
 
 ```
                        ░▒▓█  W A Y F I N D E R  █▓▒░
@@ -28,7 +31,7 @@
 ```
 
 `wayfinder-autolab` is a bounded research loop on top of the
-`[wayfinder-paths-sdk](https://github.com/WayfinderFoundation/wayfinder-paths-sdk)`.
+[wayfinder-paths-sdk](https://github.com/WayfinderFoundation/wayfinder-paths-sdk).
 It searches structured strategy graphs, backtests them with Wayfinder's
 backtesting engine, keeps lineage and artifacts, exposes a local dashboard,
 and can promote selected winners into runnable generated strategy packages.
@@ -129,7 +132,7 @@ cp .env.example .env
 ```
 
 To get a Wayfinder API key, go to
-`[https://strategies.wayfinder.ai/](https://strategies.wayfinder.ai/)`,
+[https://strategies.wayfinder.ai/](https://strategies.wayfinder.ai/),
 connect your wallet to create an account, and create an API key there.
 
 Then edit `.env` and set the values you need. Important variables:
