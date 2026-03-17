@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from wayfinder_autolab.feature_dsl import is_valid_feature_expression, resolve_feature_frames
+from wayfinder_autolab.feature_dsl import (
+    is_valid_feature_expression,
+    load_feature_spec,
+    resolve_feature_frames,
+)
 
 
 class FeatureDslTests(unittest.TestCase):
@@ -23,6 +28,272 @@ class FeatureDslTests(unittest.TestCase):
         )
         expected = self.price.pct_change(2).sub(self.funding.rolling(2).mean(), fill_value=0.0)
         pd.testing.assert_frame_equal(resolved[expression], expected)
+
+    def test_market_overlay_broadcasts_into_cross_sectional_arithmetic(self) -> None:
+        price = pd.DataFrame(
+            {
+                "BTC": [100.0, 102.0, 104.0, 103.0, 105.0, 108.0],
+                "ETH": [50.0, 51.0, 50.5, 52.0, 53.0, 54.0],
+            },
+            index=self.price.index,
+        )
+        market_price_mean = price.mean(axis=1).rename("GLOBAL").to_frame()
+        market_funding_mean = pd.DataFrame(
+            {"GLOBAL": [0.002, 0.003, 0.001, 0.004, 0.005, 0.006]},
+            index=self.price.index,
+        )
+        market_funding_dispersion = pd.DataFrame(
+            {"GLOBAL": [0.010, 0.010, 0.020, 0.020, 0.025, 0.025]},
+            index=self.price.index,
+        )
+        funding = pd.DataFrame(
+            {
+                "BTC": [0.01, 0.02, -0.01, 0.00, 0.03, 0.02],
+                "ETH": [0.00, 0.01, 0.01, -0.01, 0.02, 0.01],
+            },
+            index=self.price.index,
+        )
+        resolved = resolve_feature_frames(
+            [
+                "sub(price, market_price_mean)",
+                "div(sub(funding, market_funding_mean), clip(market_funding_dispersion,0.000001,1.0))",
+            ],
+            aliases={},
+            raw_frames={
+                "price": price,
+                "funding": funding,
+                "market_price_mean": market_price_mean,
+                "market_funding_mean": market_funding_mean,
+                "market_funding_dispersion": market_funding_dispersion,
+            },
+        )
+
+        expected_relative_price = price.sub(market_price_mean.iloc[:, 0], axis=0)
+        expected_relative_carry = funding.sub(market_funding_mean.iloc[:, 0], axis=0).div(
+            market_funding_dispersion.iloc[:, 0].clip(lower=0.000001, upper=1.0),
+            axis=0,
+        )
+
+        pd.testing.assert_frame_equal(
+            resolved["sub(price, market_price_mean)"],
+            expected_relative_price,
+        )
+        pd.testing.assert_frame_equal(
+            resolved["div(sub(funding, market_funding_mean), clip(market_funding_dispersion,0.000001,1.0))"],
+            expected_relative_carry,
+        )
+
+    def test_market_overlay_broadcasts_into_comparisons(self) -> None:
+        price = pd.DataFrame(
+            {
+                "BTC": [100.0, 102.0, 104.0, 103.0, 105.0, 108.0],
+                "ETH": [50.0, 51.0, 50.5, 52.0, 53.0, 54.0],
+            },
+            index=self.price.index,
+        )
+        market_price_mean = price.mean(axis=1).rename("GLOBAL").to_frame()
+        resolved = resolve_feature_frames(
+            ["gt(price, market_price_mean)"],
+            aliases={},
+            raw_frames={
+                "price": price,
+                "market_price_mean": market_price_mean,
+            },
+        )
+
+        expected = price.gt(market_price_mean.iloc[:, 0], axis=0).astype(float)
+        pd.testing.assert_frame_equal(resolved["gt(price, market_price_mean)"], expected)
+
+    def test_relative_carry_alias_pattern_keeps_asset_columns(self) -> None:
+        funding = pd.DataFrame(
+            {
+                "BTC": [0.01, 0.02, -0.01, 0.00, 0.03, 0.02],
+                "ETH": [0.00, 0.01, 0.01, -0.01, 0.02, 0.01],
+            },
+            index=self.price.index,
+        )
+        aliases = {
+            "funding_72h_mean": "funding",
+            "funding_level_72h": "market_funding_mean",
+            "funding_dispersion_72h": "market_funding_dispersion",
+            "relative_carry_72h": "sub(funding_72h_mean,funding_level_72h)",
+            "relative_carry_z_72h": "div(relative_carry_72h,clip(funding_dispersion_72h,0.000001,1.0))",
+        }
+        market_funding_mean = pd.DataFrame(
+            {"GLOBAL": [0.002, 0.003, 0.001, 0.004, 0.005, 0.006]},
+            index=self.price.index,
+        )
+        market_funding_dispersion = pd.DataFrame(
+            {"GLOBAL": [0.010, 0.010, 0.020, 0.020, 0.025, 0.025]},
+            index=self.price.index,
+        )
+        resolved = resolve_feature_frames(
+            ["relative_carry_z_72h"],
+            aliases=aliases,
+            raw_frames={
+                "funding": funding,
+                "market_funding_mean": market_funding_mean,
+                "market_funding_dispersion": market_funding_dispersion,
+            },
+        )
+
+        expected = funding.sub(market_funding_mean.iloc[:, 0], axis=0).div(
+            market_funding_dispersion.iloc[:, 0].clip(lower=0.000001, upper=1.0),
+            axis=0,
+        )
+        pd.testing.assert_frame_equal(resolved["relative_carry_z_72h"], expected)
+
+    def test_builtin_cross_sectional_aliases_resolve_asset_relative_columns(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        feature_spec = load_feature_spec(
+            repo_root,
+            track="directional_perps",
+            family="perp_multi_asset_carry",
+        )
+        index = self.price.index
+        price = pd.DataFrame(
+            {
+                "BTC": [100.0, 102.0, 104.0, 103.0, 105.0, 108.0],
+                "ETH": [50.0, 51.0, 50.5, 52.0, 53.0, 54.0],
+                "SOL": [20.0, 21.0, 22.0, 21.5, 23.0, 24.0],
+            },
+            index=index,
+        )
+        funding = pd.DataFrame(
+            {
+                "BTC": [0.010, 0.020, -0.010, 0.000, 0.030, 0.020],
+                "ETH": [0.000, 0.010, 0.010, -0.010, 0.020, 0.010],
+                "SOL": [0.030, 0.025, 0.020, 0.015, 0.010, 0.005],
+            },
+            index=index,
+        )
+        market_price_mean = price.mean(axis=1).rename("GLOBAL").to_frame()
+        market_funding_mean = funding.mean(axis=1).rename("GLOBAL").to_frame()
+        market_funding_dispersion = funding.std(axis=1).rename("GLOBAL").to_frame()
+        market_breadth_24h = pd.DataFrame({"GLOBAL": [0.4, 0.5, 0.6, 0.5, 0.7, 0.8]}, index=index)
+        raw_frames = {
+            "price": price,
+            "funding": funding,
+            "market_price_mean": market_price_mean,
+            "market_funding_mean": market_funding_mean,
+            "market_funding_dispersion": market_funding_dispersion,
+            "market_breadth_24h": market_breadth_24h,
+            "market_co_movement_72h": pd.DataFrame({"GLOBAL": [0.2] * len(index)}, index=index),
+            "market_realized_vol_168h": pd.DataFrame({"GLOBAL": [0.3] * len(index)}, index=index),
+        }
+        aliases = feature_spec.get("aliases") or {}
+        target_aliases = [
+            "relative_momentum_24h",
+            "relative_momentum_72h",
+            "breadth_adjusted_relative_momentum_24h",
+            "relative_carry_72h",
+            "relative_carry_168h",
+            "relative_carry_z_72h",
+            "relative_carry_z_168h",
+        ]
+        resolved = resolve_feature_frames(
+            target_aliases,
+            aliases=aliases,
+            raw_frames=raw_frames,
+        )
+
+        for alias in target_aliases:
+            self.assertEqual(list(resolved[alias].columns), list(price.columns), alias)
+
+    def test_builtin_mixed_market_asset_aliases_keep_asset_columns(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        feature_spec = load_feature_spec(
+            repo_root,
+            track="directional_perps",
+            family="perp_multi_asset_carry",
+        )
+        index = pd.date_range("2026-01-01", periods=240, freq="h")
+        price = pd.DataFrame(
+            {
+                "BTC": np.linspace(100.0, 140.0, len(index)) + np.sin(np.arange(len(index)) / 7.0),
+                "ETH": np.linspace(50.0, 65.0, len(index)) + np.cos(np.arange(len(index)) / 9.0),
+                "SOL": np.linspace(20.0, 30.0, len(index)) + np.sin(np.arange(len(index)) / 5.0),
+            },
+            index=index,
+        )
+        funding = pd.DataFrame(
+            {
+                "BTC": 0.01 * np.sin(np.arange(len(index)) / 13.0) + 0.002,
+                "ETH": 0.008 * np.cos(np.arange(len(index)) / 11.0) - 0.001,
+                "SOL": 0.012 * np.sin(np.arange(len(index)) / 17.0) + 0.003,
+            },
+            index=index,
+        )
+        raw_frames = {
+            "price": price,
+            "funding": funding,
+            "market_price_mean": price.mean(axis=1).rename("GLOBAL").to_frame(),
+            "market_funding_mean": funding.mean(axis=1).rename("GLOBAL").to_frame(),
+            "market_funding_dispersion": funding.std(axis=1).rename("GLOBAL").to_frame(),
+            "market_breadth_24h": pd.DataFrame(
+                {"GLOBAL": price.pct_change(24).gt(0.0).mean(axis=1)},
+                index=index,
+            ),
+            "market_co_movement_72h": pd.DataFrame(
+                {"GLOBAL": 0.3 + 0.05 * np.sin(np.arange(len(index)) / 21.0)},
+                index=index,
+            ),
+            "market_realized_vol_168h": pd.DataFrame(
+                {"GLOBAL": price.pct_change().rolling(168).std().mean(axis=1)},
+                index=index,
+            ),
+        }
+        aliases = feature_spec.get("aliases") or {}
+        mixed_aliases = [
+            name
+            for name, formula in aliases.items()
+            if "market_" in formula and any(token in formula for token in ("price", "funding"))
+            if not name.startswith("market_")
+            if name
+            not in {
+                "funding_level_72h",
+                "funding_level_168h",
+                "funding_dispersion_72h",
+                "breadth_24h",
+                "co_movement_72h",
+            }
+        ]
+        resolved = resolve_feature_frames(
+            mixed_aliases,
+            aliases=aliases,
+            raw_frames=raw_frames,
+        )
+
+        for alias in mixed_aliases:
+            self.assertEqual(list(resolved[alias].columns), list(price.columns), alias)
+
+    def test_explicit_market_carry_aliases_remain_global(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        feature_spec = load_feature_spec(
+            repo_root,
+            track="directional_perps",
+            family="perp_multi_asset_carry",
+        )
+        aliases = feature_spec.get("aliases") or {}
+        market_funding_mean = pd.DataFrame(
+            {"GLOBAL": [0.002, 0.003, 0.001, 0.004, 0.005, 0.006]},
+            index=self.price.index,
+        )
+        market_funding_dispersion = pd.DataFrame(
+            {"GLOBAL": [0.010, 0.010, 0.020, 0.020, 0.025, 0.025]},
+            index=self.price.index,
+        )
+        resolved = resolve_feature_frames(
+            ["market_carry_z_72h", "market_carry_z_168h"],
+            aliases=aliases,
+            raw_frames={
+                "market_funding_mean": market_funding_mean,
+                "market_funding_dispersion": market_funding_dispersion,
+            },
+        )
+
+        self.assertEqual(list(resolved["market_carry_z_72h"].columns), ["GLOBAL"])
+        self.assertEqual(list(resolved["market_carry_z_168h"].columns), ["GLOBAL"])
 
     def test_invalid_feature_expression_is_rejected(self) -> None:
         self.assertFalse(

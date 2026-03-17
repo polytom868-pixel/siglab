@@ -39,6 +39,8 @@ common_perp_cross_sectional_aliases: &perp_cross_sectional_aliases
   funding_level_72h: rolling_mean(market_funding_mean,72)
   funding_level_168h: rolling_mean(market_funding_mean,168)
   funding_dispersion_72h: rolling_mean(market_funding_dispersion,72)
+  market_carry_z_72h: div(funding_level_72h,clip(funding_dispersion_72h,0.000001,1.0))
+  market_carry_z_168h: div(funding_level_168h,clip(funding_dispersion_72h,0.000001,1.0))
   breadth_24h: market_breadth_24h
   co_movement_72h: market_co_movement_72h
   relative_momentum_24h: sub(price_return_24h,market_trend_24h)
