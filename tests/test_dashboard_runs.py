@@ -183,6 +183,144 @@ class DashboardRunSummaryTests(unittest.TestCase):
             self.assertEqual(experiment["run_kind"], "benchmark")
             self.assertEqual(experiment["artifact_path"], "benchmark.json")
 
+    def test_dashboard_reads_tool_traces_from_workspace_trace_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lineage = LineageStore(root / "lineage.db")
+            static_dir = Path(__file__).resolve().parents[1] / "wayfinder_autolab" / "dashboard" / "static"
+
+            candidate = _candidate(
+                family="perp_multi_asset_carry",
+                hypothesis="workspace trace",
+                features=["funding_72h_mean", "funding_carry_to_vol"],
+            )
+            artifact = root / "trace-artifact.json"
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "candidate_hash": candidate.strategy_hash(),
+                        "candidate": candidate.canonical_dict(),
+                        "summary": {
+                            "aggregate_score": 2.5,
+                            "median_total_return": 0.02,
+                            "validation_total_return": 0.01,
+                            "pre_audit_canonical_total_return": 0.01,
+                            "passed": True,
+                        },
+                    }
+                )
+            )
+            planner_trace = root / "planner_trace.json"
+            planner_trace.write_text(
+                json.dumps(
+                    {
+                        "stage": "planner",
+                        "kimi_trace": {
+                            "model": "kimi-k2.5",
+                            "thinking_mode": "disabled",
+                            "tool_rounds_used": 1,
+                            "tool_count_available": 3,
+                            "response_finish_reason": "stop",
+                            "final_content_preview": "preview",
+                            "tool_calls": [
+                                {
+                                    "id": "search:1",
+                                    "name": "search_features",
+                                    "arguments": "{\"query\":\"carry gate\"}",
+                                    "result": {"ok": True},
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+
+            lineage.record(
+                evaluation={
+                    "candidate_hash": candidate.strategy_hash(),
+                    "candidate": candidate.canonical_dict(),
+                    "summary": {
+                        "aggregate_score": 2.5,
+                        "median_total_return": 0.02,
+                        "validation_total_return": 0.01,
+                        "pre_audit_canonical_total_return": 0.01,
+                        "passed": True,
+                    },
+                },
+                parent_hash=None,
+                research_summary={
+                    "run_context": {
+                        "run_session_id": "20260316T220000Z",
+                        "agent_label": "autolab_harness",
+                        "run_label": "trace-run",
+                        "benchmark_mode": False,
+                        "phase_label": "main",
+                        "deterministic": False,
+                    },
+                    "workspace": {
+                        "planner_trace_path": str(planner_trace),
+                    },
+                },
+                artifact_path=str(artifact),
+            )
+
+            app = DashboardApp(
+                settings=SimpleNamespace(root_dir=root),
+                lineage=lineage,
+                static_dir=static_dir,
+            )
+            payload = app.experiments_payload(track="directional_perps", family=None)
+            runs_payload = app.runs_payload(track="directional_perps", family=None)
+
+            experiment = payload["experiments"][0]
+            self.assertEqual(experiment["tool_call_count"], 1)
+            self.assertEqual(experiment["tool_trace"]["tool_rounds_used"], 1)
+            self.assertEqual(experiment["tool_trace"]["tool_calls"][0]["name"], "search_features")
+            self.assertEqual(len(experiment["tool_trace_stages"]), 1)
+            self.assertEqual(experiment["tool_trace_stages"][0]["stage"], "planner")
+
+            run = runs_payload["runs"][0]
+            self.assertEqual(run["tool_call_count"], 1)
+
+    def test_dashboard_includes_active_workspace_run_without_lineage_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lineage = LineageStore(root / "lineage.db")
+            static_dir = Path(__file__).resolve().parents[1] / "wayfinder_autolab" / "dashboard" / "static"
+
+            state_dir = root / "artifacts" / "directional_perps" / "workspaces" / "20260317T031125Z" / "current"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            (state_dir / "SESSION_STATE.json").write_text(
+                json.dumps(
+                    {
+                        "run_session_id": "20260317T031125Z",
+                        "iteration_number": 1,
+                        "current_parent_family": "perp_multi_asset_decision",
+                        "best_family": "perp_multi_asset_carry",
+                    }
+                )
+            )
+
+            settings = SimpleNamespace(
+                root_dir=root,
+                artifact_dir=root / "artifacts",
+            )
+            app = DashboardApp(
+                settings=settings,
+                lineage=lineage,
+                static_dir=static_dir,
+            )
+            runs_payload = app.runs_payload(track="directional_perps", family=None)
+            experiments_payload = app.experiments_payload(track="directional_perps", family=None)
+
+            self.assertEqual(runs_payload["summary"]["run_count"], 1)
+            self.assertEqual(experiments_payload["summary"]["run_count"], 1)
+            run = runs_payload["runs"][0]
+            self.assertEqual(run["run_session_id"], "20260317T031125Z")
+            self.assertEqual(run["status"], "running")
+            self.assertEqual(run["experiment_count"], 0)
+            self.assertEqual(run["series_points"], [])
+
     def test_dashboard_run_summary_counts_repeat_burn_in_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

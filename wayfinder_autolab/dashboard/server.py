@@ -5,6 +5,7 @@ import json
 import math
 import mimetypes
 from dataclasses import dataclass
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -57,6 +58,190 @@ class DashboardApp:
         ]:
             normalized[key] = self._display_path(normalized.get(key))
         return normalized
+
+    def _json_cache(self) -> dict[str, Any]:
+        cache = getattr(self, "_dashboard_json_cache", None)
+        if cache is None:
+            cache = {}
+            setattr(self, "_dashboard_json_cache", cache)
+        return cache
+
+    def _load_json_path(self, value: str | Path | None) -> dict[str, Any] | None:
+        if not value:
+            return None
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = (self.settings.root_dir / path).resolve()
+        cache = self._json_cache()
+        cache_key = str(path)
+        if cache_key in cache:
+            return cache[cache_key]
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            payload = None
+        cache[cache_key] = payload
+        return payload
+
+    def _normalize_trace_stage(
+        self,
+        *,
+        stage_name: str,
+        payload: dict[str, Any] | None,
+        trace_path: str | Path | None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(payload, dict):
+            return None
+        trace = dict(payload.get("kimi_trace") or {})
+        if not trace:
+            for key in ("attempts", "planner_attempts", "repair_attempts"):
+                attempts = list(payload.get(key) or [])
+                for attempt in reversed(attempts):
+                    attempt_trace = dict((attempt or {}).get("kimi_trace") or {})
+                    if attempt_trace:
+                        trace = attempt_trace
+                        break
+                if trace:
+                    break
+        if not trace and not payload.get("error"):
+            return None
+        tool_calls = []
+        for call in list(trace.get("tool_calls") or []):
+            normalized_call = dict(call or {})
+            normalized_call.setdefault("stage", stage_name)
+            tool_calls.append(normalized_call)
+        return {
+            "stage": str(payload.get("stage") or stage_name),
+            "trace_path": self._display_path(trace_path),
+            "model": trace.get("model"),
+            "thinking_mode": trace.get("thinking_mode"),
+            "tool_rounds_used": trace.get("tool_rounds_used", 0),
+            "tool_count_available": trace.get("tool_count_available", 0),
+            "tool_calls": tool_calls,
+            "final_content_preview": trace.get("final_content_preview"),
+            "response_finish_reason": trace.get("response_finish_reason"),
+            "error": payload.get("error") or trace.get("error"),
+        }
+
+    def _resolve_tool_trace_stages(self, research_summary: dict[str, Any]) -> list[dict[str, Any]]:
+        stages: list[dict[str, Any]] = []
+        workspace = dict(research_summary.get("workspace") or {})
+        for stage_name, path_key in (
+            ("planner", "planner_trace_path"),
+            ("writer", "writer_trace_path"),
+            ("reflector", "reflector_trace_path"),
+        ):
+            trace_path = workspace.get(path_key)
+            payload = self._load_json_path(trace_path)
+            stage = self._normalize_trace_stage(
+                stage_name=stage_name,
+                payload=payload,
+                trace_path=trace_path,
+            )
+            if stage is not None:
+                stages.append(stage)
+
+        if stages:
+            return stages
+
+        tool_trace = dict(research_summary.get("llm_tool_trace") or {})
+        trace_core = dict(tool_trace.get("trace") or {})
+        if tool_trace or trace_core:
+            legacy_calls = []
+            for call in list(trace_core.get("tool_calls") or []):
+                normalized_call = dict(call or {})
+                normalized_call.setdefault("stage", "proposal")
+                legacy_calls.append(normalized_call)
+            return [
+                {
+                    "stage": "proposal",
+                    "trace_path": self._display_path(tool_trace.get("log_path")),
+                    "model": trace_core.get("model"),
+                    "thinking_mode": trace_core.get("thinking_mode"),
+                    "tool_rounds_used": trace_core.get("tool_rounds_used", 0),
+                    "tool_count_available": trace_core.get("tool_count_available", 0),
+                    "tool_calls": legacy_calls,
+                    "final_content_preview": trace_core.get("final_content_preview"),
+                    "response_finish_reason": trace_core.get("response_finish_reason"),
+                    "error": tool_trace.get("error"),
+                    "parent_family": tool_trace.get("parent_family"),
+                    "parent_hash": tool_trace.get("parent_hash"),
+                    "candidate_count": tool_trace.get("candidate_count"),
+                }
+            ]
+        return []
+
+    def _workspace_run_placeholders(
+        self,
+        *,
+        track: str | None = None,
+        family: str | None = None,
+        existing_run_ids: set[str],
+    ) -> list[dict[str, Any]]:
+        placeholders: list[dict[str, Any]] = []
+        artifacts_root = getattr(self.settings, "artifact_dir", self.settings.root_dir / "artifacts")
+        if not artifacts_root.exists():
+            return placeholders
+        workspace_glob = artifacts_root.glob("*/workspaces/*/current/SESSION_STATE.json")
+        for state_path in sorted(workspace_glob):
+            try:
+                payload = json.loads(state_path.read_text())
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                continue
+            run_session_id = str(payload.get("run_session_id") or state_path.parents[1].name)
+            if not run_session_id or run_session_id in existing_run_ids:
+                continue
+            track_name = canonical_track_name(state_path.parents[3].name) or state_path.parents[3].name
+            if track and canonical_track_name(track) != track_name:
+                continue
+            families = sorted(
+                {
+                    str(value)
+                    for value in [
+                        payload.get("current_parent_family"),
+                        payload.get("best_family"),
+                    ]
+                    if str(value or "").strip()
+                }
+            )
+            if family and family not in families:
+                continue
+            created_at = datetime.fromtimestamp(
+                state_path.stat().st_mtime,
+            ).astimezone().isoformat()
+            placeholders.append(
+                {
+                    "run_session_id": run_session_id,
+                    "run_label": run_session_id,
+                    "track": track_name,
+                    "agent_label": "autolab_harness",
+                    "run_kind": "harness",
+                    "benchmark_mode": False,
+                    "benchmark_deck": None,
+                    "phase_labels": [str(payload.get("phase_label") or "starting")],
+                    "families": families,
+                    "experiment_count": 0,
+                    "llm_experiment_count": 0,
+                    "deterministic_experiment_count": 0,
+                    "tool_call_count": 0,
+                    "passed_count": 0,
+                    "promoted_count": 0,
+                    "first_created_at": created_at,
+                    "last_created_at": created_at,
+                    "best_candidate_hash": None,
+                    "best_family": str(payload.get("best_family") or "") or None,
+                    "best_aggregate_score": None,
+                    "best_validation_total_return": None,
+                    "best_pre_audit_canonical_total_return": None,
+                    "status": "running",
+                    "series_points": [],
+                }
+            )
+        placeholders.sort(
+            key=lambda row: str(row.get("last_created_at") or ""),
+            reverse=True,
+        )
+        return placeholders
 
     def _annotated_experiments(
         self,
@@ -159,8 +344,19 @@ class DashboardApp:
             annotated = dict(row)
             annotated["track"] = canonical_track_name(annotated.get("track")) or annotated.get("track")
             annotated["track_label"] = track_label(annotated.get("track"))
-            annotated["series_points"] = list(series_by_run.get(str(annotated.get("run_session_id") or ""), []))
+            run_session_id = str(annotated.get("run_session_id") or "")
+            run_experiments = [exp for exp in experiments if str(exp.get("run_session_id") or "") == run_session_id]
+            annotated["series_points"] = list(series_by_run.get(run_session_id, []))
+            annotated["tool_call_count"] = sum(int(exp.get("tool_call_count") or 0) for exp in run_experiments)
             annotated_runs.append(annotated)
+        existing_run_ids = {str(row.get("run_session_id") or "") for row in annotated_runs}
+        annotated_runs.extend(
+            self._workspace_run_placeholders(
+                track=track,
+                family=family,
+                existing_run_ids=existing_run_ids,
+            )
+        )
         best_run = max(
             annotated_runs,
             key=lambda row: float(row.get("best_aggregate_score") or float("-inf")),
@@ -350,8 +546,17 @@ class DashboardApp:
         bias_controls = dict(compiled_metadata.get("bias_controls") or {})
         params = dict(candidate.get("params") or {})
         tool_trace = dict(research_summary.get("llm_tool_trace") or {})
-        trace_core = dict(tool_trace.get("trace") or {})
-        tool_calls = list(trace_core.get("tool_calls") or [])
+        tool_trace_stages = self._resolve_tool_trace_stages(research_summary)
+        aggregated_tool_calls: list[dict[str, Any]] = []
+        for stage in tool_trace_stages:
+            for call in list(stage.get("tool_calls") or []):
+                normalized_call = dict(call or {})
+                normalized_call.setdefault("stage", stage.get("stage"))
+                aggregated_tool_calls.append(normalized_call)
+        primary_tool_trace = next(
+            (stage for stage in tool_trace_stages if list(stage.get("tool_calls") or [])),
+            tool_trace_stages[0] if tool_trace_stages else None,
+        )
 
         experiment["track"] = canonical_track_name(experiment.get("track")) or experiment.get("track")
         experiment["track_label"] = track_label(experiment.get("track"))
@@ -385,21 +590,27 @@ class DashboardApp:
         else:
             experiment["run_iteration_label"] = ""
         experiment["series_available"] = bool(artifact.get("canonical_run"))
+        experiment["tool_trace_stages"] = tool_trace_stages
         experiment["tool_trace"] = {
             "track": tool_trace.get("track"),
             "parent_family": tool_trace.get("parent_family"),
             "parent_hash": tool_trace.get("parent_hash"),
             "candidate_count": tool_trace.get("candidate_count"),
-            "error": tool_trace.get("error"),
-            "model": trace_core.get("model"),
-            "thinking_mode": trace_core.get("thinking_mode"),
-            "tool_rounds_used": trace_core.get("tool_rounds_used", 0),
-            "tool_count_available": trace_core.get("tool_count_available", 0),
-            "tool_calls": tool_calls,
-            "final_content_preview": trace_core.get("final_content_preview"),
-            "response_finish_reason": trace_core.get("response_finish_reason"),
+            "error": (primary_tool_trace or {}).get("error") or tool_trace.get("error"),
+            "model": (primary_tool_trace or {}).get("model"),
+            "thinking_mode": (primary_tool_trace or {}).get("thinking_mode"),
+            "tool_rounds_used": sum(
+                int(stage.get("tool_rounds_used") or 0) for stage in tool_trace_stages
+            ),
+            "tool_count_available": max(
+                [int(stage.get("tool_count_available") or 0) for stage in tool_trace_stages] or [0]
+            ),
+            "tool_calls": aggregated_tool_calls,
+            "final_content_preview": (primary_tool_trace or {}).get("final_content_preview"),
+            "response_finish_reason": (primary_tool_trace or {}).get("response_finish_reason"),
+            "stage_count": len(tool_trace_stages),
         }
-        experiment["tool_call_count"] = len(tool_calls)
+        experiment["tool_call_count"] = len(aggregated_tool_calls)
         lifecycle_policy = dict(compiled_metadata.get("lifecycle_policy") or {})
         experiment["roll_lifecycle"] = {
             "policy": lifecycle_policy,

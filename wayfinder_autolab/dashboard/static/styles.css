@@ -564,6 +564,41 @@ input[type="checkbox"] {
   margin-top: auto;
 }
 
+.waiting-card {
+  border: 1px solid var(--border-accent);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(74, 222, 128, 0.08), rgba(74, 222, 128, 0.03)),
+    var(--surface-raised);
+  padding: 16px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.waiting-card-compact {
+  min-height: 110px;
+  display: grid;
+  align-content: center;
+}
+
+.waiting-card-title {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.waiting-card-copy {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.waiting-card-copy + .waiting-card-copy {
+  margin-top: 6px;
+}
+
 /* ─── Family Guide ─── */
 
 .family-guide-panel {
@@ -1005,6 +1040,11 @@ pre::-webkit-scrollbar-thumb {
   border: 1px solid rgba(74, 222, 128, 0.08);
 }
 
+.trace-call-nested {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
 .trace-call-head {
   display: flex;
   justify-content: space-between;
@@ -1171,6 +1211,11 @@ pre::-webkit-scrollbar-thumb {
 
 .status-fail {
   color: var(--fail);
+  font-weight: 500;
+}
+
+.status-pending {
+  color: var(--amber);
   font-weight: 500;
 }
 
