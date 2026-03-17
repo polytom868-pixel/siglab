@@ -175,7 +175,13 @@ function renderRunCards(runs) {
   const metricKey = selectedMetricKey();
   const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
   if (!runs.length) {
-    container.innerHTML = `<p class="empty-state">No runs are visible for the current scope.</p>`;
+    container.innerHTML = `
+      <article class="waiting-card">
+        <div class="waiting-card-title">Hold tight</div>
+        <p class="waiting-card-copy">No runs are visible for the current scope yet.</p>
+        <p class="waiting-card-copy">If you just started one, Autolab may still be loading market data before the first experiment lands.</p>
+      </article>
+    `;
     return;
   }
 
@@ -226,6 +232,15 @@ function renderRunCards(runs) {
 }
 
 function sparklineSvg(points, metricKey) {
+  if (!points.length) {
+    return `
+      <div class="waiting-card waiting-card-compact">
+        <div class="waiting-card-title">Hold tight</div>
+        <p class="waiting-card-copy">This run has started, but no experiment points have been recorded yet.</p>
+        <p class="waiting-card-copy">Autolab is likely still loading market data or finishing the first evaluation.</p>
+      </div>
+    `;
+  }
   const values = points
     .map((point) => ({ ...point, metric: metricValue(point, metricKey) }))
     .filter((point) => Number.isFinite(point.metric));

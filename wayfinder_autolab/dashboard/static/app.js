@@ -265,6 +265,29 @@ function render() {
   }
 }
 
+function selectedRunRow() {
+  return (state.payload?.runs || []).find((row) => row.run_session_id === state.selectedRunId) || null;
+}
+
+function runWaitingMessage(run) {
+  const label = run?.run_label || run?.run_session_id || "this run";
+  return {
+    title: "Hold tight",
+    summary: `${label} has started, but no experiment rows have landed yet.`,
+    detail: "Autolab is likely fetching market data, compiling the first candidate, or finishing the first evaluation.",
+  };
+}
+
+function runStatusClass(status) {
+  if (status === "promoted" || status === "pass") {
+    return "status-pass";
+  }
+  if (status === "running" || status === "starting") {
+    return "status-pending";
+  }
+  return "status-fail";
+}
+
 function collectFamilies(payload) {
   const familySet = new Set(payload?.summary?.families || []);
   (payload?.experiments || [])
@@ -312,7 +335,7 @@ function filteredRuns(runs) {
 }
 
 function renderScope(experiments) {
-  const selectedRun = (state.payload?.runs || []).find((row) => row.run_session_id === state.selectedRunId);
+  const selectedRun = selectedRunRow();
   const track = document.getElementById("trackFilter")?.value || selectedRun?.track || "all";
   const family = document.getElementById("familyFilter")?.value || "all";
   const scopeLabel = [
@@ -353,11 +376,13 @@ function renderScope(experiments) {
 
 function renderSummary(experiments, runs) {
   const container = document.getElementById("summaryCards");
+  if (!container) return;
   const metricKey = selectedMetricKey();
   const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
   const bestDirectional = bestExperiment(experiments, "directional_perps", metricKey);
   const bestCarry = bestExperiment(experiments, "systematic_carry", metricKey);
   const benchmarkRuns = runs.filter((row) => row.benchmark_mode);
+  const selectedRun = selectedRunRow();
 
   const cards = [
     {
@@ -383,7 +408,7 @@ function renderSummary(experiments, runs) {
     {
       label: "Tool Traces",
       value: `${experiments.filter((row) => Number(row.tool_call_count || 0) > 0).length}`,
-      detail: "Experiments whose LLM proposal step issued at least one Tavily or web tool call.",
+      detail: "Experiments whose planner or writer stage issued at least one recorded tool call.",
     },
     {
       label: "Best Directional",
@@ -402,6 +427,15 @@ function renderSummary(experiments, runs) {
         : "No carry experiments in this view.",
     },
   ];
+  if (selectedRun && experiments.length === 0) {
+    const waiting = runWaitingMessage(selectedRun);
+    cards.unshift({
+      label: waiting.title,
+      value: "Run warming up",
+      valueClass: "small",
+      detail: `${waiting.summary} ${waiting.detail}`,
+    });
+  }
 
   container.innerHTML = cards
     .map(
@@ -436,7 +470,7 @@ function renderRuns(runs) {
       <td title="${escapeHtml(row.run_session_id)}">${escapeHtml(row.run_label || row.run_session_id)}</td>
       <td>${escapeHtml(String(row.experiment_count || 0))}</td>
       <td>${escapeHtml(String(row.llm_experiment_count || 0))}</td>
-      <td class="${row.status === "promoted" || row.status === "pass" ? "status-pass" : "status-fail"}">${escapeHtml(`${row.passed_count || 0} / ${row.promoted_count || 0}`)}</td>
+      <td class="${runStatusClass(row.status)}">${escapeHtml(row.status === "running" || row.status === "starting" ? String(row.status) : `${row.passed_count || 0} / ${row.promoted_count || 0}`)}</td>
       <td>${escapeHtml(String(row.tool_call_count || 0))}</td>
       <td>${escapeHtml(formatNumber(row.best_aggregate_score, 3))}</td>
       <td>${escapeHtml(formatPercent(row.best_validation_total_return))}</td>
@@ -520,7 +554,11 @@ function renderChart(experiments) {
   svg.innerHTML = "";
 
   if (experiments.length === 0) {
-    svg.innerHTML = `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">No experiments recorded yet.</text>`;
+    const selectedRun = selectedRunRow();
+    const message = selectedRun
+      ? "Hold tight. This run has started, but the first experiment has not finished yet."
+      : "No experiments recorded yet.";
+    svg.innerHTML = `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
     return;
   }
 
@@ -640,6 +678,15 @@ function renderTable(experiments) {
   tbody.innerHTML = "";
   const metricKey = selectedMetricKey();
   const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
+  if (!experiments.length) {
+    const selectedRun = selectedRunRow();
+    const waiting = selectedRun ? runWaitingMessage(selectedRun) : null;
+    const message = waiting
+      ? `${waiting.title}: ${waiting.summary} ${waiting.detail}`
+      : "No experiments recorded for the current scope.";
+    tbody.innerHTML = `<tr><td colspan="14" class="empty-state">${escapeHtml(message)}</td></tr>`;
+    return;
+  }
 
   [...experiments]
     .sort((a, b) => compareByMetricThenTime(a, b, metricKey))
@@ -679,6 +726,19 @@ function renderTable(experiments) {
 async function renderDetail(candidateHash) {
   const container = document.getElementById("detailContent");
   if (!candidateHash) {
+    const selectedRun = selectedRunRow();
+    const experiments = filteredExperiments(state.payload?.experiments || []);
+    if (selectedRun && experiments.length === 0) {
+      const waiting = runWaitingMessage(selectedRun);
+      container.innerHTML = `
+        <article class="waiting-card">
+          <div class="waiting-card-title">${escapeHtml(waiting.title)}</div>
+          <p class="waiting-card-copy">${escapeHtml(waiting.summary)}</p>
+          <p class="waiting-card-copy">${escapeHtml(waiting.detail)}</p>
+        </article>
+      `;
+      return;
+    }
     container.innerHTML = `<p class="empty-state">Select an experiment to inspect it.</p>`;
     return;
   }
@@ -699,6 +759,8 @@ async function renderDetail(candidateHash) {
   const biasControls = timing.bias_controls || {};
   const toolTrace = experiment.tool_trace || {};
   const toolCalls = toolTrace.tool_calls || [];
+  const toolTraceStages = (experiment.tool_trace_stages || [])
+    .filter((stage) => stage && (stage.tool_calls || stage.error || stage.model || stage.trace_path));
   const researchSummaryView = { ...(experiment.research_summary || {}) };
   const rollLifecycle = experiment.roll_lifecycle || {};
   const rollEvents = rollLifecycle.roll_events || [];
@@ -752,33 +814,60 @@ async function renderDetail(candidateHash) {
       <div class="detail-block">
         <h3>LLM Research Trace</h3>
         <div class="kv">
-          <div class="key">Model</div><div>${escapeHtml(toolTrace.model || "n/a")}</div>
+          <div class="key">Primary Model</div><div>${escapeHtml(toolTrace.model || "n/a")}</div>
           <div class="key">Thinking</div><div>${escapeHtml(toolTrace.thinking_mode || "default")}</div>
+          <div class="key">Stages</div><div>${escapeHtml(String(toolTraceStages.length || 0))}</div>
           <div class="key">Tool Rounds</div><div>${escapeHtml(String(toolTrace.tool_rounds_used ?? 0))}</div>
           <div class="key">Tool Calls</div><div>${escapeHtml(String(toolCalls.length))}</div>
           <div class="key">Parent</div><div>${escapeHtml(toolTrace.parent_family || "n/a")} ${toolTrace.parent_hash ? `<span class="mono">${escapeHtml(toolTrace.parent_hash)}</span>` : ""}</div>
           <div class="key">Response</div><div>${escapeHtml(toolTrace.response_finish_reason || "n/a")}</div>
         </div>
         ${toolTrace.error ? `<p class="detail-copy">Trace error: ${escapeHtml(toolTrace.error)}</p>` : ""}
-        ${toolCalls.length > 0 ? `
+        ${toolTraceStages.length > 0 ? `
           <div class="trace-list">
-            ${toolCalls.map((call, index) => `
+            ${toolTraceStages.map((stage, stageIndex) => `
               <article class="trace-call">
                 <div class="trace-call-head">
-                  <strong>${escapeHtml(`${index + 1}. ${call.name || "tool"}`)}</strong>
-                  <span class="mono">${escapeHtml(call.id || "")}</span>
+                  <strong>${escapeHtml(`${stageIndex + 1}. ${stage.stage || "stage"}`)}</strong>
+                  <span class="mono">${escapeHtml(stage.trace_path || stage.model || "")}</span>
                 </div>
-                <pre>${escapeHtml(JSON.stringify({
-                  arguments: safeParseJson(call.arguments),
-                  result: call.result,
-                }, null, 2))}</pre>
+                <div class="kv">
+                  <div class="key">Model</div><div>${escapeHtml(stage.model || "n/a")}</div>
+                  <div class="key">Thinking</div><div>${escapeHtml(stage.thinking_mode || "default")}</div>
+                  <div class="key">Tool Rounds</div><div>${escapeHtml(String(stage.tool_rounds_used ?? 0))}</div>
+                  <div class="key">Tool Calls</div><div>${escapeHtml(String((stage.tool_calls || []).length))}</div>
+                  <div class="key">Response</div><div>${escapeHtml(stage.response_finish_reason || "n/a")}</div>
+                </div>
+                ${stage.error ? `<p class="detail-copy">Trace error: ${escapeHtml(stage.error)}</p>` : ""}
+                ${(stage.tool_calls || []).length > 0 ? `
+                  <div class="trace-list">
+                    ${(stage.tool_calls || []).map((call, index) => `
+                      <article class="trace-call trace-call-nested">
+                        <div class="trace-call-head">
+                          <strong>${escapeHtml(`${index + 1}. ${call.name || "tool"}`)}</strong>
+                          <span class="mono">${escapeHtml(call.id || "")}</span>
+                        </div>
+                        <pre>${escapeHtml(JSON.stringify({
+                          arguments: safeParseJson(call.arguments),
+                          result: call.result,
+                        }, null, 2))}</pre>
+                      </article>
+                    `).join("")}
+                  </div>
+                ` : `<p class="empty-state">No tool calls were recorded for this stage.</p>`}
+                ${stage.final_content_preview ? `
+                  <div class="trace-preview">
+                    <h4>${escapeHtml((stage.stage || "stage") + " response preview")}</h4>
+                    <pre>${escapeHtml(stage.final_content_preview)}</pre>
+                  </div>
+                ` : ""}
               </article>
             `).join("")}
           </div>
-        ` : `<p class="empty-state">No tool calls were recorded for this proposal step.</p>`}
+        ` : `<p class="empty-state">No trace metadata was recorded for this experiment.</p>`}
         ${toolTrace.final_content_preview ? `
           <div class="trace-preview">
-            <h4>Final Response Preview</h4>
+            <h4>Primary Response Preview</h4>
             <pre>${escapeHtml(toolTrace.final_content_preview)}</pre>
           </div>
         ` : ""}

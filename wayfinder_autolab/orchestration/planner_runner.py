@@ -101,8 +101,7 @@ class ResearchPlannerRunner:
             *self.DEFAULT_FILES,
             f"manifests/family/{parent.family}.md",
         ]
-        search_mode = str(current_state.get("search_mode") or "refine")
-        thinking_override = "enabled" if search_mode in {"family_switch", "contradiction_resolution"} else "disabled"
+        thinking_override = "enabled"
         tool_refs: list[str] = []
         tools = self._planner_tools(
             session=session,
