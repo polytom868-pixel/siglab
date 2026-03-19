@@ -8,14 +8,17 @@ from typing import Any
 
 import yaml
 
+from wayfinder_autolab.io_utils import read_json_if_exists, write_json
 from wayfinder_autolab.llm import KimiClient, KimiTool
 from wayfinder_autolab.orchestration.contracts import extract_embedded_yaml_block
 from wayfinder_autolab.research import HypothesisSandbox, WebResearcher
+from wayfinder_autolab.strategy_semantics import supports_explicit_trade_style
 from wayfinder_autolab.tools import (
     inspect_feature,
     open_workspace_file,
     search_features,
     search_workspace,
+    search_workspace_text,
     suggest_feature_set,
 )
 from wayfinder_autolab.workspace.cards import parse_frontmatter
@@ -96,7 +99,7 @@ class ResearchPlannerRunner:
     ) -> PlannerResult:
         skill_path = self.settings.root_dir / ".agents" / "skills" / "autolab-research-planner" / "SKILL.md"
         system_prompt = skill_path.read_text()
-        current_state = json.loads((session.current_dir / "SESSION_STATE.json").read_text())
+        current_state = read_json_if_exists(session.current_dir / "SESSION_STATE.json")
         default_context_files = [
             *self.DEFAULT_FILES,
             f"manifests/family/{parent.family}.md",
@@ -218,9 +221,7 @@ class ResearchPlannerRunner:
         research_note_path = iteration_paths["research_note_path"]
         research_note_path.write_text(final_note.strip() + "\n")
         planner_contract_path = iteration_paths["planner_contract_path"]
-        planner_contract_path.write_text(
-            json.dumps(final_contract, indent=2, ensure_ascii=True, default=str)
-        )
+        write_json(planner_contract_path, final_contract)
         trace_path = iteration_paths["planner_trace_path"]
         self._write_trace(
             trace_path=trace_path,
@@ -254,6 +255,7 @@ class ResearchPlannerRunner:
         )
 
     def _build_user_prompt(self, *, session: WorkspaceSession, parent: Any) -> str:
+        target_universe = ", ".join(parent.universe.basis_groups or [])
         parts = [
             "Write one research note in normal markdown.",
             "Do not emit candidate JSON.",
@@ -262,6 +264,9 @@ class ResearchPlannerRunner:
             "Make the note concrete enough that a deterministic extractor and the writer can preserve the intended family, features, and gate dimensions.",
             "Optimize for aggregate_score, which weights median_sharpe*1.0, median_total_return*4.0, median_calmar*0.5, asset_breadth*0.1, profitable_window_pct*0.25, and worst_max_drawdown*1.5.",
             "Use recent_trials to avoid repeating failed patches and to build on structure that Optuna already improved.",
+            f"Use the exact current target universe: {target_universe or 'n/a'}.",
+            "Do not substitute example symbols or default majors from manifests or prior templates.",
+            "If you mention the active basket in the note, repeat the exact symbols from the current target universe.",
         ]
         for rel_path in [*self.DEFAULT_FILES, f"manifests/family/{parent.family}.md"]:
             path = session.root / rel_path
@@ -279,12 +284,15 @@ class ResearchPlannerRunner:
         repair_feedback: dict[str, Any],
     ) -> str:
         previous_note = previous_note_path.read_text() if previous_note_path and previous_note_path.exists() else ""
+        target_universe = ", ".join(parent.universe.basis_groups or [])
         parts = [
             "Rewrite the research note after downstream failure.",
             "Keep it as normal markdown. Candidate JSON is not allowed.",
             "The failure packet shows what the writer or preflight could not preserve.",
             "State one clear next test. If a specific family, feature, or gate dimension matters, say it explicitly in the note.",
             "You may call planner tools again if they help repair the plan.",
+            f"Keep the active target universe fixed at: {target_universe or 'n/a'}.",
+            "Do not substitute example symbols or default majors from manifests or prior templates.",
             "",
             "## Failure Packet",
             json.dumps(repair_feedback, indent=2, ensure_ascii=True, default=str),
@@ -319,7 +327,7 @@ class ResearchPlannerRunner:
         tools.append(
             KimiTool(
                 name="search_workspace",
-                description="Search workspace cards and indexes by query and optional filters.",
+                description="Search current-run workspace indexes and card metadata by semantic query and optional filters.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -337,6 +345,30 @@ class ResearchPlannerRunner:
                     kind=str(arguments.get("kind") or "") or None,
                     family=str(arguments.get("family") or "") or None,
                     outcome=str(arguments.get("outcome") or "") or None,
+                    limit=int(arguments.get("limit", 8)),
+                ),
+            )
+        )
+        tools.append(
+            KimiTool(
+                name="search_workspace_text",
+                description=(
+                    "Search literal text inside current-run workspace files only. "
+                    "Use this for metric keys, exact snippets, or probe fields like median_spearman."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "path_glob": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+                    },
+                    "required": ["query"],
+                },
+                handler=lambda arguments: search_workspace_text(
+                    workspace_root=session.root,
+                    query=str(arguments.get("query") or ""),
+                    path_glob=str(arguments.get("path_glob") or "") or None,
                     limit=int(arguments.get("limit", 8)),
                 ),
             )
@@ -599,7 +631,11 @@ class ResearchPlannerRunner:
 
         target_family = str(contract.get("target_family") or parent.family)
         body_trade_style = self._body_trade_style(note_body_text)
-        if body_trade_style and contract.get("target_trade_style") in (None, "", "null"):
+        if (
+            supports_explicit_trade_style(target_family)
+            and body_trade_style
+            and contract.get("target_trade_style") in (None, "", "null")
+        ):
             contract["target_trade_style"] = body_trade_style
 
         if not self._string_list(contract.get("target_universe")):
@@ -691,6 +727,8 @@ class ResearchPlannerRunner:
         contract["tools_used"] = self._string_list(contract.get("tools_used"))
         contract["tracking_tags"] = self._string_list(contract.get("tracking_tags")) or [target_family]
         contract["target_trade_style"] = str(contract.get("target_trade_style") or "").strip() or None
+        if not supports_explicit_trade_style(target_family):
+            contract["target_trade_style"] = None
         contract["planner_regime_gates"] = self._normalize_regime_gates(
             contract.get("planner_regime_gates") or contract.get("regime_gates")
         )
@@ -868,7 +906,11 @@ class ResearchPlannerRunner:
             "decision": "refine_current_family",
             "search_mode": str(current_state.get("search_mode") or "refine"),
             "target_family": target_family,
-            "target_trade_style": str(dict(parent.params or {}).get("trade_style") or "").strip() or None,
+            "target_trade_style": (
+                str(dict(parent.params or {}).get("trade_style") or "").strip() or None
+            )
+            if supports_explicit_trade_style(target_family)
+            else None,
             "target_universe": list(parent.universe.basis_groups),
             "core_hypothesis": str(current_state.get("open_question") or f"Refine {target_family}"),
             "informative_test": "Test one concrete change tied to the current open question.",
@@ -987,7 +1029,7 @@ class ResearchPlannerRunner:
             "kimi_trace": dict(self.kimi.last_trace or {}),
             "kimi_exchange": dict(self.kimi.last_exchange or {}),
         }
-        trace_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True, default=str))
+        write_json(trace_path, payload)
 
     def _default_required_feature_roles(self, family: str, *, required_variation_axis: str = "") -> list[str]:
         if family == "perp_multi_asset_carry" and required_variation_axis == "non_regime":

@@ -886,6 +886,8 @@ class MarketDataProvider:
             funding_df.index = pd.to_datetime(funding_df.index, utc=True).tz_convert(
                 None
             )
+            price_df = _dedupe_time_index(price_df)
+            funding_df = _dedupe_time_index(funding_df)
 
             all_prices.append(price_df["price_usd"].rename(symbol))
             all_funding.append(funding_df["funding_rate"].rename(symbol))

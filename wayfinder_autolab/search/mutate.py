@@ -166,6 +166,8 @@ class CandidateMutator:
         self,
         track: str,
         family: str | list[str] | None = None,
+        *,
+        include_historical: bool | None = None,
     ) -> list[CandidateGraph]:
         payload = yaml.safe_load(
             (self.settings.root_dir / "mutable" / "graph_lab.yaml").read_text()
@@ -178,11 +180,14 @@ class CandidateMutator:
             if canonical_track_name(str(row.get("track"))) == canonical_track
             and (family_scope is None or str(row.get("family")) in family_scope)
         ]
-        rows = self._merge_historical_seed_candidates(
-            rows=rows,
-            track=canonical_track,
-            family_scope=family_scope,
-        )
+        if include_historical is None:
+            include_historical = bool(getattr(self.settings, "use_historical_seeds", False))
+        if include_historical:
+            rows = self._merge_historical_seed_candidates(
+                rows=rows,
+                track=canonical_track,
+                family_scope=family_scope,
+            )
         if not rows:
             family_suffix = f" family={family}" if family else ""
             raise ValueError(f"No seed candidates defined for {track}{family_suffix}")

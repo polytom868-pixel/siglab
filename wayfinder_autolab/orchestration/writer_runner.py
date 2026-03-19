@@ -8,12 +8,14 @@ from typing import Any
 
 from wayfinder_autolab.evaluator.compile import compile_candidate
 from wayfinder_autolab.families import family_prompt_module
+from wayfinder_autolab.io_utils import json_clone, write_json
 from wayfinder_autolab.llm import KimiClient
 from wayfinder_autolab.models import CandidateGraph
-from wayfinder_autolab.orchestration.contracts import conformance_violations, motif_signature
+from wayfinder_autolab.orchestration.contracts import conformance_violations
 from wayfinder_autolab.orchestration.trials import build_candidate_patch, summarize_patch
 from wayfinder_autolab.research import HypothesisSandbox
 from wayfinder_autolab.search.mutate import CandidateMutator
+from wayfinder_autolab.strategy_semantics import motif_signature
 from wayfinder_autolab.workspace.cards import dump_yaml_block, parse_frontmatter
 from wayfinder_autolab.workspace.builder import WorkspaceSession
 
@@ -129,9 +131,7 @@ class CandidateWriterRunner:
             base_candidate_payload=base_payload,
         )
         structure_spec_path = iteration_paths["structure_spec_path"]
-        structure_spec_path.write_text(
-            json.dumps(structure_spec, indent=2, ensure_ascii=True, default=str)
-        )
+        write_json(structure_spec_path, structure_spec)
         manifest_path = session.manifests_dir / "family" / f"{family}.md"
         family_contract_path = session.manifests_dir / "family" / f"{family}.json"
         family_feature_manifest_path = session.manifests_dir / "features" / "family" / f"{family}.md"
@@ -253,9 +253,7 @@ class CandidateWriterRunner:
                 payload=payload,
                 preflight=preflight,
             )
-            repair_packet_path.write_text(
-                json.dumps(latest_repair_packet, indent=2, ensure_ascii=True, default=str)
-            )
+            write_json(repair_packet_path, latest_repair_packet)
 
             if attempt >= self.MAX_ATTEMPTS:
                 break
@@ -296,81 +294,83 @@ class CandidateWriterRunner:
         else:
             candidate_payload = final_payload
             candidate_path = iteration_paths["candidate_json_path"]
-            candidate_path.write_text(json.dumps(candidate_payload, indent=2, ensure_ascii=True, default=str))
+            write_json(candidate_path, candidate_payload)
+            if repair_packet_path.exists():
+                repair_packet_path.unlink()
+            latest_repair_packet = None
         if candidate_payload is not None:
             patch_payload = build_candidate_patch(
                 base_payload=base_payload,
                 target_payload=candidate_payload,
             )
             patch_summary = summarize_patch(patch_payload)
-            iteration_paths["candidate_patch_path"].write_text(
-                json.dumps(patch_payload, indent=2, ensure_ascii=True, default=str)
-            )
+            write_json(iteration_paths["candidate_patch_path"], patch_payload)
             candidate_after_patch_path = iteration_paths["candidate_after_patch_path"]
             candidate_after_patch_path.write_text(dump_yaml_block(candidate_payload) + "\n")
+            if repair_packet_path.exists():
+                repair_packet_path.unlink()
+            latest_repair_packet = None
         trace_path = iteration_paths["writer_trace_path"]
         parent_card_path = session.current_dir / "parent_card.md"
-        trace_path.write_text(
-            json.dumps(
-                {
-                    "stage": "writer",
-                    "system_prompt_path": str(
-                        (
-                            self.settings.root_dir
-                            / ".agents"
-                            / "skills"
-                            / "autolab-candidate-writer"
-                            / "SKILL.md"
-                        ).relative_to(self.settings.root_dir)
-                    ),
-                    "inputs": {
-                        "system_prompt": system_prompt,
-                        "initial_user_prompt": user_prompt,
-                        "research_note_path": str(research_note_path),
-                        "planner_contract_path": str(planner_contract_path) if planner_contract_path else None,
-                        "structure_spec_path": str(structure_spec_path),
-                        "base_candidate_path": str(base_candidate_path),
-                        "parent_card_path": str(parent_card_path),
-                        "manifest_path": str(manifest_path),
-                        "family_contract_path": str(family_contract_path),
-                        "family_feature_manifest_path": str(family_feature_manifest_path),
-                        "family_feature_contract_path": str(family_feature_contract_path),
-                        "constraints_path": str(constraints_path),
-                        "regime_catalog_path": str(regime_catalog_path),
-                        "policy_surface_path": str(policy_surface_path),
-                        "cookbook_paths": [str(path) for path in cookbook_paths],
-                        "candidate_schema_path": str(candidate_schema_path),
-                        "evidence_paths": [str(path) for path in list(planner_contract.get("evidence_paths") or [])],
-                        "planner_contract": planner_contract,
-                    },
-                    "outputs": {
-                        "accepted": accepted,
-                        "failure_reason": failure_reason,
-                        "candidate_path": str(candidate_path) if candidate_path is not None else None,
-                        "candidate_payload": candidate_payload,
-                        "candidate_after_patch_path": (
-                            str(candidate_after_patch_path) if candidate_after_patch_path is not None else None
-                        ),
-                        "candidate_patch_path": (
-                            str(iteration_paths["candidate_patch_path"])
-                            if patch_payload is not None
-                            else None
-                        ),
-                        "patch_summary": patch_summary,
-                        "structure_spec": structure_spec,
-                        "repair_packet_path": str(repair_packet_path) if repair_packet_path.exists() else None,
-                        "latest_repair_packet": latest_repair_packet,
-                    },
-                    "attempt_count": len(attempt_log),
-                    "attempts": attempt_log,
-                    "conversation_messages": messages,
-                    "kimi_trace": dict(self.kimi.last_trace or {}),
-                    "kimi_exchange": dict(self.kimi.last_exchange or {}),
+        write_json(
+            trace_path,
+            {
+                "stage": "writer",
+                "system_prompt_path": str(
+                    (
+                        self.settings.root_dir
+                        / ".agents"
+                        / "skills"
+                        / "autolab-candidate-writer"
+                        / "SKILL.md"
+                    ).relative_to(self.settings.root_dir)
+                ),
+                "inputs": {
+                    "system_prompt": system_prompt,
+                    "initial_user_prompt": user_prompt,
+                    "research_note_path": str(research_note_path),
+                    "planner_contract_path": str(planner_contract_path) if planner_contract_path else None,
+                    "structure_spec_path": str(structure_spec_path),
+                    "base_candidate_path": str(base_candidate_path),
+                    "parent_card_path": str(parent_card_path),
+                    "manifest_path": str(manifest_path),
+                    "family_contract_path": str(family_contract_path),
+                    "family_feature_manifest_path": str(family_feature_manifest_path),
+                    "family_feature_contract_path": str(family_feature_contract_path),
+                    "constraints_path": str(constraints_path),
+                    "regime_catalog_path": str(regime_catalog_path),
+                    "policy_surface_path": str(policy_surface_path),
+                    "cookbook_paths": [str(path) for path in cookbook_paths],
+                    "candidate_schema_path": str(candidate_schema_path),
+                    "evidence_paths": [str(path) for path in list(planner_contract.get("evidence_paths") or [])],
+                    "planner_contract": planner_contract,
                 },
-                indent=2,
-                ensure_ascii=True,
-                default=str,
-            )
+                "outputs": {
+                    "accepted": accepted,
+                    "failure_reason": failure_reason,
+                    "candidate_path": str(candidate_path) if candidate_path is not None else None,
+                    "candidate_payload": candidate_payload,
+                    "candidate_after_patch_path": (
+                        str(candidate_after_patch_path) if candidate_after_patch_path is not None else None
+                    ),
+                    "candidate_patch_path": (
+                        str(iteration_paths["candidate_patch_path"])
+                        if patch_payload is not None
+                        else None
+                    ),
+                    "patch_summary": patch_summary,
+                    "structure_spec": structure_spec,
+                    "repair_packet_path": (
+                        str(repair_packet_path) if latest_repair_packet is not None else None
+                    ),
+                    "latest_repair_packet": latest_repair_packet,
+                },
+                "attempt_count": len(attempt_log),
+                "attempts": attempt_log,
+                "conversation_messages": messages,
+                "kimi_trace": dict(self.kimi.last_trace or {}),
+                "kimi_exchange": dict(self.kimi.last_exchange or {}),
+            },
         )
         return WriterResult(
             candidate_payload=candidate_payload,
@@ -500,8 +500,6 @@ class CandidateWriterRunner:
                     "regime_gates_are_extremely_restrictive",
                     "gated_candidate_is_near_flat",
                     "gates_do_not_change_train_outcomes",
-                    "negative_selector_train_return_delta",
-                    "negative_selector_train_sharpe_delta",
                 }
             ]
             if severe_gate_warnings:
@@ -587,7 +585,7 @@ class CandidateWriterRunner:
         return changed
 
     def _drift_compare_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        normalized = json.loads(json.dumps(payload, ensure_ascii=True, default=str))
+        normalized = json_clone(payload)
         regime_gates = self._dict_or_empty(normalized.get("regime_gates"))
         if not regime_gates:
             normalized["regime_gates"] = {"entry": [], "exit_on_break": False}
@@ -747,7 +745,7 @@ class CandidateWriterRunner:
             return None
 
     def _clone_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return json.loads(json.dumps(payload, ensure_ascii=True, default=str))
+        return json_clone(payload)
 
     def _load_planner_contract(
         self,
@@ -832,7 +830,7 @@ class CandidateWriterRunner:
         expected_entries = list(planner_regime_gates.get("entry") or [])
         if not expected_entries:
             return payload
-        normalized = json.loads(json.dumps(payload, ensure_ascii=True, default=str))
+        normalized = json_clone(payload)
         regime_gates = self._dict_or_empty(normalized.get("regime_gates"))
         actual_entries = list(regime_gates.get("entry") or [])
         if not actual_entries:

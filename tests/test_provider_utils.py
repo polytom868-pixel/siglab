@@ -6,6 +6,7 @@ import pandas as pd
 
 from wayfinder_autolab.data.providers import (
     _align_perp_bundle_frames,
+    _dedupe_time_index,
     _frame_column_or_default,
     _sanitize_perp_symbols,
 )
@@ -47,6 +48,21 @@ class ProviderUtilsTests(unittest.TestCase):
         self.assertEqual(aligned_prices.index[0], prices.index[1])
         self.assertEqual(list(aligned_prices.columns), ["HYPE", "ASTER"])
         self.assertEqual(list(aligned_funding.index), list(aligned_prices.index))
+
+    def test_dedupe_time_index_keeps_last_duplicate_timestamp(self) -> None:
+        frame = pd.DataFrame(
+            {"funding_rate": [0.01, 0.02, 0.03]},
+            index=pd.to_datetime(
+                [
+                    "2026-01-01T00:00:00",
+                    "2026-01-01T00:00:00",
+                    "2026-01-01T01:00:00",
+                ]
+            ),
+        )
+        deduped = _dedupe_time_index(frame)
+        self.assertEqual(len(deduped), 2)
+        self.assertEqual(float(deduped.iloc[0]["funding_rate"]), 0.02)
 
 
 if __name__ == "__main__":

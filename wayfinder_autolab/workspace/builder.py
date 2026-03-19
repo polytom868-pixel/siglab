@@ -7,16 +7,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wayfinder_autolab.io_utils import read_json_if_exists, write_json, write_text_if_changed
 from wayfinder_autolab.models import CandidateGraph
-from wayfinder_autolab.orchestration.contracts import (
+from wayfinder_autolab.orchestration.trials import summarize_generalization
+from wayfinder_autolab.search.lineage import LineageStore
+from wayfinder_autolab.search.mutate import CandidateMutator
+from wayfinder_autolab.strategy_semantics import (
     NON_REGIME_ROLES,
     candidate_feature_roles,
     gate_dimensions,
     motif_signature,
 )
-from wayfinder_autolab.orchestration.trials import summarize_generalization
-from wayfinder_autolab.search.lineage import LineageStore
-from wayfinder_autolab.search.mutate import CandidateMutator
 from wayfinder_autolab.workspace.cards import (
     dump_yaml_block,
     relative_path,
@@ -51,6 +52,8 @@ class WorkspaceSession:
     run_session_id: str
     families: list[str]
     memory_scope: str
+    custom_symbols: list[str] | None = None
+    use_historical_seeds: bool = False
 
     @property
     def current_dir(self) -> Path:
@@ -109,6 +112,8 @@ class WorkspaceBuilder:
         run_session_id: str,
         family_scope: str | list[str] | None,
         memory_scope: str = "run_local",
+        custom_symbols: list[str] | None = None,
+        use_historical_seeds: bool = False,
     ) -> WorkspaceSession:
         families = self.mutator._allowed_families(track, family=family_scope)
         root = self.settings.artifact_dir / track / "workspaces" / run_session_id
@@ -118,10 +123,10 @@ class WorkspaceBuilder:
             run_session_id=run_session_id,
             families=families,
             memory_scope=memory_scope,
+            custom_symbols=list(custom_symbols or []) or None,
+            use_historical_seeds=bool(use_historical_seeds),
         )
-        self._ensure_layout(session)
-        self._ensure_skill_mirror()
-        self._initialize_stable_files(session)
+        self._prepare_session(session)
         self._materialize_existing_cards(session)
         self.refresh_frontier_files(session)
         self._write_if_changed(
@@ -129,6 +134,40 @@ class WorkspaceBuilder:
             self.render_workspace_index(session),
         )
         return session
+
+    def resume_session(
+        self,
+        *,
+        track: str,
+        run_session_id: str,
+        families: list[str],
+        memory_scope: str = "run_local",
+        custom_symbols: list[str] | None = None,
+        use_historical_seeds: bool = False,
+    ) -> WorkspaceSession:
+        root = self.settings.artifact_dir / track / "workspaces" / run_session_id
+        session = WorkspaceSession(
+            root=root,
+            track=track,
+            run_session_id=run_session_id,
+            families=list(families),
+            memory_scope=memory_scope,
+            custom_symbols=list(custom_symbols or []) or None,
+            use_historical_seeds=bool(use_historical_seeds),
+        )
+        self._prepare_session(session)
+        self.refresh_frontier_files(session)
+        self._write_if_changed(
+            session.root / "WORKSPACE_INDEX.md",
+            self.render_workspace_index(session),
+        )
+        return session
+
+    def _prepare_session(self, session: WorkspaceSession) -> None:
+        self._ensure_layout(session)
+        self._ensure_skill_mirror()
+        self._write_session_meta(session)
+        self._initialize_stable_files(session)
 
     def update_iteration(
         self,
@@ -196,6 +235,8 @@ class WorkspaceBuilder:
         session_state = {
             "run_session_id": session.run_session_id,
             "memory_scope": session.memory_scope,
+            "custom_symbols": list(session.custom_symbols or []),
+            "use_historical_seeds": bool(session.use_historical_seeds),
             "iteration_number": int(iteration_number),
             "current_parent_hash": parent.strategy_hash(),
             "current_parent_family": parent.family,
@@ -607,15 +648,30 @@ class WorkspaceBuilder:
         ]:
             path.mkdir(parents=True, exist_ok=True)
 
+    def _write_session_meta(self, session: WorkspaceSession) -> None:
+        self._write_if_changed(
+            session.meta_dir / "session.json",
+            json.dumps(
+                {
+                    "track": session.track,
+                    "run_session_id": session.run_session_id,
+                    "families": list(session.families),
+                    "memory_scope": session.memory_scope,
+                    "custom_symbols": list(session.custom_symbols or []),
+                    "use_historical_seeds": bool(session.use_historical_seeds),
+                },
+                indent=2,
+                ensure_ascii=True,
+            ),
+        )
+
     def _initialize_stable_files(self, session: WorkspaceSession) -> None:
         fingerprint_payload = compute_spec_fingerprint(self.settings.root_dir)
         fingerprint_path = session.meta_dir / "spec_fingerprint.json"
-        existing = {}
-        if fingerprint_path.exists():
-            existing = json.loads(fingerprint_path.read_text())
+        existing = read_json_if_exists(fingerprint_path)
         if existing.get("fingerprint") == fingerprint_payload.get("fingerprint"):
             return
-        fingerprint_path.write_text(json.dumps(fingerprint_payload, indent=2, ensure_ascii=True))
+        write_json(fingerprint_path, fingerprint_payload)
         self._write_if_changed(session.root / "RUNBOOK.md", render_runbook())
         self._write_if_changed(
             session.manifests_dir / "constraints.md",
@@ -724,13 +780,7 @@ class WorkspaceBuilder:
         os.symlink("../.agents/skills", target)
 
     def _read_session_state(self, session: WorkspaceSession) -> dict[str, Any]:
-        path = session.current_dir / "SESSION_STATE.json"
-        if not path.exists():
-            return {}
-        try:
-            return json.loads(path.read_text())
-        except Exception:  # noqa: BLE001
-            return {}
+        return read_json_if_exists(session.current_dir / "SESSION_STATE.json")
 
     def _frontier_digest(self, *, session: WorkspaceSession, rows: list[dict[str, Any]]) -> dict[str, Any]:
         family_scores: dict[str, list[float]] = {}
@@ -1656,9 +1706,7 @@ class WorkspaceBuilder:
 
     def _write_if_changed(self, path: Path, content: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists() and path.read_text() == content:
-            return
-        path.write_text(content)
+        write_text_if_changed(path, content)
 
     def _now(self) -> str:
         from datetime import UTC, datetime

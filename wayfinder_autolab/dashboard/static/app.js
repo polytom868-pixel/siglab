@@ -6,7 +6,15 @@ const state = {
   runFilterTouched: false,
   autoRefreshTimer: null,
 };
-const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml } = window.AutolabUi;
+const {
+  TRACK_LABELS,
+  METRIC_META,
+  formatDateTime,
+  formatNumber,
+  formatPercent,
+  escapeHtml,
+  llmIdentity,
+} = window.AutolabUi;
 
 const TRACK_COLORS = {
   directional_perps: "#4ade80",
@@ -84,69 +92,6 @@ const FAMILY_GUIDE = {
     summary: "Ranks lending markets by observed carry, rewards, and liquidity.",
     execution: "Allocates to the best lending opportunities and can hedge beta.",
     hedge: "Optional perp hedge on the basis root.",
-  },
-};
-
-const METRIC_META = {
-  aggregate_score: {
-    label: "Aggregate Score",
-    formatter: (value) => formatNumber(value, 3),
-    description: "Primary selector metric, computed from the evaluator's selector windows.",
-  },
-  median_sharpe: {
-    label: "Median Sharpe",
-    formatter: (value) => formatNumber(value, 3),
-    description: "Median Sharpe across the selector windows.",
-  },
-  median_cagr: {
-    label: "Median CAGR",
-    formatter: (value) => formatPercent(value),
-    description: "Median annualized return across the selector windows.",
-  },
-  median_total_return: {
-    label: "Median Return",
-    formatter: (value) => formatPercent(value),
-    description: "Median total return across the selector windows.",
-  },
-  pre_audit_canonical_total_return: {
-    label: "Pre-Audit Return",
-    formatter: (value) => formatPercent(value),
-    description: "Canonical total return measured only up to the audit boundary.",
-  },
-  median_calmar: {
-    label: "Median Calmar",
-    formatter: (value) => formatNumber(value, 3),
-    description: "Median Calmar across the selector windows.",
-  },
-  validation_total_return: {
-    label: "Validation Return",
-    formatter: (value) => formatPercent(value),
-    description: "Out-of-sample total return across the validation slices used during selection.",
-  },
-  validation_sharpe: {
-    label: "Validation Sharpe",
-    formatter: (value) => formatNumber(value, 3),
-    description: "Out-of-sample Sharpe across the validation slices used during selection.",
-  },
-  validation_cagr: {
-    label: "Validation CAGR",
-    formatter: (value) => formatPercent(value),
-    description: "Out-of-sample annualized return across the validation slices used during selection.",
-  },
-  audit_total_return: {
-    label: "Audit Return",
-    formatter: (value) => formatPercent(value),
-    description: "Final untouched out-of-sample total return on the audit slice.",
-  },
-  audit_sharpe: {
-    label: "Audit Sharpe",
-    formatter: (value) => formatNumber(value, 3),
-    description: "Final untouched out-of-sample Sharpe on the audit slice.",
-  },
-  audit_cagr: {
-    label: "Audit CAGR",
-    formatter: (value) => formatPercent(value),
-    description: "Final untouched out-of-sample annualized return on the audit slice.",
   },
 };
 
@@ -369,8 +314,9 @@ function renderScope(experiments) {
   }
   const runSubtitle = document.getElementById("runSubtitle");
   if (runSubtitle && selectedRun) {
+    const llmLabel = llmIdentity(selectedRun.llm_provider, selectedRun.llm_model);
     runSubtitle.textContent =
-      `${TRACK_LABELS[selectedRun.track] || selectedRun.track || "Unknown Track"} • ${selectedRun.agent_label || "unknown"} • ${selectedRun.run_kind || "harness"}`;
+      `${TRACK_LABELS[selectedRun.track] || selectedRun.track || "Unknown Track"} • ${selectedRun.agent_label || "unknown"} • ${selectedRun.run_kind || "harness"}${llmLabel !== "n/a" ? ` • ${llmLabel}` : ""}`;
   }
 }
 

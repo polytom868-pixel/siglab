@@ -19,6 +19,7 @@ from wayfinder_autolab.benchmark import (
 from wayfinder_autolab.data import MarketDataProvider, ParquetLake
 from wayfinder_autolab.dashboard import run_dashboard_server
 from wayfinder_autolab.evaluator import ResearchEvaluator
+from wayfinder_autolab.io_utils import write_json
 from wayfinder_autolab.live import LivePromotionManager
 from wayfinder_autolab.llm import KimiClient
 from wayfinder_autolab.models import CandidateGraph
@@ -38,6 +39,15 @@ from wayfinder_autolab.orchestration.trials import (
     summarize_return_attribution,
 )
 from wayfinder_autolab.research import HypothesisSandbox, WebResearcher
+from wayfinder_autolab.run_config import (
+    lineage_scope_kwargs as _lineage_scope_kwargs,
+    load_seed_candidates_for_run as _load_seed_candidates_for_run,
+    override_seed_candidate_symbols as _override_seed_candidate_symbols,
+    parse_symbol_override as _parse_symbol_override,
+    resolve_memory_scope as _resolve_memory_scope,
+    resolve_resume_run as _resolve_resume_run,
+    validate_symbol_override as _validate_symbol_override,
+)
 from wayfinder_autolab.search import (
     CandidateMutator,
     LineageStore,
@@ -67,6 +77,11 @@ def main() -> None:
         help="Comma-separated family list to run within a single track.",
     )
     run_parser.add_argument(
+        "--resume-run",
+        default=None,
+        help="Resume an existing run session by run_session_id and continue from the next iteration.",
+    )
+    run_parser.add_argument(
         "--burn-in-iterations",
         type=int,
         default=0,
@@ -83,6 +98,17 @@ def main() -> None:
         choices=["run_local", "track_global"],
         default=None,
         help="Whether planner/search memory is isolated to this run or shared across the whole track.",
+    )
+    run_parser.add_argument(
+        "--symbols",
+        default=None,
+        help="Comma-separated basis symbols to seed the run with. Cross-sectional families use the full list; pair families use the first two symbols.",
+    )
+    run_parser.add_argument(
+        "--use-historical-seeds",
+        action="store_true",
+        default=None,
+        help="Opt in to replacing static family seeds with the best historical artifact-backed family seeds.",
     )
     run_parser.add_argument("--skip-llm", action="store_true")
     run_parser.add_argument("--agent-label", default="autolab_harness")
@@ -181,21 +207,6 @@ def main() -> None:
     if args.command == "benchmark-status":
         benchmark_status_command(args)
         return
-
-
-def _resolve_memory_scope(*, explicit: str | None, default: str | None) -> str:
-    scope = str(explicit or default or "run_local").strip().lower()
-    if scope not in {"run_local", "track_global"}:
-        return "run_local"
-    return scope
-
-
-def _lineage_scope_kwargs(*, memory_scope: str, run_session_id: str) -> dict[str, str]:
-    if memory_scope == "track_global":
-        return {}
-    return {"run_session_id": run_session_id}
-
-
 def _promotion_eligible(
     *,
     summary: dict[str, Any],
@@ -222,17 +233,30 @@ async def run_command(args: argparse.Namespace) -> None:
     _require_wayfinder_config(settings)
     settings.ensure_runtime_directories()
     selected_families = _parse_family_scope(args.family, args.families)
+    custom_symbols = _parse_symbol_override(getattr(args, "symbols", None))
+    resume_run_id = str(getattr(args, "resume_run", "") or "").strip() or None
+    use_historical_seeds = (
+        bool(getattr(args, "use_historical_seeds"))
+        if getattr(args, "use_historical_seeds", None) is not None
+        else bool(getattr(settings, "use_historical_seeds", False))
+    )
+    if resume_run_id and selected_families:
+        raise SystemExit("--resume-run cannot be combined with --family/--families")
     memory_scope = _resolve_memory_scope(
         explicit=getattr(args, "memory_scope", None),
         default=getattr(settings, "memory_scope", "run_local"),
     )
     if selected_families and args.track == "all":
         raise SystemExit("--family/--families require a single --track value")
-    if args.track == "all":
+    if args.track == "all" and not resume_run_id:
         raise SystemExit("Workspace-flow phase 1 supports only --track directional_perps")
 
     lake = ParquetLake(settings.data_lake_dir)
     provider = MarketDataProvider(settings, lake)
+    custom_symbols = await _validate_symbol_override(
+        provider=provider,
+        custom_symbols=custom_symbols,
+    )
     lineage = LineageStore(settings.lineage_db_path)
     kimi = KimiClient(settings)
     web_researcher = WebResearcher(settings, lake)
@@ -273,23 +297,74 @@ async def run_command(args: argparse.Namespace) -> None:
         if args.track == "all"
         else [canonical_track_name(args.track) or args.track]
     )
+    resume_info: dict[str, Any] | None = None
+    if resume_run_id is not None:
+        resume_info = _resolve_resume_run(
+            settings=settings,
+            run_session_id=resume_run_id,
+        )
+        resume_track = str(resume_info.get("track") or "")
+        if args.track != "all" and tracks != [resume_track]:
+            raise SystemExit(
+                f"--track {args.track!r} does not match resumed run track `{resume_track}`"
+            )
+        tracks = [resume_track]
+        if getattr(args, "memory_scope", None) is not None and memory_scope != resume_info["memory_scope"]:
+            raise SystemExit(
+                f"--memory-scope {memory_scope!r} does not match resumed run memory scope `{resume_info['memory_scope']}`"
+            )
+        resume_symbols = list(resume_info.get("custom_symbols") or [])
+        if custom_symbols is not None and custom_symbols != resume_symbols:
+            raise SystemExit(
+                f"--symbols {custom_symbols!r} do not match resumed run symbols `{resume_symbols}`"
+            )
+        custom_symbols = resume_symbols or None
+        if (
+            getattr(args, "use_historical_seeds", None) is not None
+            and use_historical_seeds != bool(resume_info.get("use_historical_seeds"))
+        ):
+            raise SystemExit(
+                "--use-historical-seeds does not match resumed run historical seed setting"
+            )
+        use_historical_seeds = bool(resume_info.get("use_historical_seeds"))
+        memory_scope = str(resume_info["memory_scope"])
+        if args.burn_in_iterations > 0:
+            raise SystemExit("--resume-run cannot be combined with --burn-in-iterations")
     if tracks != ["directional_perps"]:
         raise SystemExit("Workspace-flow phase 1 supports only --track directional_perps")
     population_size = args.population_size or settings.population_size
-    run_session_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    workspace_session = workspace_builder.initialize_session(
-        track="directional_perps",
-        run_session_id=run_session_id,
-        family_scope=selected_families,
-        memory_scope=memory_scope,
-    )
+    run_session_id = resume_run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    if resume_info is None:
+        workspace_session = workspace_builder.initialize_session(
+            track="directional_perps",
+            run_session_id=run_session_id,
+            family_scope=selected_families,
+            memory_scope=memory_scope,
+            custom_symbols=custom_symbols,
+            use_historical_seeds=use_historical_seeds,
+        )
+        next_iteration = 1
+    else:
+        selected_families = list(resume_info.get("families") or []) or None
+        workspace_session = workspace_builder.resume_session(
+            track="directional_perps",
+            run_session_id=run_session_id,
+            families=list(selected_families or mutator._allowed_families("directional_perps", family=None)),
+            memory_scope=memory_scope,
+            custom_symbols=custom_symbols,
+            use_historical_seeds=use_historical_seeds,
+        )
+        next_iteration = int(resume_info.get("next_iteration") or 1)
+        print(
+            f"[run] resuming `{run_session_id}` from iteration {next_iteration} "
+            f"memory_scope={memory_scope}"
+        )
     workspace_hooks = WorkspaceHooks(
         builder=workspace_builder,
         session=workspace_session,
     )
 
     try:
-        next_iteration = 1
         if args.burn_in_iterations > 0:
             print(f"[run] starting burn-in phase iterations={args.burn_in_iterations}")
             next_iteration = await _run_directional_perps_iterations(
@@ -316,6 +391,8 @@ async def run_command(args: argparse.Namespace) -> None:
                 optimizer_runner=optimizer_runner,
                 reflector_runner=reflector_runner,
                 memory_scope=memory_scope,
+                custom_symbols=custom_symbols,
+                use_historical_seeds=use_historical_seeds,
             )
         next_iteration = await _run_directional_perps_iterations(
             settings=settings,
@@ -341,6 +418,8 @@ async def run_command(args: argparse.Namespace) -> None:
             optimizer_runner=optimizer_runner,
             reflector_runner=reflector_runner,
             memory_scope=memory_scope,
+            custom_symbols=custom_symbols,
+            use_historical_seeds=use_historical_seeds,
         )
     finally:
         await web_researcher.close()
@@ -372,6 +451,8 @@ async def _run_directional_perps_iterations(
     optimizer_runner: OptunaOptimizerRunner,
     reflector_runner: ReflectionRunner,
     memory_scope: str,
+    custom_symbols: list[str] | None,
+    use_historical_seeds: bool,
 ) -> int:
     iteration_iter = count(start_iteration) if iterations == 0 else range(start_iteration, start_iteration + iterations)
     last_iteration = start_iteration
@@ -384,7 +465,13 @@ async def _run_directional_perps_iterations(
             memory_scope=memory_scope,
             run_session_id=run_session_id,
         )
-        seed_candidates = mutator.load_seed_candidates(track, family=family_scope)
+        seed_candidates = _load_seed_candidates_for_run(
+            mutator=mutator,
+            track=track,
+            family_scope=family_scope,
+            custom_symbols=custom_symbols,
+            use_historical_seeds=use_historical_seeds,
+        )
         recent_rows = lineage.recent(track, limit=500, **scope_kwargs)
         if skip_llm:
             parent = pick_deterministic_parent(
@@ -417,6 +504,8 @@ async def _run_directional_perps_iterations(
             "llm_phase": not bool(skip_llm),
             "force_novelty": False,
             "memory_scope": memory_scope,
+            "custom_symbols": list(custom_symbols or []),
+            "use_historical_seeds": bool(use_historical_seeds),
         }
         provider.begin_iteration_bundle(track=track, parent=parent)
         try:
@@ -478,6 +567,8 @@ async def _run_directional_perps_iterations(
                     lineage=lineage,
                     mutator=mutator,
                     run_session_id=scope_kwargs.get("run_session_id"),
+                    custom_symbols=custom_symbols,
+                    use_historical_seeds=use_historical_seeds,
                 )
                 workspace_builder.store_evidence_cache(
                     session=workspace_session,
@@ -1132,7 +1223,7 @@ def _write_artifact(
     target_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     target = target_dir / f"{timestamp}_{evaluation['candidate_hash']}.json"
-    target.write_text(json.dumps(evaluation, indent=2))
+    write_json(target, evaluation)
     return target
 
 
@@ -1252,6 +1343,8 @@ def _base_candidate_payload_for_family(
     lineage: LineageStore,
     mutator: CandidateMutator,
     run_session_id: str | None = None,
+    custom_symbols: list[str] | None = None,
+    use_historical_seeds: bool = False,
 ) -> dict[str, Any]:
     family_rows = lineage.dashboard_rows(track=track, family=family, run_session_id=run_session_id)
     if family_rows:
@@ -1266,11 +1359,17 @@ def _base_candidate_payload_for_family(
         )
         return dict(family_rows[0].get("candidate") or {})
     if parent.family == family:
-        return parent.canonical_dict()
-    seed_candidates = mutator.load_seed_candidates(track, family=family)
+        return _override_seed_candidate_symbols(parent, custom_symbols).canonical_dict()
+    seed_candidates = _load_seed_candidates_for_run(
+        mutator=mutator,
+        track=track,
+        family_scope=family,
+        custom_symbols=custom_symbols,
+        use_historical_seeds=use_historical_seeds,
+    )
     if seed_candidates:
         return seed_candidates[0].canonical_dict()
-    return parent.canonical_dict()
+    return _override_seed_candidate_symbols(parent, custom_symbols).canonical_dict()
 
 
 def _motif_audit_streak(
@@ -1803,7 +1902,7 @@ def _write_run_reflection(
     target_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     target = target_dir / f"{timestamp}_{phase_label}.json"
-    target.write_text(json.dumps(reflection, indent=2, ensure_ascii=True))
+    write_json(target, reflection)
     _print_run_reflection(track=track, reflection=reflection)
     return target, reflection
 
