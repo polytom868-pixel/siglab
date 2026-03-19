@@ -142,6 +142,105 @@ class KimiToolCallingTests(unittest.IsolatedAsyncioTestCase):
             "use the tool",
         )
 
+    def test_deepseek_provider_switches_chat_and_reasoner_from_thinking_override(self) -> None:
+        settings = AutolabSettings(
+            root_dir=Path("/tmp"),
+            wayfinder_config_path=Path("/tmp/config.json"),
+            generated_strategy_dir=Path("/tmp/generated_strategies"),
+            data_lake_dir=Path("/tmp"),
+            artifact_dir=Path("/tmp"),
+            live_dir=Path("/tmp/live"),
+            lineage_db_path=Path("/tmp/autolab_test.db"),
+            wayfinder_api_key_override=None,
+            kimi_api_key=None,
+            kimi_model="kimi-k2.5",
+            kimi_base_url="https://api.moonshot.ai/v1",
+            kimi_max_tokens=1024,
+            kimi_temperature=1.0,
+            kimi_top_p=0.95,
+            kimi_timeout_s=30.0,
+            population_size=1,
+            llm_provider="deepseek",
+            deepseek_api_key="sk-test",
+            deepseek_base_url="https://api.deepseek.com",
+            deepseek_model="deepseek-reasoner",
+        )
+        client = KimiClient(settings)
+
+        enabled_payload = client._build_payload(
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=None,
+            tools=[],
+            json_mode=False,
+            thinking_override="enabled",
+        )
+        disabled_payload = client._build_payload(
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=None,
+            tools=[],
+            json_mode=False,
+            thinking_override="disabled",
+        )
+
+        self.assertEqual(client.provider_name, "deepseek")
+        self.assertEqual(enabled_payload["model"], "deepseek-reasoner")
+        self.assertEqual(disabled_payload["model"], "deepseek-chat")
+        self.assertNotIn("thinking", enabled_payload)
+        self.assertNotIn("thinking", disabled_payload)
+
+    def test_openrouter_provider_switches_models_and_uses_headers(self) -> None:
+        settings = AutolabSettings(
+            root_dir=Path("/tmp"),
+            wayfinder_config_path=Path("/tmp/config.json"),
+            generated_strategy_dir=Path("/tmp/generated_strategies"),
+            data_lake_dir=Path("/tmp"),
+            artifact_dir=Path("/tmp"),
+            live_dir=Path("/tmp/live"),
+            lineage_db_path=Path("/tmp/autolab_test.db"),
+            wayfinder_api_key_override=None,
+            kimi_api_key=None,
+            kimi_model="kimi-k2.5",
+            kimi_base_url="https://api.moonshot.ai/v1",
+            kimi_max_tokens=1024,
+            kimi_temperature=1.0,
+            kimi_top_p=0.95,
+            kimi_timeout_s=30.0,
+            population_size=1,
+            llm_provider="openrouter",
+            openrouter_api_key="sk-test",
+            openrouter_base_url="https://openrouter.ai/api/v1",
+            openrouter_model="openai/gpt-4.1-mini",
+            openrouter_reasoning_model="z-ai/glm-5",
+            openrouter_fast_model="openai/gpt-4.1",
+            openrouter_http_referer="https://strategies.wayfinder.ai/",
+            openrouter_title="Wayfinder Autolab",
+        )
+        client = KimiClient(settings)
+
+        enabled_payload = client._build_payload(
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=None,
+            tools=[],
+            json_mode=False,
+            thinking_override="enabled",
+        )
+        disabled_payload = client._build_payload(
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=None,
+            tools=[],
+            json_mode=False,
+            thinking_override="disabled",
+        )
+        headers = client._request_headers()
+
+        self.assertEqual(client.provider_name, "openrouter")
+        self.assertEqual(enabled_payload["model"], "z-ai/glm-5")
+        self.assertEqual(disabled_payload["model"], "openai/gpt-4.1")
+        self.assertNotIn("thinking", enabled_payload)
+        self.assertNotIn("thinking", disabled_payload)
+        self.assertEqual(headers["HTTP-Referer"], "https://strategies.wayfinder.ai/")
+        self.assertEqual(headers["X-Title"], "Wayfinder Autolab")
+
 
 if __name__ == "__main__":
     unittest.main()

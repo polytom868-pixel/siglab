@@ -281,6 +281,8 @@ class DashboardRunSummaryTests(unittest.TestCase):
 
             run = runs_payload["runs"][0]
             self.assertEqual(run["tool_call_count"], 1)
+            self.assertEqual(run["llm_provider"], "kimi")
+            self.assertEqual(run["llm_model"], "kimi-k2.5")
 
     def test_dashboard_includes_active_workspace_run_without_lineage_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -304,6 +306,8 @@ class DashboardRunSummaryTests(unittest.TestCase):
             settings = SimpleNamespace(
                 root_dir=root,
                 artifact_dir=root / "artifacts",
+                llm_provider="deepseek",
+                deepseek_model="deepseek-reasoner",
             )
             app = DashboardApp(
                 settings=settings,
@@ -320,6 +324,8 @@ class DashboardRunSummaryTests(unittest.TestCase):
             self.assertEqual(run["status"], "running")
             self.assertEqual(run["experiment_count"], 0)
             self.assertEqual(run["series_points"], [])
+            self.assertEqual(run["llm_provider"], "deepseek")
+            self.assertEqual(run["llm_model"], "deepseek-reasoner")
 
     def test_dashboard_run_summary_counts_repeat_burn_in_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

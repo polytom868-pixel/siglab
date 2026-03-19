@@ -3,42 +3,15 @@ const HOME_STATE = {
   autoRefreshTimer: null,
 };
 
-const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml } = window.AutolabUi;
-
-const METRIC_META = {
-  aggregate_score: {
-    label: "Aggregate Score",
-    formatter: (value) => formatNumber(value, 3),
-  },
-  median_sharpe: {
-    label: "Median Sharpe",
-    formatter: (value) => formatNumber(value, 3),
-  },
-  median_cagr: {
-    label: "Median CAGR",
-    formatter: (value) => formatPercent(value),
-  },
-  median_total_return: {
-    label: "Median Return",
-    formatter: (value) => formatPercent(value),
-  },
-  pre_audit_canonical_total_return: {
-    label: "Pre-Audit Return",
-    formatter: (value) => formatPercent(value),
-  },
-  median_calmar: {
-    label: "Median Calmar",
-    formatter: (value) => formatNumber(value, 3),
-  },
-  validation_total_return: {
-    label: "Validation Return",
-    formatter: (value) => formatPercent(value),
-  },
-  audit_total_return: {
-    label: "Audit Return",
-    formatter: (value) => formatPercent(value),
-  },
-};
+const {
+  TRACK_LABELS,
+  METRIC_META,
+  formatDateTime,
+  formatNumber,
+  formatPercent,
+  escapeHtml,
+  llmIdentity,
+} = window.AutolabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("refreshButton")?.addEventListener("click", () => refresh());
@@ -188,6 +161,7 @@ function renderRunCards(runs) {
   container.innerHTML = runs
     .map((run) => {
       const seriesSvg = sparklineSvg(run.series_points || [], metricKey);
+      const llmLabel = llmIdentity(run.llm_provider, run.llm_model);
       const statusClass =
         run.status === "promoted" || run.status === "pass" ? "status-pass" : "status-fail";
       return `
@@ -216,6 +190,7 @@ function renderRunCards(runs) {
           <div class="run-card-stats">
             <div><span class="key">Pass / Promoted</span><span>${escapeHtml(`${run.passed_count || 0} / ${run.promoted_count || 0}`)}</span></div>
             <div><span class="key">LLM / Burn-In</span><span>${escapeHtml(`${run.llm_experiment_count || 0} / ${run.deterministic_experiment_count || 0}`)}</span></div>
+            <div><span class="key">LLM</span><span>${escapeHtml(llmLabel)}</span></div>
             <div><span class="key">Best Score</span><span>${escapeHtml(formatNumber(run.best_aggregate_score, 3))}</span></div>
             <div><span class="key">Best Validation</span><span>${escapeHtml(formatPercent(run.best_validation_total_return))}</span></div>
             <div><span class="key">Best Pre-Audit</span><span>${escapeHtml(formatPercent(run.best_pre_audit_canonical_total_return))}</span></div>

@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class MutateMemoryPacketTests(unittest.TestCase):
-    def test_load_seed_candidates_prefers_seedworthy_historical_family_winner(self) -> None:
+    def test_load_seed_candidates_uses_static_seeds_by_default_and_historical_only_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root_dir = Path(temp_dir) / "repo"
             (root_dir / "mutable").mkdir(parents=True, exist_ok=True)
@@ -41,7 +41,11 @@ candidates:
             )
             artifact_dir = Path(temp_dir) / "artifacts"
             (artifact_dir / "directional_perps").mkdir(parents=True, exist_ok=True)
-            settings = SimpleNamespace(root_dir=root_dir, artifact_dir=artifact_dir)
+            settings = SimpleNamespace(
+                root_dir=root_dir,
+                artifact_dir=artifact_dir,
+                use_historical_seeds=False,
+            )
             mutator = CandidateMutator(settings, kimi=SimpleNamespace())
 
             historical_candidate = {
@@ -98,7 +102,15 @@ candidates:
             seeds = mutator.load_seed_candidates("directional_perps")
 
             self.assertEqual(seeds[0].family, "perp_multi_asset_carry")
-            self.assertEqual(seeds[0].hypothesis, "historical carry winner")
+            self.assertEqual(seeds[0].hypothesis, "static carry seed")
+
+            historical_seeds = mutator.load_seed_candidates(
+                "directional_perps",
+                include_historical=True,
+            )
+
+            self.assertEqual(historical_seeds[0].family, "perp_multi_asset_carry")
+            self.assertEqual(historical_seeds[0].hypothesis, "historical carry winner")
 
     def test_row_quality_prefers_positive_pre_audit_strength(self) -> None:
         weak_row = {

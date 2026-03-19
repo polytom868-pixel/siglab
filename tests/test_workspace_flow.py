@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from wayfinder_autolab.models import CandidateGraph
+from wayfinder_autolab.orchestration.contracts import conformance_violations
 from wayfinder_autolab.orchestration.optimizer_runner import OptunaOptimizerRunner
 from wayfinder_autolab.orchestration.planner_runner import ResearchPlannerRunner
 from wayfinder_autolab.orchestration.reflector_runner import ReflectionRunner
@@ -24,6 +25,7 @@ from wayfinder_autolab.tools import (
     open_workspace_file,
     search_features,
     search_workspace,
+    search_workspace_text,
     suggest_feature_set,
 )
 from wayfinder_autolab.workspace import WorkspaceBuilder
@@ -549,7 +551,7 @@ class WorkspaceFlowTests(unittest.TestCase):
                 universe=["BTC", "ETH", "SOL", "HYPE"],
                 bundle_id="bundle-1",
                 arguments={"feature": "relative_carry_z_72h"},
-                result={"ok": True, "signal": "carry"},
+                result={"ok": True, "signal": "carry", "median_spearman": 0.053},
                 tracking_tags=["carry", "probe"],
             )
 
@@ -563,6 +565,17 @@ class WorkspaceFlowTests(unittest.TestCase):
             self.assertTrue(search_result["ok"])
             self.assertGreaterEqual(len(search_result["matches"]), 1)
             self.assertEqual(search_result["matches"][0]["path"], probe_ref)
+
+            text_search = search_workspace_text(
+                workspace_root=session.root,
+                query="median_spearman",
+                path_glob="cards/probes/*.md",
+                limit=5,
+            )
+            self.assertTrue(text_search["ok"])
+            self.assertGreaterEqual(len(text_search["matches"]), 1)
+            self.assertEqual(text_search["matches"][0]["path"], probe_ref)
+            self.assertIn("median_spearman", text_search["matches"][0]["snippets"][0]["snippet"])
 
             open_result = open_workspace_file(
                 workspace_root=session.root,
@@ -790,6 +803,74 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
                 0.000005,
             )
 
+    def test_planner_contract_drops_trade_style_for_cross_sectional_families(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            settings.kimi_timeout_s = 30.0
+            settings.kimi_max_tool_rounds = 5
+            lineage = LineageStore(settings.lineage_db_path)
+
+            class FakeKimi:
+                def __init__(self) -> None:
+                    self.last_trace = {"ok": True}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_text_with_tools(self, **_kwargs: object) -> str:
+                    return """## Diagnosis
+Stay in carry but tilt toward a momentum-flavored ranking.
+
+## Proposed next experiment
+Stay in `perp_multi_asset_carry`.
+trade_style: continuation
+"""
+
+            class FakeHypothesisSandbox:
+                def kimi_tools(self, **_kwargs: object) -> list[object]:
+                    return []
+
+            kimi = FakeKimi()
+            mutator = CandidateMutator(settings, kimi=kimi)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(
+                settings=settings,
+                lineage=lineage,
+                mutator=mutator,
+            )
+            session = builder.initialize_session(
+                track="directional_perps",
+                run_session_id="session-planner-cross-style",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_candidates("directional_perps")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=1,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            runner = ResearchPlannerRunner(
+                settings=settings,
+                kimi=kimi,  # type: ignore[arg-type]
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+                web_researcher=SimpleNamespace(is_configured=False),
+                workspace_builder=builder,
+            )
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    iteration_number=1,
+                    parent=parent,
+                    market_bundle={"bundle_id": "bundle-1"},
+                    iteration_paths=iteration_paths,
+                )
+            )
+            self.assertEqual(result.frontmatter["target_family"], "perp_multi_asset_carry")
+            self.assertIsNone(result.frontmatter["target_trade_style"])
+
     def test_writer_runner_retries_with_validator_feedback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = self._settings(tmp)
@@ -926,7 +1007,9 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
             patch_payload = json.loads(iteration_paths["candidate_patch_path"].read_text())
             self.assertGreaterEqual(patch_payload["change_count"], 1)
             self.assertIn("repair_packet_path", trace["outputs"])
-            self.assertIsNotNone(trace["outputs"]["latest_repair_packet"])
+            self.assertIsNone(trace["outputs"]["repair_packet_path"])
+            self.assertIsNone(trace["outputs"]["latest_repair_packet"])
+            self.assertFalse(iteration_paths["repair_packet_path"].exists())
             self.assertTrue(any(msg["role"] == "user" for msg in trace["conversation_messages"]))
 
     def test_writer_runner_repairs_planner_writer_family_mismatch(self) -> None:
@@ -1146,6 +1229,50 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
             self.assertIn("manifests/regime_catalog.md", trace["inputs"]["default_context_files"])
             self.assertIn("manifests/policy_surface.md", trace["inputs"]["default_context_files"])
             self.assertIn("manifests/features/feature_surface.md", trace["inputs"]["default_context_files"])
+
+    def test_conformance_ignores_must_answer_branch_text_and_prose_feature_mentions(self) -> None:
+        planner_contract = {
+            "target_family": "perp_multi_asset_decision",
+            "must_answer": "Should the search return to `perp_multi_asset_carry` or keep testing decision?",
+            "core_hypothesis": "Co-movement should matter if the gate is causal.",
+            "informative_test": "Test co_movement_72h directly.",
+            "required_features": [],
+        }
+        candidate_payload = {
+            "family": "perp_multi_asset_decision",
+            "features": ["price_return_72h", "funding_72h_mean"],
+            "regime_gates": {},
+            "params": {},
+            "universe": {"basis_groups": ["BTC", "ETH", "SOL", "HYPE"]},
+        }
+        violations = conformance_violations(
+            planner_contract=planner_contract,
+            candidate_payload=candidate_payload,
+            allowed_features=["co_movement_72h", "price_return_72h", "funding_72h_mean"],
+            parent_payload=None,
+        )
+        self.assertEqual(violations, [])
+
+    def test_conformance_ignores_trade_style_for_cross_sectional_families(self) -> None:
+        planner_contract = {
+            "target_family": "perp_multi_asset_carry",
+            "target_trade_style": "continuation",
+            "required_features": [],
+        }
+        candidate_payload = {
+            "family": "perp_multi_asset_carry",
+            "features": ["relative_carry_z_72h", "funding_dispersion_72h"],
+            "regime_gates": {},
+            "params": {},
+            "universe": {"basis_groups": ["BTC", "ETH", "SOL", "HYPE"]},
+        }
+        violations = conformance_violations(
+            planner_contract=planner_contract,
+            candidate_payload=candidate_payload,
+            allowed_features=["relative_carry_z_72h", "funding_dispersion_72h"],
+            parent_payload=None,
+        )
+        self.assertEqual(violations, [])
 
     def test_planner_runner_retries_parse_failures_with_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1670,7 +1797,7 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
             self.assertIsNotNone(result.candidate_payload)
             self.assertEqual(result.candidate_payload["regime_gates"]["entry"][0]["min"], 1e-06)
 
-    def test_writer_runner_rejects_negative_gate_lint_deltas(self) -> None:
+    def test_writer_runner_keeps_negative_gate_lint_deltas_as_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = self._settings(tmp)
             lineage = LineageStore(settings.lineage_db_path)
@@ -1817,10 +1944,23 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
                 )
             )
             trace = json.loads(result.trace_path.read_text())
-            self.assertTrue(any("negative_selector_train_return_delta" in issue for issue in trace["attempts"][0]["hard_issues"]))
+            self.assertFalse(
+                any(
+                    "negative_selector_train_return_delta" in issue
+                    for issue in trace["attempts"][0]["hard_issues"]
+                )
+            )
+            self.assertIn(
+                "negative_selector_train_return_delta",
+                list((trace["attempts"][0]["gate_lint"] or {}).get("warnings") or []),
+            )
+            self.assertIn(
+                "negative_selector_train_sharpe_delta",
+                list((trace["attempts"][0]["gate_lint"] or {}).get("warnings") or []),
+            )
             self.assertEqual(result.candidate_payload["regime_gates"]["entry"][0]["expression"], "funding_dispersion_72h")
 
-    def test_writer_runner_soft_fails_after_unrepaired_gate_lint(self) -> None:
+    def test_writer_runner_retains_negative_gate_lint_warning_without_hard_reject(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = self._settings(tmp)
             lineage = LineageStore(settings.lineage_db_path)
@@ -1935,12 +2075,17 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
                     parent=parent,
                 )
             )
-            self.assertFalse(result.accepted)
-            self.assertIsNotNone(result.failure_reason)
-            self.assertIsNone(result.candidate_path)
             trace = json.loads(result.trace_path.read_text())
-            self.assertFalse(trace["outputs"]["accepted"])
-            self.assertIn("negative_selector_train_sharpe_delta", json.dumps(trace["outputs"]["latest_repair_packet"]))
+            self.assertFalse(
+                any(
+                    "negative_selector_train_sharpe_delta" in issue
+                    for issue in trace["attempts"][0]["hard_issues"]
+                )
+            )
+            self.assertIn(
+                "negative_selector_train_sharpe_delta",
+                json.dumps(trace["attempts"][0]["gate_lint"]),
+            )
 
     def test_reflector_runner_keeps_raw_body_and_backfills_missing_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

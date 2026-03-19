@@ -64,7 +64,7 @@ class _FakeLineage:
     def __init__(self, rows: list[dict]) -> None:
         self._rows = list(rows)
 
-    def recent(self, _track: str, *, limit: int = 500):
+    def recent(self, _track: str, *, limit: int = 500, run_session_id: str | None = None):
         return list(self._rows)[:limit]
 
 

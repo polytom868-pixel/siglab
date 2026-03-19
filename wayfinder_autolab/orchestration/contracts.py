@@ -3,121 +3,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
-REGIME_KEYWORDS = (
-    "trend_strength",
-    "trend_efficiency",
-    "market_volatility",
-    "volatility",
-    "co_movement",
-    "breadth",
-    "corr",
-    "correlation",
-    "dispersion",
-    "funding_dispersion",
-    "funding_level",
+from wayfinder_autolab.strategy_semantics import (
+    MOMENTUM_KEYWORDS,
+    NON_REGIME_ROLES,
+    candidate_feature_roles,
+    dict_or_empty,
+    feature_roles_for_formula,
+    gate_dimensions,
+    motif_signature,
+    normalized_gate_entries,
+    supports_explicit_trade_style,
 )
-
-NON_REGIME_ROLES = (
-    "carry_term_structure",
-    "cross_sectional_core",
-    "trend_or_momentum",
-    "spread_or_residual",
-)
-
-MOMENTUM_KEYWORDS = (
-    "momentum",
-    "return",
-    "ema",
-    "macd",
-    "rsi",
-    "breakout",
-)
-
-RESIDUAL_KEYWORDS = (
-    "residual",
-    "kalman",
-    "pair_ratio",
-    "log_spread",
-    "bollinger",
-    "z_",
-    "zscore",
-    "autocorr",
-    "half_life",
-    "hurst",
-)
-
-
-def _dict_or_empty(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def feature_roles_for_formula(feature: str) -> set[str]:
-    text = str(feature or "").lower()
-    roles: set[str] = set()
-    if any(keyword in text for keyword in ("funding", "carry")):
-        roles.add("core_carry")
-        roles.add("funding")
-    if any(keyword in text for keyword in ("term_structure", "decay")):
-        roles.add("carry_term_structure")
-    if any(keyword in text for keyword in REGIME_KEYWORDS):
-        roles.add("orthogonal_regime")
-    if any(keyword in text for keyword in MOMENTUM_KEYWORDS):
-        roles.add("trend_or_momentum")
-    if any(keyword in text for keyword in RESIDUAL_KEYWORDS):
-        roles.add("spread_or_residual")
-    if text.startswith("pair_") or "asset_1_" in text or "asset_2_" in text:
-        roles.add("pair_state")
-    if "relative_" in text or "breadth_adjusted_" in text:
-        roles.add("cross_sectional_core")
-    return roles
-
-
-def candidate_feature_roles(features: list[str]) -> set[str]:
-    roles: set[str] = set()
-    for feature in features:
-        roles.update(feature_roles_for_formula(feature))
-    return roles
-
-
-def gate_dimensions(regime_gates: dict[str, Any] | None) -> list[str]:
-    dimensions: list[str] = []
-    for gate in list(_dict_or_empty(regime_gates).get("entry") or []):
-        expression = ""
-        if isinstance(gate, dict):
-            expression = str(gate.get("expression") or "")
-        elif isinstance(gate, str):
-            expression = gate
-        if not expression:
-            continue
-        dimension = expression.split("(", 1)[0] if "(" not in expression else expression
-        if "(" in expression:
-            inner = expression.split("(", 1)[1].split(",", 1)[0].split(")", 1)[0]
-            dimension = inner.strip() or expression
-        dimensions.append(dimension.strip())
-    return [dimension for dimension in dimensions if dimension]
-
-
-def _normalized_gate_entries(regime_gates: dict[str, Any] | None) -> list[dict[str, Any]]:
-    entries: list[dict[str, Any]] = []
-    for gate in list(_dict_or_empty(regime_gates).get("entry") or []):
-        if isinstance(gate, str):
-            expression = gate.strip()
-            if expression:
-                entries.append({"expression": expression, "kind": "string"})
-            continue
-        if not isinstance(gate, dict):
-            continue
-        expression = str(gate.get("expression") or "").strip()
-        if not expression:
-            continue
-        normalized: dict[str, Any] = {"expression": expression, "kind": "dict"}
-        if gate.get("min") is not None:
-            normalized["min"] = gate.get("min")
-        if gate.get("max") is not None:
-            normalized["max"] = gate.get("max")
-        entries.append(normalized)
-    return entries
 
 
 def _numeric_equal(left: Any, right: Any) -> bool:
@@ -125,18 +21,6 @@ def _numeric_equal(left: Any, right: Any) -> bool:
         return abs(float(left) - float(right)) <= 1e-12
     except (TypeError, ValueError):
         return left == right
-
-
-def motif_signature(payload: dict[str, Any]) -> str:
-    family = str(payload.get("family") or "")
-    params = dict(payload.get("params") or {})
-    trade_style = str(params.get("trade_style") or "unspecified")
-    features = [str(feature) for feature in list(payload.get("features") or [])]
-    roles = sorted(candidate_feature_roles(features))
-    gate_dims = sorted(gate_dimensions(dict(payload.get("regime_gates") or {})))
-    role_head = "+".join(roles[:4]) or "uncategorized"
-    gate_head = "+".join(gate_dims[:3]) or "no_gates"
-    return f"{family}|{trade_style}|{role_head}|{gate_head}"
 
 
 def has_non_regime_variation(
@@ -161,7 +45,11 @@ def has_non_regime_variation(
                 return True
     parent_params = dict(parent_payload.get("params") or {})
     candidate_params = dict(candidate_payload.get("params") or {})
-    for key in ("long_count", "short_count", "gross_target", "trade_style"):
+    param_keys = ["long_count", "short_count", "gross_target"]
+    family = str(candidate_payload.get("family") or parent_payload.get("family") or "")
+    if supports_explicit_trade_style(family):
+        param_keys.append("trade_style")
+    for key in param_keys:
         if parent_params.get(key) != candidate_params.get(key):
             return True
     parent_universe = dict(parent_payload.get("universe") or {})
@@ -169,32 +57,6 @@ def has_non_regime_variation(
     if list(parent_universe.get("basis_groups") or []) != list(candidate_universe.get("basis_groups") or []):
         return True
     return False
-
-
-def _contract_feature_mentions(
-    *,
-    planner_contract: dict[str, Any],
-    allowed_features: list[str] | None,
-) -> list[str]:
-    allowed = {str(feature).lower(): str(feature) for feature in list(allowed_features or [])}
-    if not allowed:
-        return []
-    required = [str(feature) for feature in list(planner_contract.get("required_features") or []) if str(feature).strip()]
-    if required:
-        return required
-    text_parts = [
-        str(planner_contract.get("must_answer") or ""),
-        str(planner_contract.get("core_hypothesis") or ""),
-        str(planner_contract.get("informative_test") or ""),
-    ]
-    mentions: list[str] = []
-    for token in re.findall(r"\b[a-z][a-z0-9_]{2,}\b", " ".join(text_parts).lower()):
-        if token not in allowed:
-            continue
-        resolved = allowed[token]
-        if resolved not in mentions:
-            mentions.append(resolved)
-    return mentions if len(mentions) == 1 else []
 
 
 def conformance_violations(
@@ -213,7 +75,8 @@ def conformance_violations(
         )
 
     target_trade_style = str(planner_contract.get("target_trade_style") or "").strip()
-    if target_trade_style:
+    trade_style_family = target_family or family
+    if target_trade_style and supports_explicit_trade_style(trade_style_family):
         actual_trade_style = str(dict(candidate_payload.get("params") or {}).get("trade_style") or "").strip()
         if actual_trade_style != target_trade_style:
             violations.append(
@@ -240,10 +103,12 @@ def conformance_violations(
         elif "non_regime_axis" in spec and not any(role in roles for role in NON_REGIME_ROLES):
             violations.append("missing required feature role: non_regime_axis")
 
-    required_features = _contract_feature_mentions(
-        planner_contract=planner_contract,
-        allowed_features=allowed_features,
-    )
+    allowed = {str(feature).lower(): str(feature) for feature in list(allowed_features or [])}
+    required_features = [
+        allowed.get(str(feature).strip().lower(), str(feature).strip())
+        for feature in list(planner_contract.get("required_features") or [])
+        if str(feature).strip()
+    ]
     for feature in required_features:
         if feature.lower() not in feature_values_lower:
             violations.append(f"missing required named feature: `{feature}`")
@@ -264,10 +129,10 @@ def conformance_violations(
         if motif_text == "second pure trend overlay" and trend_feature_count >= 2:
             violations.append("forbidden_motif violated: second pure trend overlay")
 
-    gate_intent = _dict_or_empty(planner_contract.get("gate_intent"))
+    gate_intent = dict_or_empty(planner_contract.get("gate_intent"))
     target_dimension = str(gate_intent.get("target_dimension") or "").strip().lower()
     gate_type = str(gate_intent.get("type") or "").strip().lower()
-    gate_dims = [dimension.lower() for dimension in gate_dimensions(_dict_or_empty(candidate_payload.get("regime_gates")))]
+    gate_dims = [dimension.lower() for dimension in gate_dimensions(dict_or_empty(candidate_payload.get("regime_gates")))]
     required_gate_dimensions = [
         str(value).strip().lower()
         for value in list(planner_contract.get("required_gate_dimensions") or [])
@@ -284,9 +149,9 @@ def conformance_violations(
         if not any(dimension in gate_dim for gate_dim in gate_dims):
             violations.append(f"candidate does not implement required gate dimension `{dimension}`")
 
-    planner_regime_gates = _dict_or_empty(planner_contract.get("planner_regime_gates"))
-    expected_gate_entries = _normalized_gate_entries(planner_regime_gates)
-    actual_gate_entries = _normalized_gate_entries(_dict_or_empty(candidate_payload.get("regime_gates")))
+    planner_regime_gates = dict_or_empty(planner_contract.get("planner_regime_gates"))
+    expected_gate_entries = normalized_gate_entries(planner_regime_gates)
+    actual_gate_entries = normalized_gate_entries(dict_or_empty(candidate_payload.get("regime_gates")))
     for expected_gate in expected_gate_entries:
         expression = str(expected_gate.get("expression") or "")
         matches = [
@@ -340,12 +205,6 @@ def conformance_violations(
     if current_motif in banned_motif_signatures:
         violations.append(f"candidate repeats banned failed motif `{current_motif}`")
 
-    must_answer = str(planner_contract.get("must_answer") or "").strip().lower()
-    if must_answer:
-        if "return to `perp_multi_asset_carry`" in must_answer and family != "perp_multi_asset_carry":
-            violations.append("candidate does not answer must_answer: return to perp_multi_asset_carry")
-        if "still evidence for `perp_pair_trade_levered`" in must_answer and target_family == "perp_pair_trade_levered" and family != "perp_pair_trade_levered":
-            violations.append("candidate does not answer must_answer: pair-trade evidence branch")
     return violations
 
 

@@ -9,6 +9,7 @@ from wayfinder_autolab.cli import (
     _agent_safe_memory_packet,
     _agent_safe_recent_results,
     _external_research_from_llm_trace,
+    _resolve_resume_run,
     _require_wayfinder_config,
     _strip_audit_fields,
     _tool_only_external_research,
@@ -20,6 +21,49 @@ from wayfinder_autolab.search.lineage import LineageStore
 
 
 class CliAgentSafetyTests(unittest.TestCase):
+    def test_resolve_resume_run_reads_workspace_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_dir = Path(tmp) / "artifacts"
+            workspace_root = artifact_dir / "directional_perps" / "workspaces" / "session-123"
+            (workspace_root / "meta").mkdir(parents=True, exist_ok=True)
+            (workspace_root / "current").mkdir(parents=True, exist_ok=True)
+            (workspace_root / "iterations" / "0003_parenthash").mkdir(parents=True, exist_ok=True)
+            (workspace_root / "meta" / "session.json").write_text(
+                """
+{
+  "track": "directional_perps",
+  "run_session_id": "session-123",
+  "families": ["perp_multi_asset_carry", "perp_multi_asset_decision"],
+  "memory_scope": "run_local",
+  "custom_symbols": ["XPL", "ENA", "XRP", "BTC"],
+  "use_historical_seeds": true
+}
+""".strip()
+            )
+            (workspace_root / "current" / "SESSION_STATE.json").write_text(
+                """
+{
+  "run_session_id": "session-123",
+  "memory_scope": "run_local",
+  "custom_symbols": ["XPL", "ENA", "XRP", "BTC"],
+  "use_historical_seeds": true,
+  "iteration_number": 3
+}
+""".strip()
+            )
+
+            info = _resolve_resume_run(
+                settings=SimpleNamespace(artifact_dir=artifact_dir),
+                run_session_id="session-123",
+            )
+
+            self.assertEqual(info["track"], "directional_perps")
+            self.assertEqual(info["families"], ["perp_multi_asset_carry", "perp_multi_asset_decision"])
+            self.assertEqual(info["memory_scope"], "run_local")
+            self.assertEqual(info["custom_symbols"], ["XPL", "ENA", "XRP", "BTC"])
+            self.assertTrue(info["use_historical_seeds"])
+            self.assertEqual(info["next_iteration"], 4)
+
     def test_require_wayfinder_config_points_to_example_config(self) -> None:
         settings = AutolabSettings(
             root_dir=Path("/tmp"),

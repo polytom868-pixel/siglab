@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wayfinder_autolab.io_utils import write_json
 from wayfinder_autolab.llm import KimiClient
-from wayfinder_autolab.orchestration.contracts import gate_dimensions, motif_signature
+from wayfinder_autolab.strategy_semantics import gate_dimensions, motif_signature
 from wayfinder_autolab.workspace.cards import dump_frontmatter, parse_frontmatter
 from wayfinder_autolab.workspace.builder import WorkspaceSession
 
@@ -78,30 +79,26 @@ class ReflectionRunner:
         lesson_card_path = session.cards_dir / "reflections" / f"{candidate_hash}.md"
         lesson_card_path.write_text(content)
         trace_path = iteration_paths["reflector_trace_path"]
-        trace_path.write_text(
-            json.dumps(
-                {
-                    "stage": "reflector",
-                    "system_prompt_path": str(
-                        (
-                            self.settings.root_dir
-                            / ".agents"
-                            / "skills"
-                            / "autolab-post-run-reflector"
-                            / "SKILL.md"
-                        ).relative_to(self.settings.root_dir)
-                    ),
-                    "raw_reflection": raw_content,
-                    "frontmatter_parse_error": parse_error,
-                    "saved_frontmatter": frontmatter,
-                    "saved_body": body,
-                    "kimi_trace": dict(self.kimi.last_trace or {}),
-                    "kimi_exchange": dict(self.kimi.last_exchange or {}),
-                },
-                indent=2,
-                ensure_ascii=True,
-                default=str,
-            )
+        write_json(
+            trace_path,
+            {
+                "stage": "reflector",
+                "system_prompt_path": str(
+                    (
+                        self.settings.root_dir
+                        / ".agents"
+                        / "skills"
+                        / "autolab-post-run-reflector"
+                        / "SKILL.md"
+                    ).relative_to(self.settings.root_dir)
+                ),
+                "raw_reflection": raw_content,
+                "frontmatter_parse_error": parse_error,
+                "saved_frontmatter": frontmatter,
+                "saved_body": body,
+                "kimi_trace": dict(self.kimi.last_trace or {}),
+                "kimi_exchange": dict(self.kimi.last_exchange or {}),
+            },
         )
         return ReflectionResult(
             lesson_card_path=lesson_card_path,

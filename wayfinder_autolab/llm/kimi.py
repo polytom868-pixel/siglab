@@ -7,6 +7,13 @@ from typing import Any, Awaitable, Callable, Sequence
 
 import httpx
 
+from wayfinder_autolab.llm_metadata import (
+    resolve_llm_api_key,
+    resolve_llm_base_url,
+    resolve_llm_model,
+    resolve_llm_provider,
+    resolve_llm_thinking_mode,
+)
 from wayfinder_autolab.settings import AutolabSettings
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
@@ -40,7 +47,11 @@ class KimiClient:
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.settings.kimi_api_key)
+        return bool(self._provider_api_key())
+
+    @property
+    def provider_name(self) -> str:
+        return resolve_llm_provider(self.settings)
 
     async def complete_json(
         self,
@@ -73,9 +84,11 @@ class KimiClient:
         thinking_override: str | None = None,
     ) -> dict[str, Any]:
         if not self.is_configured:
-            raise RuntimeError("Kimi API key is not configured")
+            raise RuntimeError(f"{self._provider_label()} API key is not configured")
 
         payload_messages = [{"role": "system", "content": system_prompt}, *list(messages)]
+        selected_model = self._provider_model(thinking_override=thinking_override)
+        thinking_type = self._resolve_thinking_mode(thinking_override)
         payload = self._build_payload(
             messages=payload_messages,
             max_tokens=max_tokens,
@@ -91,8 +104,9 @@ class KimiClient:
         body = await self._chat_completion(payload=payload, timeout_s=timeout_s)
         choice = self._extract_choice(body)
         self.last_trace = {
-            "model": self.settings.kimi_model,
-            "thinking_mode": self._resolve_thinking_mode(thinking_override) or "default",
+            "provider": self.provider_name,
+            "model": selected_model,
+            "thinking_mode": thinking_type or "default",
             "tool_choice": "none",
             "tool_count_available": 0,
             "tool_rounds_used": 0,
@@ -122,8 +136,10 @@ class KimiClient:
         thinking_override: str | None = None,
     ) -> str:
         if not self.is_configured:
-            raise RuntimeError("Kimi API key is not configured")
+            raise RuntimeError(f"{self._provider_label()} API key is not configured")
 
+        selected_model = self._provider_model(thinking_override=thinking_override)
+        thinking_type = self._resolve_thinking_mode(thinking_override)
         payload = self._build_payload(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -142,8 +158,9 @@ class KimiClient:
         body = await self._chat_completion(payload=payload, timeout_s=timeout_s)
         choice = self._extract_choice(body)
         self.last_trace = {
-            "model": self.settings.kimi_model,
-            "thinking_mode": (self.settings.kimi_thinking or "").strip().lower() or "default",
+            "provider": self.provider_name,
+            "model": selected_model,
+            "thinking_mode": thinking_type or "default",
             "tool_choice": "none",
             "tool_count_available": 0,
             "tool_rounds_used": 0,
@@ -173,11 +190,12 @@ class KimiClient:
         thinking_override: str | None = None,
     ) -> str:
         if not self.is_configured:
-            raise RuntimeError("Kimi API key is not configured")
+            raise RuntimeError(f"{self._provider_label()} API key is not configured")
 
         tool_list = list(tools or [])
         tool_map = {tool.name: tool for tool in tool_list}
         thinking_type = self._resolve_thinking_mode(thinking_override)
+        selected_model = self._provider_model(thinking_override=thinking_override)
         self.last_exchange = {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
@@ -189,7 +207,8 @@ class KimiClient:
         ]
         remaining_rounds = max_tool_rounds or self.settings.kimi_max_tool_rounds
         trace: dict[str, Any] = {
-            "model": self.settings.kimi_model,
+            "provider": self.provider_name,
+            "model": selected_model,
             "thinking_mode": thinking_type or "default",
             "tool_choice": "auto" if tool_list else "none",
             "tool_count_available": len(tool_list),
@@ -256,11 +275,12 @@ class KimiClient:
         thinking_override: str | None = None,
     ) -> dict[str, Any]:
         if not self.is_configured:
-            raise RuntimeError("Kimi API key is not configured")
+            raise RuntimeError(f"{self._provider_label()} API key is not configured")
 
         tool_list = list(tools or [])
         tool_map = {tool.name: tool for tool in tool_list}
         thinking_type = self._resolve_thinking_mode(thinking_override)
+        selected_model = self._provider_model(thinking_override=thinking_override)
         self.last_exchange = {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
@@ -272,7 +292,8 @@ class KimiClient:
         ]
         remaining_rounds = max_tool_rounds or self.settings.kimi_max_tool_rounds
         trace: dict[str, Any] = {
-            "model": self.settings.kimi_model,
+            "provider": self.provider_name,
+            "model": selected_model,
             "thinking_mode": thinking_type or "default",
             "tool_choice": "auto" if tool_list else "none",
             "tool_count_available": len(tool_list),
@@ -338,12 +359,14 @@ class KimiClient:
         thinking_override: str | None,
     ) -> dict[str, Any]:
         thinking_type = self._resolve_thinking_mode(thinking_override)
+        provider_name = self.provider_name
+        selected_model = self._provider_model(thinking_override=thinking_override)
         temperature = self.settings.kimi_temperature
         if thinking_type == "disabled":
             temperature = 0.6
 
         payload: dict[str, Any] = {
-            "model": self.settings.kimi_model,
+            "model": selected_model,
             "messages": messages,
             "temperature": temperature,
             "top_p": self.settings.kimi_top_p,
@@ -356,14 +379,16 @@ class KimiClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
-        if thinking_type in {"enabled", "disabled"}:
+        if provider_name == "kimi" and thinking_type in {"enabled", "disabled"}:
             payload["thinking"] = {"type": thinking_type}
         return payload
 
     def _resolve_thinking_mode(self, override: str | None) -> str:
-        if override is not None:
-            return str(override).strip().lower()
-        return (self.settings.kimi_thinking or "").strip().lower()
+        return resolve_llm_thinking_mode(
+            self.settings,
+            provider=self.provider_name,
+            override=override,
+        )
 
     async def _chat_completion(
         self,
@@ -371,21 +396,50 @@ class KimiClient:
         payload: dict[str, Any],
         timeout_s: float | None,
     ) -> dict[str, Any]:
-        headers = {
-            "Authorization": f"Bearer {self.settings.kimi_api_key}",
-            "Content-Type": "application/json",
-        }
-
         async with httpx.AsyncClient(
             timeout=timeout_s or self.settings.kimi_timeout_s
         ) as client:
             response = await client.post(
-                f"{self.settings.kimi_base_url.rstrip('/')}/chat/completions",
-                headers=headers,
+                f"{self._provider_base_url().rstrip('/')}/chat/completions",
+                headers=self._request_headers(),
                 json=payload,
             )
             response.raise_for_status()
             return response.json()
+
+    def _provider_api_key(self) -> str | None:
+        return resolve_llm_api_key(self.settings, provider=self.provider_name)
+
+    def _provider_base_url(self) -> str:
+        return resolve_llm_base_url(self.settings, provider=self.provider_name)
+
+    def _provider_model(self, *, thinking_override: str | None) -> str:
+        return resolve_llm_model(
+            self.settings,
+            provider=self.provider_name,
+            thinking_override=thinking_override,
+        )
+
+    def _request_headers(self) -> dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self._provider_api_key()}",
+            "Content-Type": "application/json",
+        }
+        if self.provider_name == "openrouter":
+            referer = str(getattr(self.settings, "openrouter_http_referer", "") or "").strip()
+            title = str(getattr(self.settings, "openrouter_title", "") or "").strip()
+            if referer:
+                headers["HTTP-Referer"] = referer
+            if title:
+                headers["X-Title"] = title
+        return headers
+
+    def _provider_label(self) -> str:
+        return {
+            "deepseek": "DeepSeek",
+            "openrouter": "OpenRouter",
+            "kimi": "Kimi",
+        }.get(self.provider_name, "LLM")
 
     def _extract_choice(self, body: dict[str, Any]) -> dict[str, Any]:
         choices = body.get("choices") or []

@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from wayfinder_autolab.io_utils import json_safe, load_json_path
+from wayfinder_autolab.llm_metadata import (
+    default_llm_model_display,
+    infer_llm_provider,
+    resolve_llm_provider,
+)
 from wayfinder_autolab.live import LivePromotionManager, promotion_readiness
 from wayfinder_autolab.llm import KimiClient
 from wayfinder_autolab.path_utils import display_path, resolve_path_from_root
@@ -24,23 +30,17 @@ def _is_finite_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(float(value))
 
 
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: _json_safe(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, tuple):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    return value
-
-
 @dataclass
 class DashboardApp:
     settings: AutolabSettings
     lineage: LineageStore
     static_dir: Path
+
+    def _dashboard_llm_provider(self) -> str:
+        return resolve_llm_provider(self.settings)
+
+    def _dashboard_llm_model(self) -> str:
+        return default_llm_model_display(self.settings, provider=self._dashboard_llm_provider())
 
     def _display_path(self, value: str | Path | None) -> str | None:
         return display_path(value, root_dir=self.settings.root_dir)
@@ -76,10 +76,7 @@ class DashboardApp:
         cache_key = str(path)
         if cache_key in cache:
             return cache[cache_key]
-        try:
-            payload = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            payload = None
+        payload = load_json_path(path)
         cache[cache_key] = payload
         return payload
 
@@ -110,10 +107,12 @@ class DashboardApp:
             normalized_call = dict(call or {})
             normalized_call.setdefault("stage", stage_name)
             tool_calls.append(normalized_call)
+        model = trace.get("model")
         return {
             "stage": str(payload.get("stage") or stage_name),
             "trace_path": self._display_path(trace_path),
-            "model": trace.get("model"),
+            "provider": trace.get("provider") or infer_llm_provider(model),
+            "model": model,
             "thinking_mode": trace.get("thinking_mode"),
             "tool_rounds_used": trace.get("tool_rounds_used", 0),
             "tool_count_available": trace.get("tool_count_available", 0),
@@ -156,6 +155,7 @@ class DashboardApp:
                 {
                     "stage": "proposal",
                     "trace_path": self._display_path(tool_trace.get("log_path")),
+                    "provider": trace_core.get("provider") or infer_llm_provider(trace_core.get("model")),
                     "model": trace_core.get("model"),
                     "thinking_mode": trace_core.get("thinking_mode"),
                     "tool_rounds_used": trace_core.get("tool_rounds_used", 0),
@@ -179,6 +179,8 @@ class DashboardApp:
         existing_run_ids: set[str],
     ) -> list[dict[str, Any]]:
         placeholders: list[dict[str, Any]] = []
+        llm_provider = self._dashboard_llm_provider()
+        llm_model = self._dashboard_llm_model()
         artifacts_root = getattr(self.settings, "artifact_dir", self.settings.root_dir / "artifacts")
         if not artifacts_root.exists():
             return placeholders
@@ -234,6 +236,8 @@ class DashboardApp:
                     "best_aggregate_score": None,
                     "best_validation_total_return": None,
                     "best_pre_audit_canonical_total_return": None,
+                    "llm_provider": llm_provider,
+                    "llm_model": llm_model,
                     "status": "running",
                     "series_points": [],
                 }
@@ -349,6 +353,16 @@ class DashboardApp:
             run_experiments = [exp for exp in experiments if str(exp.get("run_session_id") or "") == run_session_id]
             annotated["series_points"] = list(series_by_run.get(run_session_id, []))
             annotated["tool_call_count"] = sum(int(exp.get("tool_call_count") or 0) for exp in run_experiments)
+            primary_trace = next(
+                (
+                    exp.get("tool_trace") or {}
+                    for exp in reversed(run_experiments)
+                    if (exp.get("tool_trace") or {}).get("model")
+                ),
+                {},
+            )
+            annotated["llm_provider"] = str(primary_trace.get("provider") or "") or None
+            annotated["llm_model"] = str(primary_trace.get("model") or "") or None
             annotated_runs.append(annotated)
         existing_run_ids = {str(row.get("run_session_id") or "") for row in annotated_runs}
         annotated_runs.extend(
@@ -598,6 +612,7 @@ class DashboardApp:
             "parent_hash": tool_trace.get("parent_hash"),
             "candidate_count": tool_trace.get("candidate_count"),
             "error": (primary_tool_trace or {}).get("error") or tool_trace.get("error"),
+            "provider": (primary_tool_trace or {}).get("provider"),
             "model": (primary_tool_trace or {}).get("model"),
             "thinking_mode": (primary_tool_trace or {}).get("thinking_mode"),
             "tool_rounds_used": sum(
@@ -831,7 +846,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json_response(self, payload: dict[str, Any], *, send_body: bool) -> None:
-        body = json.dumps(_json_safe(payload), allow_nan=False).encode("utf-8")
+        body = json.dumps(json_safe(payload), allow_nan=False).encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

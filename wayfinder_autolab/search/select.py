@@ -7,41 +7,14 @@ from typing import Any
 
 from wayfinder_autolab.models import CandidateGraph
 from wayfinder_autolab.search.lineage import LineageStore
+from wayfinder_autolab.strategy_semantics import (
+    candidate_feature_roles,
+    gate_dimensions,
+    motif_signature,
+    supports_explicit_trade_style,
+)
 
 _RNG = random.Random()
-_REGIME_KEYWORDS = (
-    "trend_strength",
-    "trend_efficiency",
-    "market_volatility",
-    "volatility",
-    "co_movement",
-    "breadth",
-    "corr",
-    "correlation",
-    "dispersion",
-    "funding_dispersion",
-    "funding_level",
-)
-_MOMENTUM_KEYWORDS = (
-    "momentum",
-    "return",
-    "ema",
-    "macd",
-    "rsi",
-    "breakout",
-)
-_RESIDUAL_KEYWORDS = (
-    "residual",
-    "kalman",
-    "pair_ratio",
-    "log_spread",
-    "bollinger",
-    "z_",
-    "zscore",
-    "autocorr",
-    "half_life",
-    "hurst",
-)
 
 
 def _row_quality(row: dict[str, Any]) -> float:
@@ -106,57 +79,6 @@ def _mixed_softmax_choice(
     return items[-1][0]
 
 
-def _feature_roles(features: list[str]) -> set[str]:
-    roles: set[str] = set()
-    for feature in features:
-        text = str(feature or "").lower()
-        if any(keyword in text for keyword in ("funding", "carry")):
-            roles.add("core_carry")
-            roles.add("funding")
-        if any(keyword in text for keyword in ("term_structure", "decay")):
-            roles.add("carry_term_structure")
-        if any(keyword in text for keyword in _REGIME_KEYWORDS):
-            roles.add("orthogonal_regime")
-        if any(keyword in text for keyword in _MOMENTUM_KEYWORDS):
-            roles.add("trend_or_momentum")
-        if any(keyword in text for keyword in _RESIDUAL_KEYWORDS):
-            roles.add("spread_or_residual")
-        if text.startswith("pair_") or "asset_1_" in text or "asset_2_" in text:
-            roles.add("pair_state")
-        if "relative_" in text or "breadth_adjusted_" in text:
-            roles.add("cross_sectional_core")
-    return roles
-
-
-def _gate_dimensions(regime_gates: dict[str, Any] | None) -> list[str]:
-    dimensions: list[str] = []
-    for gate in list(dict(regime_gates or {}).get("entry") or []):
-        expression = ""
-        if isinstance(gate, dict):
-            expression = str(gate.get("expression") or "")
-        elif isinstance(gate, str):
-            expression = gate
-        if not expression:
-            continue
-        dimension = expression.split("(", 1)[0] if "(" not in expression else expression
-        if "(" in expression:
-            inner = expression.split("(", 1)[1].split(",", 1)[0].split(")", 1)[0]
-            dimension = inner.strip() or expression
-        dimensions.append(dimension.strip())
-    return [dimension for dimension in dimensions if dimension]
-
-
-def _motif_signature(payload: dict[str, Any]) -> str:
-    family = str(payload.get("family") or "")
-    params = dict(payload.get("params") or {})
-    trade_style = str(params.get("trade_style") or "unspecified")
-    roles = sorted(_feature_roles([str(feature) for feature in list(payload.get("features") or [])]))
-    gate_dims = sorted(_gate_dimensions(dict(payload.get("regime_gates") or {})))
-    role_head = "+".join(roles[:4]) or "uncategorized"
-    gate_head = "+".join(gate_dims[:3]) or "no_gates"
-    return f"{family}|{trade_style}|{role_head}|{gate_head}"
-
-
 def _recent_rows(
     lineage: LineageStore,
     track: str,
@@ -164,14 +86,7 @@ def _recent_rows(
     limit: int,
     run_session_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    if run_session_id is None:
-        return lineage.recent(track, limit=limit)
-    try:
-        return lineage.recent(track, limit=limit, run_session_id=run_session_id)
-    except TypeError as exc:
-        if "run_session_id" not in str(exc):
-            raise
-        return lineage.recent(track, limit=limit)
+    return lineage.recent(track, limit=limit, run_session_id=run_session_id)
 
 
 def pick_parent(
@@ -239,26 +154,29 @@ def _is_deterministic_row(row: dict[str, Any]) -> bool:
 
 def _candidate_descriptor(payload: dict[str, Any]) -> dict[str, str]:
     features = [str(feature) for feature in list(payload.get("features") or [])]
-    roles = sorted(_feature_roles(features))
+    roles = sorted(candidate_feature_roles(features))
     role_key = "+".join(roles[:4]) or "uncategorized"
     universe = list(dict(payload.get("universe") or {}).get("basis_groups") or [])
     universe_key = ",".join(str(symbol) for symbol in universe) or "no_universe"
-    gate_key = "+".join(sorted(_gate_dimensions(dict(payload.get("regime_gates") or {})))) or "no_gates"
+    gate_key = "+".join(sorted(gate_dimensions(dict(payload.get("regime_gates") or {})))) or "no_gates"
     params = dict(payload.get("params") or {})
+    family = str(payload.get("family") or "unknown")
     trade_style = str(params.get("trade_style") or "").strip().lower() or "unspecified"
     long_count = params.get("long_count")
     short_count = params.get("short_count")
     if long_count is not None or short_count is not None:
         book_key = f"{long_count or 0}x{short_count or 0}"
-    else:
+    elif supports_explicit_trade_style(family):
         book_key = trade_style
+    else:
+        book_key = "cross_sectional"
     return {
-        "family": str(payload.get("family") or "unknown"),
+        "family": family,
         "universe": universe_key,
         "roles": role_key,
         "gates": gate_key,
         "book": book_key,
-        "motif": _motif_signature(payload),
+        "motif": motif_signature(payload),
     }
 
 
@@ -497,8 +415,8 @@ def rank_deterministic_candidates(
                 )
                 if any(candidate.family == prior.family for prior in selected):
                     family_penalty = 0.15
-                candidate_motif = _motif_signature(candidate.canonical_dict())
-                if any(candidate_motif == _motif_signature(prior.canonical_dict()) for prior in selected):
+                candidate_motif = motif_signature(candidate.canonical_dict())
+                if any(candidate_motif == motif_signature(prior.canonical_dict()) for prior in selected):
                     motif_penalty = 0.2
             scored_items.append(
                 (

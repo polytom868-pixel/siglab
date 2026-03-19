@@ -141,15 +141,49 @@ Then edit `.env` and set the values you need. Important variables:
 WAYFINDER_CONFIG_PATH=./config.json
 WAYFINDER_API_KEY=...
 
+LLM_PROVIDER=kimi
+
 KIMI_API_KEY=...
 KIMI_MODEL=kimi-k2.5
 KIMI_BASE_URL=https://api.moonshot.ai/v1
 KIMI_THINKING=enabled
 
+DEEPSEEK_API_KEY=...
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-reasoner
+
+OPENROUTER_API_KEY=...
+OPENROUTER_KEY=
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=openai/gpt-4.1-mini
+OPENROUTER_REASONING_MODEL=
+OPENROUTER_FAST_MODEL=
+
 AUTOLAB_STRATEGY_EXPORT_DIR=wayfinder_autolab/live/generated_strategies
 
 TAVILY_API_KEY=...
 ```
+
+`LLM_PROVIDER` currently supports:
+
+- `kimi`
+- `deepseek`
+- `openrouter`
+
+Provider routing behavior:
+
+- `kimi` uses `KIMI_MODEL`
+- `deepseek` uses `deepseek-reasoner` for planner/thinking turns and
+  automatically falls back to `deepseek-chat` for writer/reflector turns when
+  `DEEPSEEK_MODEL` is the standard DeepSeek pair
+- `openrouter` can use one model via `OPENROUTER_MODEL`, or split planner vs
+  lighter stages with `OPENROUTER_REASONING_MODEL` and
+  `OPENROUTER_FAST_MODEL`
+
+For `openrouter`, `OPENROUTER_REASONING_MODEL` and `OPENROUTER_FAST_MODEL`
+optionally split planner/reasoning traffic from the lighter writer/reflector
+path. If they are unset, Autolab falls back to `OPENROUTER_MODEL`.
+`OPENROUTER_KEY` is also accepted as an alias for `OPENROUTER_API_KEY`.
 
 `WAYFINDER_CONFIG_PATH` is required for commands that fetch market data, run
 searches, evaluate benchmark candidates, or promote a strategy. Those commands
@@ -166,6 +200,7 @@ Useful optional settings:
 AUTOLAB_POPULATION_SIZE=4
 AUTOLAB_OPTUNA_TRIALS=20
 AUTOLAB_MEMORY_SCOPE=run_local
+AUTOLAB_USE_HISTORICAL_SEEDS=false
 KIMI_MAX_TOOL_ROUNDS=6
 TAVILY_MAX_RESULTS=5
 WEB_EXPLORE_RESULTS_PER_QUERY=2
@@ -174,7 +209,7 @@ WEB_EXPLORE_RESULTS_PER_QUERY=2
 ## Tuning Guide
 
 For the main user-editable levers, see
-`[docs/tuning-guide.md](docs/tuning-guide.md)`.
+[docs/tuning-guide.md](docs/tuning-guide.md).
 
 That guide points to:
 
@@ -217,6 +252,24 @@ Single track / single family:
 poetry run autolab run --track directional_perps --family perp_multi_asset_decision --population-size 1 --iterations 10
 ```
 
+Custom basket:
+
+```bash
+poetry run autolab run --track directional_perps --family perp_multi_asset_carry --symbols ETH,BTC,UNI,AAVE --iterations 5
+```
+
+Resume an existing run:
+
+```bash
+poetry run autolab run --resume-run 20260319T023400Z --iterations 3
+```
+
+Opt in to track-global memory and historical seed warm-starts:
+
+```bash
+poetry run autolab run --track directional_perps --memory-scope track_global --use-historical-seeds
+```
+
 Label a harness run so it is grouped clearly in the dashboard:
 
 ```bash
@@ -246,9 +299,10 @@ Both flows write into the same lineage DB and artifacts, and both can be
 tagged with `agent_label` / `run_label` so the dashboard can compare them at
 the run-session level.
 
-### Internal Kimi Harness
+### Internal LLM Harness
 
-Use this when you want to run the full Autolab planner/writer/reflection loop.
+Use this when you want to run the full Autolab planner/writer/reflection loop
+with the configured provider.
 
 Example:
 
@@ -262,7 +316,8 @@ poetry run autolab run \
 
 Notes:
 
-- this uses the built-in Kimi planner/writer flow
+- this uses the built-in Autolab planner/writer flow with the provider selected
+  by `LLM_PROVIDER`
 - the run will appear in the dashboard as a harness run
 - use a different `--agent-label` if you want to compare multiple harness setups
 
@@ -312,8 +367,8 @@ Each generation:
 
 1. Picks a parent from lineage.
 2. Builds live market context from Delta Lab, Pendle, lending surfaces, and public fallbacks.
-3. Runs optional Tavily-backed web research when `TAVILY_API_KEY` is configured, plus optional Kimi tool use.
-4. Asks Kimi for bounded candidate mutations.
+3. Runs optional Tavily-backed web research when `TAVILY_API_KEY` is configured, plus optional tool use through the selected LLM provider.
+4. Asks the configured LLM for bounded candidate mutations.
 5. Compiles each candidate into prices, target positions, and cashflow inputs.
 6. Runs Wayfinder backtests.
 7. Scores and gates candidates.
@@ -328,6 +383,14 @@ The evaluator uses:
 
 `aggregate_score` is in-sample only. Holdout metrics are recorded separately and
 shown in the dashboard.
+
+Default run behavior:
+
+- planner/search memory is isolated per run with `run_local`
+- historical artifact-backed family seeds are off unless you pass
+  `--use-historical-seeds`
+- `--symbols` overrides the seeded universe for the run and is persisted for
+  resume
 
 ## CLI Reference
 

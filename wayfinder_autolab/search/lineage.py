@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from wayfinder_autolab.models import CandidateGraph
+from wayfinder_autolab.strategy_semantics import inferred_trade_style
 from wayfinder_autolab.track_registry import canonical_track_name, matching_track_names
 
 
@@ -1908,43 +1909,7 @@ class LineageStore:
         return {key: value for key, value in policy.items() if value is not None}
 
     def _trade_style(self, candidate: dict[str, Any]) -> str:
-        params = dict(candidate.get("params") or {})
-        explicit = str(params.get("trade_style") or "").strip().lower()
-        allowed = {
-            "reversion",
-            "pullback",
-            "continuation",
-            "breakout",
-            "hybrid",
-            "carry",
-            "directional",
-            "basket_neutral",
-        }
-        if explicit in allowed:
-            return explicit
-
-        family = str(candidate.get("family") or "").lower()
-        joined = " ".join(
-            [
-                str(candidate.get("hypothesis") or ""),
-                " ".join(str(feature) for feature in candidate.get("features") or []),
-            ]
-        ).lower()
-        if "carry" in family or any(token in joined for token in {"carry", "funding"}):
-            return "carry"
-        if "basket" in family:
-            return "basket_neutral"
-        if "decision" in family:
-            return "directional"
-        if any(token in joined for token in {"breakout", "donchian"}):
-            return "breakout"
-        if any(token in joined for token in {"pullback", "rsi"}):
-            return "pullback"
-        if any(token in joined for token in {"reversion", "mean reversion", "residual", "bollinger", "z_"}):
-            return "reversion"
-        if any(token in joined for token in {"momentum", "trend", "continuation", "macd"}):
-            return "continuation"
-        return "hybrid"
+        return inferred_trade_style(candidate)
 
     def _diagnostic_tags(
         self,
