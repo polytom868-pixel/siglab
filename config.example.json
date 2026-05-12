@@ -1,6 +1,6 @@
 {
   "system": {
-    "api_base_url": "https://strategies.wayfinder.ai/api/v1",
+    "api_base_url": "https://api.sosovalue.com/v1",
     "api_key": ""
   }
 }
