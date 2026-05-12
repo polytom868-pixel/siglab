@@ -1,0 +1,45 @@
+track: trend_signals
+family: perp_multi_asset_carry
+hypothesis: Lower max weight (0.3) and tighter rebalance (0.025) to reduce concentration
+  risk and improve diversification across carry positions.
+neutrality_basis: none
+features:
+- funding_168h_mean
+- funding_72h_mean
+- funding_accel_24h
+- funding_carry_to_vol
+- funding_flip_prob_14d
+- realized_vol_168h
+universe:
+  basis_groups:
+  - BTC
+  - ETH
+  - SOL
+  - HYPE
+  chains: []
+  max_symbols: 4
+  lookback_days: 365
+  interval: 1h
+  min_liquidity_usd: 250000.0
+  min_volume_usd_24h: 25000.0
+  min_days_to_expiry: 7
+  max_days_to_expiry: 180
+risk:
+  max_asset_weight: 0.3
+  max_chain_weight: 1.0
+  rebalance_threshold: 0.025
+  roll_days_before_expiry: 5
+  max_leverage: 1.0
+regime_gates:
+  entry:
+  - expression: market_volatility_168h
+    min: 0.007
+  exit_on_break: true
+params:
+  gross_target: 1.0
+  long_count: 3
+  long_enabled: true
+  min_abs_score: 0.14
+  short_count: 1
+  short_enabled: true
+
