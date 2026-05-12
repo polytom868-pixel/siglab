@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "wayfinder-autolab"
+name = "siglab"
 version = "0.1.0"
-description = "Autonomous strategy search on top of Wayfinder backtesting"
-authors = ["Wayfinder Foundation"]
+description = "On-chain signal discovery loop powered by SoSoValue and SoDEX"
+authors = ["SigLab Builder"]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "wayfinder_autolab" }]
+packages = [{ include = "siglab" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -15,10 +15,10 @@ pandas = "^2.2.0"
 pyarrow = "^20.0.0"
 pyyaml = "^6.0.2"
 optuna = "^4.5.0"
-wayfinder-paths = { git = "https://github.com/WayfinderFoundation/wayfinder-paths-sdk.git", branch = "main" }
+# SoSoValue API client — install separately or via pip
 
 [tool.poetry.scripts]
-autolab = "wayfinder_autolab.cli:main"
+siglab = "siglab.cli:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
