@@ -33,7 +33,7 @@ High-impact flags:
 - `--population-size`: spec count per iteration in the non-workspace path
 - `--memory-scope`: `session_local` or `track_shared`
 - `--skip-llm`: deterministic/no-LLM mode
-- `--runner-label`: label the run in lineage and the dashboard
+- `--runner-label`: label the run in ancestry and the dashboard
 
 ### `.env`
 
@@ -136,3 +136,4 @@ The editable source-of-truth files for users are:
 - [`mutable/indicator_lib.dsl`](../mutable/indicator_lib.dsl)
 - [`mutable/indicator_lib.yaml`](../mutable/indicator_lib.yaml)
 - [`mutable/research_log.md`](../mutable/research_log.md)
+
