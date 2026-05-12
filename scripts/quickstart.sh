@@ -14,8 +14,8 @@ RUN_INSTALL=1
 LAUNCH_DASHBOARD=1
 NON_INTERACTIVE=0
 
-WAYFINDER_API_KEY_VALUE="${WAYFINDER_API_KEY:-}"
-KIMI_API_KEY_VALUE="${KIMI_API_KEY:-}"
+SOSOVALUE_API_KEY_VALUE="${SOSOVALUE_API_KEY:-}"
+CLAUDE_API_KEY_VALUE="${CLAUDE_API_KEY:-}"
 TAVILY_API_KEY_VALUE="${TAVILY_API_KEY:-}"
 
 usage() {
@@ -25,8 +25,8 @@ Usage: ./scripts/quickstart.sh [options]
 Creates local config files, optionally installs dependencies, and starts the dashboard.
 
 Options:
-  --wayfinder-api-key KEY   Set WAYFINDER_API_KEY in .env
-  --kimi-api-key KEY        Set KIMI_API_KEY in .env
+  --sosovalue-api-key KEY   Set SOSOVALUE_API_KEY in .env
+  --claude-api-key KEY      Set CLAUDE_API_KEY in .env
   --tavily-api-key KEY      Set TAVILY_API_KEY in .env
   --host HOST               Dashboard host (default: 127.0.0.1)
   --port PORT               Dashboard port (default: 8765)
@@ -36,18 +36,18 @@ Options:
   -h, --help                Show this help
 
 You can also provide the keys through environment variables instead of flags:
-  WAYFINDER_API_KEY, KIMI_API_KEY, TAVILY_API_KEY
+  SOSOVALUE_API_KEY, CLAUDE_API_KEY, TAVILY_API_KEY
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --wayfinder-api-key)
-      WAYFINDER_API_KEY_VALUE="${2:-}"
+    --sosovalue-api-key)
+      SOSOVALUE_API_KEY_VALUE="${2:-}"
       shift 2
       ;;
-    --kimi-api-key)
-      KIMI_API_KEY_VALUE="${2:-}"
+    --claude-api-key)
+      CLAUDE_API_KEY_VALUE="${2:-}"
       shift 2
       ;;
     --tavily-api-key)
@@ -109,6 +109,7 @@ ensure_templates() {
       cat >"$CONFIG_FILE" <<'EOF'
 {
   "system": {
+    "api_base_url": "https://api.sosovalue.com/v1",
     "api_key": ""
   }
 }
@@ -160,14 +161,14 @@ upsert_env_if_provided() {
 
 ensure_templates
 
-prompt_secret_if_empty WAYFINDER_API_KEY_VALUE "Wayfinder API key"
-prompt_secret_if_empty KIMI_API_KEY_VALUE "Kimi API key"
+prompt_secret_if_empty SOSOVALUE_API_KEY_VALUE "SoSoValue API key"
+prompt_secret_if_empty CLAUDE_API_KEY_VALUE "Claude API key"
 prompt_secret_if_empty TAVILY_API_KEY_VALUE "Tavily API key"
 
-upsert_env_value "WAYFINDER_CONFIG_PATH" "./config.json"
-upsert_env_value "AUTOLAB_STRATEGY_EXPORT_DIR" "wayfinder_autolab/live/generated_strategies"
-upsert_env_if_provided "WAYFINDER_API_KEY" "$WAYFINDER_API_KEY_VALUE"
-upsert_env_if_provided "KIMI_API_KEY" "$KIMI_API_KEY_VALUE"
+upsert_env_value "SOSOVALUE_CONFIG_PATH" "./config.json"
+upsert_env_value "SIGLAB_AGENT_DEPLOY_DIR" "siglab/live/deployed_agents"
+upsert_env_if_provided "SOSOVALUE_API_KEY" "$SOSOVALUE_API_KEY_VALUE"
+upsert_env_if_provided "CLAUDE_API_KEY" "$CLAUDE_API_KEY_VALUE"
 upsert_env_if_provided "TAVILY_API_KEY" "$TAVILY_API_KEY_VALUE"
 
 if ! command -v poetry >/dev/null 2>&1; then
@@ -187,5 +188,5 @@ echo "  config.json -> $CONFIG_FILE"
 echo "  dashboard   -> http://$HOST:$PORT/"
 
 if [[ "$LAUNCH_DASHBOARD" -eq 1 ]]; then
-  exec poetry run autolab dashboard --host "$HOST" --port "$PORT"
+  exec poetry run siglab dashboard --host "$HOST" --port "$PORT"
 fi

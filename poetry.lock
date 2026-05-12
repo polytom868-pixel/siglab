@@ -3990,9 +3990,9 @@ socks = ["pysocks (>=1.5.6,!=1.5.7,<2.0)"]
 zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 
 [[package]]
-name = "wayfinder-paths"
+name = "sosovalue-paths"
 version = "0.8.0"
-description = "Wayfinder Path: strategies and adapters"
+description = "SoSoValue Path: strategies and adapters"
 optional = false
 python-versions = "^3.12"
 groups = ["main"]
@@ -4019,7 +4019,7 @@ web3 = "^7.13.0"
 
 [package.source]
 type = "git"
-url = "https://github.com/WayfinderFoundation/wayfinder-paths-sdk.git"
+url = "https://github.com/sosovalue/sosovalue-paths-sdk.git"
 reference = "main"
 resolved_reference = "a789e2d30d1f1ac540a859ee6d2587649f066cc6"
 
