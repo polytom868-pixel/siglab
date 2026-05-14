@@ -59,6 +59,28 @@ def has_non_regime_variation(
     return False
 
 
+def has_policy_variation(
+    *,
+    spec_payload: dict[str, Any],
+    parent_payload: dict[str, Any] | None = None,
+) -> bool:
+    if parent_payload is None:
+        return False
+    parent_params = dict(parent_payload.get("params") or {})
+    spec_params = dict(spec_payload.get("params") or {})
+    for key in [
+        "entry_abs_score",
+        "exit_abs_score",
+        "flip_abs_score",
+        "max_holding_bars",
+        "cooldown_bars",
+        "min_abs_score",
+    ]:
+        if key in spec_params and spec_params.get(key) != parent_params.get(key):
+            return True
+    return False
+
+
 def conformance_violations(
     *,
     planner_contract: dict[str, Any],
@@ -195,6 +217,11 @@ def conformance_violations(
         parent_payload=parent_payload,
     ):
         violations.append("spec does not include the required non-regime axis of variation")
+    if required_variation_axis in {"policy", "policy_control", "persistence"} and not has_policy_variation(
+        spec_payload=spec_payload,
+        parent_payload=parent_payload,
+    ):
+        violations.append("spec does not include the required policy/persistence axis of variation")
 
     banned_motif_signatures = [
         str(value).strip()

@@ -212,6 +212,12 @@ tracks:
           funding_flip_prob_14d: -0.30
           realized_vol_168h: -0.10
       stable_pt_ladder:
+        capabilities:
+          signal_shape: single_asset_cross_sectional
+          execution_profile: ranked_carry
+          diagnostic_adapter: cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: carry
         defaults:
           selection_count: 3
           gross_target: 0.9
@@ -221,6 +227,12 @@ tracks:
           expiry_roll_down: 0.20
           tvl_momentum_30d: 0.10
       pt_yield_rotation:
+        capabilities:
+          signal_shape: single_asset_cross_sectional
+          execution_profile: ranked_carry
+          diagnostic_adapter: cross_sectional
+          policy_schema: ranked_cross_sectional
+          prompt_module: carry
         defaults:
           selection_count: 2
           gross_target: 0.8

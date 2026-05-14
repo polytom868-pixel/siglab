@@ -9,8 +9,8 @@ import pandas as pd
 
 from siglab.evaluator.compile import PAIR_STATEFUL_POLICY_SCHEMA
 from siglab.evaluator.core import ResearchEvaluator
-from siglab.models import SignalSpec, CompiledChild
-from siglab.settings import SiglabConfig
+from siglab.schemas import SignalSpec, CompiledChild
+from siglab.config import SiglabConfig
 
 
 class NextBarBiasTests(unittest.IsolatedAsyncioTestCase):

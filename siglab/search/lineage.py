@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.strategy_semantics import inferred_trade_style
 from siglab.track_registry import canonical_track_name, matching_track_names
 

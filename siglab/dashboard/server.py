@@ -21,8 +21,8 @@ from siglab.llm_metadata import (
 from siglab.live import LiveDeploymentManager, deployment_readiness
 from siglab.llm import ClaudeClient
 from siglab.path_utils import display_path, resolve_path_from_root
-from siglab.search.ancestry import LineageStore
-from siglab.settings import SiglabConfig
+from siglab.search.lineage import LineageStore
+from siglab.config import SiglabConfig
 from siglab.track_registry import canonical_track_name, track_label
 
 
@@ -170,6 +170,67 @@ class DashboardApp:
                 }
             ]
         return []
+
+    def _skill_value_report(self, tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        by_name: dict[str, dict[str, Any]] = {}
+        for call in tool_calls:
+            name = str(call.get("name") or "").strip()
+            if not name:
+                continue
+            row = by_name.setdefault(
+                name,
+                {
+                    "skill_name": name,
+                    "stages": set(),
+                    "invocation_count": 0,
+                    "cost_contribution": 0,
+                    "latency_cost_ms": 0.0,
+                    "token_context_cost": 0,
+                    "value_contribution": "unknown",
+                    "effect_on_output_quality": "unmeasured",
+                    "keep_rate_impact": "unmeasured",
+                    "error_reduction": "unmeasured",
+                    "evidence_quality_effect": "unmeasured",
+                    "classification": "LOW_VALUE",
+                },
+            )
+            row["invocation_count"] += 1
+            row["cost_contribution"] += 1
+            row["latency_cost_ms"] += float(call.get("latency_ms") or call.get("duration_ms") or 0.0)
+            row["token_context_cost"] += int(call.get("context_tokens") or call.get("input_tokens") or call.get("token_count") or 0)
+            stage = str(call.get("stage") or "").strip()
+            if stage:
+                row["stages"].add(stage)
+
+        report: list[dict[str, Any]] = []
+        for name, row in sorted(by_name.items()):
+            if name.startswith("probe_") or name == "compare_intended_vs_frozen_spec":
+                row["value_contribution"] = "direct_train_only_evidence"
+                row["effect_on_output_quality"] = "high"
+                row["error_reduction"] = "high"
+                row["evidence_quality_effect"] = "high"
+                row["classification"] = "HIGH_VALUE"
+            elif name in {"search_features", "suggest_feature_set", "inspect_feature"}:
+                row["value_contribution"] = "feature_surface_grounding"
+                row["effect_on_output_quality"] = "medium"
+                row["evidence_quality_effect"] = "medium"
+                row["classification"] = "HIGH_VALUE"
+            elif name in {"search_workspace", "search_workspace_text", "open_file"}:
+                row["value_contribution"] = "workspace_context_grounding"
+                row["effect_on_output_quality"] = "medium"
+                row["evidence_quality_effect"] = "medium"
+                row["classification"] = "MEDIUM_VALUE"
+            elif name == "think":
+                row["value_contribution"] = "reasoning_scratchpad"
+                row["effect_on_output_quality"] = "low"
+                row["classification"] = "LOW_VALUE"
+            if row["invocation_count"] > 8 and row["classification"] in {"LOW_VALUE", "MEDIUM_VALUE"}:
+                row["classification"] = "NOISY"
+            normalized = dict(row)
+            normalized["stages"] = sorted(row["stages"])
+            normalized["latency_cost_ms"] = round(float(normalized["latency_cost_ms"]), 3)
+            report.append(normalized)
+        return report
 
     def _workspace_run_placeholders(
         self,
@@ -627,6 +688,7 @@ class DashboardApp:
             "stage_count": len(tool_trace_stages),
         }
         experiment["tool_call_count"] = len(aggregated_tool_calls)
+        experiment["skill_value_report"] = self._skill_value_report(aggregated_tool_calls)
         lifecycle_policy = dict(compiled_metadata.get("lifecycle_policy") or {})
         experiment["roll_lifecycle"] = {
             "policy": lifecycle_policy,

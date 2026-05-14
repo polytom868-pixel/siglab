@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from siglab.data.providers import MarketDataProvider
+from siglab.data.feeds import MarketDataProvider
 from siglab.evaluator.compile import (
     PAIR_STATEFUL_POLICY_SCHEMA,
     _build_pair_trade_positions,
@@ -14,9 +14,9 @@ from siglab.evaluator.compile import (
 )
 from siglab.evaluator.gates import evaluate_gates
 from siglab.evaluator.score import serialize_stats, summarize_window_results
-from siglab.models import SignalSpec
-from siglab.settings import SiglabConfig
-from sosovalue_paths.core.backtesting import BacktestConfig, run_backtest
+from siglab.schemas import SignalSpec
+from siglab.config import SiglabConfig
+from siglab.evaluator.backtesting import BacktestConfig, run_backtest
 
 
 class ResearchEvaluator:

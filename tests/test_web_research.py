@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.research.web import WebResearcher, _compact_text, _html_to_text
-from siglab.settings import SiglabConfig
+from siglab.config import SiglabConfig
 
 
 class WebResearchTests(unittest.TestCase):

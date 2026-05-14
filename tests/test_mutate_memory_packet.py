@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from siglab.search.mutate import SpecMutator
 from siglab.search.select import _row_quality
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

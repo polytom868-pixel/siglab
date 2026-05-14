@@ -16,9 +16,9 @@ from siglab.families import (
     load_track_family_specs,
 )
 from siglab.llm import ClaudeClient, ClaudeTool
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.search.select import rank_deterministic_specs
-from siglab.settings import SiglabConfig
+from siglab.config import SiglabConfig
 from siglab.track_registry import canonical_track_name, storage_track_name
 
 PAIR_UNIVERSES: list[list[str]] = [
@@ -586,6 +586,7 @@ class SpecMutator:
                 max_tokens=min(self.settings.claude_max_tokens, 4000),
                 timeout_s=max(self.settings.claude_timeout_s, 120.0),
                 max_tool_rounds=max(25, self.settings.claude_max_tool_rounds),
+                stage="writer",
             )
             log_path = self._write_llm_exchange_log(
                 track=track,

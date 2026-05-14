@@ -9,12 +9,9 @@ from typing import Any
 
 from siglab.llm import ClaudeClient
 from siglab.path_utils import resolve_path_from_root
-from siglab.search.ancestry import LineageStore
-from siglab.settings import SiglabConfig
+from siglab.search.lineage import LineageStore
+from siglab.config import SiglabConfig
 from siglab.track_registry import track_label
-from sosovalue_paths.runner.client import RunnerControlClient
-from sosovalue_paths.runner.lifecycle import ensure_daemon_started
-from sosovalue_paths.runner.paths import get_runner_paths
 
 SUPPORTED_DIRECTIONAL_FAMILIES = {
     "perp_multi_asset_decision",
@@ -133,6 +130,13 @@ class LiveDeploymentManager:
             config_path,
             root_dir=self.settings.root_dir,
         )
+        self._preflight_deploy_boundary(
+            resolved_config_path=resolved_config_path,
+            wallet_label=wallet_label,
+            interval_seconds=interval_seconds,
+            dry_run=dry_run,
+            schedule=schedule,
+        )
 
         readiness = deployment_readiness(detail)
         if not readiness["supported"]:
@@ -159,10 +163,6 @@ class LiveDeploymentManager:
         runner_response: dict[str, Any] | None = None
         normalized_job_name = job_name or f"{strategy_name}-update"
         if schedule:
-            if not wallet_label:
-                raise ValueError("wallet_label is required when scheduling a runner job")
-            if interval_seconds is None or interval_seconds <= 0:
-                raise ValueError("interval_seconds must be positive when scheduling a runner job")
             runner_response = self._ensure_runner_job(
                 strategy_name=strategy_name,
                 job_name=normalized_job_name,
@@ -197,6 +197,31 @@ class LiveDeploymentManager:
         )
         self.ancestry.record_deployment(record.to_dict())
         return record
+
+    def _preflight_deploy_boundary(
+        self,
+        *,
+        resolved_config_path: Path,
+        wallet_label: str | None,
+        interval_seconds: int | None,
+        dry_run: bool,
+        schedule: bool,
+    ) -> None:
+        if not resolved_config_path.exists():
+            raise ValueError(f"SoDEX runtime config not found: {resolved_config_path}")
+        if not dry_run:
+            raise ValueError(
+                "Live SoDEX deployment requires a real signed SoDEX runner/client path. "
+                "This build only supports dry-run package export."
+            )
+        if schedule:
+            if not wallet_label:
+                raise ValueError("wallet_label is required when scheduling a runner job")
+            if interval_seconds is None or interval_seconds <= 0:
+                raise ValueError("interval_seconds must be positive when scheduling a runner job")
+            raise ValueError(
+                "Scheduled SoDEX runner jobs require a configured runner client; refusing before writing artifacts"
+            )
 
     async def _finalizer_notes(
         self,
@@ -331,14 +356,14 @@ entrypoint: "{module_path}.strategy.{class_name}"
 permissions:
   policy: |
     (wallet.id == 'FORMAT_WALLET_ID') AND (
-      (action.type == 'hyperliquid_order') OR
-      (action.type == 'hyperliquid_cancel')
+      (action.type == 'sodex_perps_order') OR
+      (action.type == 'sodex_perps_cancel')
     )
 adapters:
   - name: "LEDGER"
     capabilities: ["ledger.read", "ledger.write", "strategy.transactions"]
-  - name: "HYPERLIQUID"
-    capabilities: ["market.read", "market.meta", "market.funding", "market.candles", "order.execute", "order.cancel", "position.manage"]
+  - name: "SODEX_PERPS"
+    capabilities: ["market.read", "perps.symbols", "perps.klines", "perps.state", "order.execute", "order.cancel", "position.manage"]
 '''
         readme = f"""# {strategy_name}
 
@@ -357,6 +382,14 @@ adapters:
 ## Risk Notes
 
 {llm_notes.get("risk_notes") or ""}
+
+## Live Dependency Boundary
+
+This package is generated in dry-run mode unless explicitly configured otherwise.
+Real SoDEX execution requires an operator-provided client that can fetch account
+state, update leverage, place market orders, and satisfy SoDEX signed REST
+requirements externally. The generated runtime exposes `dependency_report()` for
+preflight inspection before any live action.
 """
         (package_dir / "__init__.py").write_text("")
         (package_dir / "strategy.py").write_text(strategy_py)
@@ -373,46 +406,9 @@ adapters:
         wallet_label: str,
         config_path: str,
     ) -> dict[str, Any]:
-        paths = get_runner_paths()
-        ok, info = ensure_daemon_started(
-            paths=paths,
-            tick_seconds=1.0,
-            max_workers=4,
-            max_failures=5,
-            default_timeout_seconds=20 * 60,
-            log_level="INFO",
+        raise RuntimeError(
+            "Scheduled SoDEX runner jobs require a configured runner client; none is available in this build"
         )
-        if not ok:
-            raise RuntimeError(f"Runner failed to start: {info}")
-        client = RunnerControlClient(sock_path=paths.sock_path)
-        payload = {
-            "strategy": strategy_name,
-            "action": "update",
-            "config": str(config_path),
-            "wallet_label": str(wallet_label),
-            "debug": False,
-        }
-        response = client.call(
-            "add_job",
-            {
-                "name": str(job_name),
-                "type": "strategy",
-                "payload": payload,
-                "interval_seconds": int(interval_seconds),
-            },
-        )
-        if not response.get("ok"):
-            response = client.call(
-                "update_job",
-                {
-                    "name": str(job_name),
-                    "interval_seconds": int(interval_seconds),
-                    "payload": payload,
-                },
-            )
-        if not response.get("ok"):
-            raise RuntimeError(f"Runner job registration failed: {response}")
-        return response
 
 
 def _strategy_name(detail: dict[str, Any]) -> str:
@@ -422,7 +418,15 @@ def _strategy_name(detail: dict[str, Any]) -> str:
 
 def _strategy_class_name(strategy_name: str) -> str:
     pieces = [piece for piece in re.split(r"[^A-Za-z0-9]+", strategy_name) if piece]
-    return "".join(piece[:1].upper() + piece[1:] for piece in pieces) + "Strategy"
+    if not pieces:
+        return "SigLabStrategy"
+    normalized = []
+    for index, piece in enumerate(pieces):
+        if index == 0 and piece.lower() == "siglab":
+            normalized.append("SigLab")
+        else:
+            normalized.append(piece[:1].upper() + piece[1:])
+    return "".join(normalized) + "Strategy"
 
 
 def _escape_docstring(value: str) -> str:

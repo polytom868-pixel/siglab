@@ -5,7 +5,7 @@ from typing import Any
 
 from siglab.data import MarketDataProvider
 from siglab.io_utils import read_json_if_exists
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.search.mutate import SpecMutator
 from siglab.strategy_semantics import PAIR_TRADE_FAMILIES
 from siglab.track_registry import canonical_track_name

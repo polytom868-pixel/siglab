@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 
 from siglab.live.exporter import LiveDeploymentManager, deployment_readiness
-from siglab.search.ancestry import LineageStore
-from siglab.settings import SiglabConfig
+from siglab.search.lineage import LineageStore
+from siglab.config import SiglabConfig
 
 
 class LiveExporterTest(unittest.TestCase):
@@ -156,6 +156,9 @@ class LiveExporterTest(unittest.TestCase):
             self.assertTrue((strategy_root / record.strategy_name / "strategy.py").exists())
             self.assertTrue((strategy_root / record.strategy_name / "live_spec.json").exists())
             manifest_text = (strategy_root / record.strategy_name / "manifest.yaml").read_text()
+            self.assertIn("SODEX_PERPS", manifest_text)
+            self.assertIn("sodex_perps_order", manifest_text)
+            self.assertNotIn("HYPERLIQUID", manifest_text)
             self.assertIn(
                 'entrypoint: "siglab.live.deployed_agents.'
                 'siglab_perp_multi_asset_decision_abcd1234abcd1234.strategy.'
@@ -170,11 +173,78 @@ class LiveExporterTest(unittest.TestCase):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             self.assertTrue(hasattr(module, "SigLabPerpMultiAssetDecisionAbcd1234abcd1234Strategy"))
+            readme_text = (strategy_root / record.strategy_name / "README.md").read_text()
+            self.assertIn("Live Dependency Boundary", readme_text)
+            self.assertIn("dependency_report()", readme_text)
 
             stored = ancestry.deployment("abcd1234abcd1234")
             self.assertIsNotNone(stored)
             self.assertEqual(stored["strategy_name"], record.strategy_name)
             self.assertFalse(stored["scheduled"])
+
+    def test_live_deploy_refuses_before_writing_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            strategy_root = root / "siglab" / "live" / "deployed_agents"
+            strategy_root.mkdir(parents=True)
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({"wallets": []}))
+            db_path = root / "ancestry.db"
+            artifact_path = root / "artifact.json"
+            spec = {
+                "track": "trend_signals",
+                "family": "perp_pair_trade_unlevered",
+                "features": ["pair_spread_z_72h"],
+                "universe": {"basis_groups": ["BTC", "ETH"]},
+                "risk": {},
+                "params": {},
+            }
+            summary = {
+                "aggregate_score": 1.0,
+                "liquidation_count": 0,
+                "holdout_available": True,
+                "holdout_total_return": 0.01,
+                "holdout_sharpe": 0.3,
+                "strict_holdout": True,
+                "passed": True,
+            }
+            artifact_path.write_text(json.dumps({"spec": spec, "summary": summary, "canonical_run": {"ok": True}, "compiled_metadata": {"signal_timing": "next_bar"}}))
+            settings = SiglabConfig(
+                root_dir=root,
+                sosovalue_config_path=config_path,
+                generated_strategy_dir=strategy_root,
+                data_lake_dir=root / "lake",
+                artifact_dir=root / "runs",
+                live_dir=root / "live",
+                ancestry_db_path=db_path,
+                sosovalue_api_key_override=None,
+                population_size=1,
+            )
+            settings.ensure_runtime_directories()
+            ancestry = LineageStore(db_path)
+            ancestry.record(
+                evaluation={"spec": spec, "spec_hash": "feedfacefeedface", "summary": summary},
+                parent_hash=None,
+                research_summary={},
+                artifact_path=str(artifact_path),
+            )
+            manager = LiveDeploymentManager(settings, ancestry, claude=None)
+
+            with self.assertRaisesRegex(ValueError, "Live SoDEX deployment requires"):
+                asyncio.run(
+                    manager.deploy(
+                        spec_hash="feedfacefeedface",
+                        wallet_label="operator",
+                        config_path=str(config_path),
+                        interval_seconds=None,
+                        job_name=None,
+                        dry_run=False,
+                        llm_finalize=False,
+                        schedule=False,
+                    )
+                )
+
+            self.assertEqual(list(strategy_root.iterdir()), [])
 
 
 

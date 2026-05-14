@@ -1,0 +1,42 @@
+generated_at: "2026-05-14T00:57:17+01:00"
+purpose: "Map the broader SoSoValue ecosystem without pretending product/protocol documentation is callable API support."
+sources:
+  - "https://sosovalue.gitbook.io/sosovalue-indices"
+  - "https://sosovalue.gitbook.io/sosovalue-indices/sosovalue-index-overview/overview"
+  - "https://sosovalue.gitbook.io/sosovalue-indices/index-general-methodology/index-general-methodology"
+  - "https://sodex.com/documentation/about-valuechain/how-valuechain-works"
+  - "https://sodex.com/documentation/user-guide/faq/how-do-i-add-the-valuechain-network"
+ecosystem:
+  terminal:
+    status: "product-surface"
+    siglab_gap: "No direct Terminal integration or UI panel yet."
+    buildathon_value: "High for demo/product experience; should become an operator panel or guided demo flow."
+  ssi_protocol:
+    status: "official product/protocol docs verified; no callable OpenAPI endpoint verified"
+    facts:
+      - "SSI tokens represent baskets of underlying assets."
+      - "Index methodology includes monthly rebalancing and published constituent/weight updates."
+      - "Products mentioned in docs include MAG7.ssi, MEME.ssi, DEFI.ssi, and USSI."
+      - "Mint/burn is limited to whitelisted liquidity providers; regular users acquire SSI through external AMM pools."
+    siglab_gap: "No on-chain SSI token/index data ingestion, constituent tracking, or Uniswap/chain read path."
+    safe_next_step: "Add read-only chain/index metadata integration only after official contract addresses or data feeds are pinned."
+  sodex:
+    status: "official REST/WebSocket docs verified"
+    siglab_gap: "REST public reads and public WebSocket allBookTicker are implemented; signed live validation and private/account WebSocket streams remain incomplete."
+    safe_next_step: "Validate private/account streams and signed writes only after credentials exist; keep public market streams as read-only evidence sources."
+  valuechain:
+    status: "official infrastructure docs verified"
+    facts:
+      - "ValueChain includes spot and perpetual appchains plus an EVM system chain."
+      - "ValueChain mainnet chain ID documented as 286623."
+      - "RPC URL documented as https://mainnet.valuechain.xyz and currency symbol as SOSO."
+    siglab_gap: "Read-only ValueChain chain-id preflight exists; no SSI/SoDEX account-state bridge."
+    siglab_mapping: "siglab valuechain-preflight"
+    safe_next_step: "Add read-only contract/index metadata probes only after official contract addresses are pinned."
+api_truth:
+  callable_openapi_verified: ["SoSoValue ETF", "SoSoValue Feeds", "SoSoValue listed currencies", "SoDEX REST", "SoDEX public WebSocket"]
+  product_docs_only: ["SoSoValue Indices/SSI", "Terminal", "ValueChain architecture"]
+  forbidden_claims:
+    - "Do not claim SigLab has SSI trading/index integration until chain/contracts or official data endpoints are implemented."
+    - "Do not claim ValueChain execution readiness from docs alone."
+    - "Do not treat SoSoValue product pages as OpenAPI endpoint docs."

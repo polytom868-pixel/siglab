@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from siglab.io_utils import read_json_if_exists, write_json, write_text_if_changed
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.orchestration.trials import summarize_generalization
-from siglab.search.ancestry import LineageStore
+from siglab.search.lineage import LineageStore
 from siglab.search.mutate import SpecMutator
 from siglab.strategy_semantics import (
     NON_REGIME_ROLES,
@@ -168,6 +168,7 @@ class WorkspaceBuilder:
         self._ensure_skill_mirror()
         self._write_session_meta(session)
         self._initialize_stable_files(session)
+        self._seed_evidence_summary(session)
 
     def update_iteration(
         self,
@@ -601,6 +602,7 @@ class WorkspaceBuilder:
                 "- `current/incumbent_spec.yaml`",
                 "- `current/family_incumbents.json`",
                 "- `current/recent_trials.md`",
+                "- `current/evidence_summary.json` (optional run-local cache from latest verified evidence build)",
                 "- `manifests/regime_catalog.md`",
                 "- `manifests/policy_surface.md`",
                 "- `manifests/features/feature_surface.md`",
@@ -647,6 +649,33 @@ class WorkspaceBuilder:
             session.meta_dir,
         ]:
             path.mkdir(parents=True, exist_ok=True)
+
+    def _seed_evidence_summary(self, session: WorkspaceSession) -> None:
+        target = session.current_dir / "evidence_summary.json"
+        if target.exists():
+            return
+        evidence_dir = self.settings.artifact_dir / "evidence"
+        if not evidence_dir.exists():
+            return
+        candidates = sorted(evidence_dir.glob("*.summary.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if not candidates:
+            return
+        source = candidates[0]
+        try:
+            payload = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return
+        try:
+            source_label = str(source.relative_to(self.settings.root_dir))
+        except ValueError:
+            source_label = str(source)
+        payload["seeded_from_global_summary"] = source_label
+        payload["workspace_scope"] = {
+            "track": session.track,
+            "run_session_id": session.run_session_id,
+            "warning": "Seeded snapshot from latest global evidence summary; verify entity/module relevance before using.",
+        }
+        self._write_if_changed(target, json.dumps(payload, indent=2, ensure_ascii=True, sort_keys=True, default=str))
 
     def _write_session_meta(self, session: WorkspaceSession) -> None:
         self._write_if_changed(

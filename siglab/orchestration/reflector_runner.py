@@ -52,13 +52,14 @@ class ReflectionRunner:
         iteration_paths: dict[str, Any],
         evaluation_packet: dict[str, Any],
     ) -> ReflectionResult:
-        system_prompt = (
+        skill_path = (
             self.settings.root_dir
             / ".agents"
             / "skills"
             / "siglab-post-run-reflector"
             / "SKILL.md"
-        ).read_text()
+        )
+        system_prompt = skill_path.read_text() if skill_path.exists() else self._fallback_system_prompt()
         user_prompt = self._build_user_prompt(evaluation_packet=evaluation_packet)
         content = await self.claude.complete_text(
             system_prompt=system_prompt,
@@ -66,6 +67,7 @@ class ReflectionRunner:
             max_tokens=700,
             timeout_s=max(self.settings.claude_timeout_s, 90.0),
             thinking_override="disabled",
+            stage="reflector",
         )
         raw_content = content
         frontmatter, body, parse_error = self._parse_reflection(content)
@@ -84,13 +86,7 @@ class ReflectionRunner:
             {
                 "stage": "reflector",
                 "system_prompt_path": str(
-                    (
-                        self.settings.root_dir
-                        / ".agents"
-                        / "skills"
-                        / "siglab-post-run-reflector"
-                        / "SKILL.md"
-                    ).relative_to(self.settings.root_dir)
+                    (skill_path.relative_to(self.settings.root_dir) if skill_path.exists() else Path("embedded/fallback-reflector-prompt.md"))
                 ),
                 "raw_reflection": raw_content,
                 "frontmatter_parse_error": parse_error,
@@ -104,6 +100,16 @@ class ReflectionRunner:
             lesson_card_path=lesson_card_path,
             trace_path=trace_path,
             frontmatter=frontmatter,
+        )
+
+    def _fallback_system_prompt(self) -> str:
+        return "\n".join(
+            [
+                "You are SigLab's post-run reflector.",
+                "Write one short decision memo with YAML frontmatter and a concise body.",
+                "Preserve the most important failure mode, reusable lesson, and next move.",
+                "Avoid generic language; name the exact motif or structural change.",
+            ]
         )
 
     def _parse_reflection(self, content: str) -> tuple[dict[str, Any], str, str | None]:

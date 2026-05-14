@@ -1,0 +1,75 @@
+generated_at: "2026-05-14T00:57:17+01:00"
+source_policy:
+  primary_sources:
+    - "https://sodex.com/documentation/api/api"
+    - "https://sodex.com/documentation/api/rest-v1/sodex-rest-perps-api"
+    - "https://sodex.com/documentation/api/api-rate-limits"
+    - "https://sodex.com/documentation/api/websocket-v1/account-events"
+  implementation_rule: "Unsigned public reads may be live-probed; signed writes must remain dry-run unless real API key name, accountID, nonce store, and signer material are configured."
+base_urls:
+  mainnet_rest:
+    spot: "https://mainnet-gw.sodex.dev/api/v1/spot"
+    perps: "https://mainnet-gw.sodex.dev/api/v1/perps"
+  testnet_rest:
+    spot: "https://testnet-gw.sodex.dev/api/v1/spot"
+    perps: "https://testnet-gw.sodex.dev/api/v1/perps"
+  mainnet_websocket:
+    spot: "wss://mainnet-gw.sodex.dev/ws/spot"
+    perps: "wss://mainnet-gw.sodex.dev/ws/perps"
+  testnet_websocket:
+    spot: "wss://testnet-gw.sodex.dev/ws/spot"
+    perps: "wss://testnet-gw.sodex.dev/ws/perps"
+rate_limits:
+  rest_budget: "1200 weight per fixed 1-minute window per IP"
+  siglab_status: "local process scheduler implemented; distributed multi-process coordination missing"
+auth_and_signing:
+  api_key_model: "EVM address API key signs on behalf of master/sub-account; account data queries need actual accountID."
+  nonce_rule: "nonce is tracked per API key, must be unique, within time window, and larger than the smallest stored high-water nonce"
+  headers: ["Content-Type: application/json", "Accept: application/json", "X-API-Key", "X-API-Sign", "X-API-Nonce"]
+  siglab_status: "dry-run signing path, nonce manager, canonical JSON, payloadHash, EIP-712 typed data and preflight implemented; live signed validation blocked by credentials"
+perps_rest:
+  market_endpoints:
+    - {name: "symbols", method: "GET", path: "/markets/symbols", params: ["symbol?"], auth: "unsigned", weight: 2, siglab_mapping: "SoDEXPublicPerpsClient.symbols", status: "supported-live-probed"}
+    - {name: "coins", method: "GET", path: "/markets/coins", params: ["coin?"], auth: "unsigned", weight: 2, siglab_mapping: "SoDEXPublicPerpsClient.coins", status: "supported-live-probed"}
+    - {name: "tickers", method: "GET", path: "/markets/tickers", params: ["symbol?"], auth: "unsigned", weight: 2, siglab_mapping: "SoDEXPublicPerpsClient.tickers", status: "supported-live-probed"}
+    - {name: "mini tickers", method: "GET", path: "/markets/miniTickers", params: ["symbol?"], auth: "unsigned", weight: 2, siglab_mapping: "SoDEXPublicPerpsClient.mini_tickers", status: "supported-live-probed"}
+    - {name: "mark prices", method: "GET", path: "/markets/mark-prices", params: ["symbol?"], auth: "unsigned", weight: 2, siglab_mapping: "SoDEXPublicPerpsClient.mark_prices", status: "supported-live-probed"}
+    - {name: "book tickers", method: "GET", path: "/markets/bookTickers", params: ["symbol?"], auth: "unsigned", weight: 2, siglab_mapping: "SoDEXPublicPerpsClient.book_tickers", status: "supported-live-probed"}
+    - {name: "order book", method: "GET", path: "/markets/{symbol}/orderbook", params: ["limit? max 1000"], auth: "unsigned", weight: 20, siglab_mapping: "SoDEXPublicPerpsClient.orderbook", status: "supported-live-probed"}
+    - {name: "klines", method: "GET", path: "/markets/{symbol}/klines", params: ["interval required", "startTime?", "endTime?", "limit? max 1000"], auth: "unsigned", weight: 20, siglab_mapping: "SoDEXPublicPerpsClient.klines", status: "supported-live-probed"}
+    - {name: "recent trades", method: "GET", path: "/markets/{symbol}/trades", params: ["limit? max 500"], auth: "unsigned", weight: 20, siglab_mapping: "SoDEXPublicPerpsClient.trades", status: "supported-live-probed"}
+  account_endpoints:
+    - {name: "balances", method: "GET", path: "/accounts/{userAddress}/balances", params: ["accountID?"], auth: "unsigned account read", siglab_mapping: "SoDEXPublicPerpsClient.account_balances", status: "supported-live-probed"}
+    - {name: "open orders", method: "GET", path: "/accounts/{userAddress}/orders", params: ["symbol?", "accountID?"], auth: "unsigned account read", siglab_mapping: "SoDEXPublicPerpsClient.account_orders", status: "supported-live-probed"}
+    - {name: "open positions", method: "GET", path: "/accounts/{userAddress}/positions", params: ["accountID?"], auth: "unsigned account read", siglab_mapping: "SoDEXPublicPerpsClient.account_positions", status: "supported-live-probed"}
+    - {name: "frontend state", method: "GET", path: "/accounts/{userAddress}/state", params: ["accountID?"], auth: "unsigned account read", siglab_mapping: "SoDEXPublicPerpsClient.account_state", status: "supported-live-probed"}
+  trading_endpoints:
+    - {name: "place multiple orders", method: "POST", path: "/trade/orders", auth: "signed write", siglab_mapping: "SoDEXSignedPerpsClient.new_order_request/send_signed_request", status: "dry-run-supported-live-blocked"}
+    - {name: "cancel orders", method: "DELETE", path: "/trade/orders", auth: "signed write", siglab_mapping: "SoDEXSignedPerpsClient.cancel_order_request/send_signed_request", status: "dry-run-supported-live-blocked"}
+    - {name: "schedule cancel", method: "POST", path: "/trade/orders/schedule-cancel", auth: "signed write", siglab_mapping: "SoDEXSignedPerpsClient.schedule_cancel_request/send_signed_request", status: "dry-run-supported-live-blocked"}
+    - {name: "update leverage", method: "POST", path: "/trade/leverage", auth: "signed write", siglab_mapping: "SoDEXSignedPerpsClient.update_leverage_request/send_signed_request", status: "dry-run-supported-live-blocked"}
+    - {name: "update isolated margin", method: "POST", path: "/trade/margin", auth: "signed write", siglab_mapping: "SoDEXSignedPerpsClient.update_margin_request/send_signed_request", status: "dry-run-supported-live-blocked"}
+    - {name: "replace order", method: "PUT/POST", path: "documented but not pinned in SigLab", auth: "signed write", siglab_mapping: null, status: "blocked-until-schema-order-pinned"}
+    - {name: "modify TP/SL", method: "PUT/POST", path: "documented but not pinned in SigLab", auth: "signed write", siglab_mapping: null, status: "blocked-until-schema-order-pinned"}
+websocket:
+  documented: true
+  connection_rules:
+    idle_disconnect: "connection breaks if subscription is not established or no data is pushed for more than 60 seconds"
+    keepalive: "send {\"op\":\"ping\"} before 60 seconds of silence and expect {\"op\":\"pong\"}; reconnect on failure"
+    auth: "user-specific stream subscriptions do not require API key authentication"
+  endpoints:
+    - {name: "spot websocket", url: "wss://mainnet-gw.sodex.dev/ws/spot", status: "client-supported-not-live-probed"}
+    - {name: "perps websocket", url: "wss://mainnet-gw.sodex.dev/ws/perps", status: "client-supported-live-probed-allBookTicker"}
+    - {name: "account events stream", path: "/documentation/api/websocket-v1/account-events", status: "client-supported-unit-tested-not-live-probed"}
+    - {name: "market streams", channels: ["ticker", "allTicker", "miniTicker", "allMiniTicker", "bookTicker", "allBookTicker", "markPrice", "allMarkPrice", "l2Book", "l4Book", "candle", "trade"], status: "client-supported-unit-tested; allBookTicker live-probed"}
+  siglab_mapping: "SoDEXWebSocketClient"
+  cli_probe: "siglab sodex-ws-probe --channel allBookTicker --json"
+  private_probe_shape: "siglab sodex-ws-probe --channel accountEvent --user-address 0x... --account-id <id> --json"
+  siglab_status: "WebSocket client, ack validation, ping/pong keepalive, timeout/disconnect classification, reconnect budget, bounded public CLI probe, account-channel preflight validation, symbol-channel validation, and SoDEX evidence normalization implemented; public perps allBookTicker was live-probed"
+live_blockers:
+  - "No live SoDEX API key name in repo-local config."
+  - "No accountID configured."
+  - "No signer private key configured."
+  - "No nonce store path configured for live writes."
+  - "No credentialed live gateway validation has been performed."
+  - "Private/account WebSocket stream validation requires operator user address/accountID and real account state; SigLab now refuses missing or malformed account stream params before network."

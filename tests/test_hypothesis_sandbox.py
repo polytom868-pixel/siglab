@@ -3,16 +3,17 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from siglab.data.lake import ParquetLake
-from siglab.models import SignalSpec
-from siglab.research.hypothesis import HypothesisSandbox
+from siglab.data.store import ParquetLake
+from siglab.schemas import SignalSpec
+from siglab.research.hypothesis import HypothesisSandbox, _frame_pair_stats
 from siglab.search import LineageStore
-from siglab.settings import SiglabConfig
+from siglab.config import SiglabConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -108,6 +109,20 @@ class HypothesisSandboxTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    async def test_frame_pair_stats_constant_series_is_warning_free(self) -> None:
+        index = pd.date_range("2024-01-01", periods=8, freq="h")
+        feature_frame = pd.DataFrame({"BTC": [1.0] * 8}, index=index)
+        target_frame = pd.DataFrame({"BTC": np.linspace(0.0, 0.7, 8)}, index=index)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            stats = _frame_pair_stats(feature_frame, target_frame)
+
+        self.assertEqual(stats["rows"], 8)
+        self.assertIsNone(stats["spearman"])
+        self.assertIsNone(stats["pearson"])
+        self.assertEqual(caught, [])
 
     async def test_probe_feature_forward_stats_reports_horizons_and_predictor_correlations(self) -> None:
         tool = self.sandbox.claude_tools(track="trend_signals", parent=self.parent)[0]

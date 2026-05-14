@@ -10,7 +10,7 @@ from siglab.evaluator.compile import compile_spec
 from siglab.families import family_prompt_module
 from siglab.io_utils import json_clone, write_json
 from siglab.llm import ClaudeClient
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.orchestration.contracts import conformance_violations
 from siglab.orchestration.trials import build_spec_patch, summarize_patch
 from siglab.research import HypothesisSandbox
@@ -196,17 +196,18 @@ class SpecWriterRunner:
         latest_repair_packet: dict[str, Any] | None = None
         last_preflight: PreflightResult | None = None
 
-        for attempt in range(1, self.MAX_ATTEMPTS + 1):
+        for attempt in range(1, self._max_attempts() + 1):
             parse_error: str | None = None
             payload: dict[str, Any] | None = None
             try:
                 payload = await self.claude.complete_json_messages(
                     system_prompt=system_prompt,
                     messages=messages,
-                    max_tokens=900,
+                    max_tokens=self._writer_max_tokens(),
                     timeout_s=max(self.settings.claude_timeout_s, 90.0),
                     json_mode=True,
                     thinking_override="disabled",
+                    stage="writer",
                 )
             except Exception as exc:  # noqa: BLE001
                 parse_error = f"{type(exc).__name__}: {exc}"
@@ -255,7 +256,7 @@ class SpecWriterRunner:
             )
             write_json(repair_packet_path, latest_repair_packet)
 
-            if attempt >= self.MAX_ATTEMPTS:
+            if attempt >= self._max_attempts():
                 break
 
             if payload is not None:
@@ -606,8 +607,12 @@ class SpecWriterRunner:
             [
                 "Your previous spec is not acceptable yet.",
                 f"Target family remains `{repair_packet.get('family')}`.",
-                "Return one corrected JSON object only.",
-                "Do not include explanations or markdown.",
+                "Return one corrected minified JSON object only.",
+                "Do not include explanations, markdown, comments, YAML, trailing commas, or unterminated strings.",
+                "Keep string fields concise so the entire JSON object completes before the token limit.",
+                "If errors mention `regime_gates_are_extremely_restrictive`, `gated_spec_is_near_flat`, or `spec_is_near_flat`, relax or remove entry gates rather than adding more gates.",
+                "For near-flat failures, prefer `\"regime_gates\":{\"entry\":[],\"exit_on_break\":false}` unless the planner contract explicitly requires a legal exact gate.",
+                "A valid active strategy is better than a clever inactive gated strategy.",
                 "Repair packet:",
                 dump_yaml_block(repair_packet),
             ]
@@ -636,6 +641,8 @@ class SpecWriterRunner:
     ) -> str:
         parts = [
             "Emit exactly one spec JSON object that satisfies the schema and the chosen family manifest.",
+            "Output must be valid compact JSON only: no markdown, no comments, no YAML, no trailing commas, no prose before or after the object.",
+            "Keep string values concise and close every string, array, and object. Prefer minified JSON over pretty-printed JSON.",
             "The research note is free-form. The extracted planner contract below is binding if it conflicts with the prose.",
             "Treat the base spec below as the starting point for this trial. Preserve its working structure unless the research note calls for a clear structural change.",
             "Claude owns structural changes here: family, feature set, universe, gate expressions, and other discrete design choices.",
@@ -653,6 +660,9 @@ class SpecWriterRunner:
             "Satisfy the planner contract exactly: family, trade style, required feature roles, forbidden motifs, and gate intent.",
             "If the planner names exact features or gate dimensions, preserve them exactly unless the repair packet explicitly tells you they were invalid.",
             "If the planner requires a non-regime axis of variation, do not answer with another regime-only carry variant.",
+            "If the planner requires a policy/persistence axis, change `params.entry_abs_score`, `params.exit_abs_score`, `params.flip_abs_score`, `params.max_holding_bars`, or `params.cooldown_bars`; a feature-only patch is invalid.",
+            "Do not create restrictive entry gates unless the extracted planner contract explicitly requires exact gates. If uncertain, emit empty entry gates.",
+            "The writer must avoid near-flat output. Gate logic that blocks almost every bar is invalid even if the JSON schema is valid.",
             "Some policy fields may be locally swept by the evaluator. Choose coherent starting values rather than knife-edge thresholds.",
             "",
             "## Research Note",
@@ -743,6 +753,18 @@ class SpecWriterRunner:
             return SignalSpec.from_dict(payload).strategy_hash()
         except Exception:
             return None
+
+    def _writer_max_tokens(self) -> int:
+        provider = str(getattr(self.settings, "llm_provider", "") or "").strip().lower()
+        if provider == "bai":
+            return 2200
+        return 1200
+
+    def _max_attempts(self) -> int:
+        provider = str(getattr(self.settings, "llm_provider", "") or "").strip().lower()
+        if provider == "bai":
+            return 3
+        return self.MAX_ATTEMPTS
 
     def _clone_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         return json_clone(payload)
