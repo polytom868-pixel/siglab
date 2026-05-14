@@ -323,6 +323,107 @@ class DashboardRunSummaryTests(unittest.TestCase):
             self.assertEqual(report[0]["latency_cost_ms"], 90.0)
             self.assertEqual(report[0]["token_context_cost"], 45)
 
+    def test_ops_payload_summarizes_latest_operator_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runs = root / "runs"
+            runs.mkdir()
+            (runs / "demo_manifest_latest.json").write_text(
+                json.dumps(
+                    {
+                        "readiness": {
+                            "sosovalue_input_to_output": True,
+                            "sodex_public_market_data": True,
+                            "provider_metrics_present": True,
+                        },
+                        "market_report_status": "ready",
+                        "red_flags": ["signed live writes blocked"],
+                        "artifacts": [{"label": "demo", "path": "runs/demo.html"}],
+                    }
+                )
+            )
+            (runs / "latest_telemetry_report.json").write_text(
+                json.dumps(
+                    {
+                        "confidence": "proxy",
+                        "trace_count": 3,
+                        "tool_invocation_count": 7,
+                        "tool_error_count": 1,
+                        "provider_metrics_status": "present",
+                        "provider_metrics": {
+                            "request_count": 2,
+                            "estimated_credits": 0.12,
+                            "returned_input_tokens": 120,
+                            "returned_output_tokens": 40,
+                            "context_pressure_events": 1,
+                            "credit_pressure_events": 0,
+                        },
+                    }
+                )
+            )
+            (runs / "market_report_latest.json").write_text(
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "entity": "BTC",
+                        "signal_summary": {
+                            "headline": "ETF flow positive; SoDEX spread normal",
+                            "flow_direction": "positive",
+                            "quote_bid": "102.1",
+                            "quote_ask": "102.3",
+                        },
+                        "decision_support": {"stance": "watch"},
+                        "warnings": ["correlation only"],
+                    }
+                )
+            )
+            (runs / "sodex_preflight_latest.json").write_text(
+                json.dumps(
+                    {
+                        "public_read_ready": True,
+                        "schema_pinned": True,
+                        "live_write_allowed": False,
+                        "live_write_refusal_reason": "missing signer",
+                        "request_weight_budget_per_minute": 1200,
+                        "signed_path": {"ready": False},
+                        "next_actions": ["set SODEX_PRIVATE_KEY"],
+                    }
+                )
+            )
+
+            app = DashboardApp(
+                settings=SimpleNamespace(root_dir=root),
+                ancestry=SimpleNamespace(),
+                static_dir=root,
+            )
+            payload = app.ops_payload()
+
+            self.assertEqual(payload["artifact_status"]["demo_manifest"]["status"], "present")
+            self.assertTrue(payload["summary"]["buildathon"]["sosovalue_flow"])
+            self.assertEqual(payload["summary"]["market"]["headline"], "ETF flow positive; SoDEX spread normal")
+            self.assertEqual(payload["summary"]["sodex"]["live_write_allowed"], False)
+            self.assertEqual(payload["summary"]["telemetry"]["provider_request_count"], 2)
+            self.assertEqual(payload["summary"]["telemetry"]["estimated_credits"], 0.12)
+
+    def test_ops_payload_marks_missing_and_malformed_artifacts_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runs = root / "runs"
+            runs.mkdir()
+            (runs / "demo_manifest_latest.json").write_text("{bad json")
+
+            app = DashboardApp(
+                settings=SimpleNamespace(root_dir=root),
+                ancestry=SimpleNamespace(),
+                static_dir=root,
+            )
+            payload = app.ops_payload()
+
+            self.assertEqual(payload["artifact_status"]["demo_manifest"]["status"], "malformed")
+            self.assertEqual(payload["artifact_status"]["telemetry"]["status"], "missing")
+            self.assertIsNone(payload["summary"]["buildathon"]["sosovalue_flow"])
+            self.assertIsNone(payload["summary"]["sodex"]["live_write_allowed"])
+
     def test_dashboard_includes_active_workspace_run_without_ancestry_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

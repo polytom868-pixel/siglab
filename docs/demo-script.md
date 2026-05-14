@@ -148,3 +148,18 @@ Expected proof:
 - HTML panel exists at `runs/demo_manifest_latest.html`.
 - `sodex_live_write_allowed` remains false unless SoDEX preflight passes.
 - `causality_claimed` and `usd_cost_claimed` remain false.
+
+## 9. Open Operator Ops Board
+
+```bash
+python3 -m siglab.cli dashboard --host 127.0.0.1 --port 8765
+```
+
+Open `http://127.0.0.1:8765/ops`.
+
+Expected proof:
+
+- `/ops` reads `runs/demo_manifest_latest.json`, `runs/latest_telemetry_report.json`, `runs/market_report_latest.json`, and `runs/sodex_preflight_latest.json`.
+- Missing or malformed artifacts are shown as missing/malformed, not silently treated as ready.
+- The board shows SoSoValue flow status, SoDEX public evidence, live-write refusal state, provider telemetry, red flags, and latest market-report stance.
+- The board is read-only. It is a demo/operator monitor, not a live trading surface.
