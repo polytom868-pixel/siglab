@@ -35,7 +35,9 @@
     const market = summary.market || {};
     const sodex = summary.sodex || {};
     const telemetry = summary.telemetry || {};
+    const wave = summary.wave || {};
     const cards = [
+      ["Wave", wave.wave_number ? `#${wave.wave_number} ${valueLabel(wave.status)}` : "missing"],
       ["SoSoValue Flow", valueLabel(buildathon.sosovalue_flow)],
       ["SoDEX Public", valueLabel(buildathon.sodex_public_market_data)],
       ["Live Writes", sodex.live_write_allowed ? "allowed" : "refused"],
@@ -55,6 +57,7 @@
     const market = summary.market || {};
     const sodex = summary.sodex || {};
     const telemetry = summary.telemetry || {};
+    const wave = summary.wave || {};
 
     document.getElementById("opsGeneratedAt").textContent = `Generated ${formatDateTime(payload.generated_at)}`;
     renderSummary(payload);
@@ -62,6 +65,18 @@
     document.getElementById("artifactHealth").innerHTML = Object.entries(artifactStatus)
       .map(([name, artifact]) => line(name, artifact.status, artifact.error || artifact.path || ""))
       .join("");
+
+    document.getElementById("waveState").innerHTML = [
+      line("wave", wave.wave_number ? `#${wave.wave_number}` : "missing"),
+      line("phase", wave.phase),
+      line("status", wave.status),
+      line("goal", wave.goal),
+      line("validation", wave.validation_status),
+      line("stop allowed", wave.stop_allowed),
+      line("next", wave.next_decision),
+      listLines(wave.agents, "no agent roles recorded"),
+      listLines(wave.outputs, "no outputs recorded"),
+    ].join("");
 
     document.getElementById("buildathonProof").innerHTML = [
       line("SoSoValue input->output", buildathon.sosovalue_flow),
@@ -108,6 +123,8 @@
       ...(buildathon.red_flags || []),
       ...(market.warnings || []),
       ...(sodex.live_write_refusal_reason ? [sodex.live_write_refusal_reason] : []),
+      ...(wave.blockers || []),
+      ...(wave.unsafe_claims || []),
       ...Object.entries(artifactStatus)
         .filter(([, artifact]) => artifact.status !== "present")
         .map(([name, artifact]) => `${name}: ${artifact.error || artifact.status}`),

@@ -506,6 +506,7 @@ class DashboardApp:
         telemetry = dict(artifacts["telemetry"].get("payload") or {})
         market = dict(artifacts["market_report"].get("payload") or {})
         preflight = dict(artifacts["sodex_preflight"].get("payload") or {})
+        wave = dict(artifacts["wave_status"].get("payload") or {})
         readiness = dict(demo.get("readiness") or {})
         decision_support = dict(market.get("decision_support") or {})
         signal_summary = dict(market.get("signal_summary") or {})
@@ -554,6 +555,19 @@ class DashboardApp:
                 "model_counts": telemetry.get("model_counts") or {},
                 "stage_counts": telemetry.get("stage_counts") or {},
             },
+            "wave": {
+                "wave_number": wave.get("wave_number"),
+                "phase": wave.get("phase"),
+                "status": wave.get("status"),
+                "goal": wave.get("goal"),
+                "agents": list(wave.get("agents") or []),
+                "outputs": list(wave.get("outputs") or []),
+                "blockers": list(wave.get("blockers") or []),
+                "validation_status": wave.get("validation_status"),
+                "next_decision": wave.get("next_decision"),
+                "stop_allowed": wave.get("stop_allowed"),
+                "unsafe_claims": list(wave.get("unsafe_claims") or []),
+            },
         }
 
     def ops_payload(self) -> dict[str, Any]:
@@ -562,6 +576,7 @@ class DashboardApp:
             "telemetry": self._load_ops_artifact("runs/latest_telemetry_report.json"),
             "market_report": self._load_ops_artifact("runs/market_report_latest.json"),
             "sodex_preflight": self._load_ops_artifact("runs/sodex_preflight_latest.json"),
+            "wave_status": self._load_ops_artifact("runs/wave_status_latest.json"),
         }
         return {
             "generated_at": self._now_iso(),

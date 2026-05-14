@@ -390,6 +390,23 @@ class DashboardRunSummaryTests(unittest.TestCase):
                     }
                 )
             )
+            (runs / "wave_status_latest.json").write_text(
+                json.dumps(
+                    {
+                        "wave_number": 4,
+                        "phase": "execution",
+                        "status": "running",
+                        "goal": "wire ops board wave visibility",
+                        "agents": ["dashboard", "hardening"],
+                        "outputs": ["ops payload"],
+                        "blockers": ["signed SoDEX blocked"],
+                        "validation_status": "targeted_pass",
+                        "next_decision": "continue product flow",
+                        "stop_allowed": False,
+                        "unsafe_claims": ["private WS unvalidated"],
+                    }
+                )
+            )
 
             app = DashboardApp(
                 settings=SimpleNamespace(root_dir=root),
@@ -404,6 +421,10 @@ class DashboardRunSummaryTests(unittest.TestCase):
             self.assertEqual(payload["summary"]["sodex"]["live_write_allowed"], False)
             self.assertEqual(payload["summary"]["telemetry"]["provider_request_count"], 2)
             self.assertEqual(payload["summary"]["telemetry"]["estimated_credits"], 0.12)
+            self.assertEqual(payload["artifact_status"]["wave_status"]["status"], "present")
+            self.assertEqual(payload["summary"]["wave"]["wave_number"], 4)
+            self.assertEqual(payload["summary"]["wave"]["agents"], ["dashboard", "hardening"])
+            self.assertEqual(payload["summary"]["wave"]["blockers"], ["signed SoDEX blocked"])
 
     def test_ops_payload_marks_missing_and_malformed_artifacts_without_crashing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -421,8 +442,10 @@ class DashboardRunSummaryTests(unittest.TestCase):
 
             self.assertEqual(payload["artifact_status"]["demo_manifest"]["status"], "malformed")
             self.assertEqual(payload["artifact_status"]["telemetry"]["status"], "missing")
+            self.assertEqual(payload["artifact_status"]["wave_status"]["status"], "missing")
             self.assertIsNone(payload["summary"]["buildathon"]["sosovalue_flow"])
             self.assertIsNone(payload["summary"]["sodex"]["live_write_allowed"])
+            self.assertIsNone(payload["summary"]["wave"]["wave_number"])
 
     def test_dashboard_includes_active_workspace_run_without_ancestry_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

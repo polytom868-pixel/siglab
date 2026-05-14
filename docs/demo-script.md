@@ -152,6 +152,17 @@ Expected proof:
 ## 9. Open Operator Ops Board
 
 ```bash
+python3 -m siglab.cli wave-status \
+  --wave-number 1 \
+  --phase demo \
+  --status running \
+  --goal "show input-to-action flow with live-boundary truth" \
+  --agents "operator,dashboard,hardening" \
+  --outputs "market report,ops board,preflight" \
+  --blockers "signed SoDEX live execution unproven" \
+  --validation-status targeted_pass \
+  --next-decision "continue demo refresh"
+
 python3 -m siglab.cli dashboard --host 127.0.0.1 --port 8765
 ```
 
@@ -161,7 +172,7 @@ Expected proof:
 
 - `/ops` reads `runs/demo_manifest_latest.json`, `runs/latest_telemetry_report.json`, `runs/market_report_latest.json`, and `runs/sodex_preflight_latest.json`.
 - Missing or malformed artifacts are shown as missing/malformed, not silently treated as ready.
-- The board shows SoSoValue flow status, SoDEX public evidence, live-write refusal state, provider telemetry, red flags, and latest market-report stance.
+- The board shows current wave status, SoSoValue flow status, SoDEX public evidence, live-write refusal state, provider telemetry, red flags, and latest market-report stance.
 - The board is read-only. It is a demo/operator monitor, not a live trading surface.
 
 ## 10. Optional External-Agent Benchmark Deck

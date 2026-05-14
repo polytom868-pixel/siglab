@@ -346,6 +346,22 @@ def main() -> None:
         default=DEFAULT_BENCHMARK_DECK,
     )
 
+    wave_status_parser = subparsers.add_parser(
+        "wave-status",
+        help="Write the latest operator/agent wave status artifact consumed by the ops board.",
+    )
+    wave_status_parser.add_argument("--wave-number", type=int, required=True)
+    wave_status_parser.add_argument("--phase", default="execution")
+    wave_status_parser.add_argument("--status", choices=["running", "passed", "blocked", "failed"], default="running")
+    wave_status_parser.add_argument("--goal", required=True)
+    wave_status_parser.add_argument("--agents", default="", help="Comma-separated agent role labels.")
+    wave_status_parser.add_argument("--outputs", default="", help="Comma-separated wave output labels.")
+    wave_status_parser.add_argument("--blockers", default="", help="Comma-separated blockers.")
+    wave_status_parser.add_argument("--validation-status", default="not_run")
+    wave_status_parser.add_argument("--next-decision", default="")
+    wave_status_parser.add_argument("--output", default=None)
+    wave_status_parser.add_argument("--json", action="store_true")
+
     telemetry_parser = subparsers.add_parser(
         "telemetry-report",
         help="Aggregate empirical LLM/tool telemetry from run trace artifacts.",
@@ -417,6 +433,9 @@ def main() -> None:
         return
     if args.command == "benchmark-status":
         benchmark_status_command(args)
+        return
+    if args.command == "wave-status":
+        wave_status_command(args)
         return
     if args.command == "telemetry-report":
         telemetry_report_command(args)
@@ -1199,6 +1218,46 @@ def telemetry_report_command(args: argparse.Namespace) -> None:
                 ]
             )
         )
+
+
+def wave_status_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    output = (
+        resolve_path_from_root(args.output, root_dir=settings.root_dir)
+        if args.output
+        else settings.artifact_dir / "wave_status_latest.json"
+    )
+    payload = _build_wave_status_payload(args)
+    write_json(output, payload)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+        return
+    print(f"wave_status: {display_path(output, settings.root_dir)}")
+
+
+def _split_cli_list(value: str) -> list[str]:
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
+def _build_wave_status_payload(args: argparse.Namespace) -> dict[str, Any]:
+    blockers = _split_cli_list(args.blockers)
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "wave_number": int(args.wave_number),
+        "phase": str(args.phase or "execution"),
+        "status": str(args.status or "running"),
+        "goal": str(args.goal or "").strip(),
+        "agents": _split_cli_list(args.agents),
+        "outputs": _split_cli_list(args.outputs),
+        "blockers": blockers,
+        "validation_status": str(args.validation_status or "not_run"),
+        "next_decision": str(args.next_decision or "").strip(),
+        "stop_allowed": False,
+        "unsafe_claims": [
+            "signed SoDEX live execution remains unproven",
+            "private/account SoDEX WebSocket remains unvalidated",
+        ],
+    }
 
 
 def _trace_paths_for_telemetry(*, settings: Any, track: str, run_session_id: str | None) -> list[Path]:
