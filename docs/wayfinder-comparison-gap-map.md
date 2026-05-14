@@ -2,7 +2,7 @@
 
 Generated: 2026-05-14
 
-This comparison uses the local `wayfinder-autolab-backup-20260512-160007` clone as concrete reference material and public Wayfinder package/docs only for surrounding context. It does not assume missing files exist.
+This comparison uses the local `/tmp/wayfinder-autolab` clone as concrete reference material and public Wayfinder package/docs only for surrounding context. It does not assume missing files exist.
 
 ## Concrete Structures Found
 
@@ -14,7 +14,7 @@ This comparison uses the local `wayfinder-autolab-backup-20260512-160007` clone 
 | Reflector runner | `wayfinder_autolab/orchestration/reflector_runner.py` | `siglab/orchestration/reflector_runner.py` | MATCHED |
 | Workspace manifests | `wayfinder_autolab/workspace/manifests.py` | `siglab/workspace/manifests.py` | MATCHED_WITH_SIGLAB_TERMS |
 | CLI loop | `autolab run --iterations 0`, resume, labels | `siglab run --iterations 0`, resume, labels, budget/credit guards | EXCEEDED_ON_GOVERNANCE |
-| Dashboard | local dashboard views | local dashboard views plus demo/report artifacts | PARTIAL_PRODUCT_UX |
+| Dashboard | local dashboard views | local dashboard views plus demo/report artifacts and `/ops` operator board | ADAPTED_AND_IMPROVED_FOR_DEMO_TRUTH |
 | Promotion/export | Wayfinder generated strategy packages | SigLab guarded deployment/export path and SoDEX preview/preflight | PARTIAL_EXECUTION_GAP |
 | Provider routing | Kimi/DeepSeek/OpenRouter env routes | B.AI/OpenRouter/Anthropic-compatible routing with Credits telemetry | EXCEEDED_ON_COST_PRESSURE |
 | MCP project config | Not present in local clone; public Wayfinder SDK ecosystem references MCP server support | `.mcp.json` exists as empty explicit integration point | PARTIAL |
@@ -33,12 +33,13 @@ This comparison uses the local `wayfinder-autolab-backup-20260512-160007` clone 
 
 - A more established product narrative around strategy promotion into Wayfinder runnable packages.
 - A cleaner quickstart story in the original README.
+- A dashboard UX that starts from the run loop. SigLab now has `/ops`, but it still needs screenshots and a single scripted demo entrypoint that refreshes artifacts before opening the board.
 - A focused domain: Wayfinder Autolab optimizes around Wayfinder strategy execution; SigLab spans SoSoValue, SoDEX, ValueChain, and SSI, so unresolved product breadth is higher.
 
 ## What Should Be Adopted Or Adapted
 
 - Keep the skill-based planner/writer/reflector split. SigLab already adapted it correctly.
-- Keep local dashboard/run-detail/experiment-detail style, but add a buildathon operator panel around demo artifacts.
+- Keep local dashboard/run-detail/experiment-detail style. SigLab adapted this into `/ops`, a buildathon operator panel around demo artifacts, telemetry, preflight, and market report state.
 - Keep explicit live-export caution. SigLab should remain stricter than Wayfinder on signed execution claims.
 - Keep agent-compatible repo guidance. SigLab now has `AGENTS.md`; future MCP servers should be added to `.mcp.json` only when real.
 
@@ -55,4 +56,3 @@ This comparison uses the local `wayfinder-autolab-backup-20260512-160007` clone 
 3. Private/account SoDEX WebSocket validation is blocked by account details.
 4. SoSoValue full ecosystem coverage is blocked by missing official callable endpoints.
 5. SSI/Index integration is product-doc-only until official contracts/data feeds are pinned.
-

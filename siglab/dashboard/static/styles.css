@@ -212,6 +212,127 @@ h2 {
   margin-bottom: 8px;
 }
 
+/* ─── Operator Board ─── */
+
+.ops-terminal {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #d7ded9;
+}
+
+.ops-terminal h1,
+.ops-terminal h2,
+.ops-terminal .eyebrow {
+  font-family: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+  -webkit-text-fill-color: currentColor;
+  background: none;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.ops-card,
+.ops-panel {
+  background: #050705;
+  border: 1px solid rgba(215, 222, 217, 0.18);
+  box-shadow: none;
+}
+
+.ops-card {
+  display: grid;
+  gap: 8px;
+  min-height: 86px;
+  padding: 14px;
+}
+
+.ops-card span,
+.ops-key,
+.ops-extra {
+  color: #79837d;
+}
+
+.ops-card strong {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.ops-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ops-panel {
+  min-height: 240px;
+  padding: 16px;
+}
+
+.ops-panel h2 {
+  margin-bottom: 12px;
+  color: #f4f7f5;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ops-lines {
+  display: grid;
+  gap: 8px;
+}
+
+.ops-line {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(100px, 0.6fr) minmax(0, 1.4fr);
+  gap: 10px;
+  align-items: start;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(215, 222, 217, 0.08);
+  font-size: 12px;
+}
+
+.ops-value {
+  color: #d7ded9;
+  overflow-wrap: anywhere;
+}
+
+.ops-value.ok {
+  color: #f4f7f5;
+}
+
+.ops-value.warn {
+  color: #b9c1bc;
+}
+
+.ops-value.bad {
+  color: #ffffff;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.ops-extra {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .ops-grid,
+  .ops-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .ops-grid,
+  .ops-board,
+  .ops-line {
+    grid-template-columns: 1fr;
+  }
+}
+
 .subhead {
   max-width: 640px;
   margin: 8px 0 0;

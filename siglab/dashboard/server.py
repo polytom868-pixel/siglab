@@ -458,6 +458,125 @@ class DashboardApp:
             "runs": annotated_runs,
         }
 
+    def _load_ops_artifact(self, relative_path: str) -> dict[str, Any]:
+        path = (self.settings.root_dir / relative_path).resolve()
+        root = self.settings.root_dir.resolve()
+        if root not in path.parents and path != root:
+            return {
+                "status": "blocked",
+                "path": relative_path,
+                "error": "artifact path escapes repo root",
+                "payload": None,
+            }
+        if not path.exists():
+            return {
+                "status": "missing",
+                "path": relative_path,
+                "error": "artifact missing",
+                "payload": None,
+            }
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            return {
+                "status": "malformed",
+                "path": relative_path,
+                "error": str(exc),
+                "payload": None,
+            }
+        if not isinstance(payload, dict):
+            return {
+                "status": "malformed",
+                "path": relative_path,
+                "error": "artifact root must be a JSON object",
+                "payload": None,
+            }
+        return {
+            "status": "present",
+            "path": relative_path,
+            "mtime": datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(),
+            "payload": payload,
+        }
+
+    def _summarize_ops_artifacts(
+        self,
+        artifacts: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        demo = dict(artifacts["demo_manifest"].get("payload") or {})
+        telemetry = dict(artifacts["telemetry"].get("payload") or {})
+        market = dict(artifacts["market_report"].get("payload") or {})
+        preflight = dict(artifacts["sodex_preflight"].get("payload") or {})
+        readiness = dict(demo.get("readiness") or {})
+        decision_support = dict(market.get("decision_support") or {})
+        signal_summary = dict(market.get("signal_summary") or {})
+        signed_path = dict(preflight.get("signed_path") or {})
+        provider_metrics = dict(telemetry.get("provider_metrics") or {})
+        return {
+            "buildathon": {
+                "sosovalue_flow": readiness.get("sosovalue_input_to_output"),
+                "sodex_public_market_data": readiness.get("sodex_public_market_data"),
+                "provider_metrics_present": readiness.get("provider_metrics_present"),
+                "market_report_status": demo.get("market_report_status") or market.get("status"),
+                "red_flags": list(demo.get("red_flags") or []),
+                "demo_artifacts": list(demo.get("artifacts") or []),
+            },
+            "market": {
+                "status": market.get("status"),
+                "entity": market.get("entity"),
+                "headline": signal_summary.get("headline") or demo.get("market_report_headline"),
+                "flow_direction": signal_summary.get("flow_direction"),
+                "quote_bid": signal_summary.get("quote_bid"),
+                "quote_ask": signal_summary.get("quote_ask"),
+                "stance": decision_support.get("stance"),
+                "warnings": list(market.get("warnings") or []),
+            },
+            "sodex": {
+                "public_read_ready": preflight.get("public_read_ready"),
+                "schema_pinned": preflight.get("schema_pinned"),
+                "live_write_allowed": preflight.get("live_write_allowed"),
+                "live_write_refusal_reason": preflight.get("live_write_refusal_reason"),
+                "signed_path_ready": signed_path.get("ready"),
+                "request_weight_budget_per_minute": preflight.get("request_weight_budget_per_minute"),
+                "next_actions": list(preflight.get("next_actions") or []),
+            },
+            "telemetry": {
+                "confidence": telemetry.get("confidence"),
+                "trace_count": telemetry.get("trace_count"),
+                "tool_invocation_count": telemetry.get("tool_invocation_count"),
+                "tool_error_count": telemetry.get("tool_error_count"),
+                "provider_metrics_status": telemetry.get("provider_metrics_status"),
+                "provider_request_count": provider_metrics.get("request_count"),
+                "estimated_credits": provider_metrics.get("estimated_credits"),
+                "returned_input_tokens": provider_metrics.get("returned_input_tokens"),
+                "returned_output_tokens": provider_metrics.get("returned_output_tokens"),
+                "context_pressure_events": provider_metrics.get("context_pressure_events"),
+                "credit_pressure_events": provider_metrics.get("credit_pressure_events"),
+                "model_counts": telemetry.get("model_counts") or {},
+                "stage_counts": telemetry.get("stage_counts") or {},
+            },
+        }
+
+    def ops_payload(self) -> dict[str, Any]:
+        artifacts = {
+            "demo_manifest": self._load_ops_artifact("runs/demo_manifest_latest.json"),
+            "telemetry": self._load_ops_artifact("runs/latest_telemetry_report.json"),
+            "market_report": self._load_ops_artifact("runs/market_report_latest.json"),
+            "sodex_preflight": self._load_ops_artifact("runs/sodex_preflight_latest.json"),
+        }
+        return {
+            "generated_at": self._now_iso(),
+            "artifact_status": {
+                name: {
+                    "status": artifact.get("status"),
+                    "path": artifact.get("path"),
+                    "mtime": artifact.get("mtime"),
+                    "error": artifact.get("error"),
+                }
+                for name, artifact in artifacts.items()
+            },
+            "summary": self._summarize_ops_artifacts(artifacts),
+        }
+
     def experiment_detail_payload(self, spec_hash: str) -> dict[str, Any] | None:
         detail = self.ancestry.experiment_detail(spec_hash)
         if detail is None:
@@ -841,7 +960,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if parsed.path in {"/", "/index.html"}:
                 self._serve_static("index.html", send_body=send_body)
                 return
-            if parsed.path in {"/app.js", "/common.js", "/home.js", "/styles.css", "/experiment.js", "/experiment.html", "/run.html"}:
+            if parsed.path == "/ops":
+                self._serve_static("ops.html", send_body=send_body)
+                return
+            if parsed.path in {"/app.js", "/common.js", "/home.js", "/styles.css", "/experiment.js", "/experiment.html", "/run.html", "/ops.html", "/ops.js"}:
                 self._serve_static(parsed.path.lstrip("/"), send_body=send_body)
                 return
             if parsed.path.startswith("/runs/"):
@@ -867,6 +989,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self.server.app.runs_payload(track=track, family=family),
                     send_body=send_body,
                 )
+                return
+            if parsed.path == "/api/ops":
+                self._json_response(self.server.app.ops_payload(), send_body=send_body)
                 return
             if parsed.path.startswith("/api/experiments/") and parsed.path.endswith("/series"):
                 spec_hash = parsed.path.split("/")[-2]

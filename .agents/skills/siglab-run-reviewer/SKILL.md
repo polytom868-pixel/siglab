@@ -19,6 +19,8 @@ Rules:
 - Use the `recent_completed_runs` context only to avoid repeating motifs or to sharpen the next move.
 - If the packet includes `return_driver`, `exposure_profile`, or compact price/carry contribution fields, use them to explain what actually drove returns.
 - For cross-sectional carry families, do not attribute causality to `trade_style` unless the packet evidence explicitly supports that claim.
+- If the packet includes demo/readiness artifacts, state whether the result is operator-demo useful, dashboard-visible, or blocked by missing SoSoValue/SoDEX/provider proof.
+- Never mark a candidate demo-ready when the supporting market report, provider metrics, or SoDEX preflight artifact is missing or malformed.
 - Do not give generic advice. Name the exact motif, exact failed change, or exact successful change.
 - Keep the body to four short lines:
   - `What changed:`
