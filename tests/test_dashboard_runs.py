@@ -416,6 +416,8 @@ class DashboardRunSummaryTests(unittest.TestCase):
             payload = app.ops_payload()
 
             self.assertEqual(payload["artifact_status"]["demo_manifest"]["status"], "present")
+            self.assertIn(payload["artifact_status"]["demo_manifest"]["freshness"], {"fresh", "stale", "expired"})
+            self.assertIsInstance(payload["artifact_status"]["demo_manifest"]["age_seconds"], float)
             self.assertTrue(payload["summary"]["buildathon"]["sosovalue_flow"])
             self.assertEqual(payload["summary"]["market"]["headline"], "ETF flow positive; SoDEX spread normal")
             self.assertEqual(payload["summary"]["sodex"]["live_write_allowed"], False)
