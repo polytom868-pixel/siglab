@@ -173,10 +173,26 @@ class BenchmarkDeckTests(unittest.IsolatedAsyncioTestCase):
             parent_hash=None,
             research_summary={"run_context": {"phase_label": "main", "deterministic": False}},
             artifact_path=str(artifact_path),
-        )
+            )
         if deployd:
             ancestry.deploy(spec.strategy_hash())
         return str(artifact_path)
+
+    def test_committed_benchmark_deck_is_demo_ready(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        settings = SimpleNamespace(root_dir=root)
+        payload = benchmark_status(settings=settings, deck_name=DEFAULT_BENCHMARK_DECK)
+        paths = benchmark_paths(settings=settings, deck_name=DEFAULT_BENCHMARK_DECK)
+
+        spec = SignalSpec.from_dict(yaml.safe_load(paths.spec_path.read_text()))
+        best_spec = SignalSpec.from_dict(yaml.safe_load(paths.best_spec_path.read_text()))
+
+        self.assertEqual(payload["state"]["deck_name"], DEFAULT_BENCHMARK_DECK)
+        self.assertEqual(payload["state"]["track"], "trend_signals")
+        self.assertEqual(spec.strategy_hash(), payload["state"]["incumbent_spec_hash"])
+        self.assertEqual(best_spec.strategy_hash(), payload["state"]["incumbent_spec_hash"])
+        self.assertIn("poetry run siglab benchmark-eval", paths.program_path.read_text())
+        self.assertIn("committed deck", paths.observation_path.read_text())
 
     def test_benchmark_init_prefers_deployd_carry_seed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
