@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import html
 import json
+import os
+import time
 from itertools import count
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from siglab.benchmark import (
     DEFAULT_BENCHMARK_DECK,
@@ -16,13 +21,34 @@ from siglab.benchmark import (
     init_benchmark_deck,
     supported_deck_names,
 )
-from siglab.data import MarketDataProvider, ParquetLake
+from siglab.data import EvidenceStore, MarketDataProvider, ParquetLake, etf_inflow_evidence, news_evidence, sodex_ws_evidence
+from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
 from siglab.dashboard import run_dashboard_server
 from siglab.evaluator import ResearchEvaluator
+from siglab.hardening_profile import build_profile, profile_as_text, strict_failure_count
 from siglab.io_utils import write_json
 from siglab.live import LiveDeploymentManager
-from siglab.llm import ClaudeClient
-from siglab.models import SignalSpec
+from siglab.live.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SODEX_WEIGHT_BUDGET_PER_MINUTE
+from siglab.live.sodex_ws import SoDEXWebSocketClient
+from siglab.live.sodex_signing import (
+    SoDEXSignedRequest,
+    SUPPORTED_SODEX_SIGNED_ACTIONS,
+    UNSUPPORTED_SODEX_SIGNED_ACTIONS,
+    build_signature_input,
+    canonical_json,
+    http_body_from_action_payload,
+    perps_cancel_item,
+    perps_cancel_order_body,
+    perps_new_order_body,
+    perps_order_item,
+    perps_schedule_cancel_body,
+    perps_update_leverage_body,
+    perps_update_margin_body,
+)
+from siglab.llm import ClaudeClient, LLMProviderError
+from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
+from siglab.visualization import write_evidence_graph_html
+from siglab.schemas import SignalSpec
 from siglab.path_utils import display_path, resolve_path_from_root
 from siglab.orchestration import (
     SpecWriterRunner,
@@ -54,8 +80,16 @@ from siglab.search import (
     pick_deterministic_parent,
     pick_parent,
 )
-from siglab.settings import load_settings
+from siglab.config import load_settings
 from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name
+
+
+SODEX_SIDE_ALIASES = {"BUY": 1, "SELL": 2}
+SODEX_ORDER_TYPE_ALIASES = {"LIMIT": 1, "MARKET": 2}
+SODEX_TIME_IN_FORCE_ALIASES = {"GTC": 1, "FOK": 2, "IOC": 3, "GTX": 4}
+SODEX_POSITION_SIDE_ALIASES = {"BOTH": 1, "LONG": 2, "SHORT": 3}
+SODEX_MODIFIER_ALIASES = {"NORMAL": 1, "STOP": 2, "BRACKET": 3, "ATTACHED_STOP": 4}
+SODEX_MARGIN_MODE_ALIASES = {"ISOLATED": 1, "CROSS": 2}
 from siglab.workspace import WorkspaceBuilder
 
 
@@ -94,6 +128,32 @@ def main() -> None:
         help="Number of generations to run per selected track. Use 0 for infinite.",
     )
     run_parser.add_argument(
+        "--max-runtime-seconds",
+        type=float,
+        default=None,
+        help="Stop cleanly after this wall-clock budget. Useful for bounded validation of --iterations 0.",
+    )
+    run_parser.add_argument("--max-total-cost", type=float, default=None)
+    run_parser.add_argument(
+        "--max-total-credits",
+        type=float,
+        default=None,
+        help="Stop cooperatively when verified provider Credits telemetry reaches this budget. This is not USD.",
+    )
+    run_parser.add_argument(
+        "--max-call-estimated-credits",
+        type=float,
+        default=None,
+        help="Refuse a single B.AI call when pre-call estimated Credits exceeds this budget.",
+    )
+    run_parser.add_argument("--max-provider-errors", type=int, default=None)
+    run_parser.add_argument("--max-consecutive-no-improvement", type=int, default=None)
+    run_parser.add_argument("--max-consecutive-crashes", type=int, default=None)
+    run_parser.add_argument("--cooldown-seconds-on-429", type=float, default=0.0)
+    run_parser.add_argument("--provider-fallback-on-quota", action="store_true")
+    run_parser.add_argument("--stop-on-live-surface-unavailable", action="store_true")
+    run_parser.add_argument("--resume-safe-check", action="store_true")
+    run_parser.add_argument(
         "--memory-scope",
         choices=["session_local", "track_shared"],
         default=None,
@@ -112,6 +172,7 @@ def main() -> None:
     )
     run_parser.add_argument("--skip-llm", action="store_true")
     run_parser.add_argument("--agent-label", default="siglab_harness")
+    run_parser.add_argument("--run-label", default=None)
 
     inspect_parser = subparsers.add_parser("inspect")
     inspect_parser.add_argument(
@@ -119,6 +180,68 @@ def main() -> None:
         choices=["all", *TRACK_CLI_CHOICES],
         default="all",
     )
+
+    profile_parser = subparsers.add_parser(
+        "profile",
+        help="Run the strict SigLab hardening profile.",
+    )
+    profile_parser.add_argument("--json", action="store_true")
+    profile_parser.add_argument("--strict", action="store_true")
+
+    evidence_parser = subparsers.add_parser(
+        "evidence-build",
+        help="Build a source-backed SoSoValue evidence JSONL from implemented verified surfaces.",
+    )
+    evidence_parser.add_argument("--etf-type", default="us-btc-spot")
+    evidence_parser.add_argument("--currency", default="BTC")
+    evidence_parser.add_argument("--news-page-size", type=int, default=10)
+    evidence_parser.add_argument("--news-pages", type=int, default=1)
+    evidence_parser.add_argument("--output", default=None)
+    evidence_parser.add_argument("--summary-output", default=None)
+    evidence_parser.add_argument("--summary-top-links", type=int, default=10)
+    evidence_parser.add_argument("--json", action="store_true")
+
+    evidence_map_parser = subparsers.add_parser(
+        "evidence-map",
+        help="Render an HTML evidence graph from an evidence summary artifact.",
+    )
+    evidence_map_parser.add_argument("--summary", default=None)
+    evidence_map_parser.add_argument("--evidence", default=None)
+    evidence_map_parser.add_argument("--output", default=None)
+    evidence_map_parser.add_argument("--json", action="store_true")
+
+    demo_parser = subparsers.add_parser(
+        "demo-report",
+        help="Emit a buildathon/operator demo report from latest evidence and readiness artifacts.",
+    )
+    demo_parser.add_argument("--output", default=None)
+    demo_parser.add_argument("--html-output", default=None)
+    demo_parser.add_argument("--json", action="store_true")
+
+    demo_manifest_parser = subparsers.add_parser(
+        "demo-manifest",
+        help="Index latest demo artifacts, telemetry, evidence, and live-boundary readiness.",
+    )
+    demo_manifest_parser.add_argument("--output", default=None)
+    demo_manifest_parser.add_argument("--html-output", default=None)
+    demo_manifest_parser.add_argument("--json", action="store_true")
+
+    market_report_parser = subparsers.add_parser(
+        "market-report",
+        help="Build a deterministic SoSoValue + SoDEX evidence-linked market report.",
+    )
+    market_report_parser.add_argument("--entity", default="BTC")
+    market_report_parser.add_argument("--sosovalue-evidence", default=None)
+    market_report_parser.add_argument("--sodex-evidence", default=None)
+    market_report_parser.add_argument("--output", default=None)
+    market_report_parser.add_argument("--html-output", default=None)
+    market_report_parser.add_argument("--json", action="store_true")
+
+    api_surface_parser = subparsers.add_parser(
+        "api-surface",
+        help="Summarize source-of-truth SoSoValue/SoDEX API surface maps.",
+    )
+    api_surface_parser.add_argument("--json", action="store_true")
 
     ancestry_parser = subparsers.add_parser("ancestry")
     ancestry_parser.add_argument(
@@ -142,6 +265,7 @@ def main() -> None:
     deploy_parser = subparsers.add_parser("deploy")
     deploy_parser.add_argument("--spec", required=True)
     deploy_parser.add_argument("--agent-id", default=None)
+    deploy_parser.add_argument("--wallet-label", default=None)
     deploy_parser.add_argument("--config", dest="config_path", default=None)
     deploy_parser.add_argument("--job-name", default=None)
     deploy_parser.add_argument("--interval", dest="interval_seconds", type=int, default=None)
@@ -151,6 +275,52 @@ def main() -> None:
 
     deployments_parser = subparsers.add_parser("deployments")
     deployments_parser.add_argument("--spec", default=None)
+
+    sodex_preflight_parser = subparsers.add_parser("sodex-preflight")
+    sodex_preflight_parser.add_argument("--json", action="store_true")
+
+    valuechain_parser = subparsers.add_parser("valuechain-preflight")
+    valuechain_parser.add_argument("--rpc-url", default="https://mainnet.valuechain.xyz")
+    valuechain_parser.add_argument("--expected-chain-id", type=int, default=286623)
+    valuechain_parser.add_argument("--json", action="store_true")
+
+    sodex_ws_parser = subparsers.add_parser("sodex-ws-probe")
+    sodex_ws_parser.add_argument("--environment", choices=["mainnet", "testnet"], default="mainnet")
+    sodex_ws_parser.add_argument("--market", choices=["spot", "perps"], default="perps")
+    sodex_ws_parser.add_argument("--channel", default="allBookTicker")
+    sodex_ws_parser.add_argument("--symbol", default=None)
+    sodex_ws_parser.add_argument("--user-address", default=None)
+    sodex_ws_parser.add_argument("--account-id", type=int, default=None)
+    sodex_ws_parser.add_argument("--timeout-seconds", type=float, default=8.0)
+    sodex_ws_parser.add_argument("--evidence-output", default=None)
+    sodex_ws_parser.add_argument("--json", action="store_true")
+
+    sodex_preview_parser = subparsers.add_parser("sodex-preview")
+    sodex_preview_parser.add_argument(
+        "--kind",
+        choices=["new-order", "cancel-order", "schedule-cancel", "update-leverage", "update-margin"],
+        required=True,
+    )
+    sodex_preview_parser.add_argument("--account-id", type=int, required=True)
+    sodex_preview_parser.add_argument("--symbol-id", type=int, required=True)
+    sodex_preview_parser.add_argument("--nonce", type=int, required=True)
+    sodex_preview_parser.add_argument("--cl-ord-id", default="siglab-preview")
+    sodex_preview_parser.add_argument("--modifier", default="NORMAL")
+    sodex_preview_parser.add_argument("--side", default="BUY")
+    sodex_preview_parser.add_argument("--order-type", default="LIMIT")
+    sodex_preview_parser.add_argument("--time-in-force", default="GTC")
+    sodex_preview_parser.add_argument("--price", default=None)
+    sodex_preview_parser.add_argument("--quantity", default=None)
+    sodex_preview_parser.add_argument("--funds", default=None)
+    sodex_preview_parser.add_argument("--order-id", type=int, default=None)
+    sodex_preview_parser.add_argument("--orig-cl-ord-id", default=None)
+    sodex_preview_parser.add_argument("--scheduled-timestamp", type=int, default=None)
+    sodex_preview_parser.add_argument("--amount", default=None)
+    sodex_preview_parser.add_argument("--reduce-only", action="store_true")
+    sodex_preview_parser.add_argument("--position-side", default="BOTH")
+    sodex_preview_parser.add_argument("--leverage", type=int, default=1)
+    sodex_preview_parser.add_argument("--margin-mode", default="ISOLATED")
+    sodex_preview_parser.add_argument("--json", action="store_true", help="Accepted for CLI consistency; output is always JSON.")
 
     benchmark_init_parser = subparsers.add_parser("benchmark-init")
     benchmark_init_parser.add_argument(
@@ -176,12 +346,41 @@ def main() -> None:
         default=DEFAULT_BENCHMARK_DECK,
     )
 
+    telemetry_parser = subparsers.add_parser(
+        "telemetry-report",
+        help="Aggregate empirical LLM/tool telemetry from run trace artifacts.",
+    )
+    telemetry_parser.add_argument("--track", default="all")
+    telemetry_parser.add_argument("--run-session-id", default=None)
+    telemetry_parser.add_argument("--json", action="store_true")
+
     args = parser.parse_args()
     if args.command == "run":
         asyncio.run(run_command(args))
         return
     if args.command == "inspect":
         asyncio.run(inspect_command(args))
+        return
+    if args.command == "profile":
+        profile_command(args)
+        return
+    if args.command == "evidence-build":
+        asyncio.run(evidence_build_command(args))
+        return
+    if args.command == "evidence-map":
+        evidence_map_command(args)
+        return
+    if args.command == "demo-report":
+        demo_report_command(args)
+        return
+    if args.command == "demo-manifest":
+        demo_manifest_command(args)
+        return
+    if args.command == "market-report":
+        market_report_command(args)
+        return
+    if args.command == "api-surface":
+        api_surface_command(args)
         return
     if args.command == "ancestry":
         ancestry_command(args)
@@ -198,6 +397,18 @@ def main() -> None:
     if args.command == "deployments":
         deployments_command(args)
         return
+    if args.command == "sodex-preflight":
+        sodex_preflight_command(args)
+        return
+    if args.command == "valuechain-preflight":
+        asyncio.run(valuechain_preflight_command(args))
+        return
+    if args.command == "sodex-ws-probe":
+        asyncio.run(sodex_ws_probe_command(args))
+        return
+    if args.command == "sodex-preview":
+        sodex_preview_command(args)
+        return
     if args.command == "benchmark-init":
         benchmark_init_command(args)
         return
@@ -207,31 +418,1244 @@ def main() -> None:
     if args.command == "benchmark-status":
         benchmark_status_command(args)
         return
+    if args.command == "telemetry-report":
+        telemetry_report_command(args)
+        return
+
+
+def profile_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    profile = build_profile(settings.root_dir)
+    if getattr(args, "json", False):
+        print(json.dumps(profile, indent=2, sort_keys=True, default=str))
+    else:
+        print(profile_as_text(profile))
+    if getattr(args, "strict", False):
+        failures = strict_failure_count(profile)
+        if failures:
+            raise SystemExit(min(failures, 125))
+
+
+def api_surface_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    docs_dir = settings.root_dir / "docs"
+    files = {
+        "sosovalue": docs_dir / "sosovalue-api-surface.yaml",
+        "sodex": docs_dir / "sodex-api-surface.yaml",
+        "ecosystem": docs_dir / "sosovalue-ecosystem-surface.yaml",
+        "buildathon": docs_dir / "buildathon-readiness-audit.md",
+    }
+    report: dict[str, Any] = {}
+    for name, path in files.items():
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        report[name] = {
+            "path": str(path),
+            "exists": path.exists(),
+            "line_count": len(text.splitlines()) if text else 0,
+            "endpoint_path_mentions": text.count("path:"),
+            "supported_mentions": text.count("supported"),
+            "missing_mentions": text.count("missing"),
+            "blocked_mentions": text.count("blocked"),
+        }
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return
+    for name, payload in report.items():
+        print(
+            f"{name}: exists={payload['exists']} lines={payload['line_count']} "
+            f"paths={payload['endpoint_path_mentions']} supported={payload['supported_mentions']} "
+            f"missing={payload['missing_mentions']} blocked={payload['blocked_mentions']} "
+            f"file={payload['path']}"
+        )
+
+
+def evidence_map_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    if args.evidence:
+        evidence_path = resolve_path_from_root(args.evidence, root_dir=settings.root_dir)
+        store = EvidenceStore(evidence_path)
+        summary_path = evidence_path.with_suffix(".summary.json")
+        store.write_summary(summary_path)
+    elif args.summary:
+        summary_path = resolve_path_from_root(args.summary, root_dir=settings.root_dir)
+    else:
+        candidates = sorted((settings.root_dir / "runs" / "evidence").glob("*.summary.json"), key=lambda item: item.stat().st_mtime)
+        if not candidates:
+            raise SystemExit("No evidence summary found. Run `siglab evidence-build` first or pass --summary.")
+        summary_path = candidates[-1]
+    output_path = (
+        resolve_path_from_root(args.output, root_dir=settings.root_dir)
+        if args.output
+        else settings.root_dir / "runs" / "evidence" / "evidence_graph.html"
+    )
+    rendered = write_evidence_graph_html(summary_path, output_path)
+    payload = {"summary": str(summary_path), "output": str(rendered)}
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    print(f"wrote evidence graph: {rendered}")
+
+
+def demo_report_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    evidence_dir = settings.root_dir / "runs" / "evidence"
+    sodex_probe_dir = settings.root_dir / "runs" / "sodex_probes"
+    sosovalue_summaries = sorted(evidence_dir.glob("*sosovalue*.summary.json"), key=lambda item: item.stat().st_mtime)
+    sodex_summaries = sorted(evidence_dir.glob("*sodex*.summary.json"), key=lambda item: item.stat().st_mtime)
+    ws_probes = sorted(sodex_probe_dir.glob("ws_*latest.json"), key=lambda item: item.stat().st_mtime)
+    preflight = _sodex_preflight_report()
+    report = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "use_case": "SoSoValue and SoDEX backed research-to-action evidence flow",
+        "input_to_output_flow": [
+            "SoSoValue evidence ingestion",
+            "SoDEX public market stream ingestion",
+            "Evidence normalization and dedupe",
+            "Operator evidence graph/report",
+            "SoDEX live-write preflight refusal until credentials exist",
+        ],
+        "latest_sosovalue_summary": _load_json_if_exists(sosovalue_summaries[-1]) if sosovalue_summaries else None,
+        "latest_sodex_summary": _load_json_if_exists(sodex_summaries[-1]) if sodex_summaries else None,
+        "latest_sodex_ws_probe": _load_json_if_exists(ws_probes[-1]) if ws_probes else None,
+        "sodex_preflight": preflight,
+        "readiness": {
+            "sosovalue_api": "PASS" if sosovalue_summaries else "PARTIAL",
+            "sodex_public_api": "PASS" if ws_probes else "PARTIAL",
+            "sodex_signed_execution": "FAIL_BLOCKED_BY_CREDENTIALS" if not preflight["live_write_allowed"] else "READY_NOT_VALIDATED_LIVE",
+            "demo_materials": "PARTIAL",
+        },
+        "red_flags": [
+            "Signed SoDEX writes are not live-proven.",
+            "SoSoValue Index/Macro/Treasury/Fundraising/Crypto Stocks/Analysis Charts callable wrappers are missing.",
+            "Evidence links are not causal claims.",
+        ],
+    }
+    output = (
+        resolve_path_from_root(args.output, root_dir=settings.root_dir)
+        if args.output
+        else settings.root_dir / "runs" / "demo_report.json"
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    html_output = None
+    if getattr(args, "html_output", None):
+        html_output = resolve_path_from_root(args.html_output, root_dir=settings.root_dir)
+    elif not getattr(args, "json", False):
+        html_output = settings.root_dir / "runs" / "demo_report.html"
+    if html_output is not None:
+        html_output.parent.mkdir(parents=True, exist_ok=True)
+        html_output.write_text(_demo_report_html(report), encoding="utf-8")
+    payload = {
+        "output": str(output),
+        "html_output": str(html_output) if html_output is not None else None,
+        "readiness": report["readiness"],
+        "red_flags": report["red_flags"],
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def demo_manifest_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    manifest = _build_demo_manifest(settings)
+    output = (
+        resolve_path_from_root(args.output, root_dir=settings.root_dir)
+        if args.output
+        else settings.root_dir / "runs" / "demo_manifest_latest.json"
+    )
+    write_json(output, manifest)
+    html_output = (
+        resolve_path_from_root(args.html_output, root_dir=settings.root_dir)
+        if getattr(args, "html_output", None)
+        else output.with_suffix(".html")
+    )
+    html_output.parent.mkdir(parents=True, exist_ok=True)
+    html_output.write_text(_demo_manifest_html(manifest), encoding="utf-8")
+    if getattr(args, "json", False):
+        print(json.dumps(manifest, indent=2, sort_keys=True, default=str))
+        return
+    print(f"demo_manifest: {display_path(output, settings.root_dir)}")
+    print(f"demo_manifest_html: {display_path(html_output, settings.root_dir)}")
+
+
+def _build_demo_manifest(settings: Any) -> dict[str, Any]:
+    runs_dir = settings.artifact_dir
+    provider_metric_paths = _provider_metric_paths_for_telemetry(settings=settings, run_session_id=None)
+    telemetry_path = runs_dir / "latest_telemetry_report.json"
+    market_report_path = runs_dir / "market_report_latest.json"
+    demo_report_path = runs_dir / "demo_report.json"
+    market_report = _load_json_if_exists(market_report_path) or {}
+    telemetry = _load_json_if_exists(telemetry_path) or {}
+    preflight = _sodex_preflight_report()
+    artifacts = {
+        "sosovalue_evidence": str(_latest_path(runs_dir / "evidence", "*sosovalue*.jsonl") or ""),
+        "sodex_ws_evidence": str(runs_dir / "evidence" / "sodex_ws_evidence.jsonl"),
+        "evidence_graph": str(_latest_path(runs_dir / "evidence", "*graph*.html") or ""),
+        "market_report_json": str(market_report_path) if market_report_path.exists() else "",
+        "market_report_html": str(runs_dir / "market_report_latest.html"),
+        "demo_report_json": str(demo_report_path) if demo_report_path.exists() else "",
+        "demo_report_html": str(runs_dir / "demo_report_latest.html"),
+        "telemetry_report_json": str(telemetry_path) if telemetry_path.exists() else "",
+        "provider_metrics": [str(path) for path in provider_metric_paths],
+        "sosovalue_surface": str(settings.root_dir / "docs" / "sosovalue-api-surface.yaml"),
+        "sodex_surface": str(settings.root_dir / "docs" / "sodex-api-surface.yaml"),
+        "buildathon_audit": str(settings.root_dir / "docs" / "buildathon-readiness-audit.md"),
+        "demo_script": str(settings.root_dir / "docs" / "demo-script.md"),
+    }
+    artifact_status = {
+        key: bool(value) and Path(value).exists()
+        for key, value in artifacts.items()
+        if key != "provider_metrics"
+    }
+    artifact_status["provider_metrics"] = bool(provider_metric_paths)
+    readiness = {
+        "sosovalue_input_to_output": bool(artifact_status.get("market_report_json")),
+        "sodex_public_market_data": bool(artifact_status.get("sodex_ws_evidence")),
+        "sodex_live_write_allowed": bool(preflight.get("live_write_allowed")),
+        "provider_metrics_present": bool(provider_metric_paths),
+        "telemetry_provider_metrics_status": telemetry.get("provider_metrics_status"),
+        "causality_claimed": False,
+        "usd_cost_claimed": False,
+    }
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "purpose": "buildathon_demo_artifact_index",
+        "artifacts": artifacts,
+        "artifact_status": artifact_status,
+        "readiness": readiness,
+        "market_report_status": market_report.get("status"),
+        "market_report_headline": dict(market_report.get("signal_summary") or {}).get("headline"),
+        "sodex_preflight": preflight,
+        "red_flags": [
+            "Signed SoDEX execution is not live-validated unless sodex_live_write_allowed is true.",
+            "Market report evidence is temporal/contextual; causality is not claimed.",
+            "B.AI Credits are not USD and must not be presented as USD spend.",
+        ],
+    }
+
+
+def _demo_manifest_html(manifest: dict[str, Any]) -> str:
+    def esc(value: object) -> str:
+        return html.escape(str(value))
+
+    readiness = dict(manifest.get("readiness") or {})
+    artifacts = dict(manifest.get("artifacts") or {})
+    artifact_status = dict(manifest.get("artifact_status") or {})
+    red_flags = list(manifest.get("red_flags") or [])
+    readiness_cards = "\n".join(
+        f"<li><strong>{esc(key)}</strong>: {esc(value)}</li>"
+        for key, value in sorted(readiness.items())
+    )
+    artifact_rows = "\n".join(
+        f"<tr><th>{esc(key)}</th><td>{esc(artifact_status.get(key))}</td><td><code>{esc(value)}</code></td></tr>"
+        for key, value in sorted(artifacts.items())
+    )
+    red_flag_items = "\n".join(f"<li>{esc(item)}</li>" for item in red_flags)
+    live_class = "bad" if not readiness.get("sodex_live_write_allowed") else "ok"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SigLab Buildathon Demo Panel</title>
+  <style>
+    :root {{ --ink:#1c1917; --paper:#f8f3e8; --card:#fffdf7; --line:#d6c8b4; --ok:#0f766e; --bad:#b91c1c; --warn:#a16207; }}
+    body {{ margin:0; color:var(--ink); background:radial-gradient(circle at 20% 0%,#e0f2fe 0,#f8f3e8 34%,#fff7ed 100%); font-family:Georgia,'Times New Roman',serif; }}
+    main {{ max-width:1120px; margin:0 auto; padding:42px 24px 72px; }}
+    h1 {{ font-size:48px; letter-spacing:-0.04em; margin:0 0 8px; }}
+    h2 {{ margin:0 0 12px; }}
+    .lede {{ font-size:18px; max-width:820px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin:22px 0; }}
+    .card {{ background:rgba(255,253,247,.86); border:1px solid var(--line); border-radius:20px; padding:20px; box-shadow:0 18px 40px rgba(60,45,25,.10); }}
+    .badge {{ display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:white; margin-right:8px; }}
+    .ok {{ color:var(--ok); }} .bad {{ color:var(--bad); }} .warn {{ color:var(--warn); }}
+    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    th,td {{ text-align:left; vertical-align:top; border-bottom:1px solid var(--line); padding:9px; }}
+    code {{ word-break:break-all; background:#f0e7d8; padding:2px 5px; border-radius:5px; }}
+    li {{ margin:8px 0; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>SigLab Buildathon Demo Panel</h1>
+  <p class="lede">One operator flow: SoSoValue evidence -> SoDEX market context -> non-causal market report -> risk/preflight boundary -> telemetry-backed AI loop. This panel indexes proof artifacts; it does not claim live signed execution.</p>
+  <p>
+    <span class="badge">market report: {esc(manifest.get('market_report_status'))}</span>
+    <span class="badge {live_class}">signed SoDEX live write: {esc(readiness.get('sodex_live_write_allowed'))}</span>
+    <span class="badge">provider metrics: {esc(readiness.get('provider_metrics_present'))}</span>
+  </p>
+  <section class="grid">
+    <div class="card"><h2>Readiness</h2><ul>{readiness_cards}</ul></div>
+    <div class="card"><h2>Market Headline</h2><p>{esc(manifest.get('market_report_headline'))}</p></div>
+    <div class="card"><h2>Red Flags</h2><ul class="bad">{red_flag_items}</ul></div>
+  </section>
+  <section class="card"><h2>Artifact Index</h2><table><tr><th>artifact</th><th>exists</th><th>path</th></tr>{artifact_rows}</table></section>
+  <section class="card"><h2>Generated</h2><p><code>{esc(manifest.get('generated_at'))}</code></p></section>
+</main>
+</body>
+</html>
+"""
+
+
+def market_report_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    evidence_dir = settings.root_dir / "runs" / "evidence"
+    sosovalue_path = (
+        resolve_path_from_root(args.sosovalue_evidence, root_dir=settings.root_dir)
+        if args.sosovalue_evidence
+        else _latest_path(evidence_dir, "*sosovalue*.jsonl")
+    )
+    sodex_path = (
+        resolve_path_from_root(args.sodex_evidence, root_dir=settings.root_dir)
+        if args.sodex_evidence
+        else evidence_dir / "sodex_ws_evidence.jsonl"
+    )
+    report = _build_market_report(
+        entity=str(args.entity or "BTC").upper(),
+        sosovalue_evidence=sosovalue_path,
+        sodex_evidence=sodex_path,
+    )
+    output = (
+        resolve_path_from_root(args.output, root_dir=settings.root_dir)
+        if args.output
+        else settings.root_dir / "runs" / "market_report.json"
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    html_output = (
+        resolve_path_from_root(args.html_output, root_dir=settings.root_dir)
+        if args.html_output
+        else settings.root_dir / "runs" / "market_report.html"
+    )
+    html_output.parent.mkdir(parents=True, exist_ok=True)
+    html_output.write_text(_market_report_html(report), encoding="utf-8")
+    payload = {
+        "output": str(output),
+        "html_output": str(html_output),
+        "entity": report["entity"],
+        "status": report["status"],
+        "warnings": report["warnings"],
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def _build_market_report(
+    *,
+    entity: str,
+    sosovalue_evidence: Path | None,
+    sodex_evidence: Path | None,
+) -> dict[str, Any]:
+    soso_rows, soso_read_stats = _read_jsonl_with_stats(sosovalue_evidence)
+    sodex_rows, sodex_read_stats = _read_jsonl_with_stats(sodex_evidence)
+    entity_upper = entity.upper()
+    etf_entity = f"us-{entity_upper.lower()}-spot"
+    quote_entity = f"{entity_upper}-USD"
+    latest_flow = _latest_record(
+        [
+            row
+            for row in soso_rows
+            if row.get("entity") == etf_entity and row.get("relation") == "total_net_inflow"
+        ],
+        required_value="numeric",
+    )
+    latest_assets = _latest_record(
+        [
+            row
+            for row in soso_rows
+            if row.get("entity") == etf_entity and row.get("relation") == "total_net_assets"
+        ],
+        required_value="numeric",
+    )
+    news_rows = [
+        row
+        for row in soso_rows
+        if row.get("module") == "Feeds"
+        and str(row.get("entity") or "").upper() in {entity_upper, "MARKET"}
+    ]
+    latest_news = sorted(
+        [row for row in news_rows if str(row.get("value") or "").strip()],
+        key=_record_sort_key,
+        reverse=True,
+    )[:5]
+    quote = _latest_record(
+        [
+            row
+            for row in sodex_rows
+            if str(row.get("entity") or "").upper() == quote_entity
+        ],
+        required_value="quote",
+    )
+    preflight = _sodex_preflight_report()
+    warnings = [
+        "Evidence links are temporal/contextual and are not causal claims.",
+        "Signed SoDEX execution is refused unless preflight reports live_write_allowed=true.",
+    ]
+    missing: list[str] = []
+    if latest_flow is None:
+        missing.append("latest ETF flow evidence")
+    if quote is None:
+        missing.append("latest SoDEX quote evidence")
+    if not latest_news:
+        missing.append("recent feed evidence")
+    status = "PARTIAL" if missing else "READY_FOR_OPERATOR_REVIEW"
+    signal = _market_signal_summary(
+        entity=entity_upper,
+        latest_flow=latest_flow,
+        latest_assets=latest_assets,
+        quote=quote,
+        latest_news=latest_news,
+        preflight=preflight,
+    )
+    decision_support = _market_decision_support(
+        entity=entity_upper,
+        signal=signal,
+        missing=missing,
+        preflight=preflight,
+    )
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "entity": entity_upper,
+        "status": status,
+        "missing": missing,
+        "signal_summary": signal,
+        "decision_support": decision_support,
+        "sosovalue": {
+            "evidence_path": str(sosovalue_evidence) if sosovalue_evidence else None,
+            "latest_flow": latest_flow,
+            "latest_assets": latest_assets,
+            "latest_news": latest_news,
+        },
+        "sodex": {
+            "evidence_path": str(sodex_evidence) if sodex_evidence else None,
+            "latest_quote": quote,
+            "preflight": preflight,
+        },
+        "warnings": warnings,
+        "evidence_selection": {
+            "latest_valid_semantics": "parsed_timestamp_then_observed_at_skip_invalid_required_values",
+            "sosovalue_rows_read": len(soso_rows),
+            "sodex_rows_read": len(sodex_rows),
+            "news_rows_considered": len(news_rows),
+            "sosovalue_read_stats": soso_read_stats,
+            "sodex_read_stats": sodex_read_stats,
+        },
+    }
+
+
+def _market_signal_summary(
+    *,
+    entity: str,
+    latest_flow: dict[str, Any] | None,
+    latest_assets: dict[str, Any] | None,
+    quote: dict[str, Any] | None,
+    latest_news: list[dict[str, Any]],
+    preflight: dict[str, Any],
+) -> dict[str, Any]:
+    flow_value = _float_or_none((latest_flow or {}).get("value"))
+    if flow_value is None:
+        flow_bias = "unknown"
+    elif flow_value > 0:
+        flow_bias = "ETF inflow"
+    elif flow_value < 0:
+        flow_bias = "ETF outflow"
+    else:
+        flow_bias = "flat ETF flow"
+    quote_attrs = dict((quote or {}).get("attributes") or {})
+    bid = quote_attrs.get("bid") or (quote or {}).get("value")
+    ask = quote_attrs.get("ask")
+    return {
+        "headline": (
+            f"{entity}: {flow_bias}; SoDEX quote "
+            f"bid={bid if bid is not None else 'missing'} ask={ask if ask is not None else 'missing'}; "
+            f"news_items={len(latest_news)}; live_write_allowed={bool(preflight.get('live_write_allowed'))}"
+        ),
+        "flow_direction": flow_bias,
+        "flow_value": flow_value,
+        "flow_timestamp": (latest_flow or {}).get("timestamp"),
+        "net_assets": _float_or_none((latest_assets or {}).get("value")),
+        "quote_bid": bid,
+        "quote_ask": ask,
+        "news_titles": [str(row.get("value") or "")[:180] for row in latest_news],
+        "operator_action": (
+            "review_only_signed_execution_blocked"
+            if not preflight.get("live_write_allowed")
+            else "review_before_any_live_order"
+        ),
+        "confidence": "medium" if latest_flow and quote else "low",
+        "causality": "not_claimed",
+    }
+
+
+def _market_decision_support(
+    *,
+    entity: str,
+    signal: dict[str, Any],
+    missing: list[str],
+    preflight: dict[str, Any],
+) -> dict[str, Any]:
+    quote_bid = signal.get("quote_bid")
+    quote_ask = signal.get("quote_ask")
+    flow_direction = str(signal.get("flow_direction") or "unknown")
+    evidence_complete = not missing
+    if not evidence_complete:
+        stance = "NO_ACTION_INCOMPLETE_EVIDENCE"
+    elif flow_direction in {"ETF inflow", "ETF outflow"} and quote_bid is not None and quote_ask is not None:
+        stance = "REVIEW_CONTEXT_NOT_TRADE_SIGNAL"
+    else:
+        stance = "WATCH_ONLY"
+    confirmations = [
+        "refresh SoSoValue ETF flow/news evidence before acting",
+        "refresh SoDEX quote/orderbook context before acting",
+        "run strategy evaluation; do not trade from this report alone",
+    ]
+    invalidations = [
+        "missing or malformed evidence rows increase uncertainty",
+        "latest SoDEX quote is unavailable or stale",
+        "SoDEX preflight refuses live write prerequisites",
+    ]
+    next_actions = [
+        f"run bounded SigLab evaluation for {entity}-related families",
+        "inspect evidence graph for non-causal narrative links",
+        "keep signed execution disabled unless sodex-preflight reports live_write_allowed=true",
+    ]
+    if preflight.get("live_write_allowed"):
+        next_actions.append("if operator still proceeds, require manual confirmation and dry-run preview before live write")
+    return {
+        "stance": stance,
+        "use_case": "operator_decision_support",
+        "not_a_trade_signal": True,
+        "evidence_complete": evidence_complete,
+        "confirmations_required": confirmations,
+        "invalidation_checks": invalidations,
+        "next_actions": next_actions,
+        "risk_controls": [
+            "no causal claim",
+            "no automatic order submission",
+            "signed SoDEX execution requires explicit preflight success",
+            "USD cost is not claimed for provider usage",
+        ],
+    }
+
+
+def _market_report_html(report: dict[str, Any]) -> str:
+    def esc(value: object) -> str:
+        return html.escape(str(value))
+
+    signal = dict(report.get("signal_summary") or {})
+    decision = dict(report.get("decision_support") or {})
+    selection = dict(report.get("evidence_selection") or {})
+    soso_stats = dict(selection.get("sosovalue_read_stats") or {})
+    sodex_stats = dict(selection.get("sodex_read_stats") or {})
+    warnings = "".join(f"<li>{esc(item)}</li>" for item in list(report.get("warnings") or []))
+    missing = "".join(f"<li>{esc(item)}</li>" for item in list(report.get("missing") or [])) or "<li>none</li>"
+    news = "".join(f"<li>{esc(item)}</li>" for item in list(signal.get("news_titles") or [])) or "<li>missing</li>"
+    return f"""<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SigLab Market Report {esc(report.get('entity'))}</title>
+<style>
+body{{margin:0;background:#f5f0e8;color:#211b16;font-family:Georgia,'Times New Roman',serif}}
+main{{max-width:980px;margin:0 auto;padding:42px 24px}}
+.card{{background:#fffaf2;border:1px solid #d8c7ad;border-radius:18px;padding:20px;margin:18px 0;box-shadow:0 14px 30px rgba(45,35,25,.08)}}
+h1{{font-size:42px;margin:0}} h2{{margin-top:0}} code{{background:#eadfcc;padding:2px 5px;border-radius:5px}}
+li{{margin:8px 0}} .warn li{{color:#9a3412}}
+</style></head>
+<body><main>
+<h1>SigLab Market Report: {esc(report.get('entity'))}</h1>
+<p><code>{esc(report.get('status'))}</code> · generated {esc(report.get('generated_at'))}</p>
+<section class="card"><h2>Signal Summary</h2><p>{esc(signal.get('headline'))}</p><ul>
+<li>flow direction: {esc(signal.get('flow_direction'))}</li>
+<li>flow value: {esc(signal.get('flow_value'))}</li>
+<li>net assets: {esc(signal.get('net_assets'))}</li>
+<li>operator action: {esc(signal.get('operator_action'))}</li>
+<li>causality: {esc(signal.get('causality'))}</li>
+</ul></section>
+<section class="card"><h2>Decision Support</h2><p><strong>{esc(decision.get('stance'))}</strong></p><ul>
+{''.join(f"<li>{esc(item)}</li>" for item in list(decision.get('next_actions') or []))}
+</ul><p>not a trade signal: {esc(decision.get('not_a_trade_signal'))}</p></section>
+<section class="card"><h2>News Context</h2><ul>{news}</ul></section>
+<section class="card"><h2>Evidence Quality</h2><ul>
+<li>selection: {esc(selection.get('latest_valid_semantics'))}</li>
+<li>SoSoValue rows: {esc(soso_stats.get('record_count'))}; malformed: {esc(soso_stats.get('malformed_count'))}; non-object: {esc(soso_stats.get('non_object_count'))}</li>
+<li>SoDEX rows: {esc(sodex_stats.get('record_count'))}; malformed: {esc(sodex_stats.get('malformed_count'))}; non-object: {esc(sodex_stats.get('non_object_count'))}</li>
+</ul></section>
+<section class="card"><h2>Missing Evidence</h2><ul>{missing}</ul></section>
+<section class="card"><h2>Warnings</h2><ul class="warn">{warnings}</ul></section>
+</main></body></html>
+"""
+
+
+def _latest_path(directory: Path, pattern: str) -> Path | None:
+    matches = sorted(directory.glob(pattern), key=lambda item: item.stat().st_mtime)
+    return matches[-1] if matches else None
+
+
+def _read_jsonl(path: Path | None) -> list[dict[str, Any]]:
+    rows, _stats = _read_jsonl_with_stats(path)
+    return rows
+
+
+def _read_jsonl_with_stats(path: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if path is None or not path.exists():
+        return [], {"path": str(path) if path else None, "line_count": 0, "record_count": 0, "malformed_count": 0, "non_object_count": 0}
+    rows: list[dict[str, Any]] = []
+    malformed_count = 0
+    non_object_count = 0
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            malformed_count += 1
+            continue
+        if isinstance(payload, dict):
+            rows.append(payload)
+        else:
+            non_object_count += 1
+    return rows, {
+        "path": str(path),
+        "line_count": len(lines),
+        "record_count": len(rows),
+        "malformed_count": malformed_count,
+        "non_object_count": non_object_count,
+    }
+
+
+def _latest_record(rows: list[dict[str, Any]], *, required_value: str | None = None) -> dict[str, Any] | None:
+    rows = [row for row in rows if _record_has_required_value(row, required_value)]
+    if not rows:
+        return None
+    return sorted(rows, key=_record_sort_key, reverse=True)[0]
+
+
+def _record_has_required_value(row: dict[str, Any], required_value: str | None) -> bool:
+    if required_value is None:
+        return True
+    if _record_timestamp(row) is None:
+        return False
+    if required_value == "numeric":
+        return _float_or_none(row.get("value")) is not None
+    if required_value == "quote":
+        attrs = dict(row.get("attributes") or {})
+        return bool(attrs.get("bid") or row.get("value")) and bool(attrs.get("ask"))
+    return True
+
+
+def _record_sort_key(row: dict[str, Any]) -> tuple[int, float, str]:
+    timestamp = _record_timestamp(row)
+    if timestamp is None:
+        return (0, 0.0, str(row.get("evidence_path") or ""))
+    return (1, timestamp.timestamp(), str(row.get("evidence_path") or ""))
+
+
+def _record_timestamp(row: dict[str, Any]) -> datetime | None:
+    value = row.get("timestamp") or row.get("observed_at")
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _demo_report_html(report: dict[str, Any]) -> str:
+    readiness = dict(report.get("readiness") or {})
+    flow = [str(item) for item in list(report.get("input_to_output_flow") or [])]
+    red_flags = [str(item) for item in list(report.get("red_flags") or [])]
+    sosovalue_summary = dict(report.get("latest_sosovalue_summary") or {})
+    sodex_summary = dict(report.get("latest_sodex_summary") or {})
+    ws_probe = dict(report.get("latest_sodex_ws_probe") or {})
+    preflight = dict(report.get("sodex_preflight") or {})
+
+    def esc(value: object) -> str:
+        return html.escape(str(value))
+
+    readiness_rows = "\n".join(
+        f"<tr><th>{esc(key)}</th><td>{esc(value)}</td></tr>"
+        for key, value in sorted(readiness.items())
+    )
+    flow_items = "\n".join(f"<li>{esc(item)}</li>" for item in flow)
+    red_flag_items = "\n".join(f"<li>{esc(item)}</li>" for item in red_flags)
+    evidence_rows = "\n".join(
+        [
+            f"<tr><th>SoSoValue evidence records</th><td>{esc(sosovalue_summary.get('record_count', 'missing'))}</td></tr>",
+            f"<tr><th>SoSoValue evidence links</th><td>{esc(sosovalue_summary.get('link_count', 'missing'))}</td></tr>",
+            f"<tr><th>SoDEX evidence records</th><td>{esc(sodex_summary.get('record_count', 'missing'))}</td></tr>",
+            f"<tr><th>SoDEX WS first update</th><td>{esc(ws_probe.get('first_update_type', 'missing'))}</td></tr>",
+            f"<tr><th>SoDEX live write allowed</th><td>{esc(preflight.get('live_write_allowed', False))}</td></tr>",
+        ]
+    )
+    missing = preflight.get("missing_prerequisites")
+    if isinstance(missing, list) and missing:
+        missing_items = "\n".join(f"<li>{esc(item)}</li>" for item in missing)
+    else:
+        missing_items = "<li>none reported</li>"
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SigLab Buildathon Demo Report</title>
+  <style>
+    :root {{ --ink:#1c1917; --paper:#fbf7ef; --line:#d7c7ac; --accent:#0f766e; --warn:#b45309; --bad:#991b1b; }}
+    body {{ margin:0; font-family: Georgia, 'Times New Roman', serif; color:var(--ink); background:linear-gradient(135deg,#fbf7ef,#eef7f4); }}
+    main {{ max-width:1100px; margin:0 auto; padding:40px 24px 64px; }}
+    h1 {{ font-size:42px; margin:0 0 8px; letter-spacing:-0.03em; }}
+    h2 {{ margin-top:32px; border-bottom:1px solid var(--line); padding-bottom:8px; }}
+    .lede {{ font-size:18px; max-width:820px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px; }}
+    .card {{ background:rgba(255,255,255,.74); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow:0 12px 30px rgba(41,31,19,.08); }}
+    table {{ border-collapse:collapse; width:100%; }}
+    th,td {{ text-align:left; vertical-align:top; border-bottom:1px solid var(--line); padding:10px; }}
+    th {{ width:44%; color:#4b3b2a; }}
+    .flag li {{ color:var(--bad); margin:8px 0; }}
+    .flow li {{ margin:8px 0; }}
+    code {{ background:#efe6d7; padding:2px 5px; border-radius:5px; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>SigLab Buildathon Demo Report</h1>
+  <p class="lede">{esc(report.get('use_case', ''))}. This report shows what is real, what is partial, and what is blocked. Evidence links are correlation/context, not causal proof.</p>
+  <div class="grid">
+    <section class="card"><h2>Readiness</h2><table>{readiness_rows}</table></section>
+    <section class="card"><h2>Evidence</h2><table>{evidence_rows}</table></section>
+  </div>
+  <section class="card"><h2>Input To Output Flow</h2><ol class="flow">{flow_items}</ol></section>
+  <section class="card"><h2>Live Boundary Missing Prerequisites</h2><ul>{missing_items}</ul></section>
+  <section class="card"><h2>Red Flags</h2><ul class="flag">{red_flag_items}</ul></section>
+  <section class="card"><h2>Generated</h2><p><code>{esc(report.get('generated_at'))}</code></p></section>
+</main>
+</body>
+</html>
+"""
+
+
+def _load_json_if_exists(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def telemetry_report_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    trace_paths = _trace_paths_for_telemetry(
+        settings=settings,
+        track=str(args.track or "all"),
+        run_session_id=args.run_session_id,
+    )
+    provider_metric_paths = _provider_metric_paths_for_telemetry(
+        settings=settings,
+        run_session_id=args.run_session_id,
+    )
+    payload = aggregate_trace_telemetry(trace_paths)
+    payload["trace_paths_scanned"] = len(trace_paths)
+    payload["provider_metrics"] = aggregate_provider_metrics_artifacts(provider_metric_paths)
+    payload["provider_metrics_paths_scanned"] = len(provider_metric_paths)
+    payload["provider_metrics_status"] = (
+        "missing"
+        if trace_paths and payload["provider_metrics"]["artifact_count"] == 0
+        else "present"
+        if payload["provider_metrics"]["artifact_count"] > 0
+        else "not_applicable"
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+    else:
+        print(
+            "\n".join(
+                [
+                    f"trace_count: {payload['trace_count']}",
+                    f"stage_counts: {payload['stage_counts']}",
+                    f"provider_counts: {payload['provider_counts']}",
+                    f"model_counts: {payload['model_counts']}",
+                    f"tool_invocation_count: {payload['tool_invocation_count']}",
+                    f"tool_counts: {payload['tool_counts']}",
+                    f"tool_latency_ms: {payload['tool_latency_ms']}",
+                    f"provider_metrics_status: {payload['provider_metrics_status']}",
+                    f"provider_metrics: {payload['provider_metrics']}",
+                    f"confidence: {payload['confidence']}",
+                ]
+            )
+        )
+
+
+def _trace_paths_for_telemetry(*, settings: Any, track: str, run_session_id: str | None) -> list[Path]:
+    base = settings.artifact_dir
+    if run_session_id:
+        pattern = f"*/workspaces/{run_session_id}/iterations/**/*_trace.json"
+    elif track == "all":
+        pattern = "*/workspaces/*/iterations/**/*_trace.json"
+    else:
+        pattern = f"{track}/workspaces/*/iterations/**/*_trace.json"
+    return sorted(base.glob(pattern))
+
+
+def _provider_metric_paths_for_telemetry(*, settings: Any, run_session_id: str | None) -> list[Path]:
+    base = settings.artifact_dir / "provider_metrics"
+    if run_session_id:
+        jsonl_path = base / f"{run_session_id}.jsonl"
+        if jsonl_path.exists():
+            return [jsonl_path]
+        latest_path = base / f"{run_session_id}.latest.json"
+        return [latest_path] if latest_path.exists() else []
+    jsonl_paths = sorted(base.glob("*.jsonl"))
+    if jsonl_paths:
+        return jsonl_paths
+    return sorted(base.glob("*.latest.json"))
+
+
+async def evidence_build_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    _require_sosovalue_config(settings)
+    observed_at = datetime.now(UTC).isoformat()
+    output = (
+        resolve_path_from_root(args.output, root_dir=settings.root_dir)
+        if args.output
+        else settings.artifact_dir / "evidence" / "sosovalue_evidence.jsonl"
+    )
+    raw = json.loads(settings.sosovalue_config_path.read_text(encoding="utf-8"))
+    api_key = settings.sosovalue_api_key_override or str((raw.get("system") or {}).get("api_key") or "").strip()
+    client = SoSoValueClient(
+        api_key=api_key,
+        endpoints=SoSoValueEndpoints(
+            openapi_base_url=settings.sosovalue_openapi_base_url,
+            etf_base_url=settings.sosovalue_etf_base_url,
+            news_base_url=settings.sosovalue_news_base_url,
+        ),
+        timeout_s=settings.sosovalue_timeout_s,
+        retries=settings.sosovalue_retries,
+    )
+    try:
+        currencies = await client.listed_currencies()
+        currency_id = _sosovalue_currency_id(currencies, str(args.currency))
+        etf_rows, news_rows, currency_news_rows = await asyncio.gather(
+            client.etf_historical_inflow(etf_type=str(args.etf_type)),
+            client.featured_news_pages(
+                max_pages=int(args.news_pages),
+                page_size=int(args.news_page_size),
+            ),
+            client.featured_news_by_currency_pages(
+                max_pages=int(args.news_pages),
+                page_size=int(args.news_page_size),
+                currency_id=currency_id,
+            )
+            if currency_id is not None
+            else asyncio.sleep(0, result=[]),
+        )
+    finally:
+        await client.close()
+    records = [
+        *etf_inflow_evidence(
+            etf_rows,
+            etf_type=str(args.etf_type),
+            observed_at=observed_at,
+            evidence_path=f"sosovalue/etf/{args.etf_type}",
+        ),
+        *news_evidence(
+            news_rows,
+            observed_at=observed_at,
+            evidence_path="sosovalue/news/featured",
+        ),
+        *news_evidence(
+            currency_news_rows,
+            observed_at=observed_at,
+            evidence_path=f"sosovalue/news/featured/currency/{args.currency}",
+            default_entity=str(args.currency).upper(),
+            source="sosovalue.featured_news_by_currency",
+        ),
+    ]
+    source_counts = Counter(record.source for record in records)
+    store = EvidenceStore(output)
+    appended = store.append_many(records)
+    links = store.linked_relations(max_day_gap=1)
+    summary_output = (
+        resolve_path_from_root(args.summary_output, root_dir=settings.root_dir)
+        if args.summary_output
+        else output.with_suffix(".summary.json")
+    )
+    summary = store.write_summary(summary_output, max_day_gap=1, top_links=int(args.summary_top_links))
+    print(
+        json.dumps(
+            {
+                "output": display_path(output, root_dir=settings.root_dir),
+                "summary_output": display_path(summary_output, root_dir=settings.root_dir),
+                "records_appended": appended,
+                "cross_module_links": len(links),
+                "currency": str(args.currency).upper(),
+                "currency_id": currency_id,
+                "link_relations": sorted({str(link.get("relation")) for link in links}),
+                "modules": sorted({record.module for record in records}),
+                "relations": sorted({record.relation for record in records}),
+                "source_counts": dict(sorted(source_counts.items())),
+                "summary_record_count": summary["record_count"],
+                "summary_top_links": len(summary["top_links"]),
+                "append_stats": dict(store.last_append_stats),
+                "observed_at": observed_at,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+def _sosovalue_currency_id(rows: list[dict[str, Any]], symbol: str) -> int | None:
+    needle = str(symbol or "").strip().lower()
+    for row in rows:
+        if str(row.get("currencyName") or "").strip().lower() == needle:
+            return int(row["currencyId"])
+        if str(row.get("fullName") or "").strip().lower() == needle:
+            return int(row["currencyId"])
+    return None
+
+
 def _deployment_eligible(
     *,
     summary: dict[str, Any],
     trial_context: dict[str, Any] | None,
 ) -> bool:
+    return not _deployment_ineligible_reasons(summary=summary, trial_context=trial_context)
+
+
+def _deployment_ineligible_reasons(
+    *,
+    summary: dict[str, Any],
+    trial_context: dict[str, Any] | None,
+) -> list[str]:
     summary = dict(summary or {})
     trial_context = dict(trial_context or {})
+    reasons: list[str] = []
     if not bool(summary.get("passed")):
-        return False
+        reasons.append("summary_not_passed")
     if str(trial_context.get("fragility_label") or "").strip().lower() == "fragile":
-        return False
+        reasons.append("fragility_label_fragile")
     audit_total_return = summary.get("audit_total_return")
     if audit_total_return is not None and float(audit_total_return) < -0.02:
-        return False
+        reasons.append("audit_total_return_below_minus_2pct")
     fragility_pack = dict(trial_context.get("fragility_pack") or {})
     active_bar_count = fragility_pack.get("active_bar_count")
     if active_bar_count is not None and int(active_bar_count) < 72:
-        return False
-    return True
+        reasons.append("active_bar_count_below_72")
+    return reasons
+
+
+def _sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
+    source = env if env is not None else os.environ
+    api_key_name = str(source.get("SODEX_API_KEY_NAME") or "").strip()
+    account_id = str(source.get("SODEX_ACCOUNT_ID") or "").strip()
+    nonce_store = str(source.get("SODEX_NONCE_STORE_PATH") or "").strip()
+    environment = str(source.get("SODEX_ENVIRONMENT") or "testnet").strip().lower()
+    private_key_present = bool(str(source.get("SODEX_PRIVATE_KEY") or "").strip())
+    missing: list[str] = []
+    if not api_key_name:
+        missing.append("SODEX_API_KEY_NAME")
+    if not account_id:
+        missing.append("SODEX_ACCOUNT_ID")
+    else:
+        try:
+            if int(account_id) < 0:
+                missing.append("SODEX_ACCOUNT_ID must be an unsigned integer")
+        except ValueError:
+            missing.append("SODEX_ACCOUNT_ID must be an unsigned integer")
+    if not nonce_store:
+        missing.append("SODEX_NONCE_STORE_PATH")
+    if not private_key_present:
+        missing.append("SODEX_PRIVATE_KEY")
+    if environment not in {"mainnet", "testnet"}:
+        missing.append("SODEX_ENVIRONMENT must be mainnet or testnet")
+    return {
+        "public_read_ready": True,
+        "schema_pinned": True,
+        "signed_path": {
+            "ready": not missing,
+            "environment": environment,
+            "signer_ready": private_key_present,
+            "signer_type": "evm-private-key" if private_key_present else None,
+            "accountID_present": bool(account_id),
+            "api_key_name_present": bool(api_key_name),
+            "nonce_store_ready": bool(nonce_store),
+            "missing_prerequisites": missing,
+        },
+        "live_write_allowed": not missing,
+        "live_write_refusal_reason": None if not missing else "missing signed-path prerequisites",
+        "access_plan": {
+            "preferred_validation_environment": "testnet",
+            "mainnet_warning": "Do not attempt signed mainnet writes until testnet/account preflight passes and operator confirms supported chain/deposit requirements.",
+            "buildathon_access_request": "Request SoSoValue/SoDEX buildathon access early when missing API/account prerequisites block live validation.",
+            "required_operator_inputs": [
+                "SoDEX environment: testnet first, mainnet only after explicit operator confirmation",
+                "SoDEX API key name",
+                "SoDEX accountID",
+                "nonce store path",
+                "isolated EVM signer private key",
+                "user address for private/account WebSocket probes",
+            ],
+        },
+        "next_actions": [
+            "prefer SODEX_ENVIRONMENT=testnet for first signed validation",
+            *[f"set {name}" for name in missing if name.startswith("SODEX_")],
+            "run siglab sodex-preflight --json again before any deploy/export/live attempt",
+        ],
+        "request_weight_budget_per_minute": SODEX_WEIGHT_BUDGET_PER_MINUTE,
+        "documented_endpoint_weights": dict(sorted(SODEX_ENDPOINT_WEIGHTS.items())),
+        "rate_limit_scope": {
+            "scope": "per_ip",
+            "local_scheduler_only": True,
+            "operator_warning": (
+                "SigLab's built-in SoDEX weight scheduler is process-local. "
+                "Use an external shared limiter when multiple processes share one egress IP."
+            ),
+        },
+        "supported_signed_actions": sorted(SUPPORTED_SODEX_SIGNED_ACTIONS),
+        "unsupported_signed_actions": dict(UNSUPPORTED_SODEX_SIGNED_ACTIONS),
+    }
+
+
+def sodex_preflight_command(args: argparse.Namespace) -> None:
+    report = _sodex_preflight_report()
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return
+    print(f"public_read_ready={report['public_read_ready']}")
+    print(f"schema_pinned={report['schema_pinned']}")
+    print(f"signed_path_ready={report['signed_path']['ready']}")
+    print(f"environment={report['signed_path']['environment']}")
+    if report["signed_path"]["missing_prerequisites"]:
+        print("missing_prerequisites=" + ",".join(report["signed_path"]["missing_prerequisites"]))
+    print(f"live_write_allowed={report['live_write_allowed']}")
+
+
+async def valuechain_preflight_command(args: argparse.Namespace) -> None:
+    rpc_url = str(args.rpc_url).rstrip("/")
+    expected = int(args.expected_chain_id)
+    report: dict[str, Any] = {
+        "rpc_url": rpc_url,
+        "expected_chain_id": expected,
+        "source": "https://sodex.com/documentation/user-guide/faq/how-do-i-add-the-valuechain-network",
+        "ready": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.post(
+                rpc_url,
+                json={"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []},
+                headers={"Content-Type": "application/json"},
+            )
+        report["http_status"] = int(response.status_code)
+        payload = response.json()
+        report["response_shape"] = sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
+        chain_hex = payload.get("result") if isinstance(payload, dict) else None
+        report["chain_id_hex"] = chain_hex
+        report["chain_id"] = int(str(chain_hex), 16) if isinstance(chain_hex, str) and chain_hex.startswith("0x") else None
+        report["ready"] = report["chain_id"] == expected
+        if not report["ready"]:
+            report["missing_or_wrong"] = "ValueChain RPC did not return the documented chain ID"
+    except Exception as exc:  # noqa: BLE001
+        report["error_class"] = type(exc).__name__
+        report["error"] = str(exc)
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return
+    status = "READY" if report.get("ready") else "NOT READY"
+    print(f"ValueChain RPC {status}: chain_id={report.get('chain_id')} expected={expected} rpc={rpc_url}")
+
+
+async def sodex_ws_probe_command(args: argparse.Namespace) -> None:
+    params: dict[str, Any] = {"channel": str(args.channel)}
+    if args.symbol:
+        params["symbol"] = str(args.symbol)
+    if args.user_address:
+        params["user"] = str(args.user_address)
+    if args.account_id is not None:
+        params["accountID"] = int(args.account_id)
+    report: dict[str, Any] = {
+        "environment": args.environment,
+        "market": args.market,
+        "params": params,
+        "live_write": False,
+        "signed": False,
+        "ready": False,
+    }
+    client = SoDEXWebSocketClient(
+        environment=args.environment,
+        market=args.market,
+        idle_timeout_s=float(args.timeout_seconds),
+        pong_timeout_s=min(5.0, float(args.timeout_seconds)),
+        max_reconnects=0,
+    )
+    try:
+        ack = await client.subscribe(params, request_id=1)
+        report["subscribe_ack"] = ack
+        try:
+            update = await client.recv_update(timeout_s=float(args.timeout_seconds))
+        except Exception as exc:  # noqa: BLE001
+            report["update_error_class"] = type(exc).__name__
+            report["update_error"] = str(exc)
+        else:
+            report["first_update_keys"] = sorted(update.keys())
+            report["first_update_channel"] = update.get("channel")
+            report["first_update_type"] = update.get("type")
+            if args.evidence_output:
+                settings = load_settings()
+                evidence_output = resolve_path_from_root(args.evidence_output, root_dir=settings.root_dir)
+                records = sodex_ws_evidence(
+                    update,
+                    observed_at=datetime.now(UTC).isoformat(),
+                    evidence_path=f"sodex/ws/{args.market}/{args.channel}",
+                )
+                store = EvidenceStore(evidence_output)
+                appended = store.append_many(records)
+                summary_output = evidence_output.with_suffix(".summary.json")
+                summary = store.write_summary(summary_output)
+                report["evidence_output"] = str(evidence_output)
+                report["evidence_summary_output"] = str(summary_output)
+                report["evidence_records_appended"] = appended
+                report["evidence_summary_record_count"] = summary["record_count"]
+        report["ready"] = True
+    except Exception as exc:  # noqa: BLE001
+        report["error_class"] = type(exc).__name__
+        report["error"] = str(exc)
+    finally:
+        report["snapshot"] = client.snapshot()
+        await client.close()
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, sort_keys=True, default=str))
+        return
+    print(json.dumps(report, indent=2, sort_keys=True, default=str))
+
+
+def _parse_sodex_enum(value: Any, aliases: dict[str, int], field_name: str) -> int:
+    raw = str(value).strip()
+    if raw.isdigit():
+        parsed = int(raw)
+        if parsed in set(aliases.values()):
+            return parsed
+    normalized = raw.upper().replace("-", "_")
+    if normalized in aliases:
+        return aliases[normalized]
+    accepted = ", ".join([*aliases.keys(), *[str(v) for v in sorted(set(aliases.values()))]])
+    raise SystemExit(f"--{field_name.replace('_', '-')} must be one of: {accepted}")
+
+
+def _sodex_preview_payload(args: argparse.Namespace) -> dict[str, Any]:
+    if args.kind == "new-order":
+        order = perps_order_item(
+            cl_ord_id=str(args.cl_ord_id),
+            modifier=_parse_sodex_enum(args.modifier, SODEX_MODIFIER_ALIASES, "modifier"),
+            side=_parse_sodex_enum(args.side, SODEX_SIDE_ALIASES, "side"),
+            order_type=_parse_sodex_enum(args.order_type, SODEX_ORDER_TYPE_ALIASES, "order_type"),
+            time_in_force=_parse_sodex_enum(args.time_in_force, SODEX_TIME_IN_FORCE_ALIASES, "time_in_force"),
+            price=args.price,
+            quantity=args.quantity,
+            funds=args.funds,
+            reduce_only=bool(args.reduce_only),
+            position_side=_parse_sodex_enum(args.position_side, SODEX_POSITION_SIDE_ALIASES, "position_side"),
+        )
+        body = perps_new_order_body(account_id=int(args.account_id), symbol_id=int(args.symbol_id), orders=[order])
+        request = SoDEXSignedRequest(method="POST", path="/trade/orders", body=body, weight=1)
+    elif args.kind == "cancel-order":
+        cancel = perps_cancel_item(
+            symbol_id=int(args.symbol_id),
+            order_id=args.order_id,
+            cl_ord_id=args.orig_cl_ord_id,
+        )
+        body = perps_cancel_order_body(account_id=int(args.account_id), cancels=[cancel])
+        request = SoDEXSignedRequest(method="DELETE", path="/trade/orders", body=body, weight=1)
+    elif args.kind == "schedule-cancel":
+        body = perps_schedule_cancel_body(
+            account_id=int(args.account_id),
+            scheduled_timestamp=args.scheduled_timestamp,
+        )
+        request = SoDEXSignedRequest(method="POST", path="/trade/orders/schedule-cancel", body=body, weight=1)
+    elif args.kind == "update-margin":
+        if args.amount is None:
+            raise SystemExit("--amount is required for --kind update-margin")
+        body = perps_update_margin_body(
+            account_id=int(args.account_id),
+            symbol_id=int(args.symbol_id),
+            amount=str(args.amount),
+        )
+        request = SoDEXSignedRequest(method="POST", path="/trade/margin", body=body, weight=1)
+    else:
+        body = perps_update_leverage_body(
+            account_id=int(args.account_id),
+            symbol_id=int(args.symbol_id),
+            leverage=int(args.leverage),
+            margin_mode=_parse_sodex_enum(args.margin_mode, SODEX_MARGIN_MODE_ALIASES, "margin_mode"),
+        )
+        request = SoDEXSignedRequest(method="POST", path="/trade/leverage", body=body, weight=1)
+    signature_input = build_signature_input(
+        domain=request.domain,
+        account_id=int(args.account_id),
+        body=request.body,
+        nonce=int(args.nonce),
+    )
+    return {
+        "method": request.method,
+        "path": request.path,
+        "domain": request.domain,
+        "weight": request.weight,
+        "canonical_body": canonical_json(http_body_from_action_payload(request.body)),
+        "canonical_signing_payload": canonical_json(request.body),
+        "signature_input": signature_input,
+        "signature": None,
+        "submitted": False,
+    }
+
+
+def sodex_preview_command(args: argparse.Namespace) -> None:
+    print(json.dumps(_sodex_preview_payload(args), indent=2, sort_keys=True))
 
 
 async def run_command(args: argparse.Namespace) -> None:
     settings = load_settings()
+    if getattr(args, "max_call_estimated_credits", None) is not None:
+        settings.bai_max_call_credits = float(args.max_call_estimated_credits)
     _require_sosovalue_config(settings)
     settings.ensure_runtime_directories()
+    burn_in_iterations = int(getattr(args, "burn_in_iterations", 0) or 0)
+    max_runtime_seconds = getattr(args, "max_runtime_seconds", None)
+    if getattr(args, "max_total_cost", None) is not None:
+        raise SystemExit(
+            "--max-total-cost is not enforced yet because provider token/cost telemetry is not available; "
+            "omit it or add real cost accounting first"
+        )
+    loop_policy = {
+        "max_total_cost": getattr(args, "max_total_cost", None),
+        "max_total_credits": getattr(args, "max_total_credits", None),
+        "max_call_estimated_credits": getattr(args, "max_call_estimated_credits", None),
+        "max_provider_errors": getattr(args, "max_provider_errors", None),
+        "max_consecutive_no_improvement": getattr(args, "max_consecutive_no_improvement", None),
+        "max_consecutive_crashes": getattr(args, "max_consecutive_crashes", None),
+        "cooldown_seconds_on_429": float(getattr(args, "cooldown_seconds_on_429", 0.0) or 0.0),
+        "provider_fallback_on_quota": bool(getattr(args, "provider_fallback_on_quota", False)),
+        "stop_on_live_surface_unavailable": bool(getattr(args, "stop_on_live_surface_unavailable", False)),
+        "resume_safe_check": bool(getattr(args, "resume_safe_check", False)),
+        "max_runtime_semantics": "between_iterations_cooperative",
+    }
+    runner_label = str(getattr(args, "agent_label", None) or getattr(args, "runner_label", None) or "siglab_harness")
+    run_label = str(getattr(args, "run_label", None) or "").strip() or None
     selected_families = _parse_family_scope(args.family, args.families)
     custom_symbols = _parse_symbol_override(getattr(args, "symbols", None))
     resume_run_id = str(getattr(args, "resume_run", "") or "").strip() or None
@@ -319,6 +1743,8 @@ async def run_command(args: argparse.Namespace) -> None:
                 f"--symbols {custom_symbols!r} do not match resumed run symbols `{resume_symbols}`"
             )
         custom_symbols = resume_symbols or None
+        if loop_policy["resume_safe_check"]:
+            _resume_safe_check(settings=settings, run_session_id=resume_run_id)
         if (
             getattr(args, "use_historical_seeds", None) is not None
             and use_historical_seeds != bool(resume_info.get("use_historical_seeds"))
@@ -328,7 +1754,7 @@ async def run_command(args: argparse.Namespace) -> None:
             )
         use_historical_seeds = bool(resume_info.get("use_historical_seeds"))
         memory_scope = str(resume_info["memory_scope"])
-        if args.warmup_iterations > 0:
+        if burn_in_iterations > 0:
             raise SystemExit("--resume-run cannot be combined with --burn-in-iterations")
     if tracks != ["trend_signals"]:
         raise SystemExit("Workspace-flow phase 1 supports only --track trend_signals")
@@ -365,10 +1791,11 @@ async def run_command(args: argparse.Namespace) -> None:
     )
 
     try:
-        if args.warmup_iterations > 0:
-            print(f"[run] starting burn-in phase iterations={args.warmup_iterations}")
+        if burn_in_iterations > 0:
+            print(f"[run] starting burn-in phase iterations={burn_in_iterations}")
             next_iteration = await _run_trend_signals_iterations(
                 settings=settings,
+                claude=claude,
                 provider=provider,
                 ancestry=ancestry,
                 mutator=mutator,
@@ -378,11 +1805,12 @@ async def run_command(args: argparse.Namespace) -> None:
                 population_size=population_size,
                 family_scope=selected_families,
                 skip_llm=True,
-                iterations=args.warmup_iterations,
+                iterations=burn_in_iterations,
                 start_iteration=next_iteration,
                 phase_label="burn_in",
                 run_session_id=run_session_id,
-                runner_label=str(args.runner_label or "siglab_harness"),
+                runner_label=runner_label,
+                run_label=run_label,
                 workspace_session=workspace_session,
                 workspace_builder=workspace_builder,
                 workspace_hooks=workspace_hooks,
@@ -393,9 +1821,12 @@ async def run_command(args: argparse.Namespace) -> None:
                 memory_scope=memory_scope,
                 custom_symbols=custom_symbols,
                 use_historical_seeds=use_historical_seeds,
+                max_runtime_seconds=max_runtime_seconds,
+                loop_policy=loop_policy,
             )
         next_iteration = await _run_trend_signals_iterations(
             settings=settings,
+            claude=claude,
             provider=provider,
             ancestry=ancestry,
             mutator=mutator,
@@ -409,7 +1840,8 @@ async def run_command(args: argparse.Namespace) -> None:
             start_iteration=next_iteration,
             phase_label="main",
             run_session_id=run_session_id,
-            runner_label=str(args.runner_label or "siglab_harness"),
+            runner_label=runner_label,
+            run_label=run_label,
             workspace_session=workspace_session,
             workspace_builder=workspace_builder,
             workspace_hooks=workspace_hooks,
@@ -420,15 +1852,19 @@ async def run_command(args: argparse.Namespace) -> None:
             memory_scope=memory_scope,
             custom_symbols=custom_symbols,
             use_historical_seeds=use_historical_seeds,
+            max_runtime_seconds=max_runtime_seconds,
+            loop_policy=loop_policy,
         )
     finally:
         await web_researcher.close()
         await provider.close()
+        await claude.close()
 
 
 async def _run_trend_signals_iterations(
     *,
     settings: Any,
+    claude: ClaudeClient,
     provider: MarketDataProvider,
     ancestry: LineageStore,
     mutator: SpecMutator,
@@ -443,6 +1879,7 @@ async def _run_trend_signals_iterations(
     phase_label: str,
     run_session_id: str,
     runner_label: str,
+    run_label: str | None,
     workspace_session: Any,
     workspace_builder: WorkspaceBuilder,
     workspace_hooks: WorkspaceHooks,
@@ -453,12 +1890,73 @@ async def _run_trend_signals_iterations(
     memory_scope: str,
     custom_symbols: list[str] | None,
     use_historical_seeds: bool,
+    max_runtime_seconds: float | None,
+    loop_policy: dict[str, Any],
 ) -> int:
     iteration_iter = count(start_iteration) if iterations == 0 else range(start_iteration, start_iteration + iterations)
     last_iteration = start_iteration
     track = "trend_signals"
+    deadline = time.monotonic() + float(max_runtime_seconds) if max_runtime_seconds else None
+    loop_started_at = time.monotonic()
+    provider_errors = 0
+    consecutive_no_improvement = 0
+    consecutive_crashes = 0
 
     for iteration_number in iteration_iter:
+        credit_stop = _credit_budget_stop_payload(
+            claude=claude,
+            loop_policy=loop_policy,
+            run_label=run_label or run_session_id,
+            runner_label=runner_label,
+            phase_label=phase_label,
+            next_iteration=iteration_number,
+        )
+        if credit_stop is not None:
+            _write_provider_metrics_artifact(
+                settings=settings,
+                run_session_id=run_session_id,
+                iteration_number=iteration_number,
+                phase_label=phase_label,
+                reason="policy_stop:max_total_credits",
+                claude=claude,
+            )
+            _write_loop_stop(
+                settings=settings,
+                run_session_id=run_session_id,
+                reason="policy_stop:max_total_credits",
+                payload=credit_stop,
+            )
+            print(
+                f"[run:{phase_label}] max_total_credits reached before iteration={iteration_number} "
+                f"credits={credit_stop['credits_estimate']}"
+            )
+            break
+        if deadline is not None and time.monotonic() >= deadline:
+            _write_provider_metrics_artifact(
+                settings=settings,
+                run_session_id=run_session_id,
+                iteration_number=iteration_number,
+                phase_label=phase_label,
+                reason="policy_stop:max_runtime_seconds",
+                claude=claude,
+            )
+            _write_loop_stop(
+                settings=settings,
+                run_session_id=run_session_id,
+                reason="policy_stop:max_runtime_seconds",
+                payload={
+                    "run_label": run_label or run_session_id,
+                    "runner_label": runner_label,
+                    "phase_label": phase_label,
+                    "next_iteration": iteration_number,
+                    "elapsed_runtime_seconds": round(time.monotonic() - loop_started_at, 3),
+                    "max_runtime_seconds": max_runtime_seconds,
+                    "runtime_guard_semantics": "between_iterations_cooperative",
+                    "loop_policy": loop_policy,
+                },
+            )
+            print(f"[run:{phase_label}] max_runtime_seconds reached before iteration={iteration_number}")
+            break
         last_iteration = iteration_number
         print(f"[run:{phase_label}] iteration={iteration_number}")
         scope_kwargs = _ancestry_scope_kwargs(
@@ -498,6 +1996,7 @@ async def _run_trend_signals_iterations(
         run_context = {
             "run_session_id": run_session_id,
             "runner_label": str(runner_label or "siglab_harness"),
+            "run_label": run_label or run_session_id,
             "phase_label": phase_label,
             "iteration_number": int(iteration_number),
             "deterministic": bool(skip_llm),
@@ -552,13 +2051,41 @@ async def _run_trend_signals_iterations(
                 writer_result = None
                 optimization_result = None
             else:
-                planner_result = await planner_runner.run(
-                    session=workspace_session,
-                    iteration_number=iteration_number,
-                    parent=parent,
-                    market_bundle=dict(market_summary.get("market_bundle") or {}),
-                    iteration_paths=iteration_paths,
-                )
+                try:
+                    planner_result = await planner_runner.run(
+                        session=workspace_session,
+                        iteration_number=iteration_number,
+                        parent=parent,
+                        market_bundle=dict(market_summary.get("market_bundle") or {}),
+                        iteration_paths=iteration_paths,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    reason = f"{type(exc).__name__}: {exc}"
+                    print(f"[{track}] planner_failed iteration={iteration_number} reason={reason}")
+                    if isinstance(exc, LLMProviderError) or "LLM" in reason:
+                        provider_errors += 1
+                        max_provider_errors = loop_policy.get("max_provider_errors")
+                        if max_provider_errors is not None and provider_errors >= int(max_provider_errors):
+                            _write_loop_stop(
+                                settings=settings,
+                                run_session_id=run_session_id,
+                                reason="policy_stop:max_provider_errors",
+                                payload={"run_label": run_label or run_session_id, "runner_label": runner_label, "phase_label": phase_label, "provider_errors": provider_errors, "last_error": reason, "loop_policy": loop_policy},
+                            )
+                            print(f"[{track}] provider_error_limit_reached count={provider_errors}")
+                            return iteration_number + 1
+                    else:
+                        consecutive_crashes += 1
+                        max_crashes = loop_policy.get("max_consecutive_crashes")
+                        if max_crashes is not None and consecutive_crashes >= int(max_crashes):
+                            _write_loop_stop(
+                                settings=settings,
+                                run_session_id=run_session_id,
+                                reason="policy_stop:max_consecutive_crashes",
+                                payload={"run_label": run_label or run_session_id, "runner_label": runner_label, "phase_label": phase_label, "consecutive_crashes": consecutive_crashes, "last_error": reason, "loop_policy": loop_policy},
+                            )
+                            return iteration_number + 1
+                    continue
                 target_family = str(planner_result.frontmatter.get("target_family") or parent.family)
                 base_spec_payload = _base_spec_payload_for_family(
                     track=track,
@@ -591,15 +2118,43 @@ async def _run_trend_signals_iterations(
                         f"[{track}] planner/writer preflight failed in iteration {iteration_number}: "
                         f"{writer_result.failure_reason or 'unknown failure'}"
                     )
-                    planner_result = await planner_runner.run(
-                        session=workspace_session,
-                        iteration_number=iteration_number,
-                        parent=parent,
-                        market_bundle=dict(market_summary.get("market_bundle") or {}),
-                        iteration_paths=iteration_paths,
-                        repair_feedback=dict(writer_result.failure_packet or {}),
-                        previous_note_path=planner_result.research_note_path,
-                    )
+                    try:
+                        planner_result = await planner_runner.run(
+                            session=workspace_session,
+                            iteration_number=iteration_number,
+                            parent=parent,
+                            market_bundle=dict(market_summary.get("market_bundle") or {}),
+                            iteration_paths=iteration_paths,
+                            repair_feedback=dict(writer_result.failure_packet or {}),
+                            previous_note_path=planner_result.research_note_path,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        reason = f"{type(exc).__name__}: {exc}"
+                        print(f"[{track}] planner_repair_failed iteration={iteration_number} reason={reason}")
+                        if isinstance(exc, LLMProviderError) or "LLM" in reason:
+                            provider_errors += 1
+                            max_provider_errors = loop_policy.get("max_provider_errors")
+                            if max_provider_errors is not None and provider_errors >= int(max_provider_errors):
+                                _write_loop_stop(
+                                    settings=settings,
+                                    run_session_id=run_session_id,
+                                    reason="policy_stop:max_provider_errors",
+                                    payload={"run_label": run_label or run_session_id, "runner_label": runner_label, "phase_label": phase_label, "provider_errors": provider_errors, "last_error": reason, "loop_policy": loop_policy},
+                                )
+                                print(f"[{track}] provider_error_limit_reached count={provider_errors}")
+                                return iteration_number + 1
+                        else:
+                            consecutive_crashes += 1
+                            max_crashes = loop_policy.get("max_consecutive_crashes")
+                            if max_crashes is not None and consecutive_crashes >= int(max_crashes):
+                                _write_loop_stop(
+                                    settings=settings,
+                                    run_session_id=run_session_id,
+                                    reason="policy_stop:max_consecutive_crashes",
+                                    payload={"run_label": run_label or run_session_id, "runner_label": runner_label, "phase_label": phase_label, "consecutive_crashes": consecutive_crashes, "last_error": reason, "loop_policy": loop_policy},
+                                )
+                                return iteration_number + 1
+                        continue
                     writer_result = await writer_runner.run(
                         session=workspace_session,
                         research_note_path=planner_result.research_note_path,
@@ -608,6 +2163,19 @@ async def _run_trend_signals_iterations(
                         base_spec_payload=base_spec_payload,
                     )
                 if not writer_result.accepted or writer_result.spec_payload is None:
+                    reason = str(writer_result.failure_reason or "writer_rejected_spec")
+                    if "LLM" in reason or "quota" in reason.lower() or "rate limited" in reason.lower():
+                        provider_errors += 1
+                    max_provider_errors = loop_policy.get("max_provider_errors")
+                    if max_provider_errors is not None and provider_errors >= int(max_provider_errors):
+                        _write_loop_stop(
+                            settings=settings,
+                            run_session_id=run_session_id,
+                            reason="policy_stop:max_provider_errors",
+                            payload={"run_label": run_label or run_session_id, "runner_label": runner_label, "phase_label": phase_label, "provider_errors": provider_errors, "last_error": reason, "loop_policy": loop_policy},
+                        )
+                        print(f"[{track}] provider_error_limit_reached count={provider_errors}")
+                        return iteration_number + 1
                     print(
                         f"[{track}] llm_proposal_failed iteration={iteration_number} "
                         f"reason={writer_result.failure_reason or 'writer_rejected_spec'}"
@@ -635,6 +2203,16 @@ async def _run_trend_signals_iterations(
                         f"[{track}] optimizer_failed iteration={iteration_number} "
                         f"reason={type(exc).__name__}: {exc}"
                     )
+                    consecutive_crashes += 1
+                    max_crashes = loop_policy.get("max_consecutive_crashes")
+                    if max_crashes is not None and consecutive_crashes >= int(max_crashes):
+                        _write_loop_stop(
+                            settings=settings,
+                            run_session_id=run_session_id,
+                            reason="policy_stop:max_consecutive_crashes",
+                            payload={"run_label": run_label or run_session_id, "runner_label": runner_label, "phase_label": phase_label, "consecutive_crashes": consecutive_crashes, "last_error": f"{type(exc).__name__}: {exc}", "loop_policy": loop_policy},
+                        )
+                        return iteration_number + 1
                     continue
                 optimized_payload = dict(optimization_result.spec_payload)
                 iteration_paths["spec_json_path"].write_text(
@@ -700,6 +2278,8 @@ async def _run_trend_signals_iterations(
 
             best_passing: dict[str, Any] | None = None
             best_passing_trial_context: dict[str, Any] | None = None
+            passed_not_deployable = 0
+            deployment_ineligible_reasons: Counter[str] = Counter()
             for spec in specs:
                 try:
                     evaluation = await evaluator.evaluate(
@@ -819,10 +2399,12 @@ async def _run_trend_signals_iterations(
                     f" passed={summary['passed']}"
                 )
 
-                if summary["passed"] and _deployment_eligible(
+                ineligible_reasons = _deployment_ineligible_reasons(
                     summary=summary,
                     trial_context=dict(research_summary.get("trial") or {}),
-                ):
+                )
+                deployment_eligible = not ineligible_reasons
+                if summary["passed"] and deployment_eligible:
                     if best_passing is None:
                         best_passing = evaluation
                         best_passing_trial_context = dict(research_summary.get("trial") or {})
@@ -838,8 +2420,12 @@ async def _run_trend_signals_iterations(
                         ):
                             best_passing = evaluation
                             best_passing_trial_context = spec_trial_context
+                elif summary["passed"]:
+                    passed_not_deployable += 1
+                    deployment_ineligible_reasons.update(ineligible_reasons)
 
             if best_passing is not None:
+                consecutive_no_improvement = 0
                 ancestry.deploy(best_passing["spec_hash"])
                 print(
                     f"[{track}] deployd {best_passing['spec_hash']} "
@@ -850,8 +2436,36 @@ async def _run_trend_signals_iterations(
                     iteration_number=iteration_number,
                 )
             else:
-                print(f"[{track}] no passing spec in iteration {iteration_number}")
+                consecutive_no_improvement += 1
+                if passed_not_deployable:
+                    reason_text = ", ".join(
+                        f"{reason}={count}"
+                        for reason, count in sorted(deployment_ineligible_reasons.items())
+                    ) or "unknown"
+                    print(
+                        f"[{track}] {passed_not_deployable} passing spec(s) failed deployment eligibility "
+                        f"in iteration {iteration_number}: {reason_text}"
+                    )
+                else:
+                    print(f"[{track}] no passing spec in iteration {iteration_number}")
+                max_no_improvement = loop_policy.get("max_consecutive_no_improvement")
+                if max_no_improvement is not None and consecutive_no_improvement >= int(max_no_improvement):
+                    _write_loop_stop(
+                        settings=settings,
+                        run_session_id=run_session_id,
+                        reason="policy_stop:max_consecutive_no_improvement",
+                        payload={"run_label": run_label or run_session_id, "runner_label": runner_label, "phase_label": phase_label, "consecutive_no_improvement": consecutive_no_improvement, "loop_policy": loop_policy},
+                    )
+                    return iteration_number + 1
         finally:
+            _write_provider_metrics_artifact(
+                settings=settings,
+                run_session_id=run_session_id,
+                iteration_number=iteration_number,
+                phase_label=phase_label,
+                reason="iteration_finally",
+                claude=claude,
+            )
             provider.clear_iteration_bundle()
     return last_iteration + 1
 
@@ -1044,6 +2658,112 @@ async def _run_iterations(
     return last_iteration + 1
 
 
+def _credit_budget_stop_payload(
+    *,
+    claude: ClaudeClient,
+    loop_policy: dict[str, Any],
+    run_label: str,
+    runner_label: str,
+    phase_label: str,
+    next_iteration: int,
+) -> dict[str, Any] | None:
+    limit = loop_policy.get("max_total_credits")
+    if limit is None:
+        return None
+    try:
+        max_total_credits = float(limit)
+    except (TypeError, ValueError):
+        return {
+            "run_label": run_label,
+            "runner_label": runner_label,
+            "phase_label": phase_label,
+            "next_iteration": next_iteration,
+            "credits_estimate": None,
+            "max_total_credits": limit,
+            "provider_metrics": claude.metrics_snapshot(),
+            "loop_policy": loop_policy,
+            "policy_error": "invalid_max_total_credits",
+        }
+    metrics = claude.metrics_snapshot()
+    usage = dict(metrics.get("usage") or {})
+    credits = usage.get("credits_estimate")
+    if credits is None:
+        return None
+    try:
+        credits_float = float(credits)
+    except (TypeError, ValueError):
+        return None
+    if credits_float < max_total_credits:
+        return None
+    return {
+        "run_label": run_label,
+        "runner_label": runner_label,
+        "phase_label": phase_label,
+        "next_iteration": next_iteration,
+        "credits_estimate": round(credits_float, 6),
+        "max_total_credits": max_total_credits,
+        "credit_budget_semantics": "verified_bai_credits_between_iterations_cooperative",
+        "provider_metrics": metrics,
+        "loop_policy": loop_policy,
+    }
+
+
+def _write_loop_stop(
+    *,
+    settings: Any,
+    run_session_id: str,
+    reason: str,
+    payload: dict[str, Any],
+) -> None:
+    path = settings.artifact_dir / "loop_stops" / f"{run_session_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(
+        path,
+        {
+            "run_session_id": run_session_id,
+            "reason": reason,
+            "created_at": datetime.now(UTC).isoformat(),
+            **payload,
+        },
+    )
+
+
+def _write_provider_metrics_artifact(
+    *,
+    settings: Any,
+    run_session_id: str,
+    iteration_number: int,
+    phase_label: str,
+    reason: str,
+    claude: ClaudeClient,
+) -> Path:
+    metrics_dir = settings.artifact_dir / "provider_metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "run_session_id": run_session_id,
+        "iteration_number": int(iteration_number),
+        "phase_label": phase_label,
+        "reason": reason,
+        "provider_metrics": claude.metrics_snapshot(),
+    }
+    latest_path = metrics_dir / f"{run_session_id}.latest.json"
+    write_json(latest_path, payload)
+    jsonl_path = metrics_dir / f"{run_session_id}.jsonl"
+    with jsonl_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=True, default=str) + "\n")
+    return jsonl_path
+
+
+def _resume_safe_check(*, settings: Any, run_session_id: str) -> None:
+    session_dir = settings.artifact_dir / "trend_signals" / "workspaces" / run_session_id
+    if not session_dir.exists():
+        raise SystemExit(f"--resume-safe-check failed: workspace session not found: {session_dir}")
+    state_path = session_dir / "current" / "SESSION_STATE.json"
+    if not state_path.exists():
+        raise SystemExit(f"--resume-safe-check failed: missing session state: {state_path}")
+
+
 async def inspect_command(args: argparse.Namespace) -> None:
     settings = load_settings()
     _require_sosovalue_config(settings)
@@ -1174,7 +2894,7 @@ def benchmark_init_command(args: argparse.Namespace) -> None:
         ancestry=ancestry,
         mutator=mutator,
         deck_name=str(args.deck),
-        runner_label=str(args.runner_label),
+        runner_label=str(getattr(args, "agent_label", None) or getattr(args, "runner_label", None) or "external_agent"),
         run_label=args.run_label,
         force=bool(args.force),
     )
@@ -1995,6 +3715,10 @@ def _append_policy_delta(
         values.append(float(frozen_policy[key]) - float(proposed_policy[key]))
     except (TypeError, ValueError):
         return
+
+
+if __name__ == "__main__":
+    main()
 
 
 
