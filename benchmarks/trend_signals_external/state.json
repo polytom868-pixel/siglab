@@ -1,0 +1,17 @@
+{
+  "deck_name": "trend_signals_external",
+  "track": "trend_signals",
+  "created_at": "2026-05-14T00:00:00+00:00",
+  "updated_at": "2026-05-14T00:00:00+00:00",
+  "runner_label": "external_agent",
+  "benchmark_run_id": "benchmark::trend_signals_external::external_agent::seed",
+  "run_label": "trend-signals-external-seed",
+  "benchmark_iteration": 0,
+  "incumbent_spec_hash": "9d52d77fe7796118",
+  "incumbent_source": "committed_demo_fixture",
+  "incumbent_artifact_path": null,
+  "best_aggregate_score": null,
+  "best_validation_total_return": null,
+  "best_pre_audit_canonical_total_return": null,
+  "last_result_status": null
+}

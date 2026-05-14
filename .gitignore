@@ -26,3 +26,6 @@ siglab/live/deployed_agents/*
 benchmarks/*/state.json
 benchmarks/*/results.tsv
 benchmarks/*/observation.md
+!benchmarks/trend_signals_external/state.json
+!benchmarks/trend_signals_external/results.tsv
+!benchmarks/trend_signals_external/observation.md
