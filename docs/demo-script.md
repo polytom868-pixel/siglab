@@ -163,3 +163,16 @@ Expected proof:
 - Missing or malformed artifacts are shown as missing/malformed, not silently treated as ready.
 - The board shows SoSoValue flow status, SoDEX public evidence, live-write refusal state, provider telemetry, red flags, and latest market-report stance.
 - The board is read-only. It is a demo/operator monitor, not a live trading surface.
+
+## 10. Optional External-Agent Benchmark Deck
+
+```bash
+python3 -m siglab.cli benchmark-status --deck trend_signals_external
+```
+
+Expected proof:
+
+- The committed `benchmarks/trend_signals_external` deck is readable without first running `benchmark-init`.
+- `spec.yaml` and `best_spec.yaml` share the same incumbent hash.
+- External agents are told to edit only `spec.yaml` and run `benchmark-eval`.
+- The deck is strategy research only; it does not imply signed SoDEX execution readiness.
