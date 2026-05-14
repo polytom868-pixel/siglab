@@ -9,8 +9,8 @@ from typing import Any
 
 import pandas as pd
 
-from siglab.data.lake import ParquetLake
-from siglab.data.providers import MarketDataProvider
+from siglab.data.store import ParquetLake
+from siglab.data.feeds import MarketDataProvider
 from siglab.evaluator import ResearchEvaluator
 from siglab.evaluator.compile import (
     PAIR_TRADE_FAMILIES,
@@ -24,10 +24,10 @@ from siglab.feature_dsl import (
     resolve_feature_frames,
 )
 from siglab.llm import ClaudeTool
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.search import LineageStore
-from siglab.settings import SiglabConfig
-from sosovalue_paths.core.backtesting import BacktestConfig, run_backtest
+from siglab.config import SiglabConfig
+from siglab.evaluator.backtesting import BacktestConfig, run_backtest
 
 DEFAULT_HORIZONS = (6, 24, 72, 168)
 MAX_COMPARE_FEATURES = 6
@@ -1691,7 +1691,7 @@ def _frame_pair_stats(feature_frame: pd.DataFrame, target_frame: pd.DataFrame) -
     return {
         "rows": int(aligned.shape[0]),
         "spearman": _clean_float(_spearman_corr(aligned["feature"], aligned["target"])),
-        "pearson": _clean_float(aligned["feature"].corr(aligned["target"], method="pearson")),
+        "pearson": _clean_float(_pearson_corr(aligned["feature"], aligned["target"])),
         "top_bottom_spread": top_bottom_spread,
         "bucket_monotonicity": bucket_monotonicity,
     }
@@ -1775,7 +1775,22 @@ def _spearman_corr(left: pd.Series, right: pd.Series) -> float | None:
         return None
     left_rank = left.rank(method="average")
     right_rank = right.rank(method="average")
-    value = left_rank.corr(right_rank, method="pearson")
+    return _pearson_corr(left_rank, right_rank)
+
+
+def _pearson_corr(left: pd.Series, right: pd.Series) -> float | None:
+    aligned = pd.concat(
+        [
+            pd.to_numeric(left, errors="coerce").rename("left"),
+            pd.to_numeric(right, errors="coerce").rename("right"),
+        ],
+        axis=1,
+    ).dropna()
+    if len(aligned.index) < 2:
+        return None
+    if aligned["left"].nunique() < 2 or aligned["right"].nunique() < 2:
+        return None
+    value = aligned["left"].corr(aligned["right"], method="pearson")
     return None if value is None or pd.isna(value) else float(value)
 
 

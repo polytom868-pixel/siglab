@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 import siglab.search.select as select_mod
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.search.select import pick_deterministic_parent, rank_deterministic_specs
 
 

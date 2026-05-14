@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.orchestration.contracts import conformance_violations
 from siglab.orchestration.optimizer_runner import OptunaOptimizerRunner
 from siglab.orchestration.planner_runner import ResearchPlannerRunner
@@ -18,7 +18,7 @@ from siglab.orchestration.trials import (
     summarize_return_attribution,
 )
 from siglab.orchestration.writer_runner import SpecWriterRunner
-from siglab.search.ancestry import LineageStore
+from siglab.search.lineage import LineageStore
 from siglab.search.mutate import SpecMutator
 from siglab.tools import (
     inspect_feature,
@@ -36,6 +36,394 @@ class WorkspaceFlowTests(unittest.TestCase):
     def setUp(self) -> None:
         self.repo_root = Path(__file__).resolve().parents[1]
 
+    def test_writer_token_budget_expands_for_bai(self) -> None:
+        runner = object.__new__(SpecWriterRunner)
+        runner.settings = type("Settings", (), {"llm_provider": "bai"})()
+
+        self.assertEqual(runner._writer_max_tokens(), 2200)
+        self.assertEqual(runner._max_attempts(), 3)
+
+    def test_writer_repair_prompt_relaxes_near_flat_gates(self) -> None:
+        runner = object.__new__(SpecWriterRunner)
+
+        prompt = runner._repair_prompt(
+            repair_packet={
+                "family": "perp_multi_asset_decision",
+                "errors": ["gate_lint: gated_spec_is_near_flat"],
+            }
+        )
+
+        self.assertIn("relax or remove entry gates", prompt)
+        self.assertIn('"regime_gates":{"entry":[],"exit_on_break":false}', prompt)
+
+    def test_bai_planner_requires_tool_use(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+        runner.settings = SimpleNamespace(llm_provider="bai")
+        fake_tool = SimpleNamespace(name="search_workspace")
+
+        issues = runner._planner_tool_usage_issues(  # type: ignore[attr-defined]
+            tools=[fake_tool],  # type: ignore[list-item]
+            trace={"tool_rounds_used": 0, "tool_calls": []},
+        )
+        clean = runner._planner_tool_usage_issues(  # type: ignore[attr-defined]
+            tools=[fake_tool],  # type: ignore[list-item]
+            trace={"tool_rounds_used": 1, "tool_calls": [{"name": "search_workspace"}]},
+        )
+
+        self.assertEqual(issues, ["planner_did_not_call_workspace_or_probe_tool"])
+        self.assertEqual(clean, [])
+
+    def test_bai_planner_caps_tool_rounds_to_reduce_loop_waste(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+        runner.settings = SimpleNamespace(llm_provider="bai", claude_max_tool_rounds=12)
+
+        self.assertEqual(runner._planner_max_tool_rounds(), 4)  # type: ignore[attr-defined]
+        self.assertEqual(runner._planner_max_tokens(), 2600)  # type: ignore[attr-defined]
+
+    def test_planner_promotes_churn_reflection_to_policy_axis(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+        parent = SimpleNamespace(
+            family="perp_multi_asset_decision",
+            universe=SimpleNamespace(basis_groups=["BTC", "ETH"]),
+            params={},
+        )
+        contract = runner._extract_planner_contract(  # type: ignore[attr-defined]
+            note_text=(
+                "## Diagnosis\n"
+                "The failure mode is high_position_flip_rate from score sign flips and churn.\n"
+                "## What to test\n"
+                "Introduce position persistence with max_holding_bars and wider flip_abs_score.\n"
+            ),
+            note_body=(
+                "## Diagnosis\n"
+                "The failure mode is high_position_flip_rate from score sign flips and churn.\n"
+                "## What to test\n"
+                "Introduce position persistence with max_holding_bars and wider flip_abs_score.\n"
+            ),
+            raw_frontmatter={},
+            yaml_fragments=[],
+            parent=parent,
+            current_state={"open_question": "How do we reduce churn?"},
+            tool_refs=[],
+            session=SimpleNamespace(families=["perp_multi_asset_decision"]),
+        )
+
+        self.assertEqual(contract["required_variation_axis"], "policy")
+        self.assertEqual(
+            contract["gate_intent"],
+            {"type": "suppress_policy_churn", "target_dimension": "policy_persistence"},
+        )
+        self.assertEqual(contract["required_gate_dimensions"], ["policy_persistence"])
+        self.assertIn("policy/persistence controls", contract["must_answer"])
+
+    def test_policy_axis_conformance_rejects_feature_only_patch(self) -> None:
+        parent_payload = {
+            "family": "perp_multi_asset_decision",
+            "features": ["ema_gap_12_26"],
+            "params": {
+                "entry_abs_score": 0.2,
+                "exit_abs_score": 0.1,
+                "flip_abs_score": 0.2,
+                "max_holding_bars": 0,
+                "cooldown_bars": 0,
+                "min_abs_score": 0.2,
+            },
+        }
+        feature_only = {
+            **parent_payload,
+            "features": ["ema_gap_12_26", "relative_momentum_24h"],
+            "params": dict(parent_payload["params"]),
+        }
+        policy_patch = {
+            **feature_only,
+            "params": {
+                **parent_payload["params"],
+                "flip_abs_score": 0.35,
+                "max_holding_bars": 8,
+            },
+        }
+        contract = {
+            "target_family": "perp_multi_asset_decision",
+            "required_variation_axis": "policy",
+        }
+
+        self.assertIn(
+            "spec does not include the required policy/persistence axis of variation",
+            conformance_violations(
+                planner_contract=contract,
+                spec_payload=feature_only,
+                parent_payload=parent_payload,
+            ),
+        )
+        self.assertNotIn(
+            "spec does not include the required policy/persistence axis of variation",
+            conformance_violations(
+                planner_contract=contract,
+                spec_payload=policy_patch,
+                parent_payload=parent_payload,
+            ),
+        )
+
+    def test_non_bai_planner_preserves_larger_tool_round_budget(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+        runner.settings = SimpleNamespace(llm_provider="claude", claude_max_tool_rounds=12)
+
+        self.assertEqual(runner._planner_max_tool_rounds(), 8)  # type: ignore[attr-defined]
+
+    def test_legacy_test_planner_does_not_require_tool_use_without_provider(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+        runner.settings = SimpleNamespace()
+        fake_tool = SimpleNamespace(name="search_workspace")
+
+        self.assertEqual(
+            runner._planner_tool_usage_issues(  # type: ignore[attr-defined]
+                tools=[fake_tool],  # type: ignore[list-item]
+                trace={"tool_rounds_used": 0, "tool_calls": []},
+            ),
+            [],
+        )
+
+    def test_planner_prompt_includes_compact_evidence_summary_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact_dir = root / "runs"
+            evidence_dir = artifact_dir / "evidence"
+            evidence_dir.mkdir(parents=True)
+            (evidence_dir / "btc.summary.json").write_text(
+                json.dumps(
+                    {
+                        "record_count": 604,
+                        "link_count": 4,
+                        "module_counts": {"ETF": 600, "Feeds": 4},
+                        "relation_counts": {"news_mention": 4},
+                        "source_counts": {"sosovalue.featured_news_by_currency": 2},
+                        "entity_counts": {"BTC": 4},
+                        "top_links": [
+                            {
+                                "relation": "feed_event_near_etf_flow",
+                                "feed_entity": "BTC",
+                                "warning": "temporal/categorical link only; not causal",
+                                "feed_title": "ETF flow context",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            workspace = root / "workspace"
+            current_dir = workspace / "current"
+            cache_dir = workspace / "cache"
+            current_dir.mkdir(parents=True)
+            cache_dir.mkdir()
+            runner = object.__new__(ResearchPlannerRunner)
+            runner.settings = SimpleNamespace(root_dir=root, artifact_dir=artifact_dir)
+            session = SimpleNamespace(root=workspace, current_dir=current_dir, cache_dir=cache_dir)
+            parent = SimpleNamespace(
+                family="perp_multi_asset_carry",
+                universe=SimpleNamespace(basis_groups=["BTC", "ETH"]),
+            )
+
+            prompt = runner._build_user_prompt(session=session, parent=parent)  # type: ignore[arg-type]
+
+            self.assertIn("Latest Source-Backed Evidence Summary", prompt)
+            self.assertIn("runs/evidence/btc.summary.json", prompt)
+            self.assertIn('"scope": "global"', prompt)
+            self.assertIn('"matched_entities": [', prompt)
+            self.assertIn("feed_event_near_etf_flow", prompt)
+            self.assertIn("not causal", prompt)
+
+    def test_planner_prompt_skips_irrelevant_global_evidence_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact_dir = root / "runs"
+            evidence_dir = artifact_dir / "evidence"
+            evidence_dir.mkdir(parents=True)
+            (evidence_dir / "eth.summary.json").write_text(
+                json.dumps({"record_count": 1, "entity_counts": {"ETH": 1}, "top_links": []}),
+                encoding="utf-8",
+            )
+            workspace = root / "workspace"
+            current_dir = workspace / "current"
+            cache_dir = workspace / "cache"
+            current_dir.mkdir(parents=True)
+            cache_dir.mkdir()
+            runner = object.__new__(ResearchPlannerRunner)
+            runner.settings = SimpleNamespace(root_dir=root, artifact_dir=artifact_dir)
+            session = SimpleNamespace(root=workspace, current_dir=current_dir, cache_dir=cache_dir)
+            parent = SimpleNamespace(
+                family="perp_multi_asset_carry",
+                universe=SimpleNamespace(basis_groups=["BTC", "SOL"]),
+            )
+
+            prompt = runner._build_user_prompt(session=session, parent=parent)  # type: ignore[arg-type]
+
+            self.assertNotIn("Latest Source-Backed Evidence Summary", prompt)
+
+    def test_planner_prompt_prefers_workspace_scoped_evidence_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact_dir = root / "runs"
+            global_dir = artifact_dir / "evidence"
+            global_dir.mkdir(parents=True)
+            (global_dir / "global.summary.json").write_text(
+                json.dumps({"record_count": 1, "link_count": 0, "top_links": [{"feed_title": "global"}]}),
+                encoding="utf-8",
+            )
+            workspace = root / "workspace"
+            current_dir = workspace / "current"
+            cache_dir = workspace / "cache"
+            current_dir.mkdir(parents=True)
+            cache_dir.mkdir()
+            (current_dir / "evidence_summary.json").write_text(
+                json.dumps({"record_count": 2, "link_count": 0, "top_links": [{"feed_title": "workspace"}]}),
+                encoding="utf-8",
+            )
+            runner = object.__new__(ResearchPlannerRunner)
+            runner.settings = SimpleNamespace(root_dir=root, artifact_dir=artifact_dir)
+            session = SimpleNamespace(root=workspace, current_dir=current_dir, cache_dir=cache_dir)
+            parent = SimpleNamespace(
+                family="perp_multi_asset_carry",
+                universe=SimpleNamespace(basis_groups=["BTC", "ETH"]),
+            )
+
+            prompt = runner._build_user_prompt(session=session, parent=parent)  # type: ignore[arg-type]
+
+            self.assertIn('"scope": "workspace_current"', prompt)
+            self.assertIn("workspace", prompt)
+            self.assertNotIn("global.summary.json", prompt)
+
+    def test_planner_rejects_uncalled_probe_claims(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+
+        issues = runner._planner_probe_claim_issues(  # type: ignore[attr-defined]
+            note_text="Next test: call probe_spec_gate_impact with a volatility gate.",
+            trace={"tool_calls": [{"name": "search_workspace"}]},
+        )
+        clean = runner._planner_probe_claim_issues(  # type: ignore[attr-defined]
+            note_text="The probe_spec_gate_impact result supports a volatility gate.",
+            trace={"tool_calls": [{"name": "probe_spec_gate_impact"}]},
+        )
+
+        self.assertEqual(issues, ["planner_named_uncalled_probe:probe_spec_gate_impact"])
+        self.assertEqual(clean, [])
+
+    def test_planner_contract_records_trace_tool_names(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+        contract = {"tools_used": ["search_workspace"]}
+
+        runner._merge_trace_tool_usage(  # type: ignore[attr-defined]
+            contract,
+            trace={
+                "tool_calls": [
+                    {"name": "search_workspace"},
+                    {"name": "open_file"},
+                    {"name": "probe_spec_gate_impact"},
+                ]
+            },
+        )
+
+        self.assertEqual(
+            contract["tools_used"],
+            ["search_workspace", "open_file", "probe_spec_gate_impact"],
+        )
+
+    def test_planner_probe_tool_budget_refuses_excess_calls(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+
+        class FakeTool:
+            name = "probe_feature_forward_stats"
+
+            def handler(self, _arguments: dict[str, object]) -> dict[str, object]:
+                raise AssertionError("budgeted-out probe should not execute")
+
+        handler = runner._wrap_probe_tool(  # type: ignore[attr-defined]
+            session=SimpleNamespace(track="trend_signals", memory_scope="session_local", run_session_id="run"),
+            iteration_number=1,
+            parent=SimpleNamespace(family="perp_multi_asset_decision", universe=SimpleNamespace(basis_groups=["BTC"])),
+            market_bundle={"bundle_id": "bundle"},
+            tool=FakeTool(),
+            tool_refs=[],
+            probe_budget={
+                "total": ResearchPlannerRunner.MAX_PROBE_TOOL_CALLS,
+                "per_tool": {"probe_feature_forward_stats": ResearchPlannerRunner.MAX_PROBE_CALLS_PER_TOOL},
+            },
+        )
+
+        result = self.async_run(handler({"feature": "price_return_72h"}))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "planner_probe_budget_exhausted")
+
+    def test_planner_rejects_budget_exhausted_probe_trace(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+
+        issues = runner._planner_probe_budget_issues(  # type: ignore[attr-defined]
+            trace={
+                "tool_calls": [
+                    {
+                        "name": "probe_feature_forward_stats",
+                        "result": {
+                            "ok": False,
+                            "error": "planner_probe_budget_exhausted",
+                            "probe_type": "probe_feature_forward_stats",
+                        },
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(
+            issues,
+            ["planner_probe_budget_exhausted:probe_feature_forward_stats"],
+        )
+
+    def test_planner_rejects_excess_total_tool_calls(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+
+        issues = runner._planner_total_tool_budget_issues(  # type: ignore[attr-defined]
+            trace={
+                "tool_calls": [
+                    {"name": "open_file"}
+                    for _ in range(ResearchPlannerRunner.MAX_PLANNER_TOOL_CALLS + 1)
+                ]
+            }
+        )
+
+        self.assertEqual(
+            issues,
+            [f"planner_tool_call_budget_exceeded:{ResearchPlannerRunner.MAX_PLANNER_TOOL_CALLS + 1}>{ResearchPlannerRunner.MAX_PLANNER_TOOL_CALLS}"],
+        )
+
+    def test_planner_rejects_truncated_or_forced_final_notes(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+
+        issues = runner._planner_finish_issues(  # type: ignore[attr-defined]
+            trace={
+                "response_finish_reason": "length",
+                "error": "max_tool_rounds_exhausted_forced_final",
+            },
+            note_text="## Next Test\n-",
+        )
+
+        self.assertIn("planner_response_truncated:length", issues)
+        self.assertIn("planner_trace_error:max_tool_rounds_exhausted_forced_final", issues)
+        self.assertIn("planner_note_ends_mid_list", issues)
+
+    def test_planner_repair_disables_tools_after_budget_or_truncation_failure(self) -> None:
+        runner = object.__new__(ResearchPlannerRunner)
+
+        self.assertTrue(
+            runner._repair_should_disable_tools(  # type: ignore[attr-defined]
+                {"semantic_issues": ["planner_trace_error:max_tool_rounds_exhausted_forced_final"]}
+            )
+        )
+        self.assertTrue(
+            runner._repair_should_disable_tools(  # type: ignore[attr-defined]
+                {"semantic_issues": ["planner_response_truncated:length"]}
+            )
+        )
+        self.assertFalse(runner._repair_should_disable_tools({"semantic_issues": ["no_target_family"]}))  # type: ignore[attr-defined]
+
     def _settings(self, tmp: str) -> SimpleNamespace:
         return SimpleNamespace(
             root_dir=self.repo_root,
@@ -46,6 +434,12 @@ class WorkspaceFlowTests(unittest.TestCase):
     def test_session_initializer_and_iteration_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = self._settings(tmp)
+            evidence_dir = settings.artifact_dir / "evidence"
+            evidence_dir.mkdir(parents=True)
+            (evidence_dir / "latest.summary.json").write_text(
+                json.dumps({"record_count": 2, "link_count": 1, "top_links": []}),
+                encoding="utf-8",
+            )
             ancestry = LineageStore(settings.ancestry_db_path)
             mutator = SpecMutator(settings, claude=SimpleNamespace())
             builder = WorkspaceBuilder(
@@ -71,7 +465,11 @@ class WorkspaceFlowTests(unittest.TestCase):
             self.assertTrue((session.current_dir / "incumbent_spec.yaml").exists())
             self.assertTrue((session.current_dir / "family_incumbents.json").exists())
             self.assertTrue((session.current_dir / "recent_trials.md").exists())
+            self.assertTrue((session.current_dir / "evidence_summary.json").exists())
             self.assertTrue((session.indexes_dir / "trial_index.jsonl").exists())
+            seeded_evidence = json.loads((session.current_dir / "evidence_summary.json").read_text())
+            self.assertEqual(seeded_evidence["workspace_scope"]["run_session_id"], "session-1")
+            self.assertEqual(seeded_evidence["record_count"], 2)
             runbook = (session.root / "RUNBOOK.md").read_text()
             carry_manifest = (session.manifests_dir / "family" / "perp_multi_asset_carry.md").read_text()
             carry_cookbook = (session.cookbooks_dir / "carry_patterns.md").read_text()
@@ -1012,6 +1410,117 @@ trade_style: continuation
             self.assertFalse(iteration_paths["repair_packet_path"].exists())
             self.assertTrue(any(msg["role"] == "user" for msg in trace["conversation_messages"]))
 
+    def test_bai_writer_uses_third_retry_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = self._settings(tmp)
+            ancestry = LineageStore(settings.ancestry_db_path)
+
+            class FakeClaude:
+                def __init__(self) -> None:
+                    self.calls: list[list[dict[str, str]]] = []
+                    self.last_trace = {"provider": "bai", "model": "deepseek-v4-flash"}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_json_messages(self, **kwargs: object) -> dict[str, object]:
+                    self.calls.append(list(kwargs["messages"]))  # type: ignore[index]
+                    if len(self.calls) < 3:
+                        return {
+                            "track": "trend_signals",
+                            "family": "perp_multi_asset_decision",
+                            "hypothesis": "bad retry",
+                            "neutrality_basis": "none",
+                            "features": ["not_a_real_feature"],
+                            "universe": {"basis_groups": ["BTC"], "max_symbols": 1},
+                            "risk": {"max_leverage": 9.0},
+                            "regime_gates": {"entry": []},
+                            "params": {"long_count": 0, "short_count": 0},
+                            "unsupported_key": "extra",
+                        }
+                    return {
+                        "track": "trend_signals",
+                        "family": "perp_multi_asset_decision",
+                        "hypothesis": "fixed third pass",
+                        "neutrality_basis": "none",
+                        "features": [
+                            "donchian_position_20",
+                            "ema_gap_12_26",
+                            "macd_hist_12_26_9",
+                            "price_return_72h",
+                            "realized_vol_168h",
+                            "rsi_centered_14",
+                        ],
+                        "universe": {
+                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                            "max_symbols": 4,
+                            "lookback_days": 365,
+                            "interval": "1h",
+                        },
+                        "risk": {"max_asset_weight": 0.3, "rebalance_threshold": 0.03, "max_leverage": 2.0},
+                        "regime_gates": {"entry": [], "exit_on_break": False},
+                        "params": {"long_count": 4, "short_count": 2, "gross_target": 1.0},
+                    }
+
+            claude = FakeClaude()
+            mutator = SpecMutator(settings, claude=claude)  # type: ignore[arg-type]
+            builder = WorkspaceBuilder(settings=settings, ancestry=ancestry, mutator=mutator)
+            session = builder.initialize_session(
+                track="trend_signals",
+                run_session_id="session-bai-third-retry",
+                family_scope=None,
+            )
+            parent = mutator.load_seed_specs("trend_signals")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=1,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            research_note_path = iteration_paths["research_note_path"]
+            research_note_path.write_text(
+                dump_frontmatter(
+                    {
+                        "target_family": "perp_multi_asset_decision",
+                        "target_universe": ["BTC", "ETH", "SOL", "HYPE"],
+                        "core_hypothesis": "Decision momentum remains best.",
+                        "informative_test": "Keep the proven decision feature set active.",
+                        "expected_success": ["better carry robustness"],
+                        "expected_failure": ["no change"],
+                        "must_answer": "Return one clean decision spec.",
+                        "required_feature_roles": [],
+                        "writer_inputs": ["manifests/family/perp_multi_asset_decision.md"],
+                    },
+                    "## Proposed next experiment\nUse a clean decision spec.",
+                )
+            )
+            runner = SpecWriterRunner(
+                settings=SimpleNamespace(
+                    root_dir=self.repo_root,
+                    claude_timeout_s=30.0,
+                    llm_provider="bai",
+                ),
+                claude=claude,  # type: ignore[arg-type]
+                mutator=mutator,
+            )
+
+            result = self.async_run(
+                runner.run(
+                    session=session,
+                    research_note_path=research_note_path,
+                    iteration_paths=iteration_paths,
+                    parent=parent,
+                )
+            )
+
+            self.assertEqual(len(claude.calls), 3)
+            trace = json.loads(result.trace_path.read_text())
+            self.assertEqual(trace["attempt_count"], 3)
+            self.assertEqual(trace["attempts"][2]["payload"]["hypothesis"], "fixed third pass")
+
     def test_writer_runner_repairs_planner_writer_family_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = self._settings(tmp)
@@ -1383,6 +1892,75 @@ trade_style: continuation
                 "planner_note_semantic_failure",
             )
             self.assertTrue(trace["planner_attempts"][1]["success"])
+
+    def test_live_provider_planner_refuses_fallback_after_repair_exhaustion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = SimpleNamespace(
+                root_dir=self.repo_root,
+                artifact_dir=Path(tmp) / "runs",
+                ancestry_db_path=Path(tmp) / "ancestry.db",
+                claude_timeout_s=30.0,
+                claude_max_tool_rounds=25,
+                llm_provider="bai",
+            )
+            ancestry = LineageStore(settings.ancestry_db_path)
+
+            class FakeClaude:
+                def __init__(self) -> None:
+                    self.last_trace = {"provider": "bai", "model": "deepseek-v4-flash", "tool_rounds_used": 1, "tool_calls": [{"name": "think"}]}
+                    self.last_exchange = {"ok": True}
+
+                async def complete_text_with_tools(self, **_kwargs: object) -> str:
+                    return "too short"
+
+            class FakeHypothesisSandbox:
+                def claude_tools(self, **_kwargs: object) -> list[object]:
+                    return []
+
+            builder = WorkspaceBuilder(
+                settings=settings,
+                ancestry=ancestry,
+                mutator=SpecMutator(settings, claude=SimpleNamespace()),
+            )
+            session = builder.initialize_session(
+                track="trend_signals",
+                run_session_id="session-planner-fallback-refusal",
+                family_scope=None,
+            )
+            parent = SpecMutator(settings, claude=SimpleNamespace()).load_seed_specs("trend_signals")[0]
+            iteration_paths = builder.update_iteration(
+                session=session,
+                parent=parent,
+                iteration_number=1,
+                phase_label="main",
+                force_novelty=False,
+                market_summary={
+                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
+                    "perp_snapshot": [],
+                },
+            )
+            runner = ResearchPlannerRunner(
+                settings=settings,
+                claude=FakeClaude(),  # type: ignore[arg-type]
+                hypothesis_sandbox=FakeHypothesisSandbox(),  # type: ignore[arg-type]
+                web_researcher=SimpleNamespace(is_configured=False),
+                workspace_builder=builder,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "refusing fallback note"):
+                self.async_run(
+                    runner.run(
+                        session=session,
+                        iteration_number=1,
+                        parent=parent,
+                        market_bundle={"bundle_id": "bundle-1"},
+                        iteration_paths=iteration_paths,
+                    )
+                )
+
+            trace = json.loads(iteration_paths["planner_trace_path"].read_text())
+            self.assertTrue(trace["outputs"]["used_fallback_note"])
+            self.assertEqual(len(trace["planner_attempts"]), ResearchPlannerRunner.MAX_REPAIR_ATTEMPTS)
 
     def test_writer_runner_preserves_required_named_feature(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

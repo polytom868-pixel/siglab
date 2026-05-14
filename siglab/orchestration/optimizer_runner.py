@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import statistics
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,7 +12,7 @@ try:
 except ImportError:  # pragma: no cover - exercised in runtime environments without optuna installed
     optuna = None
 
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.orchestration.trials import (
     apply_path_value,
     clone_payload,
@@ -119,7 +120,13 @@ class OptunaOptimizerRunner:
                 stability_pack=dict(generalization.get("stability_pack") or {}),
             )
 
-        sampler = optuna.samplers.TPESampler(seed=7, multivariate=True)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"Argument ``multivariate`` is an experimental feature\.",
+                category=getattr(optuna.exceptions, "ExperimentalWarning", Warning),
+            )
+            sampler = optuna.samplers.TPESampler(seed=7, multivariate=True)
         study = optuna.create_study(direction="maximize", sampler=sampler)
         for seed_params in self._warm_start_params(
             session=session,

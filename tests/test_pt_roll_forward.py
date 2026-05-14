@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 from siglab.evaluator.compile import compile_spec
-from siglab.models import SignalSpec
-from siglab.settings import SiglabConfig
+from siglab.schemas import SignalSpec
+from siglab.config import SiglabConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

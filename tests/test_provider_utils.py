@@ -4,7 +4,7 @@ import unittest
 
 import pandas as pd
 
-from siglab.data.providers import (
+from siglab.data.feeds import (
     _align_perp_bundle_frames,
     _dedupe_time_index,
     _frame_column_or_default,

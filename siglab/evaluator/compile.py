@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from siglab.data.providers import MarketDataProvider
+from siglab.data.feeds import MarketDataProvider
 from siglab.evaluator.events import (
     classify_pt_market_state,
     detect_pt_roll_events,
@@ -21,9 +21,9 @@ from siglab.families import (
     family_policy_schema,
     load_family_spec,
 )
-from siglab.models import SignalSpec, CompiledChild
-from siglab.settings import SiglabConfig
-from sosovalue_paths.core.backtesting import convert_to_spot
+from siglab.schemas import SignalSpec, CompiledChild
+from siglab.config import SiglabConfig
+from siglab.evaluator.backtesting import convert_to_spot
 
 PAIR_TRADE_FAMILIES = {
     "perp_pair_trade_unlevered",

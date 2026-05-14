@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from siglab.models import SignalSpec
+from siglab.schemas import SignalSpec
 from siglab.path_utils import display_path
 from siglab.track_registry import canonical_track_name, storage_track_name
 

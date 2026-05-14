@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from siglab.models import SignalSpec
-from siglab.search.ancestry import LineageStore
+from siglab.schemas import SignalSpec
+from siglab.search.lineage import LineageStore
 
 
 def _spec_payload(

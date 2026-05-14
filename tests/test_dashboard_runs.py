@@ -7,8 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from siglab.dashboard.server import DashboardApp
-from siglab.models import SignalSpec
-from siglab.search.ancestry import LineageStore
+from siglab.schemas import SignalSpec
+from siglab.search.lineage import LineageStore
 
 
 def _spec(*, family: str, hypothesis: str, features: list[str]) -> SignalSpec:
@@ -278,11 +278,50 @@ class DashboardRunSummaryTests(unittest.TestCase):
             self.assertEqual(experiment["tool_trace"]["tool_calls"][0]["name"], "search_features")
             self.assertEqual(len(experiment["tool_trace_stages"]), 1)
             self.assertEqual(experiment["tool_trace_stages"][0]["stage"], "planner")
+            self.assertEqual(
+                experiment["skill_value_report"],
+                [
+                    {
+                        "skill_name": "search_features",
+                        "stages": ["planner"],
+                        "invocation_count": 1,
+                        "cost_contribution": 1,
+                        "latency_cost_ms": 0.0,
+                        "token_context_cost": 0,
+                        "value_contribution": "feature_surface_grounding",
+                        "effect_on_output_quality": "medium",
+                        "keep_rate_impact": "unmeasured",
+                        "error_reduction": "unmeasured",
+                        "evidence_quality_effect": "medium",
+                        "classification": "HIGH_VALUE",
+                    }
+                ],
+            )
 
             run = runs_payload["runs"][0]
             self.assertEqual(run["tool_call_count"], 1)
             self.assertEqual(run["llm_provider"], "claude")
             self.assertEqual(run["llm_model"], "claude-k2.5")
+
+    def test_skill_value_report_marks_redundant_low_signal_calls_noisy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = DashboardApp(
+                settings=SimpleNamespace(root_dir=root),
+                ancestry=SimpleNamespace(),
+                static_dir=root,
+            )
+
+            report = app._skill_value_report(
+                [
+                    {"name": "search_workspace", "stage": "planner", "latency_ms": 10, "context_tokens": 5}
+                    for _ in range(9)
+                ]
+            )
+
+            self.assertEqual(report[0]["classification"], "NOISY")
+            self.assertEqual(report[0]["latency_cost_ms"], 90.0)
+            self.assertEqual(report[0]["token_context_cost"], 45)
 
     def test_dashboard_includes_active_workspace_run_without_ancestry_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

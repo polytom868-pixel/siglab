@@ -1,4 +1,4 @@
-from siglab.search.ancestry import LineageStore
+from siglab.search.lineage import LineageStore
 from siglab.search.mutate import SpecMutator
 from siglab.search.select import (
     pick_deterministic_parent,

@@ -10,6 +10,8 @@ packages = [{ include = "siglab" }]
 [tool.poetry.dependencies]
 python = "^3.12"
 httpx = "^0.28.1"
+certifi = "^2025.11.12"
+websockets = "^15.0.1"
 numpy = "^1.26.0"
 pandas = "^2.2.0"
 pyarrow = "^20.0.0"

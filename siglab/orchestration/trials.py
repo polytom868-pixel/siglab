@@ -457,7 +457,7 @@ def _diff_payloads(
 
 def _spec_hash(payload: dict[str, Any]) -> str | None:
     try:
-        from siglab.models import SignalSpec
+        from siglab.schemas import SignalSpec
 
         return SignalSpec.from_dict(payload).strategy_hash()
     except Exception:

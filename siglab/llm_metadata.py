@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-SUPPORTED_LLM_PROVIDERS = frozenset({"claude", "deepseek", "openrouter"})
+SUPPORTED_LLM_PROVIDERS = frozenset({"claude", "deepseek", "openrouter", "bai"})
 
 
 def normalize_llm_provider(value: str | None) -> str | None:
@@ -17,6 +17,8 @@ def resolve_llm_provider(settings: Any) -> str:
         return explicit
     if getattr(settings, "claude_api_key", None):
         return "claude"
+    if getattr(settings, "bai_api_key", None):
+        return "bai"
     if getattr(settings, "deepseek_api_key", None):
         return "deepseek"
     if getattr(settings, "openrouter_api_key", None):
@@ -91,6 +93,8 @@ def resolve_llm_model(
         if reasoning_model and fast_model and reasoning_model != fast_model:
             return reasoning_model
         return reasoning_model or fast_model or legacy_model
+    if resolved_provider == "bai":
+        return _normalize_bai_model(str(getattr(settings, "bai_model", "deepseek-v4-flash") or "deepseek-v4-flash"))
     return str(getattr(settings, "claude_model", "claude-k2.5") or "claude-k2.5")
 
 
@@ -110,6 +114,8 @@ def default_llm_model_display(settings: Any, *, provider: str | None = None) -> 
         if reasoning_model and fast_model and reasoning_model != fast_model:
             return f"{reasoning_model} / {fast_model}"
         return reasoning_model or fast_model or legacy_model
+    if resolved_provider == "bai":
+        return _normalize_bai_model(str(getattr(settings, "bai_model", "deepseek-v4-flash") or "deepseek-v4-flash"))
     return str(getattr(settings, "claude_model", "claude-k2.5") or "claude-k2.5")
 
 
@@ -119,6 +125,8 @@ def resolve_llm_api_key(settings: Any, *, provider: str | None = None) -> str | 
         return getattr(settings, "deepseek_api_key", None)
     if resolved_provider == "openrouter":
         return getattr(settings, "openrouter_api_key", None)
+    if resolved_provider == "bai":
+        return getattr(settings, "bai_api_key", None)
     return getattr(settings, "claude_api_key", None)
 
 
@@ -130,5 +138,16 @@ def resolve_llm_base_url(settings: Any, *, provider: str | None = None) -> str:
         return str(
             getattr(settings, "openrouter_base_url", "https://openrouter.ai/api/v1")
         )
+    if resolved_provider == "bai":
+        return str(getattr(settings, "bai_base_url", "https://api.b.ai"))
     return str(getattr(settings, "claude_base_url", "https://api.moonshot.ai/v1"))
+
+
+def _normalize_bai_model(model: str) -> str:
+    return (
+        model.strip()
+        .replace("claude-sonnet-4-6", "claude-sonnet-4.6")
+        .replace("claude-opus-4-7", "claude-opus-4.7")
+        .replace("claude-opus-4-6", "claude-opus-4.6")
+    )
 

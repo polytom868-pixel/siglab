@@ -5,8 +5,8 @@ import random
 from collections import defaultdict
 from typing import Any
 
-from siglab.models import SignalSpec
-from siglab.search.ancestry import LineageStore
+from siglab.schemas import SignalSpec
+from siglab.search.lineage import LineageStore
 from siglab.strategy_semantics import (
     spec_feature_roles,
     gate_dimensions,

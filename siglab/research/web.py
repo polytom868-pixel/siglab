@@ -8,10 +8,10 @@ from urllib.parse import urlparse
 
 import httpx
 
-from siglab.data.lake import ParquetLake
+from siglab.data.store import ParquetLake
 from siglab.llm import ClaudeTool
-from siglab.models import SignalSpec
-from siglab.settings import SiglabConfig
+from siglab.schemas import SignalSpec
+from siglab.config import SiglabConfig
 
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")

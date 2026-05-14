@@ -70,6 +70,9 @@ class ResearchPlannerRunner:
         "proposed next experiment",
         "next test",
     )
+    MAX_PLANNER_TOOL_CALLS = 24
+    MAX_PROBE_TOOL_CALLS = 8
+    MAX_PROBE_CALLS_PER_TOOL = 6
 
     def __init__(
         self,
@@ -98,7 +101,7 @@ class ResearchPlannerRunner:
         previous_note_path: Path | None = None,
     ) -> PlannerResult:
         skill_path = self.settings.root_dir / ".agents" / "skills" / "siglab-research-planner" / "SKILL.md"
-        system_prompt = skill_path.read_text()
+        system_prompt = skill_path.read_text() if skill_path.exists() else self._fallback_system_prompt()
         current_state = read_json_if_exists(session.current_dir / "SESSION_STATE.json")
         default_context_files = [
             *self.DEFAULT_FILES,
@@ -106,13 +109,7 @@ class ResearchPlannerRunner:
         ]
         thinking_override = "enabled"
         tool_refs: list[str] = []
-        tools = self._planner_tools(
-            session=session,
-            iteration_number=iteration_number,
-            parent=parent,
-            market_bundle=market_bundle,
-            tool_refs=tool_refs,
-        )
+        tools: list[ClaudeTool] = []
 
         attempts: list[dict[str, Any]] = []
         next_repair_feedback = dict(repair_feedback or {}) if repair_feedback is not None else None
@@ -122,8 +119,21 @@ class ResearchPlannerRunner:
         final_raw_frontmatter: dict[str, Any] = {}
         final_yaml_fragments: list[dict[str, Any]] = []
         repaired = repair_feedback is not None
+        planner_failed_semantic = False
 
         for attempt_number in range(1, self.MAX_REPAIR_ATTEMPTS + 1):
+            disable_tools_for_repair = self._repair_should_disable_tools(next_repair_feedback)
+            tools = (
+                []
+                if disable_tools_for_repair
+                else self._planner_tools(
+                    session=session,
+                    iteration_number=iteration_number,
+                    parent=parent,
+                    market_bundle=market_bundle,
+                    tool_refs=tool_refs,
+                )
+            )
             user_prompt = (
                 self._build_repair_prompt(
                     session=session,
@@ -138,10 +148,11 @@ class ResearchPlannerRunner:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 tools=tools,
-                max_tokens=1800,
+                max_tokens=self._planner_max_tokens(),
                 timeout_s=max(self.settings.claude_timeout_s, 120.0),
-                max_tool_rounds=self.settings.claude_max_tool_rounds,
+                max_tool_rounds=self._planner_max_tool_rounds(),
                 thinking_override=thinking_override,
+                stage="planner",
             )
             raw_frontmatter, body_text = self._safe_parse_frontmatter(raw_content)
             yaml_fragments = self._extract_yaml_fragments(raw_content)
@@ -155,9 +166,34 @@ class ResearchPlannerRunner:
                 tool_refs=tool_refs,
                 session=session,
             )
+            self._merge_trace_tool_usage(
+                planner_contract,
+                trace=dict(self.claude.last_trace or {}),
+            )
             semantic_issues = self._semantic_note_issues(
                 note_text=raw_content,
                 planner_contract=planner_contract,
+            )
+            semantic_issues.extend(
+                self._planner_tool_usage_issues(
+                    tools=tools,
+                    trace=dict(self.claude.last_trace or {}),
+                )
+            )
+            semantic_issues.extend(
+                self._planner_probe_claim_issues(
+                    note_text=raw_content,
+                    trace=dict(self.claude.last_trace or {}),
+                )
+            )
+            semantic_issues.extend(
+                self._planner_probe_budget_issues(trace=dict(self.claude.last_trace or {}))
+            )
+            semantic_issues.extend(
+                self._planner_total_tool_budget_issues(trace=dict(self.claude.last_trace or {}))
+            )
+            semantic_issues.extend(
+                self._planner_finish_issues(trace=dict(self.claude.last_trace or {}), note_text=raw_content)
             )
             attempt_payload = {
                 "attempt_number": attempt_number,
@@ -201,6 +237,7 @@ class ResearchPlannerRunner:
             repaired = repaired or attempt_number > 1
             break
         else:
+            planner_failed_semantic = True
             final_note = self._fallback_note(
                 parent=parent,
                 current_state=current_state,
@@ -237,8 +274,13 @@ class ResearchPlannerRunner:
             tool_refs=tool_refs,
             initial_repair_feedback=repair_feedback,
             attempts=attempts,
-            used_fallback_note=not bool(final_raw_content.strip()),
+            used_fallback_note=planner_failed_semantic or not bool(final_raw_content.strip()),
         )
+        if planner_failed_semantic and self._requires_planner_tool_use():
+            raise RuntimeError(
+                f"Planner failed semantic validation after {self.MAX_REPAIR_ATTEMPTS} attempts; "
+                "refusing fallback note in live provider mode"
+            )
         evidence_paths = [
             str(path)
             for path in list(final_contract.get("evidence_paths") or [])
@@ -254,11 +296,28 @@ class ResearchPlannerRunner:
             repaired=repaired,
         )
 
+    def _fallback_system_prompt(self) -> str:
+        return "\n".join(
+            [
+                "You are SigLab's research planner.",
+                "Write one concrete markdown research note that states a single next test.",
+                "Keep the note grounded in the current workspace, the current parent spec, and the current target universe.",
+                "Do not output spec JSON.",
+                "Prefer specific feature, gate, and family names over vague guidance.",
+            ]
+        )
+
     def _build_user_prompt(self, *, session: WorkspaceSession, parent: Any) -> str:
         target_universe = ", ".join(parent.universe.basis_groups or [])
         parts = [
             "Write one research note in normal markdown.",
+            "Before finalizing the note, call at least one planner tool to inspect workspace evidence or probe feature/spec behavior.",
+            "Do not make the next test be `call a probe`; call the probe during planning, then write the concrete spec change that the writer should emit.",
+            "Probe budget is tight: use at most three probe calls total and at most two calls to the same probe tool.",
+            "Total tool budget is tight: use at most ten tool calls and finalize the note before the tool budget is exhausted.",
+            "Prefer one high-signal probe over repeated near-duplicate probes.",
             "Do not emit spec JSON.",
+            "Final note must be under 600 words, no tables, and must not end mid-list or mid-sentence.",
             "You may include one small fenced yaml block if it helps pin down required features, gates, or the intended family, but it is optional.",
             "Focus on what to test and why, not on exact spec syntax.",
             "Make the note concrete enough that a deterministic extractor and the writer can preserve the intended family, features, and gate dimensions.",
@@ -268,12 +327,88 @@ class ResearchPlannerRunner:
             "Do not substitute example symbols or default majors from manifests or prior templates.",
             "If you mention the active basket in the note, repeat the exact symbols from the current target universe.",
         ]
+        evidence_summary = self._latest_evidence_summary(session=session)
+        if evidence_summary is not None:
+            evidence_summary["relevance"] = self._evidence_summary_relevance(evidence_summary, parent=parent)
+            if evidence_summary.get("scope") == "global" and not evidence_summary["relevance"]["matched_entities"]:
+                evidence_summary = None
+        if evidence_summary is not None:
+            parts.extend(
+                [
+                    "",
+                    "## Latest Source-Backed Evidence Summary",
+                    "Use this only as traceable context. Treat `not causal` warnings literally and do not claim prediction without validation.",
+                    "If `scope` is `global`, verify it matches the active track before using it as a reason for a candidate change.",
+                    "This block is first-pass context: do not spend probe calls merely rediscovering facts already summarized here.",
+                    json.dumps(evidence_summary, indent=2, ensure_ascii=True, sort_keys=True, default=str)[:6000],
+                ]
+            )
         for rel_path in [*self.DEFAULT_FILES, f"manifests/family/{parent.family}.md"]:
             path = session.root / rel_path
             if not path.exists():
                 continue
             parts.extend(["", f"## {rel_path}", path.read_text()[:9000]])
         return "\n".join(parts)
+
+    def _latest_evidence_summary(self, *, session: WorkspaceSession) -> dict[str, Any] | None:
+        scoped_candidates = [
+            (session.current_dir / "evidence_summary.json", "workspace_current"),
+            *[(path, "workspace_cache") for path in sorted((session.cache_dir / "evidence").glob("*.summary.json"))],
+        ]
+        for path, scope in scoped_candidates:
+            payload = read_json_if_exists(path)
+            if payload:
+                return self._compact_evidence_summary(path=path, scope=scope, payload=payload)
+
+        evidence_dir = self.settings.artifact_dir / "evidence"
+        if not evidence_dir.exists():
+            return None
+        candidates = sorted(evidence_dir.glob("*.summary.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if not candidates:
+            return None
+        payload = read_json_if_exists(candidates[0])
+        if not payload:
+            return None
+        return self._compact_evidence_summary(path=candidates[0], scope="global", payload=payload)
+
+    def _compact_evidence_summary(self, *, path: Path, scope: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            source = str(path.relative_to(self.settings.root_dir))
+        except ValueError:
+            source = str(path)
+        return {
+            "source": source,
+            "scope": scope,
+            "record_count": payload.get("record_count"),
+            "link_count": payload.get("link_count"),
+            "module_counts": payload.get("module_counts"),
+            "relation_counts": payload.get("relation_counts"),
+            "source_counts": payload.get("source_counts"),
+            "top_links": list(payload.get("top_links") or [])[:5],
+        }
+
+    def _evidence_summary_relevance(self, summary: dict[str, Any], *, parent: Any) -> dict[str, Any]:
+        universe = {
+            str(item).upper()
+            for item in list(getattr(getattr(parent, "universe", None), "basis_groups", None) or [])
+            if str(item).strip()
+        }
+        entities = {str(key).upper() for key in dict(summary.get("entity_counts") or {}).keys() if str(key).strip()}
+        link_entities = {
+            str(link.get("feed_entity") or link.get("entity") or "").upper()
+            for link in list(summary.get("top_links") or [])
+            if isinstance(link, dict)
+        }
+        matched = sorted(
+            entity
+            for entity in (entities | link_entities)
+            if entity in universe or any(entity in item or item in entity for item in universe)
+        )
+        return {
+            "target_universe": sorted(universe),
+            "matched_entities": matched,
+            "score": len(matched) / max(1, len(universe)),
+        }
 
     def _build_repair_prompt(
         self,
@@ -290,7 +425,16 @@ class ResearchPlannerRunner:
             "Keep it as normal markdown. Spec JSON is not allowed.",
             "The failure packet shows what the writer or preflight could not preserve.",
             "State one clear next test. If a specific family, feature, or gate dimension matters, say it explicitly in the note.",
-            "You may call planner tools again if they help repair the plan.",
+            (
+                "Do not call more tools. Compress the already collected evidence into a complete note under 500 words."
+                if self._repair_should_disable_tools(repair_feedback)
+                else "Call at least one planner tool before rewriting the note; repair without evidence is not acceptable."
+            ),
+            (
+                "If a probe is missing, state that the note is limited to already collected evidence instead of naming uncalled probes."
+                if self._repair_should_disable_tools(repair_feedback)
+                else "If the repair depends on `probe_feature_forward_stats`, `probe_spec_gate_impact`, or `compare_intended_vs_frozen_spec`, call that tool before the final note; do not ask the writer to call it later."
+            ),
             f"Keep the active target universe fixed at: {target_universe or 'n/a'}.",
             "Do not substitute example symbols or default majors from manifests or prior templates.",
             "",
@@ -314,6 +458,47 @@ class ResearchPlannerRunner:
             parts.extend(["", f"## {rel_path}", path.read_text()[:7000]])
         return "\n".join(parts)
 
+    def _planner_max_tool_rounds(self) -> int:
+        configured = int(getattr(self.settings, "claude_max_tool_rounds", 8))
+        if str(getattr(self.settings, "llm_provider", "") or "").lower() == "bai":
+            return max(1, min(configured, 4))
+        return max(1, min(configured, 8))
+
+    def _planner_max_tokens(self) -> int:
+        if str(getattr(self.settings, "llm_provider", "") or "").lower() == "bai":
+            return 2600
+        return 1800
+
+    def _planner_finish_issues(self, *, trace: dict[str, Any], note_text: str) -> list[str]:
+        issues: list[str] = []
+        finish_reason = str(trace.get("response_finish_reason") or "").strip().lower()
+        if finish_reason in {"length", "max_tokens"}:
+            issues.append(f"planner_response_truncated:{finish_reason}")
+        trace_error = str(trace.get("error") or "").strip()
+        if trace_error:
+            issues.append(f"planner_trace_error:{trace_error}")
+        stripped = note_text.rstrip()
+        if stripped.endswith(("-", "*", "1.", "2.", "3.", "4.", "5.")):
+            issues.append("planner_note_ends_mid_list")
+        return issues
+
+    def _repair_should_disable_tools(self, feedback: dict[str, Any] | None) -> bool:
+        if not feedback:
+            return False
+        semantic_issues = [str(item) for item in list(feedback.get("semantic_issues") or [])]
+        return any(
+            issue.startswith(
+                (
+                    "planner_trace_error:",
+                    "planner_response_truncated:",
+                    "planner_probe_budget_exhausted:",
+                    "planner_tool_call_budget_exceeded:",
+                    "planner_note_ends_mid_list",
+                )
+            )
+            for issue in semantic_issues
+        )
+
     def _planner_tools(
         self,
         *,
@@ -324,6 +509,7 @@ class ResearchPlannerRunner:
         tool_refs: list[str],
     ) -> list[ClaudeTool]:
         tools: list[ClaudeTool] = []
+        probe_budget = {"total": 0, "per_tool": {}}
         tools.append(
             ClaudeTool(
                 name="search_workspace",
@@ -498,6 +684,7 @@ class ResearchPlannerRunner:
                         market_bundle=market_bundle,
                         tool=tool,
                         tool_refs=tool_refs,
+                        probe_budget=probe_budget,
                     ),
                 )
             )
@@ -554,8 +741,25 @@ class ResearchPlannerRunner:
         market_bundle: dict[str, Any],
         tool: ClaudeTool,
         tool_refs: list[str],
+        probe_budget: dict[str, Any],
     ):
         async def _handler(arguments: dict[str, Any]) -> Any:
+            per_tool = dict(probe_budget.get("per_tool") or {})
+            tool_count = int(per_tool.get(tool.name) or 0)
+            total_count = int(probe_budget.get("total") or 0)
+            if total_count >= self.MAX_PROBE_TOOL_CALLS or tool_count >= self.MAX_PROBE_CALLS_PER_TOOL:
+                return {
+                    "ok": False,
+                    "error": "planner_probe_budget_exhausted",
+                    "probe_type": tool.name,
+                    "total_probe_calls": total_count,
+                    "tool_probe_calls": tool_count,
+                    "max_total_probe_calls": self.MAX_PROBE_TOOL_CALLS,
+                    "max_probe_calls_per_tool": self.MAX_PROBE_CALLS_PER_TOOL,
+                }
+            probe_budget["total"] = total_count + 1
+            per_tool[tool.name] = tool_count + 1
+            probe_budget["per_tool"] = per_tool
             outcome = tool.handler(arguments)
             result = await outcome if hasattr(outcome, "__await__") else outcome
             probe_ref = self.workspace_builder.record_probe(
@@ -733,6 +937,13 @@ class ResearchPlannerRunner:
             contract.get("planner_regime_gates") or contract.get("regime_gates")
         )
         contract["gate_intent"] = self._dict_value(contract.get("gate_intent")) if explicit_gate_intent else {}
+        policy_hint = self._policy_control_hint(note_body_text)
+        if policy_hint and not str(contract.get("required_variation_axis") or "").strip():
+            contract["required_variation_axis"] = "policy"
+        if policy_hint and not contract["gate_intent"]:
+            contract["gate_intent"] = dict(policy_hint)
+        if policy_hint and not contract["required_gate_dimensions"]:
+            contract["required_gate_dimensions"] = ["policy_persistence"]
         if explicit_regime_gates and not contract["required_gate_dimensions"]:
             planner_gate_entries = list(contract["planner_regime_gates"].get("entry") or [])
             gate_dimensions = []
@@ -748,6 +959,26 @@ class ResearchPlannerRunner:
             contract["required_gate_dimensions"] = self._unique_strings(gate_dimensions)
         contract["must_answer"] = self._concretize_must_answer(contract)
         return contract
+
+    def _policy_control_hint(self, text: str) -> dict[str, str]:
+        lowered = text.lower()
+        churn_tokens = (
+            "high_position_flip_rate",
+            "position flip rate",
+            "score sign flips",
+            "churn",
+            "max_holding_bars",
+            "cooldown_bars",
+            "flip_abs_score",
+            "symmetric entry/exit",
+            "position persistence",
+        )
+        if not any(token in lowered for token in churn_tokens):
+            return {}
+        return {
+            "type": "suppress_policy_churn",
+            "target_dimension": "policy_persistence",
+        }
 
     def _merge_hint_fragment(
         self,
@@ -893,6 +1124,103 @@ class ResearchPlannerRunner:
         if not str(planner_contract.get("informative_test") or "").strip():
             issues.append("no_informative_test")
         return issues
+
+    def _planner_tool_usage_issues(
+        self,
+        *,
+        tools: list[ClaudeTool],
+        trace: dict[str, Any],
+    ) -> list[str]:
+        if not tools or not self._requires_planner_tool_use():
+            return []
+        try:
+            tool_rounds_used = int(trace.get("tool_rounds_used") or 0)
+        except (TypeError, ValueError):
+            tool_rounds_used = 0
+        tool_calls = trace.get("tool_calls")
+        if tool_rounds_used > 0 or (isinstance(tool_calls, list) and len(tool_calls) > 0):
+            return []
+        return ["planner_did_not_call_workspace_or_probe_tool"]
+
+    def _planner_probe_claim_issues(
+        self,
+        *,
+        note_text: str,
+        trace: dict[str, Any],
+    ) -> list[str]:
+        probe_names = {
+            "probe_feature_forward_stats",
+            "probe_spec_gate_impact",
+            "compare_intended_vs_frozen_spec",
+        }
+        lowered = note_text.lower()
+        mentioned = {
+            probe_name
+            for probe_name in probe_names
+            if probe_name.lower() in lowered
+        }
+        if not mentioned:
+            return []
+        called = {
+            str(call.get("name") or "").strip()
+            for call in list(trace.get("tool_calls") or [])
+            if isinstance(call, dict)
+        }
+        missing = sorted(mentioned - called)
+        if not missing:
+            return []
+        return [f"planner_named_uncalled_probe:{probe_name}" for probe_name in missing]
+
+    def _planner_probe_budget_issues(self, *, trace: dict[str, Any]) -> list[str]:
+        exhausted: list[str] = []
+        for call in list(trace.get("tool_calls") or []):
+            if not isinstance(call, dict):
+                continue
+            result = call.get("result")
+            if not isinstance(result, dict):
+                continue
+            if result.get("error") == "planner_probe_budget_exhausted":
+                exhausted.append(str(result.get("probe_type") or call.get("name") or "probe"))
+        if not exhausted:
+            return []
+        names = ",".join(self._unique_strings(exhausted))
+        return [f"planner_probe_budget_exhausted:{names}"]
+
+    def _planner_total_tool_budget_issues(self, *, trace: dict[str, Any]) -> list[str]:
+        count = len(list(trace.get("tool_calls") or []))
+        if count <= self.MAX_PLANNER_TOOL_CALLS:
+            return []
+        return [f"planner_tool_call_budget_exceeded:{count}>{self.MAX_PLANNER_TOOL_CALLS}"]
+
+    def _merge_trace_tool_usage(
+        self,
+        planner_contract: dict[str, Any],
+        *,
+        trace: dict[str, Any],
+    ) -> None:
+        tool_names = self._trace_tool_names(trace)
+        if not tool_names:
+            return
+        planner_contract["tools_used"] = self._unique_strings(
+            [
+                *self._string_list(planner_contract.get("tools_used")),
+                *tool_names,
+            ]
+        )
+
+    def _trace_tool_names(self, trace: dict[str, Any]) -> list[str]:
+        names: list[str] = []
+        for call in list(trace.get("tool_calls") or []):
+            if not isinstance(call, dict):
+                continue
+            name = str(call.get("name") or "").strip()
+            if name:
+                names.append(name)
+        return self._unique_strings(names)
+
+    def _requires_planner_tool_use(self) -> bool:
+        provider = str(getattr(self.settings, "llm_provider", "") or "").strip().lower()
+        return provider in {"bai", "openrouter", "deepseek", "kimi", "claude"}
 
     def _fallback_contract(
         self,
@@ -1095,6 +1423,11 @@ class ResearchPlannerRunner:
             )
             if concrete_enough:
                 return must_answer
+        if required_variation_axis in {"policy", "policy_control", "persistence"}:
+            return (
+                f"Does changing the policy/persistence controls in `{family}` reduce churn and drawdown "
+                "while improving pre-audit return without making validation negative?"
+            )
         if feature_refs and gate_dims:
             return (
                 f"Does using `{feature_refs[0]}` with a `{gate_dims[0]}` gate improve pre-audit return "

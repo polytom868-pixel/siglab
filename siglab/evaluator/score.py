@@ -39,6 +39,12 @@ def _safe_nanmin(values: np.ndarray, default: float = 0.0) -> float:
     return result
 
 
+def _bounded(value: float, *, lower: float, upper: float) -> float:
+    if not np.isfinite(value):
+        return 0.0
+    return min(max(float(value), lower), upper)
+
+
 def summarize_window_results(
     *,
     window_results: list[dict[str, Any]],
@@ -56,13 +62,17 @@ def summarize_window_results(
     liquidation_count = sum(1 for row in window_results if row["liquidated"])
     profitable_window_pct = float((total_return > 0.0).mean())
 
+    score_sharpe = _bounded(_safe_nanmedian(sharpe), lower=-20.0, upper=20.0)
+    score_return = _bounded(_safe_nanmedian(total_return), lower=-1.0, upper=5.0)
+    score_calmar = _bounded(_safe_nanmedian(calmar), lower=-50.0, upper=50.0)
+    score_drawdown = _bounded(_safe_nanmedian(drawdown), lower=-1.0, upper=0.0)
     aggregate_score = (
-        _safe_nanmedian(sharpe)
-        + 4.0 * _safe_nanmedian(total_return)
-        + 0.5 * _safe_nanmedian(calmar)
+        score_sharpe
+        + 4.0 * score_return
+        + 0.5 * score_calmar
         + 0.1 * float(asset_breadth)
         + 0.25 * profitable_window_pct
-        + 1.5 * _safe_nanmedian(drawdown)
+        + 1.5 * score_drawdown
     )
 
     return {
@@ -76,4 +86,10 @@ def summarize_window_results(
         "window_count": len(window_results),
         "profitable_window_pct": profitable_window_pct,
         "asset_breadth": asset_breadth,
+        "score_component_caps": {
+            "median_sharpe": score_sharpe,
+            "median_total_return": score_return,
+            "median_calmar": score_calmar,
+            "median_drawdown": score_drawdown,
+        },
     }

@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 import pandas as pd
 
-from siglab.data.providers import MarketDataProvider
-from siglab.data.providers import _pair_calibration_snapshot
+from siglab.data.feeds import MarketDataProvider
+from siglab.data.feeds import _pair_calibration_snapshot
 
 
 class MarketDataProviderNoFallbackTests(unittest.IsolatedAsyncioTestCase):

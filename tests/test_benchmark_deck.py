@@ -15,8 +15,8 @@ from siglab.benchmark import (
     evaluate_benchmark_deck,
     init_benchmark_deck,
 )
-from siglab.models import SignalSpec
-from siglab.search.ancestry import LineageStore
+from siglab.schemas import SignalSpec
+from siglab.search.lineage import LineageStore
 
 
 def _spec(
