@@ -226,6 +226,14 @@ def main() -> None:
     demo_manifest_parser.add_argument("--html-output", default=None)
     demo_manifest_parser.add_argument("--json", action="store_true")
 
+    demo_refresh_parser = subparsers.add_parser(
+        "demo-refresh",
+        help="Refresh safe demo artifacts for the ops board without submitting live trades.",
+    )
+    demo_refresh_parser.add_argument("--wave-number", type=int, default=1)
+    demo_refresh_parser.add_argument("--goal", default="refresh buildathon demo artifacts")
+    demo_refresh_parser.add_argument("--json", action="store_true")
+
     market_report_parser = subparsers.add_parser(
         "market-report",
         help="Build a deterministic SoSoValue + SoDEX evidence-linked market report.",
@@ -392,6 +400,9 @@ def main() -> None:
     if args.command == "demo-manifest":
         demo_manifest_command(args)
         return
+    if args.command == "demo-refresh":
+        demo_refresh_command(args)
+        return
     if args.command == "market-report":
         market_report_command(args)
         return
@@ -517,38 +528,7 @@ def evidence_map_command(args: argparse.Namespace) -> None:
 
 def demo_report_command(args: argparse.Namespace) -> None:
     settings = load_settings()
-    evidence_dir = settings.root_dir / "runs" / "evidence"
-    sodex_probe_dir = settings.root_dir / "runs" / "sodex_probes"
-    sosovalue_summaries = sorted(evidence_dir.glob("*sosovalue*.summary.json"), key=lambda item: item.stat().st_mtime)
-    sodex_summaries = sorted(evidence_dir.glob("*sodex*.summary.json"), key=lambda item: item.stat().st_mtime)
-    ws_probes = sorted(sodex_probe_dir.glob("ws_*latest.json"), key=lambda item: item.stat().st_mtime)
-    preflight = _sodex_preflight_report()
-    report = {
-        "generated_at": datetime.now(UTC).isoformat(),
-        "use_case": "SoSoValue and SoDEX backed research-to-action evidence flow",
-        "input_to_output_flow": [
-            "SoSoValue evidence ingestion",
-            "SoDEX public market stream ingestion",
-            "Evidence normalization and dedupe",
-            "Operator evidence graph/report",
-            "SoDEX live-write preflight refusal until credentials exist",
-        ],
-        "latest_sosovalue_summary": _load_json_if_exists(sosovalue_summaries[-1]) if sosovalue_summaries else None,
-        "latest_sodex_summary": _load_json_if_exists(sodex_summaries[-1]) if sodex_summaries else None,
-        "latest_sodex_ws_probe": _load_json_if_exists(ws_probes[-1]) if ws_probes else None,
-        "sodex_preflight": preflight,
-        "readiness": {
-            "sosovalue_api": "PASS" if sosovalue_summaries else "PARTIAL",
-            "sodex_public_api": "PASS" if ws_probes else "PARTIAL",
-            "sodex_signed_execution": "FAIL_BLOCKED_BY_CREDENTIALS" if not preflight["live_write_allowed"] else "READY_NOT_VALIDATED_LIVE",
-            "demo_materials": "PARTIAL",
-        },
-        "red_flags": [
-            "Signed SoDEX writes are not live-proven.",
-            "SoSoValue Index/Macro/Treasury/Fundraising/Crypto Stocks/Analysis Charts callable wrappers are missing.",
-            "Evidence links are not causal claims.",
-        ],
-    }
+    report = _build_demo_report_payload(settings)
     output = (
         resolve_path_from_root(args.output, root_dir=settings.root_dir)
         if args.output
@@ -576,6 +556,41 @@ def demo_report_command(args: argparse.Namespace) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def _build_demo_report_payload(settings: Any) -> dict[str, Any]:
+    evidence_dir = settings.root_dir / "runs" / "evidence"
+    sodex_probe_dir = settings.root_dir / "runs" / "sodex_probes"
+    sosovalue_summaries = sorted(evidence_dir.glob("*sosovalue*.summary.json"), key=lambda item: item.stat().st_mtime)
+    sodex_summaries = sorted(evidence_dir.glob("*sodex*.summary.json"), key=lambda item: item.stat().st_mtime)
+    ws_probes = sorted(sodex_probe_dir.glob("ws_*latest.json"), key=lambda item: item.stat().st_mtime)
+    preflight = _sodex_preflight_report()
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "use_case": "SoSoValue and SoDEX backed research-to-action evidence flow",
+        "input_to_output_flow": [
+            "SoSoValue evidence ingestion",
+            "SoDEX public market stream ingestion",
+            "Evidence normalization and dedupe",
+            "Operator evidence graph/report",
+            "SoDEX live-write preflight refusal until credentials exist",
+        ],
+        "latest_sosovalue_summary": _load_json_if_exists(sosovalue_summaries[-1]) if sosovalue_summaries else None,
+        "latest_sodex_summary": _load_json_if_exists(sodex_summaries[-1]) if sodex_summaries else None,
+        "latest_sodex_ws_probe": _load_json_if_exists(ws_probes[-1]) if ws_probes else None,
+        "sodex_preflight": preflight,
+        "readiness": {
+            "sosovalue_api": "PASS" if sosovalue_summaries else "PARTIAL",
+            "sodex_public_api": "PASS" if ws_probes else "PARTIAL",
+            "sodex_signed_execution": "FAIL_BLOCKED_BY_CREDENTIALS" if not preflight["live_write_allowed"] else "READY_NOT_VALIDATED_LIVE",
+            "demo_materials": "PARTIAL",
+        },
+        "red_flags": [
+            "Signed SoDEX writes are not live-proven.",
+            "SoSoValue Index/Macro/Treasury/Fundraising/Crypto Stocks/Analysis Charts callable wrappers are missing.",
+            "Evidence links are not causal claims.",
+        ],
+    }
+
+
 def demo_manifest_command(args: argparse.Namespace) -> None:
     settings = load_settings()
     manifest = _build_demo_manifest(settings)
@@ -595,8 +610,95 @@ def demo_manifest_command(args: argparse.Namespace) -> None:
     if getattr(args, "json", False):
         print(json.dumps(manifest, indent=2, sort_keys=True, default=str))
         return
-    print(f"demo_manifest: {display_path(output, settings.root_dir)}")
-    print(f"demo_manifest_html: {display_path(html_output, settings.root_dir)}")
+    print(f"demo_manifest: {display_path(output, root_dir=settings.root_dir)}")
+    print(f"demo_manifest_html: {display_path(html_output, root_dir=settings.root_dir)}")
+
+
+def demo_refresh_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    runs_dir = settings.artifact_dir
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    preflight = _sodex_preflight_report()
+    preflight_path = runs_dir / "sodex_preflight_latest.json"
+    write_json(preflight_path, preflight)
+
+    trace_paths = _trace_paths_for_telemetry(settings=settings, track="all", run_session_id=None)
+    provider_metric_paths = _provider_metric_paths_for_telemetry(settings=settings, run_session_id=None)
+    telemetry = aggregate_trace_telemetry(trace_paths)
+    telemetry["trace_paths_scanned"] = len(trace_paths)
+    telemetry["provider_metrics"] = aggregate_provider_metrics_artifacts(provider_metric_paths)
+    telemetry["provider_metrics_paths_scanned"] = len(provider_metric_paths)
+    telemetry["provider_metrics_status"] = (
+        "missing"
+        if trace_paths and telemetry["provider_metrics"]["artifact_count"] == 0
+        else "present"
+        if telemetry["provider_metrics"]["artifact_count"] > 0
+        else "not_applicable"
+    )
+    telemetry_path = runs_dir / "latest_telemetry_report.json"
+    write_json(telemetry_path, telemetry)
+
+    evidence_dir = runs_dir / "evidence"
+    market = _build_market_report(
+        entity="BTC",
+        sosovalue_evidence=_latest_path(evidence_dir, "*sosovalue*.jsonl"),
+        sodex_evidence=evidence_dir / "sodex_ws_evidence.jsonl",
+    )
+    market_path = runs_dir / "market_report_latest.json"
+    market_html_path = runs_dir / "market_report_latest.html"
+    write_json(market_path, market)
+    market_html_path.write_text(_market_report_html(market), encoding="utf-8")
+
+    demo_report = _build_demo_report_payload(settings)
+    demo_report_path = runs_dir / "demo_report.json"
+    demo_report_html_path = runs_dir / "demo_report_latest.html"
+    write_json(demo_report_path, demo_report)
+    demo_report_html_path.write_text(_demo_report_html(demo_report), encoding="utf-8")
+
+    wave_payload = _build_wave_status_payload(
+        argparse.Namespace(
+            wave_number=int(args.wave_number),
+            phase="demo_refresh",
+            status="running",
+            goal=str(args.goal),
+            agents="operator,dashboard,hardening",
+            outputs="preflight,telemetry,market_report,demo_report,demo_manifest,wave_status",
+            blockers="signed SoDEX live execution unproven,private account WS unvalidated",
+            validation_status="demo_refresh_generated",
+            next_decision="open /ops and review unsafe claims before demo",
+        )
+    )
+    wave_path = runs_dir / "wave_status_latest.json"
+    write_json(wave_path, wave_payload)
+
+    manifest = _build_demo_manifest(settings)
+    manifest_path = runs_dir / "demo_manifest_latest.json"
+    manifest_html_path = runs_dir / "demo_manifest_latest.html"
+    write_json(manifest_path, manifest)
+    manifest_html_path.write_text(_demo_manifest_html(manifest), encoding="utf-8")
+
+    payload = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "artifacts": {
+            "sodex_preflight": display_path(preflight_path, root_dir=settings.root_dir),
+            "telemetry": display_path(telemetry_path, root_dir=settings.root_dir),
+            "market_report": display_path(market_path, root_dir=settings.root_dir),
+            "market_report_html": display_path(market_html_path, root_dir=settings.root_dir),
+            "demo_report": display_path(demo_report_path, root_dir=settings.root_dir),
+            "demo_manifest": display_path(manifest_path, root_dir=settings.root_dir),
+            "demo_manifest_html": display_path(manifest_html_path, root_dir=settings.root_dir),
+            "wave_status": display_path(wave_path, root_dir=settings.root_dir),
+        },
+        "readiness": manifest.get("readiness"),
+        "market_report_status": market.get("status"),
+        "live_write_allowed": preflight.get("live_write_allowed"),
+        "unsafe_claims": wave_payload.get("unsafe_claims"),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+        return
+    print(json.dumps(payload, indent=2, sort_keys=True, default=str))
 
 
 def _build_demo_manifest(settings: Any) -> dict[str, Any]:
@@ -1232,7 +1334,7 @@ def wave_status_command(args: argparse.Namespace) -> None:
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
         return
-    print(f"wave_status: {display_path(output, settings.root_dir)}")
+    print(f"wave_status: {display_path(output, root_dir=settings.root_dir)}")
 
 
 def _split_cli_list(value: str) -> list[str]:

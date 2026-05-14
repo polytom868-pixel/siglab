@@ -28,6 +28,23 @@ Expected proof:
 - Feed records from `sosovalue.featured_news` or `sosovalue.featured_news_by_currency`.
 - Warnings remain non-causal.
 
+## Fast Refresh Existing Proof Artifacts
+
+If evidence artifacts already exist, refresh the operator board inputs without live trading:
+
+```bash
+python3 -m siglab.cli demo-refresh --json
+python3 -m siglab.cli dashboard --host 127.0.0.1 --port 8765
+```
+
+Then open `http://127.0.0.1:8765/ops`.
+
+Expected proof:
+
+- Refresh writes latest preflight, telemetry, market report, demo report, demo manifest, and wave-status artifacts.
+- Signed SoDEX live execution remains refused unless preflight prerequisites really pass.
+- Missing evidence yields a partial market report instead of a fake opportunity.
+
 ## 2. Probe SoDEX Public WebSocket
 
 ```bash
