@@ -1380,10 +1380,60 @@ def _sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]
             missing.append("SODEX_ACCOUNT_ID must be an unsigned integer")
     if not nonce_store:
         missing.append("SODEX_NONCE_STORE_PATH")
+        nonce_store_status = {
+            "ready": False,
+            "path_present": False,
+            "parent_writable": False,
+            "file_writable": False,
+            "parseable": False,
+            "error": "SODEX_NONCE_STORE_PATH is required",
+        }
+    else:
+        nonce_path = Path(nonce_store).expanduser()
+        if not nonce_path.is_absolute():
+            nonce_path = (Path.cwd() / nonce_path).resolve()
+        parent = nonce_path.parent
+        parent_exists = parent.exists()
+        parent_writable = bool(parent_exists and os.access(parent, os.W_OK))
+        file_writable = bool((not nonce_path.exists() and parent_writable) or os.access(nonce_path, os.W_OK))
+        parseable = True
+        nonce_error = None
+        if nonce_path.exists():
+            try:
+                parsed = json.loads(nonce_path.read_text())
+                if not isinstance(parsed, dict):
+                    parseable = False
+                    nonce_error = "nonce store must be a JSON object"
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                parseable = False
+                nonce_error = f"nonce store is not parseable JSON: {exc}"
+        if not parent_exists:
+            nonce_error = "nonce store parent directory does not exist"
+        elif not parent_writable:
+            nonce_error = "nonce store parent directory is not writable"
+        elif not file_writable:
+            nonce_error = "nonce store file is not writable"
+        nonce_store_status = {
+            "ready": bool(parent_exists and parent_writable and file_writable and parseable),
+            "path_present": True,
+            "parent_writable": parent_writable,
+            "file_writable": file_writable,
+            "parseable": parseable,
+            "error": nonce_error,
+        }
+        if not nonce_store_status["ready"]:
+            missing.append(f"SODEX_NONCE_STORE_PATH not ready: {nonce_store_status['error']}")
     if not private_key_present:
         missing.append("SODEX_PRIVATE_KEY")
     if environment not in {"mainnet", "testnet"}:
         missing.append("SODEX_ENVIRONMENT must be mainnet or testnet")
+    mainnet_confirmation = str(source.get("SODEX_MAINNET_LIVE_WRITE_CONFIRMATION") or "").strip()
+    testnet_passed = str(source.get("SODEX_TESTNET_PREFLIGHT_PASSED") or "").strip().lower()
+    if environment == "mainnet":
+        if testnet_passed not in {"1", "true", "yes"}:
+            missing.append("SODEX_TESTNET_PREFLIGHT_PASSED must be true before mainnet")
+        if mainnet_confirmation != "I_UNDERSTAND_MAINNET_RISK":
+            missing.append("SODEX_MAINNET_LIVE_WRITE_CONFIRMATION must equal I_UNDERSTAND_MAINNET_RISK")
     return {
         "public_read_ready": True,
         "schema_pinned": True,
@@ -1394,7 +1444,10 @@ def _sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]
             "signer_type": "evm-private-key" if private_key_present else None,
             "accountID_present": bool(account_id),
             "api_key_name_present": bool(api_key_name),
-            "nonce_store_ready": bool(nonce_store),
+            "nonce_store_ready": bool(nonce_store_status["ready"]),
+            "nonce_store": nonce_store_status,
+            "testnet_preflight_passed": testnet_passed in {"1", "true", "yes"},
+            "mainnet_confirmation_present": mainnet_confirmation == "I_UNDERSTAND_MAINNET_RISK",
             "missing_prerequisites": missing,
         },
         "live_write_allowed": not missing,

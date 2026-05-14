@@ -612,20 +612,85 @@ class CliAgentSafetyTests(unittest.TestCase):
         self.assertIn("replaceOrder", report["unsupported_signed_actions"])
 
     def test_sodex_preflight_marks_signed_ready_without_printing_secret(self) -> None:
-        report = _sodex_preflight_report(
-            {
-                "SODEX_API_KEY_NAME": "siglab-key",
-                "SODEX_ACCOUNT_ID": "1001",
-                "SODEX_NONCE_STORE_PATH": "/tmp/sodex-nonce.json",
-                "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
-                "SODEX_ENVIRONMENT": "testnet",
-            }
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            report = _sodex_preflight_report(
+                {
+                    "SODEX_API_KEY_NAME": "siglab-key",
+                    "SODEX_ACCOUNT_ID": "1001",
+                    "SODEX_NONCE_STORE_PATH": str(Path(tmp) / "sodex-nonce.json"),
+                    "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
+                    "SODEX_ENVIRONMENT": "testnet",
+                }
+            )
 
         self.assertTrue(report["signed_path"]["ready"])
         self.assertTrue(report["live_write_allowed"])
         self.assertEqual(report["signed_path"]["signer_type"], "evm-private-key")
+        self.assertTrue(report["signed_path"]["nonce_store_ready"])
         self.assertNotIn("11" * 32, str(report))
+
+    def test_sodex_preflight_rejects_unwritable_or_corrupt_nonce_store(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_parent = Path(tmp) / "missing" / "nonce.json"
+            report = _sodex_preflight_report(
+                {
+                    "SODEX_API_KEY_NAME": "siglab-key",
+                    "SODEX_ACCOUNT_ID": "1001",
+                    "SODEX_NONCE_STORE_PATH": str(missing_parent),
+                    "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
+                    "SODEX_ENVIRONMENT": "testnet",
+                }
+            )
+            self.assertFalse(report["signed_path"]["ready"])
+            self.assertFalse(report["signed_path"]["nonce_store_ready"])
+            self.assertIn("parent directory does not exist", report["signed_path"]["nonce_store"]["error"])
+
+            corrupt = Path(tmp) / "nonce.json"
+            corrupt.write_text("{bad json")
+            report = _sodex_preflight_report(
+                {
+                    "SODEX_API_KEY_NAME": "siglab-key",
+                    "SODEX_ACCOUNT_ID": "1001",
+                    "SODEX_NONCE_STORE_PATH": str(corrupt),
+                    "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
+                    "SODEX_ENVIRONMENT": "testnet",
+                }
+            )
+            self.assertFalse(report["signed_path"]["ready"])
+            self.assertFalse(report["signed_path"]["nonce_store"]["parseable"])
+            self.assertIn("not parseable JSON", report["signed_path"]["nonce_store"]["error"])
+
+    def test_sodex_preflight_blocks_mainnet_until_testnet_and_operator_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_env = {
+                "SODEX_API_KEY_NAME": "siglab-key",
+                "SODEX_ACCOUNT_ID": "1001",
+                "SODEX_NONCE_STORE_PATH": str(Path(tmp) / "sodex-nonce.json"),
+                "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
+                "SODEX_ENVIRONMENT": "mainnet",
+            }
+            report = _sodex_preflight_report(base_env)
+            self.assertFalse(report["live_write_allowed"])
+            self.assertIn(
+                "SODEX_TESTNET_PREFLIGHT_PASSED must be true before mainnet",
+                report["signed_path"]["missing_prerequisites"],
+            )
+            self.assertIn(
+                "SODEX_MAINNET_LIVE_WRITE_CONFIRMATION must equal I_UNDERSTAND_MAINNET_RISK",
+                report["signed_path"]["missing_prerequisites"],
+            )
+
+            report = _sodex_preflight_report(
+                {
+                    **base_env,
+                    "SODEX_TESTNET_PREFLIGHT_PASSED": "true",
+                    "SODEX_MAINNET_LIVE_WRITE_CONFIRMATION": "I_UNDERSTAND_MAINNET_RISK",
+                }
+            )
+            self.assertTrue(report["signed_path"]["ready"])
+            self.assertTrue(report["live_write_allowed"])
+            self.assertTrue(report["signed_path"]["testnet_preflight_passed"])
+            self.assertTrue(report["signed_path"]["mainnet_confirmation_present"])
 
     def test_sodex_preview_payload_does_not_sign_or_submit(self) -> None:
         payload = _sodex_preview_payload(
