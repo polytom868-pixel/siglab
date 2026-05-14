@@ -63,7 +63,10 @@
     renderSummary(payload);
 
     document.getElementById("artifactHealth").innerHTML = Object.entries(artifactStatus)
-      .map(([name, artifact]) => line(name, artifact.status, artifact.error || artifact.path || ""))
+      .map(([name, artifact]) => {
+        const freshness = artifact.freshness ? `freshness=${artifact.freshness}; age=${valueLabel(artifact.age_seconds)}s` : "";
+        return line(name, artifact.status, artifact.error || freshness || artifact.path || "");
+      })
       .join("");
 
     document.getElementById("waveState").innerHTML = [
@@ -128,6 +131,9 @@
       ...Object.entries(artifactStatus)
         .filter(([, artifact]) => artifact.status !== "present")
         .map(([name, artifact]) => `${name}: ${artifact.error || artifact.status}`),
+      ...Object.entries(artifactStatus)
+        .filter(([, artifact]) => artifact.freshness === "expired")
+        .map(([name, artifact]) => `${name}: expired artifact age ${artifact.age_seconds}s`),
     ];
     document.getElementById("blockers").innerHTML = listLines(blockers, "no blockers in current artifacts");
   }

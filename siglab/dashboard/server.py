@@ -5,7 +5,7 @@ import json
 import math
 import mimetypes
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -491,10 +491,20 @@ class DashboardApp:
                 "error": "artifact root must be a JSON object",
                 "payload": None,
             }
+        mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+        age_seconds = max(0.0, (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds())
         return {
             "status": "present",
             "path": relative_path,
-            "mtime": datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(),
+            "mtime": mtime.isoformat(),
+            "age_seconds": round(age_seconds, 3),
+            "freshness": (
+                "fresh"
+                if age_seconds <= 15 * 60
+                else "stale"
+                if age_seconds <= 24 * 60 * 60
+                else "expired"
+            ),
             "payload": payload,
         }
 
@@ -585,6 +595,8 @@ class DashboardApp:
                     "status": artifact.get("status"),
                     "path": artifact.get("path"),
                     "mtime": artifact.get("mtime"),
+                    "age_seconds": artifact.get("age_seconds"),
+                    "freshness": artifact.get("freshness"),
                     "error": artifact.get("error"),
                 }
                 for name, artifact in artifacts.items()
