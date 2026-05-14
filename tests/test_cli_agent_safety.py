@@ -14,6 +14,7 @@ from siglab.cli import (
     _agent_safe_recent_results,
     _build_demo_manifest,
     _build_market_report,
+    _build_wave_status_payload,
     _credit_budget_stop_payload,
     _demo_manifest_html,
     _demo_report_html,
@@ -691,6 +692,28 @@ class CliAgentSafetyTests(unittest.TestCase):
             self.assertTrue(report["live_write_allowed"])
             self.assertTrue(report["signed_path"]["testnet_preflight_passed"])
             self.assertTrue(report["signed_path"]["mainnet_confirmation_present"])
+
+    def test_wave_status_payload_keeps_unsafe_claims_and_lists_structured(self) -> None:
+        payload = _build_wave_status_payload(
+            SimpleNamespace(
+                wave_number=7,
+                phase="validation",
+                status="running",
+                goal="prove operator board wave visibility",
+                agents="dashboard, hardening",
+                outputs="ops artifact, tests",
+                blockers="signed SoDEX blocked, private WS blocked",
+                validation_status="targeted_pass",
+                next_decision="continue demo flow",
+            )
+        )
+
+        self.assertEqual(payload["wave_number"], 7)
+        self.assertEqual(payload["agents"], ["dashboard", "hardening"])
+        self.assertEqual(payload["outputs"], ["ops artifact", "tests"])
+        self.assertEqual(payload["blockers"], ["signed SoDEX blocked", "private WS blocked"])
+        self.assertFalse(payload["stop_allowed"])
+        self.assertIn("signed SoDEX live execution remains unproven", payload["unsafe_claims"])
 
     def test_sodex_preview_payload_does_not_sign_or_submit(self) -> None:
         payload = _sodex_preview_payload(
