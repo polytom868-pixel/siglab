@@ -13,6 +13,7 @@ from siglab.cli import (
     _agent_safe_memory_packet,
     _agent_safe_recent_results,
     _build_demo_manifest,
+    _build_demo_report_payload,
     _build_market_report,
     _build_wave_status_payload,
     _credit_budget_stop_payload,
@@ -239,6 +240,17 @@ class CliAgentSafetyTests(unittest.TestCase):
         self.assertIn("FAIL_BLOCKED_BY_CREDENTIALS", html)
         self.assertIn("SODEX_ACCOUNT_ID", html)
         self.assertIn("not causal proof", html)
+
+    def test_demo_report_payload_keeps_live_execution_blocked_without_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runs = root / "runs"
+            runs.mkdir(parents=True)
+            report = _build_demo_report_payload(SimpleNamespace(root_dir=root, artifact_dir=runs))
+
+        self.assertEqual(report["readiness"]["sodex_signed_execution"], "FAIL_BLOCKED_BY_CREDENTIALS")
+        self.assertIn("Signed SoDEX writes are not live-proven.", report["red_flags"])
+        self.assertIn("SoSoValue evidence ingestion", report["input_to_output_flow"])
 
     def test_demo_manifest_indexes_artifacts_without_execution_overclaim(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
