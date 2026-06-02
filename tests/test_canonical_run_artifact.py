@@ -8,8 +8,7 @@ import pandas as pd
 from siglab.evaluator.core import ResearchEvaluator
 from siglab.schemas import SignalSpec
 from siglab.config import SiglabConfig
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from conftest import REPO_ROOT
 
 
 def _settings() -> SiglabConfig:

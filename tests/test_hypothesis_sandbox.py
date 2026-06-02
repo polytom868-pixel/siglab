@@ -14,8 +14,7 @@ from siglab.schemas import SignalSpec
 from siglab.research.hypothesis import HypothesisSandbox, _frame_pair_stats
 from siglab.search import LineageStore
 from siglab.config import SiglabConfig
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from conftest import REPO_ROOT
 
 
 class StubPerpProvider:
