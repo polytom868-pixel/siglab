@@ -357,15 +357,17 @@ class SoDEXPaperPerpsClient:
 
     Parameters
     ----------
-    feeds : SoDEXFeeds
+    feeds : SoDEXFeeds or None
         SoDEX market data feed for klines and funding rates.
+        If ``None``, funding processing and feed-dependent operations
+        are skipped gracefully.
     sessions_dir : str or Path
         Directory for ``.npy`` session files (default: ``sessions/``).
     """
 
     def __init__(
         self,
-        feeds: SoDEXFeeds,
+        feeds: SoDEXFeeds | None = None,
         sessions_dir: str | Path = "sessions",
     ) -> None:
         self.feeds = feeds
@@ -941,6 +943,12 @@ class SoDEXPaperPerpsClient:
                 return []
 
         # Fetch real funding rates from SoDEX mark prices
+        if self.feeds is None:
+            logger.warning(
+                "Cannot fetch funding rates for session %s: feeds not available",
+                session_id,
+            )
+            return []
         try:
             mark_prices = await self.feeds.fetch_mark_prices()
         except Exception as exc:
@@ -1041,3 +1049,5 @@ class SoDEXPaperPerpsClient:
 
     async def close(self) -> None:
         """Release resources (no-op, kept for API consistency)."""
+        if self.feeds is not None:
+            await self.feeds.close()

@@ -63,7 +63,7 @@ def _create_session_with_fills(
     settings = load_settings()
     lake = ParquetLake(settings.root_dir / "data" / "cache")
     feeds = SoDEXFeeds(lake=lake)
-    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=str(sessions_dir))
+    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=str(sessions_dir))  # type: ignore[arg-type]
 
     if profitable:
         # Profitable trades: buy low, sell high
@@ -114,6 +114,7 @@ def _create_session_with_fills(
 # ======================================================================
 
 
+@pytest.mark.integration
 class TestPaperPromoteRejects:
     """VAL-CLI-017: paper-promote rejects below-threshold sessions with reason."""
 

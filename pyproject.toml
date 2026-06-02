@@ -18,6 +18,9 @@ pyarrow = "^20.0.0"
 pyyaml = "^6.0.2"
 optuna = "^4.5.0"
 # SoSoValue API client — install separately or via pip
+pydantic = "^2.13.4"
+fastapi = "^0.136.3"
+uvicorn = "^0.48.0"
 
 [tool.poetry.scripts]
 siglab = "siglab.cli:main"
@@ -26,7 +29,17 @@ siglab = "siglab.cli:main"
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests that make real API calls or run CLI subprocesses (run with -m integration)",
+    "asyncio: marks async test cases",
+]
+asyncio_mode = "auto"
+
 [dependency-groups]
 dev = [
-    "ruff (>=0.15.6,<0.16.0)"
+    "ruff (>=0.15.6,<0.16.0)",
+    "pytest (>=9.0.3,<10.0.0)",
+    "pytest-timeout (>=2.4.0,<3.0.0)",
+    "pytest-asyncio (>=1.4.0,<2.0.0)"
 ]
