@@ -6,6 +6,7 @@ import argparse
 import json
 from collections import Counter
 from datetime import UTC, datetime
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,6 @@ from siglab.evaluator import ResearchEvaluator
 from siglab.llm import ClaudeClient
 from siglab.orchestration import (
     ResearchPlannerRunner,
-    ReflectionRunner,
     SpecWriterRunner,
     WorkspaceHooks,
 )
@@ -48,6 +48,7 @@ from siglab.cli.helpers import (
     agent_safe_memory_packet,
     tool_only_external_research,
     base_spec_payload_for_family,
+    incumbent_detail as _incumbent_detail,
     pick_deterministic_parent,
     row_is_deterministic,
     spec_trade_style,
@@ -240,7 +241,6 @@ async def _run_iterations(
     mutator = SpecMutator(settings, claude)
     planner = ResearchPlannerRunner(settings, claude, web_researcher)
     writer = SpecWriterRunner(settings, claude)
-    reflector = ReflectionRunner(settings, claude)
     sandbox = HypothesisSandbox(settings, claude)
     hooks = WorkspaceHooks(settings)
     workspace = WorkspaceBuilder(settings)
@@ -380,7 +380,7 @@ async def _run_iterations(
             if evaluation.get("spec") is None:
                 evaluation["spec"] = spec_payload
 
-            artifact_path = write_artifact(settings, track, evaluation)
+            _ = write_artifact(settings, track, evaluation)  # noqa: F841
             hooks.after_evaluation_hook(
                 track=track,
                 evaluation=evaluation,
