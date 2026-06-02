@@ -292,15 +292,24 @@ def _compute_fill_price(
     kline: dict[str, Any],
     side: PaperOrderSide,
     limit_price: float,
+    order_type: PaperOrderType = PaperOrderType.LIMIT,
 ) -> tuple[float, bool]:
     """
-    Determine if a kline crosses the order limit and compute fill price.
+    Determine if a kline crosses the order and compute fill price.
 
-    For BUY: fills when low <= limit_price. Fill at min(limit_price, open).
-    For SELL: fills when high >= limit_price. Fill at max(limit_price, open).
+    For MARKET orders: always fills at the kline close price.
+    For LIMIT orders:
+      BUY: fills when low <= limit_price. Fill at min(limit_price, open).
+      SELL: fills when high >= limit_price. Fill at max(limit_price, open).
 
     Returns (fill_price, did_fill).
     """
+    close = float(kline.get("c", 0))
+
+    # MARKET orders always fill at the kline close price
+    if order_type == PaperOrderType.MARKET:
+        return close, True
+
     high = float(kline.get("h", 0))
     low = float(kline.get("l", 0))
     open_price = float(kline.get("o", 0))
@@ -789,7 +798,7 @@ class SoDEXPaperPerpsClient:
                 continue
 
             fill_price, did_fill = _compute_fill_price(
-                kline, order.side, order.price
+                kline, order.side, order.price, order.order_type
             )
             if did_fill:
                 self._fill_order(session, order, fill_price)
@@ -998,7 +1007,7 @@ class SoDEXPaperPerpsClient:
         path = self.session_path(session.session_id)
         data = session.to_dict()
         try:
-            np.save(str(path), data, allow_pickle=True)
+            np.save(str(path), data, allow_pickle=True)  # type: ignore[arg-type]
         except Exception as exc:
             logger.error("Failed to save session %s: %s", session.session_id, exc)
             raise
@@ -1032,4 +1041,3 @@ class SoDEXPaperPerpsClient:
 
     async def close(self) -> None:
         """Release resources (no-op, kept for API consistency)."""
-        pass
