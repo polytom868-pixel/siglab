@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 import uuid
@@ -930,6 +931,7 @@ class ClaudeClient:
         function_payload = tool_call.get("function") or {}
         tool_name = str(function_payload.get("name") or "")
         arguments_raw = function_payload.get("arguments") or "{}"
+        latency_ms: float | None = None
         try:
             arguments = json.loads(arguments_raw)
         except json.JSONDecodeError as exc:
@@ -945,7 +947,8 @@ class ClaudeClient:
                     result = await outcome if hasattr(outcome, "__await__") else outcome
                 except Exception as exc:  # noqa: BLE001
                     result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-                latency_ms = (time.perf_counter() - started) * 1000.0
+                else:
+                    latency_ms = (time.perf_counter() - started) * 1000.0
 
         compact_result = self._compact_tool_payload(result)
         tool_message = {
@@ -964,7 +967,7 @@ class ClaudeClient:
             "arguments": arguments_raw,
             "result": compact_result,
         }
-        if "latency_ms" in locals():
+        if latency_ms is not None:
             trace_entry["latency_ms"] = round(float(latency_ms), 3)
         return tool_message, trace_entry
 
@@ -1036,6 +1039,13 @@ def _percentile(values: list[float], percentile: int) -> float | None:
         return None
     if len(values) == 1:
         return values[0]
-    idx = round((len(values) - 1) * (percentile / 100.0))
-    return values[max(0, min(len(values) - 1, idx))]
+    ordered = sorted(values)
+    n = len(ordered)
+    rank = (percentile / 100.0) * (n - 1)
+    lower_idx = max(0, min(n - 1, int(math.floor(rank))))
+    upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
+    if lower_idx == upper_idx:
+        return ordered[lower_idx]
+    frac = rank - math.floor(rank)
+    return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])
 

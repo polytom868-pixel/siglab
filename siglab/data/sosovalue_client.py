@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import random
 import ssl
 import time
@@ -485,17 +486,17 @@ class SoSoValueClient:
                 "etf.current_metrics missing aggregate fields: " + ", ".join(missing_aggregates),
                 payload=data,
             )
-        for field in aggregate_fields:
-            value = data.get(field)
+        for agg_field in aggregate_fields:
+            value = data.get(agg_field)
             if not isinstance(value, dict):
                 raise SoSoValueUpstreamFormatError(
-                    f"etf.current_metrics aggregate `{field}` was not an object",
+                    f"etf.current_metrics aggregate `{agg_field}` was not an object",
                     payload=value,
                 )
             for child in ("value", "lastUpdateDate", "status"):
                 if child not in value:
                     raise SoSoValueUpstreamFormatError(
-                        f"etf.current_metrics aggregate `{field}` missing `{child}`",
+                        f"etf.current_metrics aggregate `{agg_field}` missing `{child}`",
                         payload=value,
                     )
         rows = data.get("list")
@@ -578,5 +579,12 @@ class SoSoValueClient:
             return None
         if len(values) == 1:
             return values[0]
-        idx = round((len(values) - 1) * (percentile / 100.0))
-        return values[max(0, min(len(values) - 1, idx))]
+        ordered = sorted(values)
+        n = len(ordered)
+        rank = (percentile / 100.0) * (n - 1)
+        lower_idx = max(0, min(n - 1, int(math.floor(rank))))
+        upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
+        if lower_idx == upper_idx:
+            return ordered[lower_idx]
+        frac = rank - math.floor(rank)
+        return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])

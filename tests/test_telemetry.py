@@ -74,8 +74,8 @@ class TelemetryEstimateTests(unittest.TestCase):
             self.assertEqual(payload["tool_counts"]["search_workspace"], 1)
             self.assertEqual(payload["tool_invocation_count"], 2)
             self.assertEqual(payload["tool_error_count"], 1)
-            self.assertEqual(payload["tool_latency_ms"]["p50"], 12.5)
-            self.assertEqual(payload["tool_latency_ms"]["p95"], 22.5)
+            self.assertEqual(payload["tool_latency_ms"]["p50"], 17.5)
+            self.assertEqual(payload["tool_latency_ms"]["p95"], 22.0)
             self.assertEqual(payload["confidence"], "poor")
 
     def test_provider_metrics_artifacts_report_usage_pressure_and_malformed_rows(self) -> None:

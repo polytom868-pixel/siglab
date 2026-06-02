@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -552,5 +553,12 @@ def _percentile(values: list[float], percentile: int) -> float | None:
         return None
     if len(values) == 1:
         return values[0]
-    idx = round((len(values) - 1) * (percentile / 100.0))
-    return values[max(0, min(len(values) - 1, idx))]
+    ordered = sorted(values)
+    n = len(ordered)
+    rank = (percentile / 100.0) * (n - 1)
+    lower_idx = max(0, min(n - 1, int(math.floor(rank))))
+    upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
+    if lower_idx == upper_idx:
+        return ordered[lower_idx]
+    frac = rank - math.floor(rank)
+    return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])
