@@ -12,7 +12,7 @@ from siglab.families import family_prompt_module
 from siglab.io_utils import json_clone, write_json
 from siglab.llm import ClaudeClient, LLMProviderError
 from siglab.schemas import SignalSpec
-from siglab.orchestration.contracts import PlannerOutput, PreflightResult, conformance_violations
+from siglab.orchestration.contracts import PlannerOutput, PreflightResult, WriterOutput, conformance_violations
 from siglab.orchestration.trials import build_spec_patch, summarize_patch
 from siglab.research import HypothesisSandbox
 from siglab.search.mutate import SpecMutator
@@ -86,7 +86,7 @@ class SpecWriterRunner:
         iteration_paths: dict[str, Any],
         parent: Any,
         base_spec_payload: dict[str, Any] | None = None,
-    ) -> WriterResult:
+    ) -> WriterOutput:
         research_note_text = research_note_path.read_text()
         planner_contract_path = iteration_paths.get("planner_contract_path")
         planner_contract = self._load_planner_contract(
@@ -349,20 +349,20 @@ class SpecWriterRunner:
                 "claude_exchange": dict(self.claude.last_exchange or {}),
             },
         )
-        return WriterResult(
-            spec_payload=spec_payload,
-            spec_path=spec_path,
-            trace_path=trace_path,
-            accepted=accepted,
-            base_spec_payload=base_payload,
-            base_spec_path=base_spec_path,
-            structure_spec=structure_spec,
-            patch_payload=patch_payload,
-            patch_summary=patch_summary,
-            spec_after_patch_path=spec_after_patch_path,
-            failure_reason=failure_reason,
-            failure_packet=latest_repair_packet,
-        )
+        return {
+            "spec_payload": spec_payload,
+            "spec_path": str(spec_path) if spec_path else None,
+            "trace_path": str(trace_path),
+            "accepted": accepted,
+            "base_spec_payload": base_payload,
+            "base_spec_path": str(base_spec_path) if base_spec_path else None,
+            "structure_spec": structure_spec,
+            "patch_payload": patch_payload,
+            "patch_summary": patch_summary,
+            "spec_after_patch_path": str(spec_after_patch_path) if spec_after_patch_path else None,
+            "failure_reason": failure_reason,
+            "failure_packet": latest_repair_packet,
+        }
 
     async def _preflight_spec(
         self,

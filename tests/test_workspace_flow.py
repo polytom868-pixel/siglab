@@ -1378,9 +1378,9 @@ trade_style: continuation
                     parent=parent,
                 )
             )
-            self.assertEqual(result.spec_payload["family"], "perp_multi_asset_carry")
-            self.assertIn("relative_carry_z_72h", result.spec_payload["features"])
-            self.assertIn("carry_term_structure_24_168", result.spec_payload["features"])
+            self.assertEqual(result['spec_payload']["family"], "perp_multi_asset_carry")
+            self.assertIn("relative_carry_z_72h", result['spec_payload']["features"])
+            self.assertIn("carry_term_structure_24_168", result['spec_payload']["features"])
             self.assertGreaterEqual(len(claude.calls), 2)
             repair_messages = [
                 messages[-1]["content"]
@@ -1389,7 +1389,7 @@ trade_style: continuation
             ]
             self.assertTrue(any("Repair packet" in content for content in repair_messages))
             self.assertTrue(any("unsupported top-level keys" in content for content in repair_messages))
-            trace = json.loads(result.trace_path.read_text())
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertIn("inputs", trace)
             self.assertIn("outputs", trace)
             self.assertIn("conversation_messages", trace)
@@ -1397,8 +1397,8 @@ trade_style: continuation
             self.assertIn("initial_user_prompt", trace["inputs"])
             self.assertIn("Regime gate contract", trace["inputs"]["initial_user_prompt"])
             self.assertIn("Family Contract", trace["inputs"]["initial_user_prompt"])
-            self.assertTrue(result.base_spec_path.exists())
-            self.assertEqual(result.structure_spec["continuous_tuning_owner"], "optuna")
+            self.assertTrue(Path(result['base_spec_path']).exists())
+            self.assertEqual(result['structure_spec']["continuous_tuning_owner"], "optuna")
             self.assertTrue((iteration_paths["structure_spec_path"]).exists())
             self.assertTrue((iteration_paths["spec_patch_path"]).exists())
             self.assertTrue((iteration_paths["spec_after_patch_path"]).exists())
@@ -1517,7 +1517,7 @@ trade_style: continuation
             )
 
             self.assertEqual(len(claude.calls), 3)
-            trace = json.loads(result.trace_path.read_text())
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertEqual(trace["attempt_count"], 3)
             self.assertEqual(trace["attempts"][2]["payload"]["hypothesis"], "fixed third pass")
 
@@ -1641,8 +1641,8 @@ trade_style: continuation
                     parent=parent,
                 )
             )
-            self.assertEqual(result.spec_payload["family"], "perp_multi_asset_carry")
-            trace = json.loads(result.trace_path.read_text())
+            self.assertEqual(result['spec_payload']["family"], "perp_multi_asset_carry")
+            trace = json.loads(Path(result['trace_path']).read_text())
             first_attempt = trace["attempts"][0]
             self.assertTrue(first_attempt["conformance_issues"])
             self.assertIn("family mismatch", first_attempt["conformance_issues"][0])
@@ -2014,6 +2014,8 @@ trade_style: continuation
                     }
 
             class FakeHypothesisSandbox:
+                provider = None
+
                 async def _tool_probe_spec_gate_impact(self, **_kwargs: object) -> dict[str, object]:
                     return {
                         "ok": True,
@@ -2095,14 +2097,14 @@ trade_style: continuation
                     parent=parent,
                 )
             )
-            trace = json.loads(result.trace_path.read_text())
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertTrue(
                 any(
                     "missing required named feature" in issue
                     for issue in trace["attempts"][0]["conformance_issues"]
                 )
             )
-            self.assertIn("co_movement_72h", result.spec_payload["features"])
+            self.assertIn("co_movement_72h", result['spec_payload']["features"])
 
     def test_writer_runner_treats_empty_regime_gates_as_semantic_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2206,8 +2208,8 @@ trade_style: continuation
                     parent=parent,
                 )
             )
-            self.assertTrue(result.accepted)
-            trace = json.loads(result.trace_path.read_text())
+            self.assertTrue(result['accepted'])
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertEqual(trace["attempts"][0]["material_changed_fields"], [])
             self.assertFalse(trace["attempts"][0]["material_drift"])
 
@@ -2282,6 +2284,8 @@ trade_style: continuation
                     }
 
             class FakeHypothesisSandbox:
+                provider = None
+
                 async def _tool_probe_spec_gate_impact(self, **_kwargs: object) -> dict[str, object]:
                     return {
                         "ok": True,
@@ -2365,15 +2369,15 @@ trade_style: continuation
                     parent=parent,
                 )
             )
-            trace = json.loads(result.trace_path.read_text())
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertIn("## Exact Planner Gate Spec", trace["inputs"]["initial_user_prompt"])
             self.assertIn("min: 0.000001", trace["inputs"]["initial_user_prompt"])
             self.assertEqual(
                 trace["inputs"]["planner_contract"]["planner_regime_gates"]["entry"][0]["min"],
                 1e-06,
             )
-            self.assertIsNotNone(result.spec_payload)
-            self.assertEqual(result.spec_payload["regime_gates"]["entry"][0]["min"], 1e-06)
+            self.assertIsNotNone(result['spec_payload'])
+            self.assertEqual(result['spec_payload']["regime_gates"]["entry"][0]["min"], 1e-06)
 
     def test_writer_runner_keeps_negative_gate_lint_deltas_as_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2521,7 +2525,7 @@ trade_style: continuation
                     parent=parent,
                 )
             )
-            trace = json.loads(result.trace_path.read_text())
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertFalse(
                 any(
                     "negative_selector_train_return_delta" in issue
@@ -2536,7 +2540,7 @@ trade_style: continuation
                 "negative_selector_train_sharpe_delta",
                 list((trace["attempts"][0]["gate_lint"] or {}).get("warnings") or []),
             )
-            self.assertEqual(result.spec_payload["regime_gates"]["entry"][0]["expression"], "funding_dispersion_72h")
+            self.assertEqual(result['spec_payload']["regime_gates"]["entry"][0]["expression"], "funding_dispersion_72h")
 
     def test_writer_runner_retains_negative_gate_lint_warning_without_hard_reject(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2653,7 +2657,7 @@ trade_style: continuation
                     parent=parent,
                 )
             )
-            trace = json.loads(result.trace_path.read_text())
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertFalse(
                 any(
                     "negative_selector_train_sharpe_delta" in issue
@@ -2741,7 +2745,7 @@ trade_style: continuation
                 )
             )
 
-            saved_frontmatter, saved_body = parse_frontmatter(result.lesson_card_path.read_text())
+            saved_frontmatter, saved_body = parse_frontmatter(Path(result['lesson_card_path']).read_text())
             self.assertEqual(saved_frontmatter["family"], "perp_multi_asset_carry")
             self.assertEqual(saved_frontmatter["verdict"], "promising_but_fragile")
             self.assertEqual(saved_frontmatter["failure_mode"], "fragile_gate")
@@ -2752,7 +2756,7 @@ trade_style: continuation
             self.assertIn("kept carry core fixed and added a volatility floor", saved_body)
             self.assertIn("single-factor volatility ceilings", saved_body)
 
-            trace = json.loads(result.trace_path.read_text())
+            trace = json.loads(Path(result['trace_path']).read_text())
             self.assertIn("raw_reflection", trace)
             self.assertIn("saved_frontmatter", trace)
             self.assertIn("saved_body", trace)

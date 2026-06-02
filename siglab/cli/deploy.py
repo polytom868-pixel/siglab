@@ -7,10 +7,9 @@ import json
 from typing import Any
 
 from siglab.config import load_settings
-from siglab.data.store import ParquetLake
-from siglab.data.sodex_feeds import SoDEXFeeds
+from siglab.llm import ClaudeClient
 from siglab.live import LiveDeploymentManager
-from siglab.live.paper_client import SoDEXPaperPerpsClient
+from siglab.search.lineage import LineageStore
 from siglab.cli.helpers import (
     require_sosovalue_config,
     display_deployment_record,
@@ -40,17 +39,16 @@ async def run_deploy(args: argparse.Namespace) -> None:
     settings = load_settings()
     require_sosovalue_config(settings)
     spec_hash = str(args.spec).strip()
-    lake = ParquetLake(settings.data_lake_dir)
-    feeds = SoDEXFeeds(lake=lake)
-    client = SoDEXPaperPerpsClient(feeds=feeds)
+    ancestry = LineageStore(settings.ancestry_db_path)
+    claude = ClaudeClient(settings)
     manager = LiveDeploymentManager(
         settings=settings,
-        client=client,
+        ancestry=ancestry,
+        claude=claude,
     )
-    existing = manager.lookup_deployment(spec_hash)
+    existing = ancestry.deployment(spec_hash)
     if not existing:
-        ancestry_store = manager.ancestry_store
-        record = ancestry_store.experiment_detail(spec_hash)
+        record = ancestry.experiment_detail(spec_hash)
         if not record:
             raise SystemExit(f"No matching spec or deployment found for hash: {spec_hash}")
         detail = display_deployment_record(settings=settings, record=record)
@@ -65,27 +63,21 @@ async def run_deploy(args: argparse.Namespace) -> None:
                 summary=evaluation, trial_context=trial_context
             )
             raise SystemExit(f"Spec {spec_hash} is not deployment-eligible: {', '.join(reasons)}")
-        snapshot_dir = manager.export_snapshot(
-            record=record,
-            agent_id=args.agent_id,
+        config_path = args.config or settings.sosovalue_config_path
+        record_result = await manager.deploy(
+            spec_hash=spec_hash,
             wallet_label=args.wallet_label,
+            config_path=str(config_path),
+            interval_seconds=args.interval_seconds,
+            job_name=args.job_name,
+            dry_run=not args.live,
+            llm_finalize=bool(args.llm_finalize),
+            schedule=bool(args.schedule),
         )
-        print(f"Exported snapshot to: {snapshot_dir}")
+        print(f"Exported snapshot to: {record_result.strategy_dir}")
         return
     print(f"Found existing deployment for {spec_hash}: {json.dumps(existing, indent=2)}")
-    kwargs: dict[str, Any] = {}
-    if args.job_name:
-        kwargs.setdefault("deployment_metadata", {})["job_name"] = args.job_name
-    if args.interval_seconds:
-        kwargs.setdefault("deployment_metadata", {})["interval_seconds"] = args.interval_seconds
-    if args.schedule:
-        kwargs.setdefault("deployment_metadata", {})["scheduled"] = True
-    if args.llm_finalize:
-        kwargs.setdefault("deployment_metadata", {})["llm_finalize"] = True
-    if args.live:
-        kwargs.setdefault("deployment_metadata", {})["live"] = True
-    manager.update_deployment(spec_hash, **kwargs)
-    print(f"Updated deployment {spec_hash}")
+    print("Deployment already exists. Use 'deployments --spec <hash>' to inspect it.")
 
 
 def _deployment_ineligible_reasons_fn(
@@ -107,21 +99,15 @@ def deployment_ineligible_reasons_fn(
 
 def run_deployments(args: argparse.Namespace) -> None:
     settings = load_settings()
-    lake = ParquetLake(settings.data_lake_dir)
-    feeds = SoDEXFeeds(lake=lake)
-    client = SoDEXPaperPerpsClient(feeds=feeds)
-    manager = LiveDeploymentManager(
-        settings=settings,
-        client=client,
-    )
+    ancestry = LineageStore(settings.ancestry_db_path)
     spec_hash = args.spec
     if spec_hash:
-        record = manager.lookup_deployment(spec_hash)
+        record = ancestry.deployment(spec_hash)
         if record:
             print(json.dumps(display_deployment_record(settings=settings, record=record), indent=2))
         else:
             print(json.dumps({"error": f"No deployment found for spec {spec_hash}"}))
         return
-    deployments = manager.list_deployments()
+    deployments = ancestry.list_deployments()
     payload = [display_deployment_record(settings=settings, record=r) for r in deployments]
     print(json.dumps(payload, indent=2))
