@@ -928,6 +928,74 @@ class TestComputeFillPrice:
         assert not did_fill
         assert price == 0.0
 
+    # ------------------------------------------------------------------
+    # MARKET order fill price tests
+    # ------------------------------------------------------------------
+
+    def test_market_buy_always_fills_at_close(self) -> None:
+        """MARKET BUY always fills, using the kline close price."""
+        kline = {"o": "100", "h": "105", "l": "99", "c": "103"}
+        price, did_fill = _compute_fill_price(
+            kline, PaperOrderSide.BUY, 0.0, PaperOrderType.MARKET
+        )
+        assert did_fill
+        assert price == 103.0
+
+    def test_market_sell_always_fills_at_close(self) -> None:
+        """MARKET SELL always fills, using the kline close price."""
+        kline = {"o": "100", "h": "105", "l": "99", "c": "103"}
+        price, did_fill = _compute_fill_price(
+            kline, PaperOrderSide.SELL, 0.0, PaperOrderType.MARKET
+        )
+        assert did_fill
+        assert price == 103.0
+
+    def test_market_buy_fills_regardless_of_limit_price(self) -> None:
+        """MARKET BUY fills even when limit_price is below the kline low."""
+        kline = {"o": "100", "h": "105", "l": "99", "c": "103"}
+        # Limit price below low — would not fill for LIMIT, but MARKET fills
+        price, did_fill = _compute_fill_price(
+            kline, PaperOrderSide.BUY, 50.0, PaperOrderType.MARKET
+        )
+        assert did_fill
+        assert price == 103.0
+
+    def test_market_sell_fills_regardless_of_limit_price(self) -> None:
+        """MARKET SELL fills even when limit_price is above the kline high."""
+        kline = {"o": "100", "h": "105", "l": "99", "c": "103"}
+        # Limit price above high — would not fill for LIMIT, but MARKET fills
+        price, did_fill = _compute_fill_price(
+            kline, PaperOrderSide.SELL, 200.0, PaperOrderType.MARKET
+        )
+        assert did_fill
+        assert price == 103.0
+
+    def test_market_fill_with_zero_close_still_fills(self) -> None:
+        """MARKET fill with zero close still succeeds (edge case)."""
+        kline = {"o": "0", "h": "0", "l": "0", "c": "0"}
+        price, did_fill = _compute_fill_price(
+            kline, PaperOrderSide.BUY, 0.0, PaperOrderType.MARKET
+        )
+        assert did_fill
+        assert price == 0.0
+
+    def test_market_fill_uses_close_not_open(self) -> None:
+        """MARKET fill uses close price, not open, high, or low."""
+        kline = {"o": "100", "h": "110", "l": "95", "c": "108"}
+        price, did_fill = _compute_fill_price(
+            kline, PaperOrderSide.BUY, 0.0, PaperOrderType.MARKET
+        )
+        assert did_fill
+        # Close is 108, not open (100), high (110), or low (95)
+        assert price == 108.0
+
+    def test_limit_behavior_unchanged_with_market_param_default(self) -> None:
+        """LIMIT order behavior is unchanged when order_type is not specified (default)."""
+        kline = {"o": "100", "h": "105", "l": "99", "c": "103"}
+        price, did_fill = _compute_fill_price(kline, PaperOrderSide.BUY, 100.5)
+        assert did_fill
+        assert price <= 100.5
+
 
 class TestComputeFundingCost:
     """Unit tests for funding cost computation."""
@@ -957,3 +1025,296 @@ class TestComputeFundingCost:
         pos = PaperPosition(symbol="BTC-USD", quantity=1.0, entry_price=50000.0)
         cost = _compute_funding_cost(pos, 50000.0, 0.0)
         assert cost == 0.0
+
+
+# ---------------------------------------------------------------------------
+# MARKET order tests (placement, fill, edge cases)
+# ---------------------------------------------------------------------------
+
+
+class TestMarketOrder:
+    """MARKET order placement, fill behavior, and edge cases."""
+    pytestmark = pytest.mark.asyncio
+
+    async def test_place_market_order_without_price_succeeds(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """MARKET order can be placed without specifying a price."""
+        session_id = paper_client.create_session("market_no_price")
+        order = paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=1.0,
+            order_type="MARKET",
+        )
+        assert order["order_id"] is not None
+        assert order["order_type"] == "MARKET"
+        assert order["price"] == 0.0  # No price for MARKET orders
+        assert order["status"] == "OPEN"
+
+    async def test_place_market_order_with_price_still_works(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """MARKET order with a price still places (price is unused)."""
+        session_id = paper_client.create_session("market_with_price")
+        order = paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="SELL",
+            quantity=1.0,
+            order_type="MARKET",
+            price=50000.0,  # Price provided but should be ignored for MARKET
+        )
+        assert order["order_type"] == "MARKET"
+        # Price field stores whatever was passed despite being unused
+        assert order["status"] == "OPEN"
+
+    async def test_market_buy_fills_at_kline_close(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_dicts: list[dict],
+    ) -> None:
+        """MARKET BUY fills at the kline close price."""
+        session_id = paper_client.create_session("market_buy_fill")
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=1.0,
+            order_type="MARKET",
+        )
+
+        fills = await paper_client.process_klines(session_id, sample_kline_dicts)
+        assert len(fills) == 1
+        assert fills[0]["status"] == "FILLED"
+        # First kline close is 101.0
+        assert fills[0]["fill_price"] == 101.0
+
+    async def test_market_sell_fills_at_kline_close(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_dicts: list[dict],
+    ) -> None:
+        """MARKET SELL fills at the kline close price."""
+        session_id = paper_client.create_session("market_sell_fill")
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="SELL",
+            quantity=1.0,
+            order_type="MARKET",
+        )
+
+        fills = await paper_client.process_klines(session_id, sample_kline_dicts)
+        assert len(fills) == 1
+        assert fills[0]["status"] == "FILLED"
+        # First kline close is 101.0
+        assert fills[0]["fill_price"] == 101.0
+
+    async def test_market_buy_fill_creates_position(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_dicts: list[dict],
+    ) -> None:
+        """MARKET BUY creates a long position at the close price."""
+        session_id = paper_client.create_session("market_buy_pos")
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=2.5,
+            order_type="MARKET",
+        )
+
+        await paper_client.process_klines(session_id, sample_kline_dicts)
+
+        positions = paper_client.get_positions(session_id)
+        assert len(positions) == 1
+        assert positions[0]["symbol"] == "BTC-USD"
+        assert positions[0]["quantity"] == 2.5
+        assert positions[0]["entry_price"] == 101.0  # Close of first kline
+
+    async def test_market_sell_fill_creates_position(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_dicts: list[dict],
+    ) -> None:
+        """MARKET SELL creates a short position at the close price."""
+        session_id = paper_client.create_session("market_sell_pos")
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="SELL",
+            quantity=1.5,
+            order_type="MARKET",
+        )
+
+        await paper_client.process_klines(session_id, sample_kline_dicts)
+
+        positions = paper_client.get_positions(session_id)
+        assert len(positions) == 1
+        assert positions[0]["symbol"] == "BTC-USD"
+        assert positions[0]["quantity"] == -1.5
+        assert positions[0]["entry_price"] == 101.0  # Close of first kline
+
+    async def test_market_order_fills_only_once(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_dicts: list[dict],
+    ) -> None:
+        """MARKET order fills on the first kline and doesn't fill again."""
+        session_id = paper_client.create_session("market_once")
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=1.0,
+            order_type="MARKET",
+        )
+
+        fills = await paper_client.process_klines(session_id, sample_kline_dicts)
+        assert len(fills) == 1  # Only fills once
+        assert fills[0]["status"] == "FILLED"
+
+        # Status shows FILLED
+        order = paper_client.get_order(session_id, fills[0]["order_id"])
+        assert order["status"] == "FILLED"
+
+    async def test_market_order_fills_regardless_of_price_level(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_dicts: list[dict],
+    ) -> None:
+        """MARKET order always fills even when price limit would not cross kline."""
+        session_id = paper_client.create_session("market_any_price")
+        # BUY MARKET with effective limit of 0 — would never fill as LIMIT
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=1.0,
+            order_type="MARKET",
+        )
+
+        fills = await paper_client.process_klines(session_id, sample_kline_dicts)
+        assert len(fills) == 1
+        assert fills[0]["status"] == "FILLED"
+
+    async def test_market_order_buy_at_close_with_dataframe(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_df: pd.DataFrame,
+    ) -> None:
+        """MARKET BUY fills correctly with DataFrame-based klines."""
+        session_id = paper_client.create_session("market_df")
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=1.0,
+            order_type="MARKET",
+        )
+
+        fills = await paper_client.process_klines(session_id, sample_kline_df)
+        assert len(fills) == 1
+        assert fills[0]["status"] == "FILLED"
+        # First row close = 101.0 (from sample_kline_dicts)
+        assert fills[0]["fill_price"] == 101.0
+
+    async def test_market_order_with_ioc_expires_if_not_immediately_filled(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """MARKET IOC order without klines eventually expires."""
+        session_id = paper_client.create_session("market_ioc")
+        order = paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=1.0,
+            order_type="MARKET",
+            time_in_force="IOC",
+        )
+        order_id = order["order_id"]
+
+        # Set expiry to past so it expires even without klines
+        session = paper_client.get_session(session_id)
+        session.orders[order_id].expires_at = time.time() - 1
+        paper_client._save_session_to_disk(session)
+
+        # Process empty klines to trigger expiry check
+        fills = await paper_client.process_klines(session_id, [])
+        assert len(fills) == 0
+
+        # Order should be EXPIRED now
+        orders = paper_client.get_orders(session_id)
+        expired_order = next(o for o in orders if o["order_id"] == order_id)
+        assert expired_order["status"] == "EXPIRED"
+
+    async def test_market_order_fill_price_is_close_as_number(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """Verify MARKET fill price is the kline close as a float, not 0.0."""
+        session_id = paper_client.create_session("market_close_fill")
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=1.0,
+            order_type="MARKET",
+        )
+
+        # Single kline with known close
+        kline = {"t": 1000, "o": "100.0", "h": "105.0", "l": "99.0", "c": "103.5"}
+        fills = await paper_client.process_klines(session_id, [kline])
+        assert len(fills) == 1
+        assert fills[0]["fill_price"] == 103.5
+        assert fills[0]["fill_price"] != 0.0  # The bug: was 0.0 for BUY MARKET
+
+    async def test_market_buy_then_limit_sell_position_reduction(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+        sample_kline_dicts: list[dict],
+    ) -> None:
+        """MARKET BUY followed by LIMIT SELL to reduce position works."""
+        session_id = paper_client.create_session("market_then_limit")
+        # MARKET BUY 2 units
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="BUY",
+            quantity=2.0,
+            order_type="MARKET",
+        )
+        fills1 = await paper_client.process_klines(session_id, [sample_kline_dicts[0]])
+        assert len(fills1) == 1
+
+        # Position should be 2.0 at entry price 101.0
+        pos = paper_client.get_positions(session_id)
+        assert len(pos) == 1
+        assert pos[0]["quantity"] == 2.0
+        assert pos[0]["entry_price"] == 101.0
+
+        # LIMIT SELL at 103 (fills on second kline where high=105 >= 103)
+        paper_client.place_order(
+            session_id,
+            symbol="BTC-USD",
+            side="SELL",
+            quantity=2.0,
+            price=103.0,
+            order_type="LIMIT",
+        )
+        fills2 = await paper_client.process_klines(session_id, [sample_kline_dicts[1]])
+        assert len(fills2) == 1
+
+        # Position should be closed
+        pos2 = paper_client.get_positions(session_id)
+        assert len(pos2) == 0
+
+        # Should have realized PnL
+        pnl = paper_client.get_pnl(session_id)
+        assert pnl["realized_pnl"] > 0  # Bought at 101, sold at >=103
