@@ -11,6 +11,13 @@ from siglab.live.paper_client import (
     PaperSessionNotFoundError,
     SoDEXPaperPerpsClient,
 )
+from siglab.live.promotion import (
+    compute_composite_score,
+    compute_sub_scores,
+    promotion_eligible,
+    extract_session_metrics,
+)
+from siglab.live.reconciliation import ReconciliationEngine
 from siglab.live.runtime import DirectionalPerpsSigLabStrategy
 from siglab.live.sodex_client import (
     SoDEXError,
@@ -109,6 +116,11 @@ __all__ = [
     "perps_update_leverage_body",
     "perps_update_margin_body",
     "validate_account_id",
+    "compute_composite_score",
+    "compute_sub_scores",
+    "promotion_eligible",
+    "extract_session_metrics",
+    "ReconciliationEngine",
 ]
 
 
