@@ -304,5 +304,464 @@ class EvidenceStoreTests(unittest.TestCase):
         self.assertEqual(row["attributes"]["ask"], "101")
 
 
+# ---------------------------------------------------------------------------
+# Pytest-style EvidenceStore dedup tests (VAL-DATA-005)
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_store_dedup_same_record_appended_twice_yields_single_entry() -> None:
+    """Appending the same evidence twice results in a single entry in load()."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        record = EvidenceRecord(
+            source="sosovalue.etf_historical_inflow",
+            observed_at="2026-05-13T20:00:00+01:00",
+            timestamp="2026-05-12",
+            entity="us-btc-spot",
+            module="ETF",
+            relation="total_net_inflow",
+            value="100",
+            confidence=0.95,
+            evidence_path="sosovalue/etf/us-btc-spot.json",
+        )
+
+        # First append — should add 1
+        first_count = store.append_many([record])
+        # Second append of same record — should add 0
+        second_count = store.append_many([record])
+
+        loaded = store.load()
+
+        assert first_count == 1
+        assert second_count == 0
+        assert len(loaded) == 1  # single entry in store
+        assert loaded[0]["entity"] == "us-btc-spot"
+
+
+def test_evidence_store_dedup_within_single_append_many_call() -> None:
+    """Duplicate records in a single append_many call are deduped to one entry."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        record = EvidenceRecord(
+            source="sosovalue.etf_historical_inflow",
+            observed_at="2026-05-13T20:00:00+01:00",
+            timestamp="2026-05-12",
+            entity="us-btc-spot",
+            module="ETF",
+            relation="total_net_inflow",
+            value="100",
+            confidence=0.95,
+            evidence_path="sosovalue/etf/us-btc-spot.json",
+        )
+
+        count = store.append_many([record, record])
+        loaded = store.load()
+
+        assert count == 1  # only one unique record appended
+        assert len(loaded) == 1
+        assert store.last_append_stats["records_seen"] == 2
+        assert store.last_append_stats["records_appended"] == 1
+        assert store.last_append_stats["duplicates_skipped"] == 1
+
+
+def test_evidence_store_dedup_different_records_not_deduped() -> None:
+    """Different records are not deduped and all get appended."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        record_a = EvidenceRecord(
+            source="sosovalue.etf_historical_inflow",
+            observed_at="2026-05-13T20:00:00+01:00",
+            timestamp="2026-05-12",
+            entity="us-btc-spot",
+            module="ETF",
+            relation="total_net_inflow",
+            value="100",
+            confidence=0.95,
+            evidence_path="sosovalue/etf/us-btc-spot.json",
+        )
+        record_b = EvidenceRecord(
+            source="sosovalue.etf_historical_inflow",
+            observed_at="2026-05-13T20:00:00+01:00",
+            timestamp="2026-05-12",
+            entity="us-btc-spot",
+            module="ETF",
+            relation="total_net_inflow",
+            value="200",  # different value → different evidence_id
+            confidence=0.95,
+            evidence_path="sosovalue/etf/us-btc-spot.json",
+        )
+
+        count = store.append_many([record_a, record_b])
+        loaded = store.load()
+
+        assert count == 2  # both are unique
+        assert len(loaded) == 2  # both stored
+        assert store.last_append_stats["duplicates_skipped"] == 0
+
+
+def test_evidence_store_dedup_mixed_unique_and_duplicate() -> None:
+    """Mixed batch of unique and duplicate records dedupes correctly."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        record = EvidenceRecord(
+            source="sosovalue.etf_historical_inflow",
+            observed_at="2026-05-13T20:00:00+01:00",
+            timestamp="2026-05-12",
+            entity="us-btc-spot",
+            module="ETF",
+            relation="total_net_inflow",
+            value="100",
+            confidence=0.95,
+            evidence_path="sosovalue/etf/us-btc-spot.json",
+        )
+        other_record = EvidenceRecord(
+            source="sodex.websocket",
+            observed_at="2026-05-13T20:00:00+01:00",
+            timestamp="2026-05-12",
+            entity="BTC-USD",
+            module="SoDEX",
+            relation="ticker",
+            value="50000",
+            confidence=0.8,
+            evidence_path="sodex/probe.json",
+        )
+
+        # Append two unique records
+        store.append_many([record, other_record])
+        # Re-append the first record (duplicate)
+        store.append_many([record])
+
+        loaded = store.load()
+
+        assert len(loaded) == 2  # two unique entries total
+        entities = {row["entity"] for row in loaded}
+        assert entities == {"us-btc-spot", "BTC-USD"}
+
+
+def test_evidence_store_dedup_empty_batch() -> None:
+    """Appending an empty batch returns 0 and doesn't create files."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        count = store.append_many([])
+        loaded = store.load()
+
+        assert count == 0
+        assert len(loaded) == 0
+        assert store.last_append_stats["records_seen"] == 0
+        assert store.last_append_stats["records_appended"] == 0
+        assert store.last_append_stats["duplicates_skipped"] == 0
+
+
+def test_evidence_store_dedup_survives_load_write_cycle() -> None:
+    """Dedup is maintained across write/load cycles (persistent dedup)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        record = EvidenceRecord(
+            source="sosovalue.etf_historical_inflow",
+            observed_at="2026-05-13T20:00:00+01:00",
+            timestamp="2026-05-12",
+            entity="us-btc-spot",
+            module="ETF",
+            relation="total_net_inflow",
+            value="100",
+            confidence=0.95,
+            evidence_path="sosovalue/etf/us-btc-spot.json",
+        )
+
+        # First append
+        store.append_many([record])
+        # Second append (duplicate)
+        store.append_many([record])
+
+        # Load from disk — should only have one entry
+        loaded = store.load()
+        assert len(loaded) == 1
+
+        # Load again — still one entry (persistent)
+        loaded_again = store.load()
+        assert len(loaded_again) == 1
+
+
+# ---------------------------------------------------------------------------
+# Pytest-style EvidenceStore query-by-type tests (VAL-DATA-006)
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_store_query_by_module_returns_only_matching_type() -> None:
+    """query(module=X) returns only records with that module value."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        store.append_many(
+            [
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-btc-spot",
+                    module="ETF",
+                    relation="total_net_inflow",
+                    value="100",
+                    confidence=0.95,
+                    evidence_path="cache/etf.json",
+                ),
+                EvidenceRecord(
+                    source="sosovalue.featured_news",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12T00:00:00Z",
+                    entity="BTC",
+                    module="Feeds",
+                    relation="news_mention",
+                    value="Bitcoin surges",
+                    confidence=0.75,
+                    evidence_path="cache/news.json",
+                ),
+                EvidenceRecord(
+                    source="sodex.websocket",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="BTC-USD",
+                    module="SoDEX",
+                    relation="ticker",
+                    value="50000",
+                    confidence=0.8,
+                    evidence_path="cache/ws.json",
+                ),
+            ]
+        )
+
+        etf_rows = store.query(module="ETF")
+        feeds_rows = store.query(module="Feeds")
+        sodex_rows = store.query(module="SoDEX")
+
+        # Only ETF records returned
+        assert len(etf_rows) == 1
+        assert all(row["module"] == "ETF" for row in etf_rows)
+
+        # Only Feeds records returned
+        assert len(feeds_rows) == 1
+        assert all(row["module"] == "Feeds" for row in feeds_rows)
+
+        # Only SoDEX records returned
+        assert len(sodex_rows) == 1
+        assert all(row["module"] == "SoDEX" for row in sodex_rows)
+
+
+def test_evidence_store_query_by_module_no_match_returns_empty() -> None:
+    """query(module=X) returns empty list when module has no records."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        store.append_many(
+            [
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-btc-spot",
+                    module="ETF",
+                    relation="total_net_inflow",
+                    value="100",
+                    confidence=0.95,
+                    evidence_path="cache/etf.json",
+                ),
+            ]
+        )
+
+        result = store.query(module="Risk")  # module that doesn't exist
+
+        assert result == []
+
+
+def test_evidence_store_query_by_entity_filter() -> None:
+    """query(entity=X) returns only records with matching entity."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        store.append_many(
+            [
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-btc-spot",
+                    module="ETF",
+                    relation="total_net_inflow",
+                    value="100",
+                    confidence=0.95,
+                    evidence_path="cache/etf.json",
+                ),
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-eth-spot",
+                    module="ETF",
+                    relation="total_net_inflow",
+                    value="50",
+                    confidence=0.95,
+                    evidence_path="cache/eth_etf.json",
+                ),
+                EvidenceRecord(
+                    source="sosovalue.featured_news",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="BTC",
+                    module="Feeds",
+                    relation="news_mention",
+                    value="BTC news",
+                    confidence=0.75,
+                    evidence_path="cache/news.json",
+                ),
+            ]
+        )
+
+        btc_rows = store.query(entity="btc")
+        eth_rows = store.query(entity="eth")
+        non_matching = store.query(entity="nonexistent")
+
+        # Entity is case-insensitive substring match
+        assert len(btc_rows) >= 1
+        assert all("btc" in str(row.get("entity", "")).lower() for row in btc_rows)
+        assert len(eth_rows) >= 1
+        assert len(non_matching) == 0
+
+
+def test_evidence_store_query_by_relation_filter() -> None:
+    """query(relation=X) returns only records with matching relation."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        store.append_many(
+            [
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-btc-spot",
+                    module="ETF",
+                    relation="total_net_inflow",
+                    value="100",
+                    confidence=0.95,
+                    evidence_path="cache/etf.json",
+                ),
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-btc-spot",
+                    module="ETF",
+                    relation="total_net_assets",
+                    value="300",
+                    confidence=0.95,
+                    evidence_path="cache/etf.json",
+                ),
+                EvidenceRecord(
+                    source="sosovalue.featured_news",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="BTC",
+                    module="Feeds",
+                    relation="news_mention",
+                    value="BTC news",
+                    confidence=0.75,
+                    evidence_path="cache/news.json",
+                ),
+            ]
+        )
+
+        inflow_rows = store.query(relation="total_net_inflow")
+        news_rows = store.query(relation="news_mention")
+
+        assert len(inflow_rows) == 1
+        assert all(row["relation"] == "total_net_inflow" for row in inflow_rows)
+        assert len(news_rows) == 1
+        assert all(row["relation"] == "news_mention" for row in news_rows)
+
+
+def test_evidence_store_query_default_limit() -> None:
+    """query() applies default limit of 50."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+
+        # Insert 60 records (same structure, different entities)
+        records = [
+            EvidenceRecord(
+                source="sosovalue.etf_historical_inflow",
+                observed_at="2026-05-13T20:00:00+01:00",
+                timestamp="2026-05-12",
+                entity=f"entity-{i}",
+                module="ETF",
+                relation="total_net_inflow",
+                value=str(i),
+                confidence=0.95,
+                evidence_path="cache/etf.json",
+            )
+            for i in range(60)
+        ]
+        store.append_many(records)
+
+        all_rows = store.query()
+        limited_rows = store.query(limit=10)
+
+        assert len(all_rows) <= 50  # default limit
+        assert len(limited_rows) == 10  # explicit limit
+
+
+def test_evidence_store_query_combined_filters() -> None:
+    """Multiple query filters (entity + module + relation) can be combined."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        store.append_many(
+            [
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-btc-spot",
+                    module="ETF",
+                    relation="total_net_inflow",
+                    value="100",
+                    confidence=0.95,
+                    evidence_path="cache/etf.json",
+                ),
+                EvidenceRecord(
+                    source="sosovalue.etf_historical_inflow",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="us-eth-spot",
+                    module="ETF",
+                    relation="total_net_inflow",
+                    value="50",
+                    confidence=0.95,
+                    evidence_path="cache/eth_etf.json",
+                ),
+                EvidenceRecord(
+                    source="sosovalue.featured_news",
+                    observed_at="2026-05-13T20:00:00+01:00",
+                    timestamp="2026-05-12",
+                    entity="BTC",
+                    module="Feeds",
+                    relation="news_mention",
+                    value="BTC news",
+                    confidence=0.75,
+                    evidence_path="cache/news.json",
+                ),
+            ]
+        )
+
+        # Combined: entity=btc, module=ETF, relation=total_net_inflow
+        result = store.query(entity="btc", module="ETF", relation="total_net_inflow")
+
+        assert len(result) == 1
+        assert result[0]["entity"] == "us-btc-spot"
+        assert result[0]["module"] == "ETF"
+        assert result[0]["relation"] == "total_net_inflow"
+
+
+def test_evidence_store_load_on_empty_store() -> None:
+    """load() on an empty store returns an empty list."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = EvidenceStore(Path(tmp) / "evidence.jsonl")
+        loaded = store.load()
+        assert loaded == []
+
+
 if __name__ == "__main__":
     unittest.main()
