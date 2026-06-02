@@ -442,4 +442,116 @@ async def skill_report(request: Request) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Risk
+# ---------------------------------------------------------------------------
+
+
+def _compute_risk_metrics(state: Any) -> dict[str, Any]:
+    """Compute risk metrics from available data in the dashboard state.
+
+    Returns a dict with composite_score, max_drawdown, correlation_matrix,
+    and other risk-related data. Returns empty structure if no data available.
+    """
+    # Attempt to load paper session data for risk computation
+    config = state.config
+    if config is None:
+        return {"composite_score": None, "max_drawdown": None, "correlation_matrix": None}
+
+    sessions_dir = config.live_dir / "paper_sessions"
+    if not sessions_dir.exists():
+        return {"composite_score": None, "max_drawdown": None, "correlation_matrix": None}
+
+    # Look for .npy session files and extract metrics from them
+    # This is a best-effort computation; returns empty values if data insufficient
+    try:
+        import numpy as np
+
+        from siglab.risk.guardian import (
+            compute_composite_score,
+            correlation_matrix,
+            max_drawdown,
+        )
+
+        npy_files = sorted(sessions_dir.glob("*.npy"))
+        if not npy_files:
+            return {"composite_score": None, "max_drawdown": None, "correlation_matrix": None}
+
+        # Build equity curves from session data
+        equity_curves: list[np.ndarray] = []
+        for npy_file in npy_files:
+            try:
+                data = np.load(npy_file, allow_pickle=True)
+                if isinstance(data, np.ndarray) and data.size > 0:
+                    # If data is a structured array or object, try to extract equity
+                    if data.dtype.names is not None and "equity" in data.dtype.names:
+                        eq = data["equity"]
+                        if isinstance(eq, np.ndarray) and eq.size > 0:
+                            equity_curves.append(eq.astype(float))
+                    elif data.dtype == np.float64 or data.dtype == np.float32:
+                        equity_curves.append(data)
+            except Exception:
+                continue
+
+        # Compute max drawdown from the first available equity curve
+        max_dd: float | None = None
+        if equity_curves:
+            max_dd = float(max_drawdown(equity_curves[0]))
+
+        # Compute correlation matrix if multiple strategies
+        corr_matrix: list[list[float]] | None = None
+        if len(equity_curves) >= 2:
+            # Convert equity curves to daily returns for correlation
+            returns_list = []
+            for eq in equity_curves:
+                if eq.size >= 2:
+                    rets = np.diff(eq) / eq[:-1]
+                    returns_list.append(rets)
+            if len(returns_list) >= 2:
+                matrix = correlation_matrix(returns_list)
+                if matrix.size > 0:
+                    corr_matrix = matrix.tolist()
+
+        # Compute composite score from available metrics
+        composite: float | None = None
+        if max_dd is not None:
+            composite = float(compute_composite_score(
+                sharpe=0.0,  # Will be filled when available
+                drawdown=max_dd,
+                concentration=0.0,
+                correlation_risk=(
+                    float(np.mean(matrix[np.triu_indices_from(matrix, k=1)]))
+                    if corr_matrix is not None and len(corr_matrix) >= 2
+                    else 0.0
+                ),
+            ))
+
+        return {
+            "composite_score": composite,
+            "max_drawdown": max_dd,
+            "correlation_matrix": corr_matrix,
+            "strategy_count": len(equity_curves),
+        }
+
+    except ImportError:
+        return {"composite_score": None, "max_drawdown": None, "correlation_matrix": None, "note": "numpy not available"}
+    except Exception as exc:
+        return {"composite_score": None, "max_drawdown": None, "correlation_matrix": None, "note": f"Error: {exc}"}
+
+
+@router.get("/risk")
+async def risk(request: Request) -> dict[str, Any]:
+    """Return portfolio risk metrics: composite score, drawdown, correlation.
+
+    Returns data computed from available paper trading sessions.
+    Returns None-valued fields when no data is available.
+    """
+    state = request.app.state.dashboard
+    metrics = _compute_risk_metrics(state)
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        **metrics,
+    }
+
+
 

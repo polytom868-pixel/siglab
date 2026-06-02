@@ -97,6 +97,19 @@ async def _handle_message(
         symbol = str(message.get("symbol") or "").strip().upper()
         sub_type = str(message.get("subscription_type") or "klines").strip().lower()
 
+        # Support subscription to risk scores without a symbol
+        if sub_type == "risk_score":
+            subscribed_symbols.add("_risk")
+            subscription_types.add("risk_score")
+            manager.subscribe("_risk", websocket)
+            await _send_json(websocket, {
+                "type": "subscribed",
+                "subscription_type": "risk_score",
+                "message": "Subscribed to risk score updates",
+            })
+            await _stream_risk_scores(websocket)
+            return
+
         if not symbol:
             await _send_json(websocket, {
                 "type": "error",
@@ -124,6 +137,11 @@ async def _handle_message(
         if symbol:
             subscribed_symbols.discard(symbol)
             manager.unsubscribe(symbol, websocket)
+        else:
+            # Unsubscribe from all
+            for sym in list(subscribed_symbols):
+                manager.unsubscribe(sym, websocket)
+            subscribed_symbols.clear()
         await _send_json(websocket, {
             "type": "unsubscribed",
             "symbol": symbol if symbol else "all",
@@ -135,9 +153,14 @@ async def _handle_message(
         await _stream_positions(websocket)
         return
 
+    if action == "get_risk":
+        # Return current risk metrics snapshot
+        await _stream_risk_scores(websocket)
+        return
+
     await _send_json(websocket, {
         "type": "error",
-        "message": f"Unknown action: {action}. Supported: ping, subscribe, unsubscribe, get_positions",
+        "message": f"Unknown action: {action}. Supported: ping, subscribe, unsubscribe, get_positions, get_risk",
     })
 
 
@@ -236,6 +259,131 @@ async def _stream_positions(websocket: WebSocket) -> None:
         await _send_json(websocket, {
             "type": "positions",
             "positions": [],
+            "note": f"Error: {exc}",
+        })
+
+
+async def _stream_risk_scores(websocket: WebSocket) -> None:
+    """Stream current risk metrics to a WebSocket client."""
+    from siglab.risk.guardian import (
+        compute_composite_score,
+        correlation_matrix,
+        max_drawdown,
+    )
+
+    try:
+        state = websocket.app.state.dashboard
+        config = state.config
+        if config is None:
+            await _send_json(websocket, {
+                "type": "risk_score",
+                "composite_score": None,
+                "max_drawdown": None,
+                "correlation_matrix": None,
+                "strategy_count": 0,
+                "note": "Config not loaded",
+            })
+            return
+
+        sessions_dir = config.live_dir / "paper_sessions"
+        if not sessions_dir.exists():
+            await _send_json(websocket, {
+                "type": "risk_score",
+                "composite_score": None,
+                "max_drawdown": None,
+                "correlation_matrix": None,
+                "strategy_count": 0,
+                "note": "No paper sessions found",
+            })
+            return
+
+        npy_files = sorted(sessions_dir.glob("*.npy"))
+        if not npy_files:
+            await _send_json(websocket, {
+                "type": "risk_score",
+                "composite_score": None,
+                "max_drawdown": None,
+                "correlation_matrix": None,
+                "strategy_count": 0,
+                "note": "No session data available",
+            })
+            return
+
+        # Attempt to build equity curves from session files
+        import numpy as np
+
+        equity_curves: list[np.ndarray] = []
+        for npy_file in npy_files:
+            try:
+                data = np.load(npy_file, allow_pickle=True)
+                if isinstance(data, np.ndarray) and data.size > 0:
+                    if data.dtype.names is not None and "equity" in data.dtype.names:
+                        eq = data["equity"]
+                        if isinstance(eq, np.ndarray) and eq.size > 0:
+                            equity_curves.append(eq.astype(float))
+                    elif data.dtype in (np.float64, np.float32):
+                        equity_curves.append(data)
+            except Exception:
+                continue
+
+        strategy_count = len(equity_curves)
+        max_dd = float(max_drawdown(equity_curves[0])) if equity_curves else None
+
+        corr_matrix: list[list[float]] | None = None
+        if len(equity_curves) >= 2:
+            returns_list = []
+            for eq in equity_curves:
+                if eq.size >= 2:
+                    rets = np.diff(eq) / eq[:-1]
+                    returns_list.append(rets)
+            if len(returns_list) >= 2:
+                matrix = correlation_matrix(returns_list)
+                if matrix.size > 0:
+                    corr_matrix = matrix.tolist()
+
+        avg_corr = 0.0
+        if corr_matrix is not None and len(corr_matrix) >= 2:
+            n = len(corr_matrix)
+            corr_values = []
+            for i in range(n):
+                for j in range(i + 1, n):
+                    corr_values.append(corr_matrix[i][j])
+            avg_corr = float(np.mean(corr_values)) if corr_values else 0.0
+
+        composite = None
+        if max_dd is not None:
+            composite = float(compute_composite_score(
+                sharpe=0.0,
+                drawdown=max_dd,
+                concentration=0.0,
+                correlation_risk=avg_corr,
+            ))
+
+        await _send_json(websocket, {
+            "type": "risk_score",
+            "composite_score": composite,
+            "max_drawdown": max_dd,
+            "correlation_matrix": corr_matrix,
+            "strategy_count": strategy_count,
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+
+    except ImportError:
+        await _send_json(websocket, {
+            "type": "risk_score",
+            "composite_score": None,
+            "max_drawdown": None,
+            "correlation_matrix": None,
+            "strategy_count": 0,
+            "note": "numpy not available",
+        })
+    except Exception as exc:
+        await _send_json(websocket, {
+            "type": "risk_score",
+            "composite_score": None,
+            "max_drawdown": None,
+            "correlation_matrix": None,
+            "strategy_count": 0,
             "note": f"Error: {exc}",
         })
 
