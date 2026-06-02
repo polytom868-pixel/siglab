@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import logging
 import math
 import re
 from hashlib import sha256
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import pandas as pd
 
@@ -16,6 +17,11 @@ from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
 from siglab.schemas import SignalSpec, AssetUniverse
 from siglab.config import SiglabConfig
 from siglab.track_registry import canonical_track_name
+
+if TYPE_CHECKING:
+    from siglab.data.sodex_feeds import SoDEXFeeds
+
+logger = logging.getLogger(__name__)
 
 MAJOR_PERP_SYMBOLS = ["BTC", "ETH", "SOL", "HYPE", "DOGE", "BNB", "XRP", "SUI"]
 CHAIN_NAME_TO_ID = {
@@ -171,6 +177,26 @@ def _align_perp_bundle_frames(
     return prices, funding
 
 
+def _interval_to_hours(interval: str) -> float:
+    """Convert a kline interval string to hours.
+
+    Supports minute (``m``), hour (``h``), day (``d``), week (``w``),
+    and month (``M``) suffixes.
+    """
+    interval = interval.strip().lower()
+    if interval.endswith("m"):
+        return float(interval[:-1]) / 60.0
+    elif interval.endswith("h"):
+        return float(interval[:-1])
+    elif interval.endswith("d"):
+        return float(interval[:-1]) * 24.0
+    elif interval.endswith("w"):
+        return float(interval[:-1]) * 168.0
+    elif interval.endswith("M"):
+        return float(interval[:-1]) * 720.0
+    return 1.0
+
+
 class MarketDataProvider:
     def __init__(
         self,
@@ -178,6 +204,7 @@ class MarketDataProvider:
         lake: ParquetLake,
         *,
         config_path: str | None = None,
+        sodex_feeds: SoDEXFeeds | None = None,
     ) -> None:
         self.settings = settings
         self.lake = lake
@@ -191,6 +218,7 @@ class MarketDataProvider:
             timeout_s=settings.sosovalue_timeout_s,
             retries=settings.sosovalue_retries,
         )
+        self.sodex_feeds = sodex_feeds  # May be set later via lazy import
         self._active_bundle_id: str | None = None
         self._active_as_of: datetime | None = None
         self._bundle_cache: dict[str, Any] = {}
@@ -200,6 +228,7 @@ class MarketDataProvider:
 
     async def close(self) -> None:
         await self.sosovalue.close()
+        await self.sodex_feeds.close()
 
     def begin_iteration_bundle(
         self,
@@ -456,9 +485,11 @@ class MarketDataProvider:
                 interval=interval,
             )
         else:
-            bundle = await self._fetch_perp_bundle_sosovalue(
+            # Use real SoDEX perp klines instead of synthetic ETF-proxy data
+            bundle = await self._fetch_perp_bundle_sodex(
                 symbols=symbols,
                 lookback_days=lookback_days,
+                interval=interval,
             )
         self._warm_cache[warm_key] = copy.deepcopy(bundle)
         bundle = self._bind_bundle_to_active_context(bundle)
@@ -815,32 +846,105 @@ class MarketDataProvider:
             return STABLE_PT_PATTERN.search(market_name) is not None
         return group.upper() in market_name.upper()
 
-    async def _fetch_perp_bundle_sosovalue(
+    async def _fetch_perp_bundle_sodex(
         self,
         *,
         symbols: list[str],
         lookback_days: int,
+        interval: str,
     ) -> dict[str, Any]:
+        """Fetch real perp klines and funding rates from SoDEX.
+
+        Uses ``SoDEXFeeds.fetch_klines()`` for historical price data and
+        ``SoDEXFeeds.fetch_mark_prices()`` for the latest funding rates.
+
+        Returns
+        -------
+        dict
+            With keys ``prices``, ``funding``, ``source`` (``"sodex_perp_klines"``),
+            ``bundle_as_of``, and ``bundle_id``.
+        """
+        # Lazy import to avoid circular dependency (live.runtime -> siglab.data)
+        from siglab.data.sodex_feeds import SoDEXFeeds  # noqa: PLC0415
+
+        if self.sodex_feeds is None:
+            self.sodex_feeds = SoDEXFeeds(lake=self.lake)
+
         as_of = self._active_as_of or datetime.now(UTC)
-        flow_rows = await self.fetch_etf_historical_inflow(etf_type="us-btc-spot")
-        if not flow_rows:
-            raise ValueError("SoSoValue ETF endpoint returned no historical inflow rows")
-        frame = pd.DataFrame(flow_rows)
-        frame["timestamp"] = pd.to_datetime(frame["date"], utc=True).dt.tz_convert(None)
-        frame = frame.set_index("timestamp").sort_index().tail(max(2, lookback_days))
-        net_flow = pd.to_numeric(frame["totalNetInflow"], errors="coerce").fillna(0.0)
-        flow_return = net_flow.div(max(abs(float(net_flow.abs().max() or 1.0)), 1.0)).clip(-0.05, 0.05)
-        base_price = 100.0 * (1.0 + flow_return).cumprod()
-        prices = pd.DataFrame(index=frame.index)
-        for offset, symbol in enumerate(symbols):
-            prices[symbol] = base_price * (1.0 + 0.0025 * offset)
+
+        # Estimate how many bars to request given the lookback period
+        interval_hours = _interval_to_hours(interval)
+        num_bars = max(100, min(1000, int(lookback_days * 24.0 / max(interval_hours, 1.0))))
+
+        # Fetch klines for each symbol
+        price_series_list: list[pd.Series] = []
+        valid_symbols: list[str] = []
+        for base_symbol in symbols:
+            sodex_symbol = f"{base_symbol}-USD"
+            try:
+                klines = await self.sodex_feeds.fetch_klines(
+                    symbol=sodex_symbol,
+                    interval=interval,
+                    limit=num_bars,
+                )
+            except Exception:
+                logger.warning("SoDEX klines fetch failed for %s, skipping", sodex_symbol)
+                continue
+            if klines is not None and not klines.empty:
+                series = klines["close"].rename(base_symbol)
+                price_series_list.append(series)
+                valid_symbols.append(base_symbol)
+
+        if not price_series_list:
+            raise ValueError(
+                "SoDEX returned no kline data for any requested symbol; "
+                "cannot build perp bundle"
+            )
+
+        # Align all price series to a common timestamp index
+        prices = pd.concat(price_series_list, axis=1).sort_index()
+        prices = prices.ffill().dropna(how="any")
+        if prices.empty:
+            raise ValueError("No common non-null price coverage after aligning SoDEX klines")
+
+        # Fetch the latest funding rates from SoDEX mark-prices snapshot
         funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-        self.lake.write_frame("sosovalue", "etf_proxy_prices", prices)
-        self.lake.write_frame("sosovalue", "etf_proxy_funding", funding)
+        try:
+            mark_prices = await self.sodex_feeds.fetch_mark_prices()
+            funding_rate_map: dict[str, float] = {}
+            for mp in mark_prices:
+                mp_symbol = str(mp.get("symbol", ""))
+                # SoDEX symbols are "BTC-USD", extract base "BTC"
+                if mp_symbol.endswith("-USD"):
+                    base = mp_symbol[:-4]
+                    if base in symbols:
+                        funding_rate_map[base] = float(mp.get("fundingRate") or 0.0)
+            for base_sym in prices.columns:
+                if base_sym in funding_rate_map:
+                    funding[base_sym] = funding_rate_map[base_sym]
+        except Exception:
+            # If funding rate fetch fails, default to zero (no silent ETF proxy)
+            logger.warning(
+                "SoDEX mark_prices fetch failed; funding rates default to zero"
+            )
+
+        source = "sodex_perp_klines"
+
+        self.lake.write_frame(
+            "sodex_perp",
+            f"prices_{sha256(str(as_of).encode()).hexdigest()[:16]}",
+            prices,
+        )
+        self.lake.write_frame(
+            "sodex_perp",
+            f"funding_{sha256(str(as_of).encode()).hexdigest()[:16]}",
+            funding,
+        )
+
         return {
             "prices": prices,
             "funding": funding,
-            "source": "sosovalue_etf_proxy",
+            "source": source,
             "bundle_as_of": as_of.isoformat(),
             "bundle_id": self._active_bundle_id,
         }
