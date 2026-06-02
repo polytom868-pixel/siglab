@@ -9,7 +9,6 @@ CANONICAL_TRACKS: Final[tuple[str, ...]] = (
 TRACK_ALIASES: Final[dict[str, str]] = {
     "trend_signals": "trend_signals",
     "yield_flows": "yield_flows",
-    "yield_flows": "yield_flows",
 }
 TRACK_STORAGE_NAMES: Final[dict[str, str]] = {
     "trend_signals": "trend_signals",
@@ -21,7 +20,6 @@ TRACK_LABELS: Final[dict[str, str]] = {
 }
 TRACK_CLI_CHOICES: Final[tuple[str, ...]] = (
     "trend_signals",
-    "yield_flows",
     "yield_flows",
 )
 

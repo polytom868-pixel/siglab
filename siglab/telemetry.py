@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
-from statistics import median
 from typing import Any, Iterable
 
 
@@ -50,6 +50,7 @@ def estimate_from_provider_snapshots(snapshots: Iterable[dict[str, Any]]) -> Emp
     retry_counts = [_float_or_none(row.get("retry_count")) for row in rows]
     success_rates = [_float_or_none(row.get("success_rate")) for row in rows]
     sample_count = len(rows)
+    mean_success = _mean(success_rates)
     return EmpiricalEstimate(
         sample_count=sample_count,
         p50_latency_ms=_percentile(latencies, 50),
@@ -58,7 +59,7 @@ def estimate_from_provider_snapshots(snapshots: Iterable[dict[str, Any]]) -> Emp
         mean_completion_tokens=_mean(completion_tokens),
         mean_total_tokens=_mean(total_tokens),
         retry_rate=_mean(retry_counts),
-        failure_rate=(1.0 - _mean(success_rates)) if _mean(success_rates) is not None else None,
+        failure_rate=(1.0 - mean_success) if mean_success is not None else None,
         confidence=_confidence(sample_count),
     )
 
@@ -221,11 +222,17 @@ def _last_value(rows: list[dict[str, Any]], key: str) -> Any:
 def _percentile(values: list[float], percentile: int) -> float | None:
     if not values:
         return None
+    if len(values) == 1:
+        return values[0]
     ordered = sorted(values)
-    if len(ordered) == 1:
-        return ordered[0]
-    idx = round((len(ordered) - 1) * (percentile / 100.0))
-    return ordered[max(0, min(len(ordered) - 1, idx))]
+    n = len(ordered)
+    rank = (percentile / 100.0) * (n - 1)
+    lower_idx = max(0, min(n - 1, int(math.floor(rank))))
+    upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
+    if lower_idx == upper_idx:
+        return ordered[lower_idx]
+    frac = rank - math.floor(rank)
+    return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])
 
 
 def _count(values: Iterable[Any]) -> dict[str, int]:

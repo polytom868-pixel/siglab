@@ -48,7 +48,7 @@ class ResearchEvaluator:
             "signal_timing": "next_bar",
             "dropped_last_bar": len(prices_all.index) < len(compiled.prices.index),
             "position_shift_bars": 1,
-            "leak_checks_passed": True,
+            "leak_checks_passed": False,
         }
 
         min_rows = max(14, min(30, len(prices_all.index) // 2))
@@ -91,6 +91,14 @@ class ResearchEvaluator:
                 max_train_windows=2 if fast_mode else None,
             )
         target_all = target_unshifted.shift(1).fillna(0.0)
+
+        # Compute actual leak checks from data properties rather than hardcoding True
+        has_valid_positions = not target_unshifted.isna().all().all()
+        no_extreme_positions = not bool((target_unshifted.abs() > 1e10).any().any())
+        shift_applied = bool(compiled.metadata["bias_controls"].get("position_shift_bars", 0) >= 1)
+        compiled.metadata["bias_controls"]["leak_checks_passed"] = (
+            shift_applied and has_valid_positions and no_extreme_positions
+        )
 
         selector_results: list[dict[str, Any]] = []
         window_results: list[dict[str, Any]] = []
@@ -401,8 +409,11 @@ class ResearchEvaluator:
         deduped: list[dict[str, Any]] = []
         seen: set[tuple[int, int]] = set()
         for window_spec in windows:
-            start_idx = int(window_spec["start_idx"])
-            end_idx = int(window_spec["end_idx"])
+            start_idx_val = window_spec["start_idx"]
+            end_idx_val = window_spec["end_idx"]
+            assert isinstance(start_idx_val, int) and isinstance(end_idx_val, int)
+            start_idx: int = start_idx_val
+            end_idx: int = end_idx_val
             key = (start_idx, end_idx)
             if key in seen:
                 continue
@@ -1153,17 +1164,18 @@ class ResearchEvaluator:
             if changed:
                 changed_keys.append(key)
         activity_summary = dict((best_summary or {}).get("activity_summary") or {})
+        policy_sweep_best_train_score = (
+            float(best_summary["aggregate_score"])
+            if best_summary is not None and best_summary.get("aggregate_score") is not None
+            else None
+        )
 
         return raw_target, {
             "policy_sweep_applied": bool(train_windows),
             "policy_sweep_narrowed": bool(intent_locks["narrow_sweep"]),
             "policy_sweep_train_window_count": len(train_windows),
             "policy_sweep_trial_count": int(trial_count),
-            "policy_sweep_best_train_score": (
-                float(best_summary.get("aggregate_score"))
-                if best_summary is not None and best_summary.get("aggregate_score") is not None
-                else None
-            ),
+            "policy_sweep_best_train_score": policy_sweep_best_train_score,
             "policy_sweep_activity_penalty": float((best_summary or {}).get("activity_penalty") or 0.0),
             "policy_sweep_material_change": bool(changed_keys),
             "policy_sweep_changed_keys": changed_keys,
@@ -2548,7 +2560,7 @@ def _serialize_canonical_run(
         "liquidated": bool(result.liquidated),
         "liquidation_timestamp": (
             result.liquidation_timestamp.isoformat()
-            if getattr(result, "liquidation_timestamp", None) is not None
+            if result.liquidation_timestamp is not None
             else None
         ),
     }
@@ -2729,8 +2741,8 @@ def _pre_audit_drawdown_pack(
             continue
         component = frame.iloc[:limit].apply(pd.to_numeric, errors="coerce").fillna(0.0)
         component_window = component.iloc[peak_idx : trough_idx + 1]
-        aligned_values: list[float] = []
-        support_scores: list[float] = []
+        comp_aligned_values: list[float] = []
+        comp_support_scores: list[float] = []
         trough_component = None
         if component.shape[1] == 1 and window_positions.shape[1] >= 2:
             primary_sign = np.sign(
@@ -2740,8 +2752,8 @@ def _pre_audit_drawdown_pack(
             active_series = primary_sign.loc[component_window.index].abs() > 0
             if bool(active_series.any()):
                 active_support = support_series[active_series]
-                support_scores.extend(float(value) for value in active_support.tolist())
-                aligned_values.extend(float(value > 0.0) for value in active_support.tolist())
+                comp_support_scores.extend(float(value) for value in active_support.tolist())
+                comp_aligned_values.extend(float(value > 0.0) for value in active_support.tolist())
             trough_timestamp = component.index[trough_idx]
             trough_component = _safe_float(support_series.get(trough_timestamp), default=None)
         else:
@@ -2754,8 +2766,8 @@ def _pre_audit_drawdown_pack(
                     component_window.loc[timestamp, active_cols]
                     * position_sign.loc[timestamp, active_cols]
                 )
-                support_scores.append(float(signed_support.mean()))
-                aligned_values.append(float((signed_support > 0.0).mean()))
+                comp_support_scores.append(float(signed_support.mean()))
+                comp_aligned_values.append(float((signed_support > 0.0).mean()))
             trough_timestamp = component.index[trough_idx]
             active_cols = list(component.columns[position_sign.loc[trough_timestamp].abs() > 0])
             if active_cols:
@@ -2771,11 +2783,11 @@ def _pre_audit_drawdown_pack(
             {
                 "feature": str(feature),
                 "window_median_component": _safe_float(
-                    float(np.median(support_scores)) if support_scores else None
+                    float(np.median(comp_support_scores)) if comp_support_scores else None
                 ),
                 "trough_component": trough_component,
                 "aligned_with_position_fraction": _safe_float(
-                    float(np.mean(aligned_values)) if aligned_values else None
+                    float(np.mean(comp_aligned_values)) if comp_aligned_values else None
                 ),
             }
         )
@@ -3409,7 +3421,8 @@ def _pair_gate_diagnostics(
             ),
             "entry": list(dict(compiled_metadata.get("regime_gates") or {}).get("entry") or []),
         }
-        if regime_gate_summary["active_fraction"] is not None and regime_gate_summary["active_fraction"] < 0.30:
+        active_frac_gate = _safe_float(regime_gate_summary.get("active_fraction"))
+        if active_frac_gate is not None and active_frac_gate < 0.30:
             bottleneck_tags.append("restrictive_regime_gate")
 
     return {

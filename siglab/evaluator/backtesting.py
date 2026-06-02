@@ -24,6 +24,7 @@ class BacktestResult:
     metrics_by_period: pd.DataFrame
     stats: dict[str, Any]
     liquidated: bool = False
+    liquidation_timestamp: Any = None
 
 
 def convert_to_spot(prices: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -71,6 +72,13 @@ def run_backtest(prices: pd.DataFrame, target_weights: pd.DataFrame, config: Bac
         }
         for row in trades_frame.itertuples(index=False)
     ]
+    liquidated = bool(config.enable_liquidation and float(equity.min()) <= 0.0)
+    liquidation_timestamp = None
+    if liquidated:
+        liquidation_mask = equity <= 0.0
+        first_liquidation_idx = liquidation_mask.idxmax() if liquidation_mask.any() else None
+        if first_liquidation_idx is not None:
+            liquidation_timestamp = first_liquidation_idx
     return BacktestResult(
         equity_curve=equity,
         returns=pnl,
@@ -78,14 +86,15 @@ def run_backtest(prices: pd.DataFrame, target_weights: pd.DataFrame, config: Bac
         trades=trades,
         metrics_by_period=metrics_by_period,
         stats=stats,
-        liquidated=bool(config.enable_liquidation and float(equity.min()) <= 0.0),
+        liquidated=liquidated,
+        liquidation_timestamp=liquidation_timestamp,
     )
 
 
 def _stats(equity: pd.Series, returns: pd.Series) -> dict[str, Any]:
     total_return = float(equity.iloc[-1] / equity.iloc[0] - 1.0) if len(equity) else 0.0
     periods = max(1, len(returns))
-    annual_factor = 365.0 * 24.0
+    annual_factor = 365.25 * 24.0
     mean = float(returns.mean()) if len(returns) else 0.0
     std = float(returns.std()) if len(returns) else 0.0
     sharpe = mean / std * (annual_factor ** 0.5) if std > 0 else 0.0

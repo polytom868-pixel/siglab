@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import overload
 
 from siglab.llm_metadata import normalize_llm_provider
 from siglab.track_registry import CANONICAL_TRACKS
@@ -38,8 +39,8 @@ class SiglabConfig:
     sosovalue_timeout_s: float = 30.0
     sosovalue_retries: int = 2
     claude_api_key: str | None = None
-    claude_model: str = "claude-sonnet-4-5"
-    claude_base_url: str = "https://api.anthropic.com"
+    claude_model: str = "claude-k2.5"
+    claude_base_url: str = "https://api.moonshot.ai/v1"
     claude_max_tokens: int = 32768
     claude_temperature: float = 1.0
     claude_top_p: float = 0.95
@@ -93,6 +94,11 @@ def load_settings() -> SiglabConfig:
         provider_config_path = (root_dir / provider_config_path).resolve()
     env_values = {**env_values, **_read_env_file(provider_config_path)}
 
+    @overload
+    def _get(name: str, default: str) -> str: ...
+    @overload
+    def _get(name: str, default: None = None) -> str | None: ...
+
     def _get(name: str, default: str | None = None) -> str | None:
         return os.getenv(name) or env_values.get(name) or default
 
@@ -128,6 +134,7 @@ def load_settings() -> SiglabConfig:
     else:
         llm_provider = "claude"
 
+    bai_max_call_credits_raw = _get("BAI_MAX_CALL_CREDITS")
     return SiglabConfig(
         root_dir=root_dir,
         sosovalue_config_path=config_path,
@@ -172,8 +179,8 @@ def load_settings() -> SiglabConfig:
         bai_fallback_reasoning_model=str(_get("BAI_FALLBACK_REASONING_MODEL", "deepseek-v4-pro")),
         bai_context_tokens=int(_get("BAI_CONTEXT_TOKENS", "70000")),
         bai_max_call_credits=(
-            float(_get("BAI_MAX_CALL_CREDITS"))
-            if _get("BAI_MAX_CALL_CREDITS") not in (None, "")
+            float(bai_max_call_credits_raw)
+            if bai_max_call_credits_raw is not None and bai_max_call_credits_raw != ""
             else None
         ),
         population_size=int(_get("SIGLAB_POPULATION_SIZE", "4")),

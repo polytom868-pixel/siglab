@@ -29,7 +29,7 @@ from siglab.hardening_profile import build_profile, profile_as_text, strict_fail
 from siglab.io_utils import write_json
 from siglab.live import LiveDeploymentManager
 from siglab.live.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SODEX_WEIGHT_BUDGET_PER_MINUTE
-from siglab.live.sodex_ws import SoDEXWebSocketClient
+from siglab.live.sodex_ws import SoDEXWebSocketClient, SoDEXWebSocketError
 from siglab.live.sodex_signing import (
     SoDEXSignedRequest,
     SUPPORTED_SODEX_SIGNED_ACTIONS,
@@ -82,6 +82,7 @@ from siglab.search import (
 )
 from siglab.config import load_settings
 from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name
+from siglab.workspace import WorkspaceBuilder
 
 
 SODEX_SIDE_ALIASES = {"BUY": 1, "SELL": 2}
@@ -90,7 +91,6 @@ SODEX_TIME_IN_FORCE_ALIASES = {"GTC": 1, "FOK": 2, "IOC": 3, "GTX": 4}
 SODEX_POSITION_SIDE_ALIASES = {"BOTH": 1, "LONG": 2, "SHORT": 3}
 SODEX_MODIFIER_ALIASES = {"NORMAL": 1, "STOP": 2, "BRACKET": 3, "ATTACHED_STOP": 4}
 SODEX_MARGIN_MODE_ALIASES = {"ISOLATED": 1, "CROSS": 2}
-from siglab.workspace import WorkspaceBuilder
 
 
 def main() -> None:
@@ -370,6 +370,16 @@ def main() -> None:
     wave_status_parser.add_argument("--output", default=None)
     wave_status_parser.add_argument("--json", action="store_true")
 
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Configuration inspection and validation commands.",
+    )
+    config_sub = config_parser.add_subparsers(dest="config_command", required=True)
+    config_validate_parser = config_sub.add_parser(
+        "validate",
+        help="Validate config.json and environment settings.",
+    )
+
     telemetry_parser = subparsers.add_parser(
         "telemetry-report",
         help="Aggregate empirical LLM/tool telemetry from run trace artifacts.",
@@ -415,6 +425,10 @@ def main() -> None:
     if args.command == "clear-passed":
         clear_passed_command(args)
         return
+    if args.command == "config":
+        if args.config_command == "validate":
+            config_validate_command(args)
+        return
     if args.command == "dashboard":
         dashboard_command(args)
         return
@@ -451,6 +465,55 @@ def main() -> None:
     if args.command == "telemetry-report":
         telemetry_report_command(args)
         return
+
+
+def config_validate_command(args: argparse.Namespace) -> None:
+    """Validate config.json and environment settings."""
+    settings = load_settings()
+    config_path = settings.sosovalue_config_path
+    errors: list[str] = []
+
+    if not config_path.exists():
+        errors.append(f"config file not found: {config_path}")
+        _report_config_validation(errors)
+        return
+
+    try:
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        errors.append(f"config file is not valid JSON: {exc}")
+        _report_config_validation(errors)
+        return
+
+    if not isinstance(raw, dict):
+        errors.append("config root must be a JSON object")
+        _report_config_validation(errors)
+        return
+
+    system = raw.get("system")
+    if system is None:
+        errors.append("missing required field: system")
+    elif not isinstance(system, dict):
+        errors.append("system must be a JSON object")
+    else:
+        if not system.get("api_key"):
+            errors.append("missing required field: system.api_key")
+        if not system.get("api_base_url"):
+            errors.append("missing required field: system.api_base_url")
+
+    if errors:
+        _report_config_validation(errors)
+        return
+
+    print(f"config valid: {config_path}")
+    print(f"  api_base_url: {system.get('api_base_url')}")
+    raise SystemExit(0)
+
+
+def _report_config_validation(errors: list[str]) -> None:
+    for error in errors:
+        print(f"ERROR: {error}", file=__import__("sys").stderr)
+    raise SystemExit(1)
 
 
 def profile_command(args: argparse.Namespace) -> None:
@@ -726,7 +789,7 @@ def _build_demo_manifest(settings: Any) -> dict[str, Any]:
         "demo_script": str(settings.root_dir / "docs" / "demo-script.md"),
     }
     artifact_status = {
-        key: bool(value) and Path(value).exists()
+        key: bool(value) and (isinstance(value, str) and Path(value).exists())
         for key, value in artifacts.items()
         if key != "provider_metrics"
     }
@@ -1685,7 +1748,7 @@ async def valuechain_preflight_command(args: argparse.Namespace) -> None:
         report["ready"] = report["chain_id"] == expected
         if not report["ready"]:
             report["missing_or_wrong"] = "ValueChain RPC did not return the documented chain ID"
-    except Exception as exc:  # noqa: BLE001
+    except (httpx.HTTPError, TypeError, ValueError) as exc:
         report["error_class"] = type(exc).__name__
         report["error"] = str(exc)
     if getattr(args, "json", False):
@@ -1723,7 +1786,7 @@ async def sodex_ws_probe_command(args: argparse.Namespace) -> None:
         report["subscribe_ack"] = ack
         try:
             update = await client.recv_update(timeout_s=float(args.timeout_seconds))
-        except Exception as exc:  # noqa: BLE001
+        except SoDEXWebSocketError as exc:
             report["update_error_class"] = type(exc).__name__
             report["update_error"] = str(exc)
         else:
@@ -1747,7 +1810,7 @@ async def sodex_ws_probe_command(args: argparse.Namespace) -> None:
                 report["evidence_records_appended"] = appended
                 report["evidence_summary_record_count"] = summary["record_count"]
         report["ready"] = True
-    except Exception as exc:  # noqa: BLE001
+    except (SoDEXWebSocketError, OSError, TypeError, ValueError) as exc:
         report["error_class"] = type(exc).__name__
         report["error"] = str(exc)
     finally:
@@ -2184,7 +2247,7 @@ async def _run_trend_signals_iterations(
             custom_symbols=custom_symbols,
             use_historical_seeds=use_historical_seeds,
         )
-        recent_rows = ancestry.recent(track, limit=500, **scope_kwargs)
+        recent_rows = ancestry.recent(track, limit=500, run_session_id=scope_kwargs.get("run_session_id"))
         if skip_llm:
             parent = pick_deterministic_parent(
                 track=track,
@@ -2273,7 +2336,7 @@ async def _run_trend_signals_iterations(
                         market_bundle=dict(market_summary.get("market_bundle") or {}),
                         iteration_paths=iteration_paths,
                     )
-                except Exception as exc:  # noqa: BLE001
+                except (LLMProviderError, RuntimeError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     reason = f"{type(exc).__name__}: {exc}"
                     print(f"[{track}] planner_failed iteration={iteration_number} reason={reason}")
                     if isinstance(exc, LLMProviderError) or "LLM" in reason:
@@ -2342,7 +2405,7 @@ async def _run_trend_signals_iterations(
                             repair_feedback=dict(writer_result.failure_packet or {}),
                             previous_note_path=planner_result.research_note_path,
                         )
-                    except Exception as exc:  # noqa: BLE001
+                    except (RuntimeError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                         reason = f"{type(exc).__name__}: {exc}"
                         print(f"[{track}] planner_repair_failed iteration={iteration_number} reason={reason}")
                         if isinstance(exc, LLMProviderError) or "LLM" in reason:
@@ -2412,7 +2475,7 @@ async def _run_trend_signals_iterations(
                             else None
                         ),
                     )
-                except Exception as exc:  # noqa: BLE001
+                except (RuntimeError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     print(
                         f"[{track}] optimizer_failed iteration={iteration_number} "
                         f"reason={type(exc).__name__}: {exc}"
@@ -2434,7 +2497,7 @@ async def _run_trend_signals_iterations(
                 )
                 validated = SignalSpec.from_dict(optimized_payload)
                 if validated.strategy_hash() in {
-                    row["spec_hash"] for row in ancestry.recent(track, limit=500, **scope_kwargs)
+                    row["spec_hash"] for row in ancestry.recent(track, limit=500, run_session_id=scope_kwargs.get("run_session_id"))
                 }:
                     print(f"[{track}] duplicate spec {validated.strategy_hash()} skipped")
                     continue
@@ -2500,7 +2563,7 @@ async def _run_trend_signals_iterations(
                         spec,
                         fast_mode=bool(skip_llm),
                     )
-                except Exception as exc:  # noqa: BLE001
+                except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     print(
                         f"[{track}] {spec.family} {spec.strategy_hash()} "
                         f"failed={type(exc).__name__}: {exc}"
@@ -2547,12 +2610,10 @@ async def _run_trend_signals_iterations(
                             stability_pack=dict(optimization_result.stability_pack or {}) if optimization_result is not None else {},
                         )
                     )
-                    evaluated_trial_context["stability_status"] = dict(
-                        evaluated_trial_context.get("stability_pack") or {}
-                    ).get("status")
-                    evaluated_trial_context["stability_pass_fraction"] = dict(
-                        evaluated_trial_context.get("stability_pack") or {}
-                    ).get("passed_fraction")
+                    _stability_pack = evaluated_trial_context.get("stability_pack")
+                    _stability_pack_dict = _stability_pack if isinstance(_stability_pack, dict) else {}
+                    evaluated_trial_context["stability_status"] = _stability_pack_dict.get("status")
+                    evaluated_trial_context["stability_pass_fraction"] = _stability_pack_dict.get("passed_fraction")
                     evaluated_trial_context["motif_audit_streak"] = _motif_audit_streak(
                         ancestry=ancestry,
                         track=track,
@@ -2720,10 +2781,11 @@ async def _run_iterations(
             else:
                 parent = pick_parent(track, ancestry, seed_specs)
             parent_hash = parent.strategy_hash()
+            _best = ancestry.best(track)
             print(
                 f"[{track}] parent={parent.family} {parent_hash} "
-                f"recent_best={ancestry.best(track)['aggregate_score']:.4f}"
-                if ancestry.best(track) is not None
+                f"recent_best={_best['aggregate_score']:.4f}"
+                if _best is not None
                 else f"[{track}] parent={parent.family} {parent_hash}"
             )
             run_context = {
@@ -2815,7 +2877,7 @@ async def _run_iterations(
                             spec,
                             fast_mode=bool(skip_llm),
                         )
-                    except Exception as exc:  # noqa: BLE001
+                    except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
                         print(
                             f"[{track}] {spec.family} {spec.strategy_hash()} "
                             f"failed={type(exc).__name__}: {exc}"
@@ -3770,7 +3832,8 @@ def _write_run_reflection(
         what_failed.append("Restrictive regime gating remained a dominant bottleneck.")
     if summary["material_sweep_change_share"] is not None and summary["material_sweep_change_share"] >= 0.4:
         what_failed.append("The policy sweep materially rewrote many proposals instead of only tuning them.")
-    if intent_vs_sweep["median_changed_param_count"] is not None and intent_vs_sweep["median_changed_param_count"] >= 2.0:
+    _median_changed = intent_vs_sweep["median_changed_param_count"]
+    if isinstance(_median_changed, (int, float)) and _median_changed >= 2.0:
         what_failed.append("Typical specs changed multiple policy parameters between intent and frozen evaluation.")
     if family_counts:
         dominant_family, dominant_family_count = family_counts.most_common(1)[0]
