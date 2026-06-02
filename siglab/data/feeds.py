@@ -6,7 +6,7 @@ import json
 import math
 import re
 from hashlib import sha256
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
@@ -511,40 +511,8 @@ class MarketDataProvider:
         if cached:
             return list(cached)[:limit]
 
-        rows: list[dict[str, Any]] = []
-
-        filtered: list[dict[str, Any]] = []
-        basis_groups = [str(group).upper() for group in (universe.basis_groups or [])]
-        hedge_specs = [
-            symbol for symbol in basis_groups if symbol != "USD"
-        ] or MAJOR_PERP_SYMBOLS
-        for row in rows:
-            market_name = str(row.get("marketName") or "")
-            days = float(row.get("daysToExpiry") or 0.0)
-            if days > universe.max_days_to_expiry:
-                continue
-            is_stable = STABLE_PT_PATTERN.search(market_name) is not None
-            if stable_only and not is_stable:
-                continue
-
-            if basis_groups and not stable_only:
-                if not any(
-                    self._market_matches_group(market_name, group)
-                    for group in basis_groups
-                ):
-                    continue
-
-            enriched = dict(row)
-            enriched["hedgeSymbol"] = self.market_hedge_symbol(
-                enriched,
-                preferred_symbols=hedge_specs,
-            )
-            filtered.append(enriched)
-
-        self.lake.write_json("pendle", cache_key, filtered)
-        self._bundle_cache[bundle_cache_key] = list(filtered)
-        self._persist_bundle_json(bundle_cache_key, filtered)
-        return filtered[:limit]
+        # Pendle PT market data source is not available; return empty
+        return []
 
     async def fetch_pt_histories(
         self,
@@ -571,8 +539,6 @@ class MarketDataProvider:
             if cached is not None:
                 return label, cached
 
-            end = self._active_as_of or datetime.now(UTC)
-            start = end - timedelta(days=lookback_days)
             return label, pd.DataFrame()
 
         pairs = await asyncio.gather(*[_fetch_one(row) for row in markets])
@@ -588,7 +554,6 @@ class MarketDataProvider:
         *,
         limit: int,
     ) -> list[dict[str, Any]]:
-        return []
         bundle_cache_key = self._bundle_cache_key(
             "lending_markets",
             groups=list(universe.basis_groups),
@@ -699,6 +664,8 @@ class MarketDataProvider:
 
         for basis_symbol, basis_markets in grouped.items():
             try:
+                if not hasattr(self, "delta_lab"):
+                    continue
                 payload = await self.delta_lab.get_asset_timeseries(
                     symbol=basis_symbol,
                     lookback_days=lookback_days,
