@@ -132,11 +132,15 @@ def compute_composite_score(
     w = weights if weights is not None else dict(DEFAULT_WEIGHTS)
     sub_scores = compute_sub_scores(metrics)
 
-    total_weight = sum(w.values())
+    # Only consider recognised sub-score keys in the weighted sum.
+    # Unknown weight entries (e.g. custom keys that are not part of the
+    # scoring model) are silently skipped so callers do not get a KeyError.
+    recognised = {k: v for k, v in w.items() if k in sub_scores}
+    total_weight = sum(recognised.values())
     if total_weight <= 0.0:
         return 0.0
 
-    composite = sum(sub_scores[k] * w[k] for k in w) / total_weight
+    composite = sum(sub_scores[k] * recognised[k] for k in recognised) / total_weight
     return max(0.0, min(1.0, composite))
 
 

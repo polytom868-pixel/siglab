@@ -139,6 +139,13 @@ class TestPaperPromoteRejects:
         assert "composite_score" in output
         assert "trading_days" in output or "trade_count" in output
 
+        # Verify sub_scores contain normalized [0,1] values
+        assert "sub_scores" in output
+        sub = output["sub_scores"]
+        for key in ("pnl", "sharpe", "win_rate", "drawdown"):
+            assert key in sub, f"Missing sub_score key: {key}"
+            assert 0.0 <= sub[key] <= 1.0, f"{key} = {sub[key]} not in [0, 1]"
+
 
 # ======================================================================
 # VAL-CLI-018: paper-promote promotes meeting-threshold sessions
@@ -166,11 +173,14 @@ class TestPaperPromoteAccepts:
 
     def test_json_output_structure(self) -> None:
         """paper-promote JSON output has expected fields."""
-        from siglab.live.promotion import compute_composite_score, promotion_eligible
+        from siglab.live.promotion import compute_composite_score, compute_sub_scores, promotion_eligible
 
-        # Simulate what the CLI outputs
+        # Use compute_sub_scores to produce normalised [0,1] values (matching CLI logic)
         metrics = {"total_return": 0.20, "sharpe": 2.0, "win_rate": 0.75, "max_drawdown": -0.05}
         daily_metrics = [metrics for _ in range(10)]
+        sub_scores = {
+            k: round(v, 4) for k, v in compute_sub_scores(metrics).items()
+        }
         composite = compute_composite_score(metrics)
         eligible, reason = promotion_eligible(daily_metrics)
 
@@ -178,7 +188,7 @@ class TestPaperPromoteAccepts:
             "promoted": eligible,
             "reason": reason,
             "composite_score": composite,
-            "sub_scores": {"pnl": 0.6667, "sharpe": 0.6667, "win_rate": 0.75, "drawdown": 0.8333},
+            "sub_scores": sub_scores,
             "trade_count": 10,
             "trading_days": 10,
         }
