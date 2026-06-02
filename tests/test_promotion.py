@@ -105,6 +105,24 @@ class TestCompositeScore:
         composite = compute_composite_score(metrics, weights={"pnl": 1.0, "sharpe": 0.0, "win_rate": 0.0, "drawdown": 0.0})
         assert composite == pytest.approx(0.5, abs=1e-4)
 
+    def test_custom_weights_unknown_key_graceful(self) -> None:
+        """Custom weights with unknown keys do not raise KeyError."""
+        metrics = {"total_return": 0.15, "sharpe": 1.5, "win_rate": 0.6, "max_drawdown": -0.10}
+
+        # ``foo`` is not a recognised sub-score key — must be silently ignored.
+        composite = compute_composite_score(
+            metrics,
+            weights={"pnl": 1.0, "foo": 100.0},
+        )
+        # Only "pnl" contributes: 0.5 / 1.0 = 0.5
+        assert composite == pytest.approx(0.5, abs=1e-4)
+
+    def test_custom_weights_all_unknown_keys(self) -> None:
+        """When only unknown weight keys are given, returns 0.0 (no recognised subs)."""
+        metrics = {"total_return": 0.15, "sharpe": 1.5, "win_rate": 0.6, "max_drawdown": -0.10}
+        composite = compute_composite_score(metrics, weights={"foo": 0.5, "bar": 0.5})
+        assert composite == pytest.approx(0.0, abs=1e-4)
+
     def test_hand_calculation_known_value(self) -> None:
         """Composite score matches hand-calculated value for known inputs."""
         # Known input set

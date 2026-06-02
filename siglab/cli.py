@@ -4070,6 +4070,7 @@ async def paper_promote_command(args: argparse.Namespace) -> None:
     from siglab.config import load_settings
     from siglab.live.promotion import (
         compute_composite_score,
+        compute_sub_scores,
         extract_session_metrics,
         extract_daily_metrics,
         promotion_eligible,
@@ -4093,7 +4094,10 @@ async def paper_promote_command(args: argparse.Namespace) -> None:
         consecutive_days = args.consecutive_days or DEFAULT_CONSECUTIVE_DAYS
         min_trading_days = args.min_trading_days or DEFAULT_MIN_TRADING_DAYS
 
-        # Compute overall composite score
+        # Compute sub-scores (normalised [0,1]) and overall composite score
+        sub_scores = {
+            k: round(v, 4) for k, v in compute_sub_scores(metrics).items()
+        }
         composite = compute_composite_score(metrics)
 
         # Check eligibility
@@ -4108,12 +4112,7 @@ async def paper_promote_command(args: argparse.Namespace) -> None:
             "promoted": eligible,
             "reason": reason,
             "composite_score": round(composite, 4),
-            "sub_scores": {
-                "pnl": round(metrics.get("total_return", 0), 4),
-                "sharpe": round(metrics.get("sharpe", 0), 4),
-                "win_rate": round(metrics.get("win_rate", 0), 4),
-                "drawdown": round(metrics.get("max_drawdown", 0), 4),
-            },
+            "sub_scores": sub_scores,
             "trade_count": metrics.get("trade_count", 0),
             "trading_days": len(daily_metrics),
             "threshold": threshold,
