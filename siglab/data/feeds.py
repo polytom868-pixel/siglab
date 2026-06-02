@@ -228,7 +228,8 @@ class MarketDataProvider:
 
     async def close(self) -> None:
         await self.sosovalue.close()
-        await self.sodex_feeds.close()
+        if self.sodex_feeds is not None:
+            await self.sodex_feeds.close()
 
     def begin_iteration_bundle(
         self,
