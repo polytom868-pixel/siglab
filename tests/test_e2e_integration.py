@@ -508,6 +508,7 @@ class TestCross002SoSoValueToDashboard:
 # ======================================================================
 
 
+@pytest.mark.integration
 class TestCross003CliToDashboard:
     """
     VAL-CROSS-003: CLI paper-start creates session, paper-status shows data,
@@ -1158,16 +1159,20 @@ class TestCross008GracefulDegradation:
             resp = client.get("/nonexistent-endpoint")
             assert resp.status_code == 404
 
+    @pytest.mark.integration
     def test_cli_handles_missing_args_gracefully(self) -> None:
         """
         CLI commands handle missing arguments without crashing.
         """
-        # paper-start without --sessions-dir should work (uses default)
-        result = _run_cli("paper-start", "--session", "auto")
-        # This might fail because of missing default sessions dir, but shouldn't crash
-        assert result.returncode in (0, 1)
-        if result.returncode == 1:
-            assert result.stderr or "error" in result.stdout.lower()
+        # paper-start with --sessions-dir using a temp directory
+        with tempfile.TemporaryDirectory() as tmp:
+            sessions_dir = Path(tmp) / "sessions"
+            sessions_dir.mkdir()
+            result = _run_cli("paper-start", "--session", "auto", "--sessions-dir", str(sessions_dir))
+            # This might fail because of missing default sessions dir, but shouldn't crash
+            assert result.returncode in (0, 1)
+            if result.returncode == 1:
+                assert result.stderr or "error" in result.stdout.lower()
 
     def test_dashboard_risk_no_crash_on_missing_numpy(self) -> None:
         """
@@ -1249,6 +1254,7 @@ class TestCrossAllCommon:
                 pong = ws.receive_json()
                 assert pong["type"] == "pong"
 
+    @pytest.mark.integration
     def test_cli_and_dashboard_coexist(self) -> None:
         """
         VAL-DASH-008: Dashboard and CLI can work concurrently.
@@ -1279,6 +1285,7 @@ class TestCrossAllCommon:
                 assert client.get("/health").status_code == 200
                 assert client.get("/health").json()["status"] == "ok"
 
+    @pytest.mark.integration
     def test_paper_promote_rejects_below_threshold(self) -> None:
         """
         VAL-CLI-017: paper-promote rejects below-threshold sessions.
