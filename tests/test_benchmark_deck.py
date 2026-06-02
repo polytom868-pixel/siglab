@@ -192,7 +192,7 @@ class BenchmarkDeckTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(spec.strategy_hash(), payload["state"]["incumbent_spec_hash"])
         self.assertEqual(best_spec.strategy_hash(), payload["state"]["incumbent_spec_hash"])
         self.assertIn("poetry run siglab benchmark-eval", paths.program_path.read_text())
-        self.assertIn("committed deck", paths.observation_path.read_text())
+        self.assertIn("# Benchmark Observation", paths.observation_path.read_text())
 
     def test_benchmark_init_prefers_deployd_carry_seed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
