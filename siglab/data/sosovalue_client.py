@@ -37,7 +37,11 @@ class SoSoValueUpstreamFormatError(SoSoValueApiError):
     """SoSoValue returned syntactically valid transport with invalid business shape."""
 
 
-class SoSoValueUpstreamServerError(SoSoValueApiError):
+class SoSoValueRetryableError(SoSoValueApiError):
+    """Upstream server returned a retryable error (5xx). Automatically retried."""
+
+
+class SoSoValueUpstreamServerError(SoSoValueRetryableError):
     """SoSoValue returned a retryable or fatal upstream server error."""
 
 
@@ -166,6 +170,127 @@ class SoSoValueClient:
         )
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
+
+    async def currency_market_snapshot(self, currency_id: str) -> dict[str, Any]:
+        """Get currency market snapshot.
+
+        GET /currencies/{currency_id}/market-snapshot
+        """
+        spec = SoSoValueRequestSpec(
+            name="currency.market_snapshot",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path=f"/currencies/{currency_id}/market-snapshot",
+            ttl_s=30.0,
+        )
+        payload = await self.request(spec)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise SoSoValueUpstreamFormatError("currency.market_snapshot data was not an object", payload=data)
+        return dict(data)
+
+    async def currency_klines(
+        self,
+        currency_id: str,
+        *,
+        interval: str = "1d",
+        start_time: int | None = None,
+        end_time: int | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get currency historical klines.
+
+        GET /currencies/{currency_id}/klines
+        Only daily (1d) interval is supported.
+        Query range limited to most recent 3 months.
+        """
+        if interval not in ("1d",):
+            raise SoSoValueConfigError(f"currency_klines interval must be '1d', got {interval!r}")
+        params: dict[str, Any] = {"interval": interval, "limit": max(1, min(500, int(limit)))}
+        if start_time is not None:
+            params["start_time"] = int(start_time)
+        if end_time is not None:
+            params["end_time"] = int(end_time)
+        spec = SoSoValueRequestSpec(
+            name="currency.klines",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path=f"/currencies/{currency_id}/klines",
+            params=params,
+            ttl_s=60.0,
+        )
+        payload = await self.request(spec)
+        return self._rows_from_data(payload.get("data"), spec)
+
+    async def etf_list(self, *, symbol: str = "BTC", country_code: str = "US") -> list[dict[str, Any]]:
+        """Get ETF list for a currency symbol and country code.
+
+        GET /etfs?symbol={symbol}&country_code={country_code}
+        """
+        spec = SoSoValueRequestSpec(
+            name="etf.list",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path="/etfs",
+            params={"symbol": symbol, "country_code": country_code},
+            ttl_s=60.0,
+        )
+        payload = await self.request(spec)
+        return self._rows_from_data(payload.get("data"), spec)
+
+    async def etf_summary_history(
+        self,
+        *,
+        symbol: str = "BTC",
+        country_code: str = "US",
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Get ETF aggregate historical data.
+
+        GET /etfs/summary-history
+        Query range limited to most recent 1 month.
+        """
+        params: dict[str, Any] = {
+            "symbol": symbol,
+            "country_code": country_code,
+            "limit": max(1, min(300, int(limit))),
+        }
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        spec = SoSoValueRequestSpec(
+            name="etf.summary_history",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path="/etfs/summary-history",
+            params=params,
+            ttl_s=60.0,
+            required_fields=("date", "total_net_inflow", "total_value_traded", "total_net_assets", "cum_net_inflow"),
+            require_non_empty=True,
+        )
+        payload = await self.request(spec)
+        return self._rows_from_data(payload.get("data"), spec)
+
+    async def etf_market_snapshot(self, ticker: str) -> dict[str, Any]:
+        """Get ETF market snapshot for a ticker.
+
+        GET /etfs/{ticker}/market-snapshot
+        """
+        spec = SoSoValueRequestSpec(
+            name="etf.market_snapshot",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path=f"/etfs/{ticker}/market-snapshot",
+            ttl_s=60.0,
+        )
+        payload = await self.request(spec)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise SoSoValueUpstreamFormatError("etf.market_snapshot data was not an object", payload=data)
+        return dict(data)
 
     async def featured_news(
         self,
