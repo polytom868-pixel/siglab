@@ -969,7 +969,7 @@ class SpecWriterRunner:
                 self.hypothesis_sandbox.provider,
                 spec,
             )
-        except (KeyError, RuntimeError, TypeError, ValueError) as exc:
+        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
             return {
                 "ok": False,
                 "error": f"compile_failed: {type(exc).__name__}: {exc}",
