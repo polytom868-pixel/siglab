@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 
 
 def percentile(values: list[float], percentile: int) -> float | None:

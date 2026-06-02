@@ -375,7 +375,7 @@ def main() -> None:
         help="Configuration inspection and validation commands.",
     )
     config_sub = config_parser.add_subparsers(dest="config_command", required=True)
-    config_validate_parser = config_sub.add_parser(
+    config_sub.add_parser(
         "validate",
         help="Validate config.json and environment settings.",
     )
