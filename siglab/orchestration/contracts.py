@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, TypedDict, cast
 
 from siglab.strategy_semantics import (
     MOMENTUM_KEYWORDS,
@@ -14,6 +16,129 @@ from siglab.strategy_semantics import (
     normalized_gate_entries,
     supports_explicit_trade_style,
 )
+
+
+# ---------------------------------------------------------------------------
+# Typed orchestration contracts — replace untyped dict[str, Any] pipeline
+# ---------------------------------------------------------------------------
+
+
+class PlannerOutput(TypedDict, total=False):
+    """Contract dict produced by the planner stage for downstream consumers.
+
+    All fields are optional (total=False) because the contract is built
+    incrementally during extraction.  Downstream consumers should treat
+    missing keys as absent intent, not as errors.
+    """
+    decision: str
+    search_mode: str
+    target_family: str
+    target_trade_style: str | None
+    target_universe: list[str]
+    core_hypothesis: str
+    informative_test: str
+    expected_success: list[str]
+    expected_failure: list[str]
+    evidence_paths: list[str]
+    tools_used: list[str]
+    tracking_tags: list[str]
+    must_answer: str
+    required_feature_roles: list[str]
+    required_features: list[str]
+    forbidden_features: list[str]
+    forbidden_motifs: list[str]
+    gate_intent: dict[str, Any]
+    required_gate_dimensions: list[str]
+    required_variation_axis: str | None
+    banned_motif_signatures: list[str]
+    writer_inputs: list[str]
+    planner_regime_gates: dict[str, Any]
+
+
+class WriterOutput(TypedDict, total=False):
+    """Output dict from the writer stage.
+
+    Represents the structured result from SpecWriterRunner.run()
+    suitable for serialisation or passing to downstream stages.
+    """
+    spec_payload: dict[str, Any] | None
+    spec_path: str | None
+    trace_path: str
+    accepted: bool
+    base_spec_payload: dict[str, Any] | None
+    base_spec_path: str | None
+    structure_spec: dict[str, Any] | None
+    patch_payload: dict[str, Any] | None
+    patch_summary: list[str] | None
+    spec_after_patch_path: str | None
+    failure_reason: str | None
+    failure_packet: dict[str, Any] | None
+
+
+class OptimizerOutput(TypedDict, total=False):
+    """Output dict from the optimizer stage.
+
+    Carries the best spec found by Optuna along with trial metadata
+    and stability analysis.
+    """
+    spec_payload: dict[str, Any]
+    best_summary: dict[str, Any]
+    best_params: dict[str, Any]
+    optuna_space: dict[str, Any]
+    score_diagnosis: dict[str, Any]
+    trial_count: int
+    objective_value: float
+    fragility_penalty: float
+    deployment_score: float | None
+    fragility_pack: dict[str, Any]
+    stability_pack: dict[str, Any]
+
+
+class ReflectorOutput(TypedDict, total=False):
+    """Output dict from the reflector stage.
+
+    Contains the saved lesson card location and parsed frontmatter
+    for downstream traceability.
+    """
+    lesson_card_path: str
+    trace_path: str
+    frontmatter: dict[str, Any]
+
+
+@dataclass
+class PreflightResult:
+    """Validated result from the writer preflight check.
+
+    Typed as a dataclass so that computed properties (`material_drift`,
+    `acceptable`) remain available.
+    """
+    parse_error: str | None
+    hard_issues: list[str]
+    conformance_issues: list[str]
+    gate_lint: dict[str, Any] | None
+    changed_fields: list[str]
+    harmless_changed_fields: list[str]
+    material_changed_fields: list[str]
+    validated_payload: dict[str, Any] | None
+
+    @property
+    def material_drift(self) -> bool:
+        return bool(self.material_changed_fields)
+
+    @property
+    def acceptable(self) -> bool:
+        return (
+            self.parse_error is None
+            and not self.hard_issues
+            and not self.conformance_issues
+            and not self.material_drift
+            and self.validated_payload is not None
+        )
+
+
+# ---------------------------------------------------------------------------
+# Helper functions used across orchestration modules
+# ---------------------------------------------------------------------------
 
 
 def _numeric_equal(left: Any, right: Any) -> bool:
@@ -83,7 +208,7 @@ def has_policy_variation(
 
 def conformance_violations(
     *,
-    planner_contract: dict[str, Any],
+    planner_contract: PlannerOutput,
     spec_payload: dict[str, Any],
     allowed_features: list[str] | None = None,
     parent_payload: dict[str, Any] | None = None,
@@ -236,8 +361,6 @@ def conformance_violations(
 
 
 def extract_embedded_yaml_block(text: str) -> dict[str, Any]:
-    import yaml
-
     match = re.search(r"```yaml\s*\n(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
     if not match:
         return {}
@@ -247,8 +370,11 @@ def extract_embedded_yaml_block(text: str) -> dict[str, Any]:
     if blob.endswith("---"):
         blob = blob[:-3].rstrip()
     try:
-        parsed = yaml.safe_load(blob) or {}
-    except Exception:  # noqa: BLE001
+        yaml_module = cast(Any, importlib.import_module("yaml"))
+    except ImportError:
+        return {}
+    try:
+        parsed = yaml_module.safe_load(blob) or {}
+    except getattr(yaml_module, "YAMLError", ValueError):
         return {}
     return dict(parsed) if isinstance(parsed, dict) else {}
-

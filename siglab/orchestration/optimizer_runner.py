@@ -1,17 +1,15 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import statistics
 import warnings
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
-try:
-    import optuna
-except ImportError:  # pragma: no cover - exercised in runtime environments without optuna installed
-    optuna = None
-
+from siglab.orchestration.contracts import OptimizerOutput
+from siglab.llm import LLMProviderError
 from siglab.schemas import SignalSpec
 from siglab.orchestration.trials import (
     apply_path_value,
@@ -59,8 +57,9 @@ class OptunaOptimizerRunner:
         base_payload: dict[str, Any],
         spec_payload: dict[str, Any],
         iteration_paths: dict[str, Any],
-        incumbent_summary: dict[str, Any] | None,
+        incumbent_summary: OptimizerOutput | None,
     ) -> OptimizationResult:
+        optuna = _load_optuna()
         optuna_space = infer_optuna_space(spec_payload)
         iteration_paths["optuna_space_path"].write_text(
             json.dumps(optuna_space, indent=2, ensure_ascii=True, default=str)
@@ -69,7 +68,7 @@ class OptunaOptimizerRunner:
             raise RuntimeError("Optuna is not installed. Add the dependency before running the optimizer stage.")
         if not list(optuna_space.get("parameters") or []):
             summary = {"aggregate_score": None}
-            score = score_diagnosis(summary, incumbent_summary or {})
+            score = score_diagnosis(summary, cast(dict, incumbent_summary) if incumbent_summary is not None else {})
             generalization = summarize_generalization(
                 summary,
                 optuna_space=optuna_space,
@@ -136,7 +135,7 @@ class OptunaOptimizerRunner:
         ):
             try:
                 study.enqueue_trial(seed_params)
-            except Exception:
+            except (TypeError, ValueError):
                 continue
 
         best_summary: dict[str, Any] | None = None
@@ -166,7 +165,7 @@ class OptunaOptimizerRunner:
                 )
                 objective_value = float(objective_details.get("objective") or -1e18)
                 trial_status = "ok"
-            except Exception as exc:  # noqa: BLE001
+            except (KeyError, LLMProviderError, RuntimeError, TypeError, ValueError) as exc:
                 summary = {}
                 objective_details = self._objective_details(
                     summary,
@@ -176,7 +175,7 @@ class OptunaOptimizerRunner:
                 objective_value = -1e9
                 trial_status = f"error:{type(exc).__name__}"
             study.tell(trial, objective_value)
-            row = {
+            row: dict[str, object] = {
                 "trial_number": int(trial.number),
                 "params": params,
                 "objective": objective_value,
@@ -223,7 +222,7 @@ class OptunaOptimizerRunner:
             tuned_params=best_params,
             stability_pack=stability_pack,
         )
-        diagnosis = score_diagnosis(best_summary or {}, incumbent_summary or {})
+        diagnosis = score_diagnosis(best_summary or {}, cast(dict, incumbent_summary) if incumbent_summary is not None else {})
         iteration_paths["optuna_best_path"].write_text(
             json.dumps(
                 {
@@ -404,6 +403,8 @@ class OptunaOptimizerRunner:
             current = get_path_value(spec_payload, path)
             if current is None:
                 continue
+            low_value: float | int
+            high_value: float | int
             if str(item.get("kind") or "float") == "int":
                 low_value = max(int(item.get("low") or 0), int(current) - 1)
                 high_value = min(int(item.get("high") or 0), int(current) + 1)
@@ -456,7 +457,7 @@ class OptunaOptimizerRunner:
                 )
                 passed = bool(summary.get("passed"))
                 status = "ok"
-            except Exception as exc:  # noqa: BLE001
+            except (KeyError, LLMProviderError, RuntimeError, TypeError, ValueError) as exc:
                 summary = {}
                 objective = -1e9
                 passed = False
@@ -544,6 +545,7 @@ class OptunaOptimizerRunner:
 
     def _value_in_space(self, *, value: Any, space_item: dict[str, Any]) -> bool:
         kind = str(space_item.get("kind") or "float")
+        numeric: int | float
         if kind == "int":
             try:
                 numeric = int(value)
@@ -650,14 +652,18 @@ def infer_optuna_space(spec_payload: dict[str, Any]) -> dict[str, Any]:
         high=min(1.5, max(0.2, float(policy.get("min_abs_score", 0.0)) * 1.5 + 0.05)),
     )
     if family in {"perp_pair_trade_unlevered", "perp_pair_trade_levered"}:
+        gross_target_val = policy.get("gross_target", 1.0)
+        assert gross_target_val is not None
+        max_gross_target_val = policy.get("max_gross_target", gross_target_val)
+        assert max_gross_target_val is not None
         add_float(
             "params.max_gross_target",
             policy.get("max_gross_target"),
             low=max(
-                float(policy.get("gross_target", 1.0)),
-                float(policy.get("max_gross_target", policy.get("gross_target", 1.0))) * 0.75,
+                float(gross_target_val),
+                float(max_gross_target_val) * 0.75,
             ),
-            high=min(4.0, float(policy.get("max_gross_target", policy.get("gross_target", 1.0))) * 1.4),
+            high=min(4.0, float(max_gross_target_val) * 1.4),
         )
         add_float(
             "params.signal_leverage_scale",
@@ -704,7 +710,7 @@ def _payload_patch_for_paths(
     }
 
 
-def _suggest_params(*, trial: optuna.trial.Trial, optuna_space: dict[str, Any]) -> dict[str, Any]:
+def _suggest_params(*, trial: Any, optuna_space: dict[str, Any]) -> dict[str, Any]:
     params: dict[str, Any] = {}
     for item in list(optuna_space.get("parameters") or []):
         path = str(item.get("path") or "")
@@ -723,6 +729,13 @@ def _suggest_params(*, trial: optuna.trial.Trial, optuna_space: dict[str, Any]) 
             log=bool(item.get("log")),
         )
     return params
+
+
+def _load_optuna() -> Any | None:
+    try:
+        return importlib.import_module("optuna")
+    except ImportError:
+        return None
 
 
 def _threshold_bounds(value: Any) -> tuple[float, float, bool]:
