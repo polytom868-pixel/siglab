@@ -5,7 +5,7 @@ from pathlib import Path
 import ast
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from conftest import REPO_ROOT
 THIS_FILE = Path(__file__).resolve()
 SCAN_ROOTS = [
     REPO_ROOT / "README.md",
