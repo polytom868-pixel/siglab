@@ -7,6 +7,7 @@ from typing import Any
 
 from siglab.io_utils import write_json
 from siglab.llm import ClaudeClient
+from siglab.orchestration.contracts import ReflectorOutput
 from siglab.strategy_semantics import gate_dimensions, motif_signature
 from siglab.workspace.cards import dump_frontmatter, parse_frontmatter
 from siglab.workspace.builder import WorkspaceSession
@@ -51,7 +52,7 @@ class ReflectionRunner:
         spec_hash: str,
         iteration_paths: dict[str, Any],
         evaluation_packet: dict[str, Any],
-    ) -> ReflectionResult:
+    ) -> ReflectorOutput:
         skill_path = (
             self.settings.root_dir
             / ".agents"
@@ -96,11 +97,11 @@ class ReflectionRunner:
                 "claude_exchange": dict(self.claude.last_exchange or {}),
             },
         )
-        return ReflectionResult(
-            lesson_card_path=lesson_card_path,
-            trace_path=trace_path,
-            frontmatter=frontmatter,
-        )
+        return {
+            "lesson_card_path": str(lesson_card_path),
+            "trace_path": str(trace_path),
+            "frontmatter": frontmatter,
+        }
 
     def _fallback_system_prompt(self) -> str:
         return "\n".join(

@@ -423,6 +423,57 @@ class LineageStore:
             "metadata": json.loads(row[16]) if row[16] else {},
         }
 
+    def list_deployments(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    spec_hash,
+                    created_at,
+                    strategy_name,
+                    strategy_dir,
+                    spec_path,
+                    manifest_path,
+                    readme_path,
+                    job_name,
+                    interval_seconds,
+                    wallet_label,
+                    config_path,
+                    scheduled,
+                    dry_run,
+                    llm_finalized,
+                    support_status,
+                    support_reason,
+                    metadata_json
+                FROM deployments
+                ORDER BY created_at DESC
+                """,
+            ).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            result.append(
+                {
+                    "spec_hash": row[0],
+                    "created_at": row[1],
+                    "strategy_name": row[2],
+                    "strategy_dir": row[3],
+                    "spec_path": row[4],
+                    "manifest_path": row[5],
+                    "readme_path": row[6],
+                    "job_name": row[7],
+                    "interval_seconds": row[8],
+                    "wallet_label": row[9],
+                    "config_path": row[10],
+                    "scheduled": bool(row[11]),
+                    "dry_run": bool(row[12]),
+                    "llm_finalized": bool(row[13]),
+                    "support_status": row[14],
+                    "support_reason": row[15],
+                    "metadata": json.loads(row[16]) if row[16] else {},
+                }
+            )
+        return result
+
     def recent(
         self,
         track: str,
@@ -1397,16 +1448,16 @@ class LineageStore:
             for row in recent_rows
             if str(row.get("family") or "unknown") == dominant_family[0]
         ]
-        dominant_family_best_pre_audit = max(
-            (
-                _safe_float(
-                    (row.get("summary") or {}).get("pre_audit_canonical_total_return"),
-                    default=float("-inf"),
-                )
-                for row in dominant_family_rows
-            ),
-            default=float("-inf"),
-        )
+        dominant_family_best_pre_audit: float
+        scores: list[float] = []
+        for row in dominant_family_rows:
+            score = _safe_float(
+                (row.get("summary") or {}).get("pre_audit_canonical_total_return"),
+                default=float("-inf"),
+            )
+            if score is not None:
+                scores.append(score)
+        dominant_family_best_pre_audit = max(scores, default=float("-inf"))
         dominant_family_positive_anchor = dominant_family_best_pre_audit > 0.02
         family_concentration_requires_branch = (
             dominant_family[1] >= 4 and not dominant_family_positive_anchor
@@ -1493,16 +1544,16 @@ class LineageStore:
             diagnostic = diagnostics_by_hash.get(str(row.get("spec_hash")) or "", {})
             behavior_pack = diagnostic.get("behavior_pack") or {}
             trade_count = _safe_float(behavior_pack.get("trade_count"), default=-1.0)
-            if trade_count >= 0.0:
+            if trade_count is not None and trade_count >= 0.0:
                 trade_counts.append(trade_count)
             median_holding_bars = _safe_float(behavior_pack.get("median_holding_bars"), default=-1.0)
-            if median_holding_bars >= 0.0:
+            if median_holding_bars is not None and median_holding_bars >= 0.0:
                 holding_bars.append(median_holding_bars)
             median_gap_hours = _safe_float(behavior_pack.get("median_gap_hours"), default=-1.0)
-            if median_gap_hours >= 0.0:
+            if median_gap_hours is not None and median_gap_hours >= 0.0:
                 gap_hours.append(median_gap_hours)
             flip_rate = _safe_float(behavior_pack.get("flip_rate"), default=-1.0)
-            if flip_rate >= 0.0:
+            if flip_rate is not None and flip_rate >= 0.0:
                 flip_rates.append(flip_rate)
             for tag in diagnostic.get("diagnostic_tags") or []:
                 if tag in {"few_trades", "overtrading", "sparse_entries", "very_short_holds"}:
@@ -1721,6 +1772,15 @@ class LineageStore:
             parent_diag = self._row_diagnostic_snapshot(parent_row)
         child_summary = dict(row.get("summary") or {})
         parent_summary = dict(parent_row.get("summary") or {})
+        regime_changes: dict[str, dict[str, str]] = {}
+        dimension_keys = sorted(
+            set(child_diag.get("regime_pack") or {}).union(set(parent_diag.get("regime_pack") or {}))
+        )
+        for dimension in dimension_keys:
+            child_label = str(((child_diag.get("regime_pack") or {}).get(dimension) or {}).get("worst_label") or "")
+            parent_label = str(((parent_diag.get("regime_pack") or {}).get(dimension) or {}).get("worst_label") or "")
+            if child_label and child_label != parent_label:
+                regime_changes[dimension] = {"parent": parent_label, "child": child_label}
         delta = {
             "pre_audit_return_delta": _delta(
                 child_summary.get("pre_audit_canonical_total_return"),
@@ -1746,17 +1806,8 @@ class LineageStore:
                 (child_diag.get("drawdown_pack") or {}).get("drawdown"),
                 (parent_diag.get("drawdown_pack") or {}).get("drawdown"),
             ),
+            "regime_changes": regime_changes,
         }
-        regime_changes: dict[str, dict[str, str]] = {}
-        dimension_keys = sorted(
-            set(child_diag.get("regime_pack") or {}).union(set(parent_diag.get("regime_pack") or {}))
-        )
-        for dimension in dimension_keys:
-            child_label = str(((child_diag.get("regime_pack") or {}).get(dimension) or {}).get("worst_label") or "")
-            parent_label = str(((parent_diag.get("regime_pack") or {}).get(dimension) or {}).get("worst_label") or "")
-            if child_label and child_label != parent_label:
-                regime_changes[dimension] = {"parent": parent_label, "child": child_label}
-        delta["regime_changes"] = regime_changes
         return {key: value for key, value in delta.items() if value not in ({}, None)}
 
     def _artifact_payload(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -1806,16 +1857,16 @@ class LineageStore:
     def _behavior_pack(self, trade_episodes: list[dict[str, Any]]) -> dict[str, Any]:
         if not trade_episodes:
             return {}
-        bars = [
-            float(episode.get("bars"))
-            for episode in trade_episodes
-            if _safe_float(episode.get("bars"), default=-1.0) >= 0.0
-        ]
-        returns = [
-            float(episode.get("total_return"))
-            for episode in trade_episodes
-            if episode.get("total_return") is not None
-        ]
+        bars: list[float] = []
+        for episode in trade_episodes:
+            bars_val = _safe_float(episode.get("bars"), default=-1.0)
+            if bars_val is not None and bars_val >= 0.0:
+                bars.append(bars_val)
+        returns: list[float] = []
+        for episode in trade_episodes:
+            total_return = episode.get("total_return")
+            if total_return is not None:
+                returns.append(float(total_return))
         start_times = [
             timestamp
             for episode in trade_episodes
@@ -1934,13 +1985,14 @@ class LineageStore:
         median_gap_hours = _safe_float(behavior_pack.get("median_gap_hours"), default=-1.0)
         median_holding_bars = _safe_float(behavior_pack.get("median_holding_bars"), default=-1.0)
         flip_rate = _safe_float(behavior_pack.get("flip_rate"), default=-1.0)
-        if 0.0 <= trade_count <= 2.0:
+        if trade_count is not None and 0.0 <= trade_count <= 2.0:
             tags.append("few_trades")
-        if trade_count <= 3.0 and median_gap_hours >= 72.0:
+        if (trade_count is not None and trade_count <= 3.0
+                and median_gap_hours is not None and median_gap_hours >= 72.0):
             tags.append("sparse_entries")
-        if flip_rate >= 0.5:
+        if flip_rate is not None and flip_rate >= 0.5:
             tags.append("overtrading")
-        if 0.0 <= median_holding_bars <= 6.0:
+        if median_holding_bars is not None and 0.0 <= median_holding_bars <= 6.0:
             tags.append("very_short_holds")
 
         regime_tag_map = {
@@ -2075,13 +2127,16 @@ class LineageStore:
 
     def _objective_vector(self, row: dict[str, Any]) -> tuple[float, float, float]:
         summary = row.get("summary") or {}
+        aggregate = _safe_float(row.get("aggregate_score"))
+        holdout = _safe_float(
+            summary.get("holdout_total_return"),
+            default=_safe_float(summary.get("median_total_return")),
+        )
+        sharpe = _safe_float(summary.get("median_sharpe"))
         return (
-            _safe_float(row.get("aggregate_score")),
-            _safe_float(
-                summary.get("holdout_total_return"),
-                default=_safe_float(summary.get("median_total_return")),
-            ),
-            _safe_float(summary.get("median_sharpe")),
+            aggregate if aggregate is not None else 0.0,
+            holdout if holdout is not None else 0.0,
+            sharpe if sharpe is not None else 0.0,
         )
 
     def _dominates(
