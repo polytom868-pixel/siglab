@@ -1,22 +1,23 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from siglab.evaluator.compile import compile_spec
 from siglab.families import family_prompt_module
 from siglab.io_utils import json_clone, write_json
-from siglab.llm import ClaudeClient
+from siglab.llm import ClaudeClient, LLMProviderError
 from siglab.schemas import SignalSpec
-from siglab.orchestration.contracts import conformance_violations
+from siglab.orchestration.contracts import PlannerOutput, PreflightResult, conformance_violations
 from siglab.orchestration.trials import build_spec_patch, summarize_patch
 from siglab.research import HypothesisSandbox
 from siglab.search.mutate import SpecMutator
 from siglab.strategy_semantics import motif_signature
-from siglab.workspace.cards import dump_yaml_block, parse_frontmatter
+from siglab.workspace.cards import dump_yaml_block
 from siglab.workspace.builder import WorkspaceSession
 
 
@@ -34,32 +35,6 @@ class WriterResult:
     spec_after_patch_path: Path | None = None
     failure_reason: str | None = None
     failure_packet: dict[str, Any] | None = None
-
-
-@dataclass
-class PreflightResult:
-    parse_error: str | None
-    hard_issues: list[str]
-    conformance_issues: list[str]
-    gate_lint: dict[str, Any] | None
-    changed_fields: list[str]
-    harmless_changed_fields: list[str]
-    material_changed_fields: list[str]
-    validated_payload: dict[str, Any] | None
-
-    @property
-    def material_drift(self) -> bool:
-        return bool(self.material_changed_fields)
-
-    @property
-    def acceptable(self) -> bool:
-        return (
-            self.parse_error is None
-            and not self.hard_issues
-            and not self.conformance_issues
-            and not self.material_drift
-            and self.validated_payload is not None
-        )
 
 
 class SpecWriterRunner:
@@ -209,7 +184,7 @@ class SpecWriterRunner:
                     thinking_override="disabled",
                     stage="writer",
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (json.JSONDecodeError, LLMProviderError, TypeError, ValueError) as exc:
                 parse_error = f"{type(exc).__name__}: {exc}"
 
             preflight = await self._preflight_spec(
@@ -294,7 +269,7 @@ class SpecWriterRunner:
             spec_payload = fallback_payload
         else:
             spec_payload = final_payload
-            spec_path = iteration_paths["spec_json_path"]
+            spec_path = cast(Path, iteration_paths["spec_json_path"])
             write_json(spec_path, spec_payload)
             if repair_packet_path.exists():
                 repair_packet_path.unlink()
@@ -305,8 +280,9 @@ class SpecWriterRunner:
                 target_payload=spec_payload,
             )
             patch_summary = summarize_patch(patch_payload)
-            write_json(iteration_paths["spec_patch_path"], patch_payload)
-            spec_after_patch_path = iteration_paths["spec_after_patch_path"]
+            spec_patch_path = cast(Path, iteration_paths["spec_patch_path"])
+            write_json(spec_patch_path, patch_payload)
+            spec_after_patch_path = cast(Path, iteration_paths["spec_after_patch_path"])
             spec_after_patch_path.write_text(dump_yaml_block(spec_payload) + "\n")
             if repair_packet_path.exists():
                 repair_packet_path.unlink()
@@ -397,7 +373,7 @@ class SpecWriterRunner:
         track: str,
         parent: Any,
         target_family: str,
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
         allowed_families: list[str],
         allowed_features_by_family: dict[str, list[str]],
         family_defaults: dict[str, Any],
@@ -430,7 +406,7 @@ class SpecWriterRunner:
             hard_issues.append(f"missing required top-level keys: {', '.join(missing_keys)}")
         try:
             raw_spec = SignalSpec.from_dict(payload)
-        except Exception as exc:  # noqa: BLE001
+        except (KeyError, TypeError, ValueError) as exc:
             hard_issues.append(f"spec schema parse failed: {type(exc).__name__}: {exc}")
             return PreflightResult(
                 parse_error=None,
@@ -462,7 +438,7 @@ class SpecWriterRunner:
                 allowed_features_by_family=allowed_features_by_family,
                 family_defaults=family_defaults,
             )
-        except Exception as exc:  # noqa: BLE001
+        except (KeyError, TypeError, ValueError) as exc:
             hard_issues.append(f"validator rejected spec: {type(exc).__name__}: {exc}")
             return PreflightResult(
                 parse_error=None,
@@ -534,7 +510,7 @@ class SpecWriterRunner:
         self,
         *,
         target_family: str,
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
         payload: dict[str, Any] | None,
         preflight: PreflightResult,
     ) -> dict[str, Any]:
@@ -633,7 +609,7 @@ class SpecWriterRunner:
         policy_surface_path: Path,
         cookbook_paths: list[Path],
         spec_schema_path: Path,
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
         base_spec_payload: dict[str, Any],
         evidence_paths: list[str],
         planner_regime_gates: dict[str, Any],
@@ -724,7 +700,7 @@ class SpecWriterRunner:
         self,
         *,
         family: str,
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
         research_note_path: Path,
         base_spec_payload: dict[str, Any],
     ) -> dict[str, Any]:
@@ -751,8 +727,26 @@ class SpecWriterRunner:
     def _spec_hash(self, payload: dict[str, Any]) -> str | None:
         try:
             return SignalSpec.from_dict(payload).strategy_hash()
-        except Exception:
+        except (KeyError, TypeError, ValueError):
             return None
+
+    def _parse_frontmatter_safe(self, text: str) -> dict[str, Any]:
+        stripped = text.lstrip()
+        if not stripped.startswith("---\n"):
+            return {}
+        _, remainder = stripped.split("---\n", 1)
+        frontmatter_blob, separator, _body = remainder.partition("\n---\n")
+        if not separator:
+            return {}
+        try:
+            yaml_module = cast(Any, importlib.import_module("yaml"))
+        except ImportError:
+            return {}
+        try:
+            parsed = yaml_module.safe_load(frontmatter_blob) or {}
+        except getattr(yaml_module, "YAMLError", ValueError):
+            return {}
+        return dict(parsed) if isinstance(parsed, dict) else {}
 
     def _writer_max_tokens(self) -> int:
         provider = str(getattr(self.settings, "llm_provider", "") or "").strip().lower()
@@ -776,29 +770,25 @@ class SpecWriterRunner:
         research_note_text: str,
         families: list[str],
         parent: Any,
-    ) -> dict[str, Any]:
+    ) -> PlannerOutput:
         if planner_contract_path and planner_contract_path.exists():
             try:
                 payload = json.loads(planner_contract_path.read_text())
-            except Exception:  # noqa: BLE001
+            except json.JSONDecodeError:
                 payload = {}
             if isinstance(payload, dict):
                 contract = dict(payload)
                 note_family = self._family_from_note(research_note_text=research_note_text, families=families)
                 if note_family:
                     contract["target_family"] = note_family
-                return contract
-        note_frontmatter: dict[str, Any]
-        try:
-            note_frontmatter, _body = parse_frontmatter(research_note_text)
-        except Exception:
-            note_frontmatter = {}
-        return {
+                return cast(PlannerOutput, contract)
+        note_frontmatter = self._parse_frontmatter_safe(research_note_text)
+        return cast(PlannerOutput, {
             "target_family": str(note_frontmatter.get("target_family") or parent.family),
-            "target_trade_style": note_frontmatter.get("target_trade_style"),
-            "must_answer": note_frontmatter.get("must_answer"),
-            "core_hypothesis": note_frontmatter.get("core_hypothesis"),
-            "informative_test": note_frontmatter.get("informative_test"),
+            "target_trade_style": str(note_frontmatter.get("target_trade_style") or "") or None,
+            "must_answer": str(note_frontmatter.get("must_answer") or ""),
+            "core_hypothesis": str(note_frontmatter.get("core_hypothesis") or ""),
+            "informative_test": str(note_frontmatter.get("informative_test") or ""),
             "required_feature_roles": list(note_frontmatter.get("required_feature_roles") or []),
             "required_features": list(note_frontmatter.get("required_features") or []),
             "forbidden_features": list(note_frontmatter.get("forbidden_features") or []),
@@ -808,12 +798,12 @@ class SpecWriterRunner:
             "planner_regime_gates": self._dict_or_empty(
                 note_frontmatter.get("planner_regime_gates") or note_frontmatter.get("regime_gates")
             ),
-            "required_variation_axis": note_frontmatter.get("required_variation_axis"),
+            "required_variation_axis": str(note_frontmatter.get("required_variation_axis") or "") or None,
             "banned_motif_signatures": list(note_frontmatter.get("banned_motif_signatures") or []),
             "writer_inputs": list(note_frontmatter.get("writer_inputs") or []),
             "evidence_paths": list(note_frontmatter.get("evidence_paths") or []),
             "tracking_tags": list(note_frontmatter.get("tracking_tags") or []),
-        }
+        })
 
     def _family_from_note(self, *, research_note_text: str, families: list[str]) -> str | None:
         escaped = "|".join(re.escape(family) for family in families)
@@ -826,6 +816,7 @@ class SpecWriterRunner:
             match = re.search(pattern, research_note_text)
             if not match:
                 continue
+            assert match.lastindex is not None
             family = match.group(match.lastindex)
             if family:
                 return family
@@ -844,7 +835,7 @@ class SpecWriterRunner:
         self,
         *,
         payload: dict[str, Any],
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
     ) -> dict[str, Any]:
         planner_regime_gates = self._dict_or_empty(
             planner_contract.get("planner_regime_gates") or planner_contract.get("regime_gates")
@@ -880,13 +871,15 @@ class SpecWriterRunner:
             if expected_match.get("min") is None and expected_match.get("max") is None:
                 rewritten_entries.append(gate)
                 continue
-            rewritten = {
+            rewritten: dict[str, object] = {
                 "expression": gate_expression,
             }
-            if expected_match.get("min") is not None:
-                rewritten["min"] = expected_match.get("min")
-            if expected_match.get("max") is not None:
-                rewritten["max"] = expected_match.get("max")
+            min_val = expected_match.get("min")
+            if min_val is not None:
+                rewritten["min"] = min_val
+            max_val = expected_match.get("max")
+            if max_val is not None:
+                rewritten["max"] = max_val
             rewritten_entries.append(rewritten)
         regime_gates["entry"] = rewritten_entries
         normalized["regime_gates"] = regime_gates
@@ -976,7 +969,7 @@ class SpecWriterRunner:
                 self.hypothesis_sandbox.provider,
                 spec,
             )
-        except Exception as exc:  # noqa: BLE001
+        except (KeyError, RuntimeError, TypeError, ValueError) as exc:
             return {
                 "ok": False,
                 "error": f"compile_failed: {type(exc).__name__}: {exc}",

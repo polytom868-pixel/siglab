@@ -4,13 +4,13 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
 from siglab.io_utils import read_json_if_exists, write_json
 from siglab.llm import ClaudeClient, ClaudeTool
-from siglab.orchestration.contracts import extract_embedded_yaml_block
+from siglab.orchestration.contracts import PlannerOutput, extract_embedded_yaml_block
 from siglab.research import HypothesisSandbox, WebResearcher
 from siglab.strategy_semantics import supports_explicit_trade_style
 from siglab.tools import (
@@ -114,7 +114,7 @@ class ResearchPlannerRunner:
         attempts: list[dict[str, Any]] = []
         next_repair_feedback = dict(repair_feedback or {}) if repair_feedback is not None else None
         final_note = ""
-        final_contract: dict[str, Any] = {}
+        final_contract: PlannerOutput = {}
         final_raw_content = ""
         final_raw_frontmatter: dict[str, Any] = {}
         final_yaml_fragments: list[dict[str, Any]] = []
@@ -290,7 +290,7 @@ class ResearchPlannerRunner:
             research_note_path=research_note_path,
             planner_contract_path=planner_contract_path,
             trace_path=trace_path,
-            frontmatter=final_contract,
+            frontmatter=cast("dict[str, Any]", final_contract),
             tool_refs=tool_refs,
             evidence_paths=evidence_paths,
             repaired=repaired,
@@ -770,11 +770,11 @@ class ResearchPlannerRunner:
                 universe=list(parent.universe.basis_groups),
                 bundle_id=str(market_bundle.get("bundle_id") or ""),
                 arguments=arguments,
-                result=dict(result or {}),
+                result=dict(result) if isinstance(result, dict) else {},
                 tracking_tags=[parent.family, tool.name],
             )
             tool_refs.append(probe_ref)
-            enriched = dict(result or {})
+            enriched = dict(result) if isinstance(result, dict) else {}
             enriched["workspace_probe_ref"] = probe_ref
             return enriched
 
@@ -817,16 +817,16 @@ class ResearchPlannerRunner:
         current_state: dict[str, Any],
         tool_refs: list[str],
         session: WorkspaceSession,
-    ) -> dict[str, Any]:
+    ) -> PlannerOutput:
         contract = self._fallback_contract(
             parent=parent,
             current_state=current_state,
             tool_refs=tool_refs,
         )
         explicit_keys = self._explicit_contract_keys(raw_frontmatter, yaml_fragments)
-        contract = self._merge_hint_fragment(contract, raw_frontmatter)
+        contract = cast(PlannerOutput, self._merge_hint_fragment(contract, raw_frontmatter))
         for fragment in yaml_fragments:
-            contract = self._merge_hint_fragment(contract, fragment)
+            contract = cast(PlannerOutput, self._merge_hint_fragment(contract, fragment))
 
         note_body_text = note_body if note_body.strip() else note_text
         body_family = self._body_family_override(note_body_text, session.families)
@@ -982,9 +982,9 @@ class ResearchPlannerRunner:
 
     def _merge_hint_fragment(
         self,
-        base: dict[str, Any],
+        base: dict[str, Any] | PlannerOutput,
         fragment: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | PlannerOutput:
         merged = dict(base)
         if not isinstance(fragment, dict):
             return merged
@@ -1033,6 +1033,7 @@ class ResearchPlannerRunner:
             match = re.search(pattern, text)
             if not match:
                 continue
+            assert match.lastindex is not None
             family = match.group(match.lastindex)
             if family:
                 return family
@@ -1108,7 +1109,7 @@ class ResearchPlannerRunner:
         self,
         *,
         note_text: str,
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
     ) -> list[str]:
         stripped = note_text.strip()
         issues: list[str] = []
@@ -1194,7 +1195,7 @@ class ResearchPlannerRunner:
 
     def _merge_trace_tool_usage(
         self,
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
         *,
         trace: dict[str, Any],
     ) -> None:
@@ -1228,7 +1229,7 @@ class ResearchPlannerRunner:
         parent: Any,
         current_state: dict[str, Any],
         tool_refs: list[str],
-    ) -> dict[str, Any]:
+    ) -> PlannerOutput:
         target_family = parent.family
         return {
             "decision": "refine_current_family",
@@ -1323,7 +1324,7 @@ class ResearchPlannerRunner:
         raw_content: str,
         raw_frontmatter: dict[str, Any],
         yaml_fragments: list[dict[str, Any]],
-        planner_contract: dict[str, Any],
+        planner_contract: PlannerOutput,
         tool_refs: list[str],
         initial_repair_feedback: dict[str, Any] | None,
         attempts: list[dict[str, Any]],
@@ -1408,7 +1409,7 @@ class ResearchPlannerRunner:
             "manifests/policy_surface.md",
         ]
 
-    def _concretize_must_answer(self, contract: dict[str, Any]) -> str:
+    def _concretize_must_answer(self, contract: dict[str, Any] | PlannerOutput) -> str:
         must_answer = str(contract.get("must_answer") or "").strip()
         feature_refs = self._string_list(contract.get("required_features"))
         gate_dims = self._string_list(contract.get("required_gate_dimensions"))
