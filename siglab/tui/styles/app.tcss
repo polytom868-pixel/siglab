@@ -1,0 +1,126 @@
+/* SigLab TUI — Main App Layout
+ *
+ * Defines the navigation sidebar + content area + status bar layout.
+ * Theme colors are defined inline as CSS variables.
+ */
+
+/* === Primitive Color Variables === */
+$bg: #000000;
+$surface: #0d1210;
+$surface-raised: #162019;
+$text-primary: #e2ebe5;
+$text-secondary: #a3b5a8;
+$text-muted: #6b7f70;
+$accent-green: #4ade80;
+$warning-yellow: #f0b456;
+$error-red: #f87171;
+$info-blue: #60a5fa;
+$border-dim: #2a3a30;
+$border-focus: #4ade80;
+
+/* === Screen Layout === */
+Screen {
+    layout: horizontal;
+}
+
+/* === Navigation Sidebar === */
+#nav-sidebar {
+    width: 24;
+    min-width: 20;
+    max-width: 30;
+    height: 100%;
+    background: $surface;
+    border-right: solid $border-dim;
+    overflow-y: auto;
+}
+
+#nav-title {
+    height: 3;
+    content-align: center middle;
+    background: $surface-raised;
+    color: $accent-green;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#nav-list {
+    margin: 0;
+    padding: 0;
+}
+
+.nav-item {
+    height: 3;
+    padding: 0 2;
+    content-align: left middle;
+    color: $text-secondary;
+}
+
+.nav-item:hover {
+    background: $surface-raised;
+    color: $text-primary;
+}
+
+.nav-item.-active {
+    background: $accent-green;
+    color: $bg;
+    text-style: bold;
+}
+
+.nav-item.-highlighted {
+    background: $surface-raised;
+    color: $text-primary;
+}
+
+/* === Main Content Area === */
+#content-area {
+    width: 1fr;
+    height: 100%;
+    background: $bg;
+}
+
+/* === Status Bar === */
+#status-bar {
+    dock: bottom;
+    height: 1;
+}
+
+/* === Placeholder Screen === */
+#placeholder-screen {
+    align: center middle;
+    height: 100%;
+    width: 100%;
+}
+
+#placeholder-text {
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* === Help Overlay === */
+#help-overlay {
+    align: center middle;
+    background: rgba(0, 0, 0, 0.85);
+}
+
+#help-dialog {
+    width: 50;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: solid $border-dim;
+}
+
+#help-title {
+    text-style: bold;
+    color: $accent-green;
+    margin: 0 0 1 0;
+}
+
+.keybinding-key {
+    color: $info-blue;
+    text-style: bold;
+}
+
+.keybinding-desc {
+    color: $text-secondary;
+}
