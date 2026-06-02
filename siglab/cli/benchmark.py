@@ -12,7 +12,12 @@ from siglab.benchmark import (
     init_benchmark_deck,
     supported_deck_names,
 )
+from siglab.cli.helpers import require_sosovalue_config
 from siglab.config import load_settings
+from siglab.data import MarketDataProvider, ParquetLake
+from siglab.evaluator import ResearchEvaluator
+from siglab.llm import ClaudeClient
+from siglab.search import LineageStore, SpecMutator
 
 
 def add_subparser(subparsers) -> None:
@@ -45,22 +50,49 @@ def add_subparser(subparsers) -> None:
 
 
 def run_benchmark_init(args: argparse.Namespace) -> None:
-    init_benchmark_deck(
+    settings = load_settings()
+    settings.ensure_runtime_directories()
+    ancestry = LineageStore(settings.ancestry_db_path)
+    claude = ClaudeClient(settings)
+    mutator = SpecMutator(settings, claude)
+    payload = init_benchmark_deck(
+        settings=settings,
+        ancestry=ancestry,
+        mutator=mutator,
         deck_name=str(args.deck),
-        agent_label=str(args.agent_label),
+        runner_label=str(
+            getattr(args, "agent_label", None)
+            or getattr(args, "runner_label", None)
+            or "external_agent"
+        ),
         run_label=args.run_label,
         force=bool(args.force),
     )
-    print(f"benchmark deck initialized: {args.deck}")
+    print(json.dumps(payload, indent=2))
 
 
 async def run_benchmark_eval(args: argparse.Namespace) -> None:
     settings = load_settings()
-    await evaluate_benchmark_deck(
-        settings=settings,
-        deck_name=str(args.deck),
-    )
-    print(f"benchmark evaluation complete: {args.deck}")
+    require_sosovalue_config(settings)
+    settings.ensure_runtime_directories()
+    lake = ParquetLake(settings.data_lake_dir)
+    provider = MarketDataProvider(settings, lake)
+    ancestry = LineageStore(settings.ancestry_db_path)
+    claude = ClaudeClient(settings)
+    mutator = SpecMutator(settings, claude)
+    evaluator = ResearchEvaluator(settings, provider)
+    try:
+        payload = await evaluate_benchmark_deck(
+            settings=settings,
+            ancestry=ancestry,
+            mutator=mutator,
+            evaluator=evaluator,
+            provider=provider,
+            deck_name=str(args.deck),
+        )
+    finally:
+        await provider.close()
+    print(json.dumps(payload, indent=2))
 
 
 def run_benchmark_status(args: argparse.Namespace) -> None:
