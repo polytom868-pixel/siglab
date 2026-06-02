@@ -14,7 +14,7 @@ import httpx
 from siglab.llm_metadata import (
     resolve_llm_api_key,
     resolve_llm_base_url,
-    resolve_llm_model,
+    resolve_llm_model,  # noqa: F401 — re-exported for test mocking
     resolve_llm_provider,
     resolve_llm_thinking_mode,
 )
