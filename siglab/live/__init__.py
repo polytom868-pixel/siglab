@@ -2,6 +2,15 @@ from siglab.live.exporter import (
     LiveDeploymentManager,
     deployment_readiness,
 )
+from siglab.live.paper_client import (
+    PaperClientError,
+    PaperOrderStatus,
+    PaperOrderSide,
+    PaperOrderType,
+    PaperTimeInForce,
+    PaperSessionNotFoundError,
+    SoDEXPaperPerpsClient,
+)
 from siglab.live.runtime import DirectionalPerpsSigLabStrategy
 from siglab.live.sodex_client import (
     SoDEXError,
@@ -52,6 +61,13 @@ from siglab.live.sodex_ws import (
 __all__ = [
     "DirectionalPerpsSigLabStrategy",
     "LiveDeploymentManager",
+    "PaperClientError",
+    "PaperOrderStatus",
+    "PaperOrderSide",
+    "PaperOrderType",
+    "PaperTimeInForce",
+    "PaperSessionNotFoundError",
+    "SoDEXPaperPerpsClient",
     "SoDEXError",
     "SoDEXFormatError",
     "SoDEXPublicPerpsClient",

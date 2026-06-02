@@ -28,6 +28,8 @@ from siglab.evaluator import ResearchEvaluator
 from siglab.hardening_profile import build_profile, profile_as_text, strict_failure_count
 from siglab.io_utils import write_json
 from siglab.live import LiveDeploymentManager
+from siglab.live.paper_client import PaperClientError, SoDEXPaperPerpsClient
+from siglab.data.sodex_feeds import SoDEXFeeds
 from siglab.live.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SODEX_WEIGHT_BUDGET_PER_MINUTE
 from siglab.live.sodex_ws import SoDEXWebSocketClient, SoDEXWebSocketError
 from siglab.live.sodex_signing import (
@@ -388,6 +390,21 @@ def main() -> None:
     telemetry_parser.add_argument("--run-session-id", default=None)
     telemetry_parser.add_argument("--json", action="store_true")
 
+    # ---- Paper trading subcommands ----------------------------------------
+    paper_start_parser = subparsers.add_parser(
+        "paper-start",
+        help="Create a new paper trading session.",
+    )
+    paper_start_parser.add_argument("--session", default=None, help="Optional label for the session.")
+    paper_start_parser.add_argument("--sessions-dir", default=None, help="Directory for .npy session files.")
+
+    paper_status_parser = subparsers.add_parser(
+        "paper-status",
+        help="Show paper trading session status.",
+    )
+    paper_status_parser.add_argument("--session", required=True, help="Session ID.")
+    paper_status_parser.add_argument("--sessions-dir", default=None, help="Directory for .npy session files.")
+
     args = parser.parse_args()
     if args.command == "run":
         asyncio.run(run_command(args))
@@ -464,6 +481,12 @@ def main() -> None:
         return
     if args.command == "telemetry-report":
         telemetry_report_command(args)
+        return
+    if args.command == "paper-start":
+        asyncio.run(paper_start_command(args))
+        return
+    if args.command == "paper-status":
+        asyncio.run(paper_status_command(args))
         return
 
 
@@ -3992,6 +4015,41 @@ def _append_policy_delta(
         values.append(float(frozen_policy[key]) - float(proposed_policy[key]))
     except (TypeError, ValueError):
         return
+
+
+# ---------------------------------------------------------------------------
+# Paper trading command handlers
+# ---------------------------------------------------------------------------
+
+
+async def paper_start_command(args: argparse.Namespace) -> None:
+    """Create a new paper trading session."""
+    from siglab.config import load_settings
+
+    settings = load_settings()
+    sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
+    lake = ParquetLake(settings.root_dir / "data" / "cache")
+    feeds = SoDEXFeeds(lake=lake)
+    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
+    session_id = client.create_session(name=args.session)
+    print(json.dumps({"session_id": session_id, "name": args.session or session_id}))
+
+
+async def paper_status_command(args: argparse.Namespace) -> None:
+    """Show paper trading session status."""
+    from siglab.config import load_settings
+
+    settings = load_settings()
+    sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
+    lake = ParquetLake(settings.root_dir / "data" / "cache")
+    feeds = SoDEXFeeds(lake=lake)
+    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
+    try:
+        status = client.get_session_status(args.session)
+        print(json.dumps(status, indent=2, default=str))
+    except PaperClientError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
