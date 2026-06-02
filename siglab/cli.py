@@ -405,6 +405,16 @@ def main() -> None:
     paper_status_parser.add_argument("--session", required=True, help="Session ID.")
     paper_status_parser.add_argument("--sessions-dir", default=None, help="Directory for .npy session files.")
 
+    paper_promote_parser = subparsers.add_parser(
+        "paper-promote",
+        help="Check paper session promotion eligibility and promote if eligible.",
+    )
+    paper_promote_parser.add_argument("--session", required=True, help="Session ID.")
+    paper_promote_parser.add_argument("--sessions-dir", default=None, help="Directory for .npy session files.")
+    paper_promote_parser.add_argument("--threshold", type=float, default=None, help="Promotion score threshold.")
+    paper_promote_parser.add_argument("--consecutive-days", type=int, default=None, help="Required consecutive days above threshold.")
+    paper_promote_parser.add_argument("--min-trading-days", type=int, default=None, help="Minimum trading days required.")
+
     args = parser.parse_args()
     if args.command == "run":
         asyncio.run(run_command(args))
@@ -487,6 +497,9 @@ def main() -> None:
         return
     if args.command == "paper-status":
         asyncio.run(paper_status_command(args))
+        return
+    if args.command == "paper-promote":
+        asyncio.run(paper_promote_command(args))
         return
 
 
@@ -4049,6 +4062,83 @@ async def paper_status_command(args: argparse.Namespace) -> None:
         print(json.dumps(status, indent=2, default=str))
     except PaperClientError as exc:
         print(json.dumps({"error": str(exc)}, indent=2))
+        raise SystemExit(1)
+
+
+async def paper_promote_command(args: argparse.Namespace) -> None:
+    """Check paper session promotion eligibility and promote if eligible."""
+    from siglab.config import load_settings
+    from siglab.live.promotion import (
+        compute_composite_score,
+        extract_session_metrics,
+        extract_daily_metrics,
+        promotion_eligible,
+        DEFAULT_PROMOTION_THRESHOLD,
+        DEFAULT_CONSECUTIVE_DAYS,
+        DEFAULT_MIN_TRADING_DAYS,
+    )
+
+    settings = load_settings()
+    sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
+    lake = ParquetLake(settings.root_dir / "data" / "cache")
+    feeds = SoDEXFeeds(lake=lake)
+    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
+
+    try:
+        # Extract metrics
+        metrics = extract_session_metrics(client, args.session)
+        daily_metrics = extract_daily_metrics(client, args.session)
+
+        threshold = args.threshold or DEFAULT_PROMOTION_THRESHOLD
+        consecutive_days = args.consecutive_days or DEFAULT_CONSECUTIVE_DAYS
+        min_trading_days = args.min_trading_days or DEFAULT_MIN_TRADING_DAYS
+
+        # Compute overall composite score
+        composite = compute_composite_score(metrics)
+
+        # Check eligibility
+        eligible, reason = promotion_eligible(
+            daily_metrics,
+            threshold=threshold,
+            consecutive_days=consecutive_days,
+            min_trading_days=min_trading_days,
+        )
+
+        result = {
+            "promoted": eligible,
+            "reason": reason,
+            "composite_score": round(composite, 4),
+            "sub_scores": {
+                "pnl": round(metrics.get("total_return", 0), 4),
+                "sharpe": round(metrics.get("sharpe", 0), 4),
+                "win_rate": round(metrics.get("win_rate", 0), 4),
+                "drawdown": round(metrics.get("max_drawdown", 0), 4),
+            },
+            "trade_count": metrics.get("trade_count", 0),
+            "trading_days": len(daily_metrics),
+            "threshold": threshold,
+            "consecutive_days_required": consecutive_days,
+            "min_trading_days_required": min_trading_days,
+        }
+
+        print(json.dumps(result, indent=2, default=str))
+
+        if not eligible:
+            raise SystemExit(1)
+
+    except PaperClientError as exc:
+        result = {
+            "promoted": False,
+            "reason": str(exc),
+            "composite_score": 0.0,
+            "sub_scores": {},
+            "trade_count": 0,
+            "trading_days": 0,
+            "threshold": args.threshold or DEFAULT_PROMOTION_THRESHOLD,
+            "consecutive_days_required": args.consecutive_days or DEFAULT_CONSECUTIVE_DAYS,
+            "min_trading_days_required": args.min_trading_days or DEFAULT_MIN_TRADING_DAYS,
+        }
+        print(json.dumps(result, indent=2, default=str))
         raise SystemExit(1)
 
 
