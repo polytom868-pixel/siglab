@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import asyncio
 import unittest
 from types import SimpleNamespace
@@ -8,6 +7,7 @@ from unittest.mock import AsyncMock
 
 from siglab.data.sosovalue_client import (
     SoSoValueApiError,
+    SoSoValueAuthError,
     SoSoValueClient,
     SoSoValueConfigError,
     SoSoValueRateLimitError,
@@ -320,17 +320,249 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(SoSoValueTransportError):
             await client.etf_historical_inflow()
 
-    @unittest.skipUnless(os.getenv("SOSOVALUE_API_KEY"), "SOSOVALUE_API_KEY not set")
-    async def test_live_api_smoke_fetches_at_least_one_etf_row(self) -> None:
-        client = SoSoValueClient(api_key=os.environ["SOSOVALUE_API_KEY"])
-        try:
-            rows = await client.etf_historical_inflow()
-        finally:
-            await client.close()
-        self.assertIsInstance(rows, list)
-        self.assertGreater(len(rows), 0)
-        self.assertIn("date", rows[0])
-        self.assertIn("totalNetInflow", rows[0])
+    async def test_client_raises_auth_error_on_401(self) -> None:
+        """401 response raises SoSoValueAuthError (VAL-DATA-012)."""
+        http_client = SimpleNamespace(
+            request=AsyncMock(return_value=_FakeResponse({"code": 0}, status_code=401))
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        with self.assertRaises(SoSoValueAuthError):
+            await client.etf_historical_inflow()
+
+    async def test_client_retries_on_5xx(self) -> None:
+        """5xx response triggers retry up to configured limit (VAL-DATA-019)."""
+        http_client = SimpleNamespace(
+            request=AsyncMock(return_value=_FakeResponse({"code": 0}, status_code=502))
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=2)
+
+        with self.assertRaises(SoSoValueApiError):
+            await client.etf_historical_inflow()
+
+        self.assertEqual(http_client.request.await_count, 3)  # initial + 2 retries
+
+    async def test_client_raises_upstream_format_on_invalid_envelope(self) -> None:
+        """Response with non-zero code field raises SoSoValueUpstreamFormatError (VAL-DATA-020)."""
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse({"code": 40001, "msg": "bad request", "data": []})
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        with self.assertRaises(SoSoValueUpstreamFormatError):
+            await client.etf_historical_inflow()
+
+    async def test_client_raises_upstream_format_on_missing_code_field(self) -> None:
+        """Response without code field raises SoSoValueUpstreamFormatError when data is unexpected type."""
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse({"data": "not_an_object_or_list"})
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        with self.assertRaises(SoSoValueUpstreamFormatError):
+            await client.etf_historical_inflow()
+
+    async def test_endpoint_metrics_updated_after_successful_call(self) -> None:
+        """Successful request updates endpoint metrics (VAL-DATA-018)."""
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse(
+                    {
+                        "code": 0,
+                        "data": {
+                            "list": [
+                                {
+                                    "date": "2026-01-01",
+                                    "totalNetInflow": 123.4,
+                                    "totalValueTraded": 456.7,
+                                    "totalNetAssets": 890.1,
+                                    "cumNetInflow": 234.5,
+                                }
+                            ]
+                        },
+                    }
+                )
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        await client.etf_historical_inflow()
+
+        metrics = client.metrics_snapshot()
+        self.assertIn("endpoints", metrics)
+        self.assertIn("etf.historical_inflow", metrics["endpoints"])
+        ep = metrics["endpoints"]["etf.historical_inflow"]
+        self.assertGreater(ep["attempts"], 0)
+        self.assertGreater(ep["successes"], 0)
+        self.assertIsNotNone(ep["p50_ms"])
+
+    async def test_currency_market_snapshot_parses_object(self) -> None:
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse(
+                    {
+                        "code": 0,
+                        "data": {
+                            "price": 458.0,
+                            "change_pct_24h": -0.12,
+                            "marketcap": 98187284636.4,
+                            "marketcap_rank": 4,
+                        },
+                    }
+                )
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        snapshot = await client.currency_market_snapshot("bitcoin")
+
+        self.assertEqual(snapshot["price"], 458.0)
+        self.assertEqual(snapshot["marketcap_rank"], 4)
+        call = http_client.request.await_args
+        self.assertEqual(call.args[0], "GET")
+        self.assertIn("/currencies/bitcoin/market-snapshot", call.args[1])
+
+    async def test_currency_market_snapshot_rejects_non_object_data(self) -> None:
+        http_client = SimpleNamespace(
+            request=AsyncMock(return_value=_FakeResponse({"code": 0, "data": []}))
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        with self.assertRaises(SoSoValueUpstreamFormatError):
+            await client.currency_market_snapshot("bitcoin")
+
+    async def test_currency_klines_returns_rows(self) -> None:
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse(
+                    {
+                        "code": 0,
+                        "data": [
+                            {
+                                "timestamp": 1710000000000,
+                                "open": 123,
+                                "high": 130,
+                                "low": 120,
+                                "close": 125,
+                                "volume": 100000,
+                            }
+                        ],
+                    }
+                )
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        rows = await client.currency_klines("bitcoin", limit=10)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["close"], 125)
+        call = http_client.request.await_args
+        self.assertEqual(call.args[0], "GET")
+        self.assertIn("/currencies/bitcoin/klines", call.args[1])
+        self.assertEqual(call.kwargs["params"]["interval"], "1d")
+        self.assertEqual(call.kwargs["params"]["limit"], 10)
+
+    async def test_currency_klines_rejects_invalid_interval(self) -> None:
+        client = SoSoValueClient(api_key="test-key", retries=0)
+
+        with self.assertRaises(SoSoValueConfigError):
+            await client.currency_klines("bitcoin", interval="1h")
+
+    async def test_etf_list_returns_rows(self) -> None:
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse(
+                    {
+                        "code": 0,
+                        "data": [
+                            {"ticker": "IBIT", "name": "iShares Bitcoin Trust", "exchange": "NYSE"}
+                        ],
+                    }
+                )
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        rows = await client.etf_list(symbol="BTC", country_code="US")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["ticker"], "IBIT")
+        call = http_client.request.await_args
+        self.assertEqual(call.args[0], "GET")
+        self.assertIn("/etfs", call.args[1])
+        self.assertEqual(call.kwargs["params"]["symbol"], "BTC")
+        self.assertEqual(call.kwargs["params"]["country_code"], "US")
+
+    async def test_etf_summary_history_returns_rows(self) -> None:
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse(
+                    {
+                        "code": 0,
+                        "data": [
+                            {
+                                "date": "2024-04-12",
+                                "total_net_inflow": -55066297.0,
+                                "total_value_traded": 4706120449.0,
+                                "total_net_assets": 56216535367.0,
+                                "cum_net_inflow": 13534833596.095,
+                            }
+                        ],
+                    }
+                )
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        rows = await client.etf_summary_history(symbol="BTC", country_code="US")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["total_net_inflow"], -55066297.0)
+        call = http_client.request.await_args
+        self.assertEqual(call.args[0], "GET")
+        self.assertIn("/etfs/summary-history", call.args[1])
+
+    async def test_etf_summary_history_validates_required_fields(self) -> None:
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse({"code": 0, "data": [{"date": "2024-04-12"}]})
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        with self.assertRaises(SoSoValueUpstreamFormatError):
+            await client.etf_summary_history(symbol="BTC", country_code="US")
+
+    async def test_etf_market_snapshot_parses_object(self) -> None:
+        http_client = SimpleNamespace(
+            request=AsyncMock(
+                return_value=_FakeResponse(
+                    {
+                        "code": 0,
+                        "data": {
+                            "date": "2024-04-12",
+                            "ticker": "IBIT",
+                            "net_inflow": 3000000,
+                            "net_assets": 5000000,
+                        },
+                    }
+                )
+            )
+        )
+        client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
+
+        snapshot = await client.etf_market_snapshot("IBIT")
+
+        self.assertEqual(snapshot["ticker"], "IBIT")
+        self.assertEqual(snapshot["net_inflow"], 3000000)
+        call = http_client.request.await_args
+        self.assertEqual(call.args[0], "GET")
+        self.assertIn("/etfs/IBIT/market-snapshot", call.args[1])
 
 
 class MarketDataGapAndCapabilityTests(unittest.IsolatedAsyncioTestCase):
