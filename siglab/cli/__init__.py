@@ -15,6 +15,7 @@ import asyncio
 # ── Backward-compatibility re-exports ──────────────────────────────────────
 # These allow existing code and tests to import symbols directly from siglab.cli.
 # New code should import from the specific submodule (e.g. siglab.cli.helpers).
+# ruff: noqa: F401 — all imports here are re-exports, not directly used in this file.
 
 # Helpers
 from siglab.cli.helpers import (
