@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class ParquetLake:
@@ -73,6 +76,65 @@ class ParquetLake:
         if datetime.fromtimestamp(latest.stat().st_mtime, tz=UTC) < cutoff:
             return None
         return latest
+
+    def prune(
+        self,
+        namespace: str,
+        key: str,
+        max_age_hours: float,
+    ) -> int:
+        """Remove cached files older than *max_age_hours* in a namespace/key.
+
+        Deletes ``.parquet`` and ``.json`` files whose modification time
+        is older than ``now - max_age_hours``.  Only files directly inside
+        the namespace/key directory are removed — sub-directories are
+        left untouched.
+
+        Returns the number of files removed.
+        """
+        target_dir = self._target_dir(namespace, key)
+        return self._prune_dir(target_dir, max_age_hours)
+
+    def prune_all(self, default_max_age_hours: float) -> int:
+        """Remove cached files older than *default_max_age_hours* across
+        every namespace/key directory in the lake.
+
+        Iterates through all first-level (namespace) and second-level
+        (key) directories and applies :meth:`prune` to each.
+
+        Returns the total number of files removed.
+        """
+        total = 0
+        if not self.root.is_dir():
+            return 0
+        for ns_dir in self.root.iterdir():
+            if not ns_dir.is_dir():
+                continue
+            for key_dir in ns_dir.iterdir():
+                if not key_dir.is_dir():
+                    continue
+                total += self._prune_dir(key_dir, default_max_age_hours)
+        return total
+
+    @staticmethod
+    def _prune_dir(target_dir: Path, max_age_hours: float) -> int:
+        """Remove stale ``.parquet`` / ``.json`` files under *target_dir*."""
+        if not target_dir.is_dir():
+            return 0
+        cutoff = datetime.now(UTC) - timedelta(hours=max_age_hours)
+        removed = 0
+        for path in list(target_dir.iterdir()):
+            if path.suffix not in (".parquet", ".json"):
+                continue
+            try:
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except OSError:
+                logger.warning("Could not stat %s, skipping", path)
+                continue
+            if mtime < cutoff:
+                path.unlink()
+                removed += 1
+        return removed
 
     def _target_dir(self, namespace: str, key: str) -> Path:
         return self.root / self._sanitize(namespace) / self._sanitize(key)
