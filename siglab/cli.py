@@ -272,6 +272,19 @@ def main() -> None:
     dashboard_parser.add_argument("--host", default="127.0.0.1")
     dashboard_parser.add_argument("--port", type=int, default=8765)
 
+    dashboard_start_parser = subparsers.add_parser(
+        "dashboard-start",
+        help="Start the FastAPI dashboard on port 3100.",
+    )
+    dashboard_start_parser.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
+    dashboard_start_parser.add_argument("--port", type=int, default=3100, help="Port (default: 3100)")
+    dashboard_start_parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    dashboard_stop_parser = subparsers.add_parser(
+        "dashboard-stop",
+        help="Stop the running FastAPI dashboard on port 3100.",
+    )
+    dashboard_stop_parser.add_argument("--port", type=int, default=3100, help="Port (default: 3100)")
+
     deploy_parser = subparsers.add_parser("deploy")
     deploy_parser.add_argument("--spec", required=True)
     deploy_parser.add_argument("--agent-id", default=None)
@@ -458,6 +471,12 @@ def main() -> None:
         return
     if args.command == "dashboard":
         dashboard_command(args)
+        return
+    if args.command == "dashboard-start":
+        dashboard_start_command(args)
+        return
+    if args.command == "dashboard-stop":
+        dashboard_stop_command(args)
         return
     if args.command == "deploy":
         asyncio.run(deploy_command(args))
@@ -3134,6 +3153,54 @@ def ancestry_command(args: argparse.Namespace) -> None:
 def dashboard_command(args: argparse.Namespace) -> None:
     settings = load_settings()
     run_dashboard_server(settings, host=args.host, port=args.port)
+
+
+def dashboard_start_command(args: argparse.Namespace) -> None:
+    """Start the FastAPI dashboard server on port 3100 (default)."""
+    import uvicorn
+
+    host = str(args.host)
+    port = int(args.port)
+    reload = bool(args.reload)
+
+    print(f"Starting SigLab FastAPI dashboard on http://{host}:{port}")
+    uvicorn.run(
+        "siglab.dashboard.app:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info",
+    )
+
+
+def dashboard_stop_command(args: argparse.Namespace) -> None:
+    """Stop the running FastAPI dashboard on the specified port."""
+    import os
+    import signal
+    import subprocess
+
+    port = int(args.port)
+    try:
+        result = subprocess.run(
+            f"lsof -ti :{port}",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        pids = [int(p) for p in result.stdout.strip().split() if p.strip()]
+        if not pids:
+            print(f"No process found on port {port}")
+            return
+        for pid in pids:
+            os.kill(pid, signal.SIGTERM)
+        print(f"Dashboard on port {port} stopped (PID(s): {pids})")
+    except subprocess.TimeoutExpired:
+        print(f"Timeout finding process on port {port}")
+    except ProcessLookupError:
+        print(f"Process on port {port} already terminated")
+    except Exception as exc:
+        print(f"Error stopping dashboard: {exc}")
 
 
 def clear_passed_command(args: argparse.Namespace) -> None:
