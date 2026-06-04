@@ -26,7 +26,6 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.css.query import NoMatches
-from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
@@ -37,21 +36,21 @@ from siglab.tui.formatting import (
     TEXT_MUTED,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
-    friendly_error,
     format_change,
     format_price,
     format_volume,
     safe_float,
 )
 from siglab.tui.loading import LoadingIndicator
+from siglab.tui.screens.base import BaseScreen
 from siglab.tui.types import SymbolEntry, TickerView, closes_from_klines
+from siglab.tui.widgets.base import FilterableListWidget
 from siglab.tui.widgets.sparkline import ohlc_summary, sparkline_text
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
 
-REFRESH_SECONDS = 30.0
 DEFAULT_SYMBOL = "BTC-USD"
 DEFAULT_INTERVAL = "1h"
 KLINES_LIMIT = 60
@@ -61,17 +60,13 @@ ORDERBOOK_LIMIT = 15
 # ── Symbol List Widget ───────────────────────────────────────────────
 
 
-class SymbolListWidget(Static):
-    """Vertical list of perp symbols with selection highlighting.
+class SymbolListWidget(FilterableListWidget):
+    """Vertical list of perp symbols with selection highlighting."""
 
-    Zero-copy: stores ``SymbolEntry`` views derived from ticker data.
-    Filtering produces a new list of references (no dict copies).
-    """
-
-    __slots__ = ("_all_symbols", "_filter_text")
+    __slots__ = ()
 
     symbols: reactive[list[SymbolEntry]] = reactive(list, layout=True)
-    selected_index: reactive[int] = reactive(0)
+    _items_reactive: ClassVar[str] = "symbols"
 
     DEFAULT_CSS = """
     SymbolListWidget {
@@ -83,11 +78,6 @@ class SymbolListWidget(Static):
         background: #0d1210;
     }
     """
-
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._all_symbols: tuple[SymbolEntry, ...] = ()
-        self._filter_text: str = ""
 
     @staticmethod
     def _to_symbol_entry(item: Any) -> SymbolEntry:
@@ -105,63 +95,26 @@ class SymbolListWidget(Static):
         return item  # type: ignore[return-value]
 
     def set_symbols(self, entries: Sequence[Any]) -> None:
-        """Update the full symbol list.
+        """Update the full symbol list."""
+        self.set_data([self._to_symbol_entry(e) for e in entries])
 
-        Accepts dicts or ``SymbolEntry`` objects.  Dicts are converted
-        to ``SymbolEntry`` views; existing entries are shared as-is.
-        """
-        self._all_symbols = tuple(self._to_symbol_entry(e) for e in entries)
-        self._apply_filter()
-
-    def _apply_filter(self) -> None:
-        """Filter symbols by the current search text.
-
-        Produces a new list of references to the same ``SymbolEntry``
-        objects — no entry data is copied.
-        """
+    def _matches(self, item: Any) -> bool:
         ft = self._filter_text.upper().strip()
-        if ft:
-            self.symbols = [
-                s for s in self._all_symbols
-                if ft in s.name.upper() or ft in s.symbol.upper()
-            ]
-        else:
-            self.symbols = list(self._all_symbols)
-        # Clamp selected index
-        if self.symbols and self.selected_index >= len(self.symbols):
-            self.selected_index = max(0, len(self.symbols) - 1)
+        if not ft:
+            return True
+        return ft in item.name.upper() or ft in item.symbol.upper()
 
-    def set_filter(self, text: str) -> None:
-        """Update the filter text."""
-        self._filter_text = text
-        self._apply_filter()
-
-    def render(self) -> Text:
-        if not self.symbols:
-            return Text("  No symbols", style=TEXT_MUTED)
-
-        lines = Text()
-        for i, sym in enumerate(self.symbols):
-            display = f"  {sym.name:<18}"
-            if i == self.selected_index:
-                lines.append(display, style=f"bold #000000 on {ACCENT_GREEN}")
-            else:
-                lines.append(display, style=TEXT_SECONDARY)
-            lines.append("\n")
-        return lines
-
-    def action_move_up(self) -> None:
-        if self.selected_index > 0:
-            self.selected_index -= 1
-
-    def action_move_down(self) -> None:
-        if self.selected_index < len(self.symbols) - 1:
-            self.selected_index += 1
+    def _render_item(self, item: Any, index: int, is_selected: bool) -> Text:
+        display = f"  {item.name:<18}"
+        if is_selected:
+            return Text(display, style=f"bold #000000 on {ACCENT_GREEN}")
+        return Text(display, style=TEXT_SECONDARY)
 
     def get_selected_symbol(self) -> str | None:
         """Return the symbol string of the currently selected item."""
-        if self.symbols and 0 <= self.selected_index < len(self.symbols):
-            return self.symbols[self.selected_index].name
+        items = self.symbols
+        if items and 0 <= self.selected_index < len(items):
+            return items[self.selected_index].name
         return None
 
 
@@ -386,7 +339,7 @@ class OrderBookWidget(Static):
 # ── Market Overview Screen ───────────────────────────────────────────
 
 
-class MarketScreen(Screen[None]):
+class MarketScreen(BaseScreen):
     """Market overview screen showing perp market data.
 
     Layout:
@@ -395,25 +348,18 @@ class MarketScreen(Screen[None]):
     - Right top: Klines chart (ASCII sparkline)
     - Right middle: Ticker table
     - Right bottom: Order book depth
-
-    Auto-refreshes every 30 seconds.
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "go_back", "Back", show=True),
+    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
         Binding("/", "focus_search", "Search", show=True),
-        Binding("j", "move_down", "Down", show=False),
-        Binding("k", "move_up", "Up", show=False),
         Binding("enter", "select_symbol", "Select", show=False),
-        Binding("r", "refresh_now", "Refresh", show=True),
-        Binding("ctrl+c", "go_back", "Back", show=False),
-        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
-    # Reactive state
     current_symbol: reactive[str] = reactive(DEFAULT_SYMBOL)
-    status_text: reactive[str] = reactive("Connecting…")
-    is_loading: reactive[bool] = reactive(True)
+
+    _loading_widget_id: ClassVar[str] = "#market-loading"
+    _status_widget_id: ClassVar[str] = "#market-status"
+    _refresh_interval: ClassVar[float] = 30.0
 
     def __init__(self, api_client: TuiApiClient | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -422,179 +368,104 @@ class MarketScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="market-layout"):
-            # Search bar
-            yield Input(
-                placeholder="Search symbols…",
-                id="symbol-search",
-            )
+            yield Input(placeholder="Search symbols\u2026", id="symbol-search")
             with Horizontal(id="market-main"):
-                # Left: Symbol list
                 yield SymbolListWidget(id="symbol-list")
                 with Vertical(id="market-detail"):
-                    # Right top: Klines chart
                     yield KlinesChartWidget(id="klines-chart")
-                    # Right middle: Ticker table
                     yield TickerTableWidget(id="ticker-table")
-                    # Right bottom: Order book
                     yield OrderBookWidget(id="order-book")
-            # Loading indicator + status
             yield LoadingIndicator(id="market-loading")
             yield Static(self.status_text, id="market-status")
 
-    def on_mount(self) -> None:
-        """Initialize the screen and start auto-refresh."""
-        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
-        # Fire immediately after mount
-        self.call_after_refresh(self._refresh_all)
-
     async def on_unmount(self) -> None:
-        """Clean up the API client and timer when leaving."""
-        if hasattr(self, "_refresh_timer"):
-            self._refresh_timer.stop()
+        await super().on_unmount()
         if self._owns_client:
             await self._api.close()
 
     # ── Data Fetching ────────────────────────────────────────────────
 
-    async def _refresh_all(self) -> None:
+    async def _fetch_data(self) -> None:
         """Fetch all market data and update widgets."""
-        self.is_loading = True
-        self.status_text = "Refreshing…"
-        try:
-            loading = self.query_one("#market-loading", LoadingIndicator)
-            loading.loading = True
-        except Exception:
-            pass
         successes = 0
-        try:
-            # Fetch tickers (includes symbol list info)
+        for fetch_fn in (self._fetch_tickers, self._fetch_klines, self._fetch_orderbook):
             try:
-                await self._fetch_tickers()
+                await fetch_fn()
                 successes += 1
             except Exception as exc:
-                logger.debug("Ticker fetch failed: %s", exc)
-            # Fetch klines for selected symbol
-            try:
-                await self._fetch_klines()
-                successes += 1
-            except Exception as exc:
-                logger.debug("Klines fetch failed: %s", exc)
-            # Fetch order book for selected symbol
-            try:
-                await self._fetch_orderbook()
-                successes += 1
-            except Exception as exc:
-                logger.debug("Orderbook fetch failed: %s", exc)
+                logger.debug("Fetch failed: %s", exc)
 
-            if successes == 3:
-                self.status_text = f"Live · {self.current_symbol} · refreshed  [r]efresh  [/]search  [j/k]nav  [?]help"
-            elif successes > 0:
-                self.status_text = f"Partial update ({successes}/3) · {self.current_symbol}  [r]etry"
-            else:
-                self.status_text = "Cannot reach API server  [r]etry"
-                self.notify("Data refresh failed", severity="error")
-        except Exception as exc:
-            self.status_text = f"{friendly_error(exc)}  [r]etry"
-            self.notify(friendly_error(exc), severity="error")
-            logger.warning("Market refresh failed: %s", exc)
-        finally:
-            self.is_loading = False
+        if successes == 3:
+            self._update_status_text(
+                f"Live \u00b7 {self.current_symbol} \u00b7 refreshed  [r]efresh  [/]search  [j/k]nav  [?]help"
+            )
+        elif successes > 0:
+            self._update_status_text(
+                f"Partial update ({successes}/3) \u00b7 {self.current_symbol}  [r]etry"
+            )
+        else:
+            self._update_status_text("Cannot reach API server  [r]etry")
             try:
-                loading = self.query_one("#market-loading", LoadingIndicator)
-                loading.loading = False
-                loading.status_text = self.status_text
+                self.notify("Data refresh failed", severity="error")
             except Exception:
                 pass
 
     async def _fetch_tickers(self) -> None:
-        """Fetch ticker data and update symbol list + ticker table.
-
-        Zero-copy: the raw tickers list from the API is stored as-is
-        on the TickerTableWidget.  SymbolEntry views are derived once
-        and shared with the SymbolListWidget — no intermediate dicts.
-        """
-        try:
-            data = await self._api.get_market_tickers()
-            tickers = data.get("tickers", [])
-            if tickers:
-                # Derive SymbolEntry views (frozen dataclass, __slots__)
-                # Sort by volume*change descending for relevance
-                entries = sorted(
-                    (SymbolEntry.from_ticker(TickerView.from_dict(t)) for t in tickers),
-                    key=lambda e: abs(e.price * e.change_pct),
-                    reverse=True,
-                )
-                try:
-                    symbol_list = self.query_one("#symbol-list", SymbolListWidget)
-                    symbol_list.set_symbols(entries)
-                except Exception:
-                    pass
-
-                # TickerTableWidget stores a reference to the raw list
-                # — no copy is made.
-                try:
-                    ticker_table = self.query_one("#ticker-table", TickerTableWidget)
-                    ticker_table.tickers = tickers
-                except Exception:
-                    pass
-        except Exception as exc:
-            logger.debug("Ticker fetch failed: %s", exc)
+        """Fetch ticker data and update symbol list + ticker table."""
+        data = await self._api.get_market_tickers()
+        tickers = data.get("tickers", [])
+        if tickers:
+            entries = sorted(
+                (SymbolEntry.from_ticker(TickerView.from_dict(t)) for t in tickers),
+                key=lambda e: abs(e.price * e.change_pct),
+                reverse=True,
+            )
+            try:
+                self.query_one("#symbol-list", SymbolListWidget).set_symbols(entries)
+            except Exception:
+                pass
+            try:
+                self.query_one("#ticker-table", TickerTableWidget).tickers = tickers
+            except Exception:
+                pass
 
     async def _fetch_klines(self) -> None:
-        """Fetch kline data for the current symbol.
-
-        Uses ``set_candles`` to store the klines reference and
-        pre-compute close prices as an immutable tuple.
-        """
+        """Fetch kline data for the current symbol."""
+        data = await self._api.get_market_klines(
+            self.current_symbol, DEFAULT_INTERVAL, KLINES_LIMIT
+        )
+        klines = data.get("klines", [])
         try:
-            data = await self._api.get_market_klines(
-                self.current_symbol, DEFAULT_INTERVAL, KLINES_LIMIT
-            )
-            klines = data.get("klines", [])
-            try:
-                chart = self.query_one("#klines-chart", KlinesChartWidget)
-                chart.symbol = self.current_symbol
-                chart.set_candles(klines)
-            except Exception:
-                pass
-        except Exception as exc:
-            logger.debug("Klines fetch failed for %s: %s", self.current_symbol, exc)
+            chart = self.query_one("#klines-chart", KlinesChartWidget)
+            chart.symbol = self.current_symbol
+            chart.set_candles(klines)
+        except Exception:
+            pass
 
     async def _fetch_orderbook(self) -> None:
-        """Fetch order book for the current symbol.
-
-        Stores bids/asks as tuples (immutable sequences) to avoid
-        per-refresh list copies.
-        """
+        """Fetch order book for the current symbol."""
+        data = await self._api.get_market_orderbook(
+            self.current_symbol, ORDERBOOK_LIMIT
+        )
         try:
-            data = await self._api.get_market_orderbook(
-                self.current_symbol, ORDERBOOK_LIMIT
-            )
-            try:
-                book = self.query_one("#order-book", OrderBookWidget)
-                book.symbol = self.current_symbol
-                book.bids = tuple(data.get("bids", []))
-                book.asks = tuple(data.get("asks", []))
-            except Exception:
-                pass
-        except Exception as exc:
-            logger.debug("Orderbook fetch failed for %s: %s", self.current_symbol, exc)
+            book = self.query_one("#order-book", OrderBookWidget)
+            book.symbol = self.current_symbol
+            book.bids = tuple(data.get("bids", []))
+            book.asks = tuple(data.get("asks", []))
+        except Exception:
+            pass
 
     # ── Event Handlers ───────────────────────────────────────────────
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        """Filter the symbol list based on search input."""
         try:
-            symbol_list = self.query_one("#symbol-list", SymbolListWidget)
-            symbol_list.set_filter(event.value)
+            self.query_one("#symbol-list", SymbolListWidget).set_filter(event.value)
         except Exception:
             pass
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Select the first matching symbol on Enter."""
         try:
-            symbol_list = self.query_one("#symbol-list", SymbolListWidget)
-            selected = symbol_list.get_selected_symbol()
+            selected = self.query_one("#symbol-list", SymbolListWidget).get_selected_symbol()
             if selected:
                 self._select_symbol(selected)
         except Exception:
@@ -602,53 +473,38 @@ class MarketScreen(Screen[None]):
 
     # ── Actions ──────────────────────────────────────────────────────
 
-    def action_go_back(self) -> None:
-        """Return to the main screen."""
-        self.app.pop_screen()
-
     def action_focus_search(self) -> None:
-        """Focus the search input."""
         try:
             self.query_one("#symbol-search", Input).focus()
         except NoMatches:
             pass
 
     def action_move_up(self) -> None:
-        """Move selection up in the symbol list."""
         try:
             self.query_one("#symbol-list", SymbolListWidget).action_move_up()
         except NoMatches:
             pass
 
     def action_move_down(self) -> None:
-        """Move selection down in the symbol list."""
         try:
             self.query_one("#symbol-list", SymbolListWidget).action_move_down()
         except NoMatches:
             pass
 
     def action_select_symbol(self) -> None:
-        """Select the highlighted symbol and load its data."""
         try:
-            symbol_list = self.query_one("#symbol-list", SymbolListWidget)
-            selected = symbol_list.get_selected_symbol()
+            selected = self.query_one("#symbol-list", SymbolListWidget).get_selected_symbol()
             if selected:
                 self._select_symbol(selected)
         except NoMatches:
             pass
 
-    def action_refresh_now(self) -> None:
-        """Force an immediate data refresh."""
-        self.call_after_refresh(self._refresh_all)
-
     def _select_symbol(self, symbol: str) -> None:
-        """Change the active symbol and refresh its data."""
         if symbol != self.current_symbol:
             self.current_symbol = symbol
             self.call_after_refresh(self._refresh_klines_and_book)
 
     async def _refresh_klines_and_book(self) -> None:
-        """Refresh klines and order book for the current symbol."""
         self.is_loading = True
         try:
             await self._fetch_klines()

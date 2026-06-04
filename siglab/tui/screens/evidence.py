@@ -21,7 +21,6 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
@@ -37,12 +36,11 @@ from siglab.tui.formatting import (
     friendly_error,
 )
 from siglab.tui.loading import LoadingIndicator
+from siglab.tui.screens.base import BaseScreen
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
-
-REFRESH_SECONDS = 30.0
 
 # Demo steps from docs/demo-script.md
 DEMO_STEPS: list[dict[str, Any]] = [
@@ -125,13 +123,14 @@ def _kind_style(kind: str) -> str:
 def _format_confidence(conf: float | None) -> Text:
     """Format confidence as colored text."""
     if conf is None:
-        return Text("—", style=TEXT_MUTED)
+        return Text("\u2500", style=TEXT_MUTED)
+    label = f"{conf:.0%}"
     if conf >= 0.8:
-        return Text(f"{conf:.0%}", style=ACCENT_GREEN)
+        return Text(label, style=ACCENT_GREEN)
     elif conf >= 0.5:
-        return Text(f"{conf:.0%}", style=WARNING_YELLOW)
+        return Text(label, style=WARNING_YELLOW)
     else:
-        return Text(f"{conf:.0%}", style=ERROR_RED)
+        return Text(label, style=ERROR_RED)
 
 
 # ── Evidence Graph Widget ────────────────────────────────────────────
@@ -472,7 +471,7 @@ class DemoFlowWidget(Static):
 # ── Main Screen ──────────────────────────────────────────────────────
 
 
-class EvidenceScreen(Screen[None]):
+class EvidenceScreen(BaseScreen):
     """Evidence Graph and Demo Flow screen.
 
     Two-pane layout:
@@ -480,27 +479,24 @@ class EvidenceScreen(Screen[None]):
     - Right: Interactive demo flow walkthrough
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "go_back", "Back", show=True),
-        Binding("r", "refresh", "Refresh", show=True),
+    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
         Binding("/", "focus_filter", "Search", show=True),
         Binding("tab", "switch_pane", "Switch Pane", show=True),
         Binding("enter", "run_step", "Run Step", show=True),
         Binding("n", "next_step", "Next Step", show=True),
         Binding("p", "prev_step", "Prev Step", show=True),
         Binding("a", "run_all", "Run All", show=True),
-        Binding("j", "move_down", "Down", show=False),
-        Binding("k", "move_up", "Up", show=False),
         Binding("f", "filter_source", "Sources", show=False),
-        Binding("ctrl+c", "go_back", "Back", show=False),
-        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
-    # Reactive state
     api_connected: reactive[bool] = reactive(False)
     graph_loading: reactive[bool] = reactive(False)
     demo_running: reactive[bool] = reactive(False)
-    active_pane: reactive[str] = reactive("graph")  # "graph" or "demo"
+    active_pane: reactive[str] = reactive("graph")
+
+    _loading_widget_id: ClassVar[str] = "#evidence-loading"
+    _status_widget_id: ClassVar[str] = "#evidence-status"
+    _refresh_interval: ClassVar[float] = 30.0
 
     def __init__(self) -> None:
         super().__init__()
@@ -531,19 +527,17 @@ class EvidenceScreen(Screen[None]):
 
     def on_mount(self) -> None:
         """Initialize the screen after mounting."""
+        super().on_mount()
         self._api_client = TuiApiClient()
-        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_graph)
-        self.call_after_refresh(self._refresh_all)
 
     async def on_unmount(self) -> None:
         """Clean up resources when the screen is closing."""
-        if hasattr(self, "_refresh_timer"):
-            self._refresh_timer.stop()
+        await super().on_unmount()
         if self._api_client is not None:
             await self._api_client.close()
 
-    async def _refresh_all(self) -> None:
-        """Refresh all data on the screen."""
+    async def _fetch_data(self) -> None:
+        """Fetch evidence graph data."""
         await self._refresh_graph()
 
     async def _refresh_graph(self) -> None:
@@ -593,37 +587,20 @@ class EvidenceScreen(Screen[None]):
 
     def _update_status(self) -> None:
         """Update the status bar with current state."""
-        try:
-            status = self.query_one("#evidence-status", Static)
-            node_count = len(self._graph_nodes)
-            edge_count = len(self._edges)
-            filter_text = f"  Filter: {self._current_filter}" if self._current_filter else ""
-            conn = "Connected" if self.api_connected else "Disconnected"
-            shortcut_hints = "  [r]efresh  [/]search  [tab]switch  [n/p]step  [?]help"
-            status.update(
-                f"  {node_count} nodes  {edge_count} edges{filter_text}"
-                f"  {conn}{shortcut_hints}"
-            )
-        except Exception:
-            pass
+        node_count = len(self._graph_nodes)
+        edge_count = len(self._edges)
+        filter_text = f"  Filter: {self._current_filter}" if self._current_filter else ""
+        conn = "Connected" if self.api_connected else "Disconnected"
+        hints = "  [r]efresh  [/]search  [tab]switch  [n/p]step  [?]help"
+        self._update_status_text(
+            f"  {node_count} nodes  {edge_count} edges{filter_text}  {conn}{hints}"
+        )
 
     def _update_status_error(self, error: str) -> None:
         """Update status bar with error message."""
-        try:
-            status = self.query_one("#evidence-status", Static)
-            status.update(f"  Error: {error[:60]}")
-        except Exception:
-            pass
+        self._update_status_text(f"  Error: {error[:60]}")
 
     # ── Actions ───────────────────────────────────────────────────────
-
-    def action_go_back(self) -> None:
-        """Return to the main screen."""
-        self.app.pop_screen()
-
-    def action_refresh(self) -> None:
-        """Refresh evidence data."""
-        self.run_worker(self._refresh_all())
 
     def action_focus_filter(self) -> None:
         """Focus the filter input."""
@@ -631,14 +608,6 @@ class EvidenceScreen(Screen[None]):
             self.query_one("#evidence-filter", Input).focus()
         except Exception:
             pass
-
-    def action_move_down(self) -> None:
-        """Move focus to the next widget."""
-        self.screen.focus_next()
-
-    def action_move_up(self) -> None:
-        """Move focus to the previous widget."""
-        self.screen.focus_previous()
 
     def action_switch_pane(self) -> None:
         """Toggle focus between graph and demo panes."""
@@ -754,11 +723,7 @@ class EvidenceScreen(Screen[None]):
 
     def _update_status_running(self, step_title: str) -> None:
         """Update status bar while a step is running."""
-        try:
-            status = self.query_one("#evidence-status", Static)
-            status.update(f"  Running: {step_title}...")
-        except Exception:
-            pass
+        self._update_status_text(f"  Running: {step_title}...")
 
     # ── Event Handlers ────────────────────────────────────────────────
 

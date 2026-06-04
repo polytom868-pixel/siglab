@@ -277,7 +277,7 @@ class TestSymbolListWidget:
     def test_render_empty(self) -> None:
         widget = SymbolListWidget()
         text = widget.render()
-        assert "No symbols" in str(text)
+        assert "No items found" in str(text)
 
     def test_render_with_symbols(self) -> None:
         widget = SymbolListWidget()

@@ -22,14 +22,12 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
-    ACCENT_PURPLE,
     BORDER_DIM,
     ERROR_RED,
     INFO_BLUE,
@@ -37,18 +35,22 @@ from siglab.tui.formatting import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WARNING_YELLOW,
+    confidence_color,
+    format_count,
+    format_date,
     format_latency,
     format_score,
-    friendly_error,
+    format_status,
     truncate,
 )
 from siglab.tui.loading import LoadingIndicator
+from siglab.tui.screens.base import BaseScreen
+from siglab.tui.widgets.base import ComparisonWidget, FilterableListWidget
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
 
-REFRESH_SECONDS = 30.0
 MAX_COMPARE = 4
 
 # Date range filter presets
@@ -56,60 +58,6 @@ DATE_RANGE_FILTERS: list[str] = ["ALL", "7d", "30d", "TODAY"]
 
 # Status filter options
 STATUS_FILTERS: list[str] = ["ALL", "PASSED", "FAILED", "RUNNING", "PENDING"]
-
-# Track filter options (populated from data)
-TRACK_FILTERS_DEFAULT: list[str] = ["ALL"]
-
-
-# ── Formatting helpers ───────────────────────────────────────────────
-# Centralized in siglab.tui.formatting; local helpers removed.
-
-
-def _format_status(passed: bool | None, deployed: bool = False) -> Text:
-    """Format pass/fail/deployed status."""
-    if deployed:
-        return Text("▲", style=INFO_BLUE)
-    if passed is None:
-        return Text("·", style=TEXT_MUTED)
-    if passed:
-        return Text("●", style=ACCENT_GREEN)
-    return Text("○", style=ERROR_RED)
-
-
-def _format_date(date_str: str | None) -> str:
-    """Format a date string for compact display."""
-    if not date_str:
-        return "──"
-    try:
-        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        return dt.strftime("%m-%d %H:%M")
-    except (ValueError, TypeError):
-        return date_str[:10] if len(date_str) >= 10 else date_str
-
-
-def _format_count(value: int | float | None) -> str:
-    """Format a count with k/M suffix."""
-    if value is None:
-        return "─"
-    v = float(value)
-    if v >= 1_000_000:
-        return f"{v / 1_000_000:.1f}M"
-    elif v >= 1_000:
-        return f"{v / 1_000:.1f}k"
-    else:
-        return f"{v:.0f}"
-
-
-def _confidence_color(confidence: str) -> str:
-    """Return color for confidence level."""
-    c = confidence.lower().strip()
-    if c == "good":
-        return ACCENT_GREEN
-    elif c == "medium":
-        return WARNING_YELLOW
-    elif c == "poor":
-        return ERROR_RED
-    return TEXT_MUTED
 
 
 def _classification_color(classification: str) -> str:
@@ -131,207 +79,133 @@ def _classification_color(classification: str) -> str:
 # ══════════════════════════════════════════════════════════════════════
 
 
-class TelemetryRunListWidget(Static):
-    """Vertical list of experiment runs with selection and multi-select.
+class TelemetryRunListWidget(FilterableListWidget):
+    """Vertical list of experiment runs with selection and multi-select."""
 
-    Zero-copy: stores a reference to the runs list.  Filtering
-    produces a new list of references (no dict copies).
-    """
-
-    __slots__ = ("_all_runs", "_filter_text", "_status_filter",
-                 "_track_filter", "_date_range", "_selected_hashes")
+    __slots__ = ("_status_filter", "_track_filter", "_date_range")
 
     runs: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
-    selected_index: reactive[int] = reactive(0)
+    _items_reactive: ClassVar[str] = "runs"
+    _multi_select: ClassVar[bool] = True
+    _max_select: ClassVar[int] = MAX_COMPARE
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._all_runs: tuple[dict[str, Any], ...] = ()
-        self._filter_text: str = ""
         self._status_filter: str = "ALL"
         self._track_filter: str = "ALL"
         self._date_range: str = "ALL"
-        self._selected_hashes: set[str] = set()
 
     def set_runs(self, runs: list[dict[str, Any]]) -> None:
-        """Store a reference to the runs list.
-
-        Converts to tuple for immutability — individual dicts are
-        shared, not copied.
-        """
-        self._all_runs = tuple(runs)
-        self._apply_filters()
-
-    def set_filter(self, text: str) -> None:
-        """Update the text search filter."""
-        self._filter_text = text.lower().strip()
-        self._apply_filters()
+        self.set_data(runs)
 
     def set_status_filter(self, status: str) -> None:
-        """Update the status filter."""
         self._status_filter = status.upper().strip()
         self._apply_filters()
 
     def set_track_filter(self, track: str) -> None:
-        """Update the track filter."""
         self._track_filter = track.upper().strip()
         self._apply_filters()
 
     def set_date_range(self, date_range: str) -> None:
-        """Update the date range filter."""
         self._date_range = date_range.upper().strip()
         self._apply_filters()
 
-    def _apply_filters(self) -> None:
-        """Apply all active filters to the run list.
-
-        Uses a single pass combining all filter predicates, avoiding
-        the previous 3-4 chained list copies.
-        """
+    def _matches(self, item: dict[str, Any]) -> bool:
         ft = self._filter_text
         sf = self._status_filter
         tf = self._track_filter
         dr = self._date_range
 
-        # Pre-compute date cutoff if needed
-        max_days = None
-        now = None
+        if ft:
+            if not (
+                ft in str(item.get("spec_hash", "")).lower()
+                or ft in str(item.get("track", "")).lower()
+                or ft in str(item.get("family", "")).lower()
+                or ft in str(item.get("hypothesis", "")).lower()
+            ):
+                return False
+        if sf and sf != "ALL":
+            if sf == "PASSED" and item.get("passed") is not True:
+                return False
+            if sf == "FAILED" and item.get("passed") is not False:
+                return False
+            if sf == "RUNNING" and item.get("status") != "running":
+                return False
+            if sf == "PENDING" and not (item.get("passed") is None and item.get("status") != "running"):
+                return False
+        if tf and tf != "ALL":
+            if tf not in str(item.get("track", "")).upper():
+                return False
         if dr and dr != "ALL":
-            now = datetime.now(UTC)
             max_days = {"TODAY": 0, "7D": 7, "30D": 30}.get(dr)
-
-        def _matches(r: dict[str, Any]) -> bool:
-            # Text search
-            if ft:
-                if not (
-                    ft in str(r.get("spec_hash", "")).lower()
-                    or ft in str(r.get("track", "")).lower()
-                    or ft in str(r.get("family", "")).lower()
-                    or ft in str(r.get("hypothesis", "")).lower()
-                ):
-                    return False
-            # Status filter
-            if sf and sf != "ALL":
-                if sf == "PASSED" and r.get("passed") is not True:
-                    return False
-                if sf == "FAILED" and r.get("passed") is not False:
-                    return False
-                if sf == "RUNNING" and r.get("status") != "running":
-                    return False
-                if sf == "PENDING" and not (r.get("passed") is None and r.get("status") != "running"):
-                    return False
-            # Track filter
-            if tf and tf != "ALL":
-                if tf not in str(r.get("track", "")).upper():
-                    return False
-            # Date range filter
-            if max_days is not None and now is not None:
-                created = r.get("created_at", "")
+            if max_days is not None:
+                created = item.get("created_at", "")
                 if created:
                     try:
                         dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                        if (now - dt).days > max_days:
+                        if (datetime.now(UTC) - dt).days > max_days:
                             return False
                     except (ValueError, TypeError):
                         pass
-            return True
+        return True
 
-        # Single-pass filter — no intermediate copies
-        self.runs = [r for r in self._all_runs if _matches(r)]
-        # Clamp selected index
-        if self.runs and self.selected_index >= len(self.runs):
-            self.selected_index = max(0, len(self.runs) - 1)
-
-    def toggle_select(self) -> None:
-        """Toggle multi-select on the current run for comparison."""
-        if not self.runs or self.selected_index >= len(self.runs):
-            return
-        item = self.runs[self.selected_index]
-        h = str(item.get("spec_hash", ""))
-        if not h:
-            return
-        if h in self._selected_hashes:
-            self._selected_hashes.discard(h)
-        else:
-            if len(self._selected_hashes) < MAX_COMPARE:
-                self._selected_hashes.add(h)
-
-    def get_selected_hashes(self) -> set[str]:
-        """Return the set of multi-selected run hashes."""
-        return set(self._selected_hashes)
+    def _get_item_key(self, item: dict[str, Any]) -> str | None:
+        return str(item.get("spec_hash", "")) or None
 
     def get_current_run(self) -> dict[str, Any] | None:
-        """Return the currently highlighted run."""
-        if self.runs and 0 <= self.selected_index < len(self.runs):
-            return self.runs[self.selected_index]
-        return None
+        return self.get_current_item()
 
     def get_tracks(self) -> list[str]:
-        """Return unique track names from all runs."""
         tracks = set()
-        for r in self._all_runs:
+        for r in self._all_data:
             t = str(r.get("track", "")).strip()
             if t:
                 tracks.add(t)
         return sorted(tracks)
 
-    def action_move_up(self) -> None:
-        if self.selected_index > 0:
-            self.selected_index -= 1
+    def _render_item(self, item: dict[str, Any], index: int, is_selected: bool) -> Text:
+        h = str(item.get("spec_hash", "?"))[:12]
+        track = str(item.get("track", ""))
+        passed = item.get("passed")
+        score = item.get("aggregate_score")
+        deployed = bool(item.get("deployd"))
+        key = str(item.get("spec_hash", ""))
+        is_multi = key in self._selected_hashes
 
-    def action_move_down(self) -> None:
-        if self.selected_index < len(self.runs) - 1:
-            self.selected_index += 1
+        prefix = "\u2713 " if is_multi else "  "
+        status_dot = "\u25cf" if passed is True else ("\u25cb" if passed is False else "\u00b7")
+        status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
+        if deployed:
+            status_dot = "\u25b2"
+            status_color = INFO_BLUE
+        score_str = f"{score:.2f}" if score is not None and score == score else "\u2500"
 
-    def render(self) -> Text:
-        if not self.runs:
-            return Text("  No runs found", style=TEXT_MUTED)
+        padding = max(0, 16 - len(h) - len(prefix) - 2)
 
-        lines = Text()
-        for i, run in enumerate(self.runs):
-            h = str(run.get("spec_hash", "?"))[:12]
-            track = str(run.get("track", ""))
-            passed = run.get("passed")
-            score = run.get("aggregate_score")
-            deployed = bool(run.get("deployd"))
-            is_selected = str(run.get("spec_hash", "")) in self._selected_hashes
-
-            # Build row
-            prefix = "\u2713 " if is_selected else "  "
-            status_dot = "\u25cf" if passed is True else ("\u25cb" if passed is False else "\u00b7")
-            status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
-            if deployed:
-                status_dot = "\u25b2"
-                status_color = INFO_BLUE
-            score_str = f"{score:.2f}" if score is not None and score == score else "\u2500"
-
+        if is_selected:
+            styled_row = Text()
+            styled_row.append(prefix, style=INFO_BLUE if is_multi else "#000000")
+            styled_row.append(status_dot + " ", style=status_color if is_multi else "#000000")
+            styled_row.append(truncate(h, 12), style="bold #000000")
+            styled_row.append(" " * padding, style="#000000")
+            styled_row.append(truncate(track, 8), style="#000000")
+            result = Text()
+            result.append("\u25b8 ", style=ACCENT_GREEN)
+            result.append_text(styled_row)
+            result.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
+            return result
+        else:
             row = Text()
-            row.append(prefix, style=INFO_BLUE if is_selected else TEXT_MUTED)
+            row.append(prefix, style=INFO_BLUE if is_multi else TEXT_MUTED)
             row.append(status_dot + " ", style=status_color)
             row.append(truncate(h, 12), style=TEXT_PRIMARY)
-
-            # Track tag
-            padding = max(0, 16 - len(h) - len(prefix) - 2)
             row.append(" " * padding, style=TEXT_MUTED)
             row.append(truncate(track, 8), style=INFO_BLUE)
-
-            if i == self.selected_index:
-                lines.append("\u25b8 ", style=ACCENT_GREEN)
-                styled_row = Text()
-                styled_row.append(prefix, style=INFO_BLUE if is_selected else "#000000")
-                styled_row.append(status_dot + " ", style=status_color if is_selected else "#000000")
-                styled_row.append(truncate(h, 12), style="bold #000000")
-                styled_row.append(" " * padding, style="#000000")
-                styled_row.append(truncate(track, 8), style="#000000")
-                lines.append_text(styled_row)
-                lines.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
-            else:
-                lines.append("  ")
-                lines.append_text(row)
-                lines.append(f"  {score_str}", style=TEXT_MUTED)
-            lines.append("\n")
-
-        return lines
+            result = Text()
+            result.append("  ")
+            result.append_text(row)
+            result.append(f"  {score_str}", style=TEXT_MUTED)
+            return result
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -363,7 +237,7 @@ class ProviderMetricsWidget(Static):
 
         # Confidence indicator
         confidence = data.get("confidence", "unknown")
-        conf_color = _confidence_color(confidence)
+        conf_color = confidence_color(confidence)
         result.append("  Confidence: ", style=TEXT_SECONDARY)
         result.append(f"{confidence}\n\n", style=f"bold {conf_color}")
 
@@ -403,11 +277,11 @@ class ProviderMetricsWidget(Static):
             completion = usage.get("completion_tokens")
             total = usage.get("total_tokens")
             result.append("  Prompt:     ", style=TEXT_SECONDARY)
-            result.append(f"{_format_count(prompt)}\n", style=TEXT_PRIMARY)
+            result.append(f"{format_count(prompt)}\n", style=TEXT_PRIMARY)
             result.append("  Completion: ", style=TEXT_SECONDARY)
-            result.append(f"{_format_count(completion)}\n", style=TEXT_PRIMARY)
+            result.append(f"{format_count(completion)}\n", style=TEXT_PRIMARY)
             result.append("  Total:      ", style=TEXT_SECONDARY)
-            result.append(f"{_format_count(total)}\n", style=TEXT_PRIMARY)
+            result.append(f"{format_count(total)}\n", style=TEXT_PRIMARY)
             cost_status = usage.get("cost_status", "")
             if cost_status:
                 result.append("  Cost:       ", style=TEXT_SECONDARY)
@@ -543,7 +417,7 @@ class RunDetailWidget(Static):
         # Date
         created = run.get("created_at", "")
         result.append("  Created: ", style=TEXT_SECONDARY)
-        result.append(f"{_format_date(created)}\n", style=TEXT_PRIMARY)
+        result.append(f"{format_date(created)}\n", style=TEXT_PRIMARY)
 
         # Score
         score = run.get("aggregate_score")
@@ -555,7 +429,7 @@ class RunDetailWidget(Static):
         passed = run.get("passed")
         deployed = bool(run.get("deployd"))
         result.append("  Status: ", style=TEXT_SECONDARY)
-        result.append_text(_format_status(passed, deployed))
+        result.append_text(format_status(passed, deployed))
         if deployed:
             result.append(" deployed", style=INFO_BLUE)
         elif passed is True:
@@ -586,98 +460,26 @@ class RunDetailWidget(Static):
 # ══════════════════════════════════════════════════════════════════════
 
 
-class RunComparisonWidget(Static):
+class RunComparisonWidget(ComparisonWidget):
     """Side-by-side comparison of 2+ selected runs."""
 
     runs: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
+    items = runs  # alias for ComparisonWidget base
 
-    _RUN_COLORS: ClassVar[list[str]] = [
-        ACCENT_GREEN,   # green
-        INFO_BLUE,      # blue
-        WARNING_YELLOW, # yellow
-        ACCENT_PURPLE,  # purple
+    _metrics: ClassVar[list[tuple[str, str, str]]] = [
+        ("Score", "aggregate_score", "{:.3f}"),
+        ("Track", "track", "{}"),
+        ("Family", "family", "{}"),
+        ("Created", "created_at", "{}"),
+        ("Status", "passed", "{}"),
     ]
+    _empty_message: ClassVar[str] = "Select 2+ runs with Space, then press c"
 
     def set_runs(self, runs: list[dict[str, Any]]) -> None:
-        """Set runs for comparison."""
-        self.runs = runs
+        self.set_items(runs)
 
-    def render(self) -> Text:
-        result = Text()
-        result.append(" RUN COMPARISON\n", style=f"bold {TEXT_PRIMARY}")
-
-        if len(self.runs) < 2:
-            result.append(
-                "  Select 2+ runs with Space, then press c\n", style=TEXT_MUTED
-            )
-            return result
-
-        n = len(self.runs)
-        col_w = max(12, 60 // (n + 1))
-
-        # Column headers
-        header = Text()
-        header.append("  ")
-        for i, run in enumerate(self.runs):
-            name = str(run.get("spec_hash", f"R{i+1}"))[:col_w]
-            color = self._RUN_COLORS[i % len(self._RUN_COLORS)]
-            header.append(f"{name:<{col_w}}", style=f"bold {color}")
-        header.append("DELTA", style=f"bold {WARNING_YELLOW}")
-        result.append_text(header)
-        result.append("\n")
-        result.append("  " + "\u2500" * (col_w * (n + 1) + 4) + "\n", style=BORDER_DIM)
-
-        # Metrics rows
-        metrics = [
-            ("Score", "aggregate_score", "{:.3f}"),
-            ("Track", "track", "{}"),
-            ("Family", "family", "{}"),
-            ("Created", "created_at", "{}"),
-            ("Status", "passed", "{}"),
-        ]
-
-        for label, key, fmt in metrics:
-            row = Text()
-            row.append(f"  {label:<12}", style=TEXT_PRIMARY)
-
-            values: list[float] = []
-            for run in self.runs:
-                val = run.get(key)
-                if val is not None and isinstance(val, (int, float)) and val == val:
-                    values.append(float(val))
-
-            for i, run in enumerate(self.runs):
-                val = run.get(key)
-                color = self._RUN_COLORS[i % len(self._RUN_COLORS)]
-                if val is None:
-                    row.append(f"{'─':<{col_w}}", style=TEXT_MUTED)
-                elif isinstance(val, bool):
-                    status = "passed" if val else "failed"
-                    row.append(f"{status:<{col_w}}", style=color)
-                elif isinstance(val, str):
-                    if key == "created_at":
-                        row.append(f"{_format_date(val):<{col_w}}", style=color)
-                    else:
-                        row.append(f"{truncate(val, col_w - 1):<{col_w}}", style=color)
-                else:
-                    formatted = fmt.format(val)
-                    row.append(f"{formatted:<{col_w}}", style=color)
-
-            # Delta column
-            if values and len(values) >= 2 and key != "family" and key != "track":
-                delta = max(values) - min(values)
-                if key == "aggregate_score":
-                    row.append(f"\u00b1{delta:.3f}", style=WARNING_YELLOW)
-                else:
-                    row.append(f"\u00b1{delta:.3f}", style=WARNING_YELLOW)
-            elif key in ("family", "track"):
-                unique_vals = len(set(str(r.get(key, "")) for r in self.runs))
-                row.append("diff" if unique_vals > 1 else "same", style=WARNING_YELLOW if unique_vals > 1 else TEXT_MUTED)
-
-            result.append_text(row)
-            result.append("\n")
-
-        return result
+    def _get_item_name(self, item: dict[str, Any], index: int) -> str:
+        return str(item.get("spec_hash", f"R{index + 1}"))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -758,16 +560,13 @@ class ServiceHealthWidget(Static):
 # ══════════════════════════════════════════════════════════════════════
 
 
-class TelemetryScreen(Screen[None]):
+class TelemetryScreen(BaseScreen):
     """Telemetry and Run Browser screen.
 
     Layout:
     - Filter bar at top (search, date range, track, status)
     - Left column: Run list with multi-select
     - Right column: Run detail + provider metrics + tool usage + comparison
-
-    Auto-refreshes every 30 seconds. Connects to /ops-board, /skill-report,
-    and CLI telemetry-report.
     """
 
     DEFAULT_CSS = """
@@ -776,9 +575,7 @@ class TelemetryScreen(Screen[None]):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "go_back", "Back", show=True),
-        Binding("r", "refresh_now", "Refresh", show=True),
+    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
         Binding("space", "toggle_select", "Select", show=True),
         Binding("c", "toggle_compare", "Compare", show=True),
         Binding("s", "cycle_sort", "Sort", show=True),
@@ -786,22 +583,19 @@ class TelemetryScreen(Screen[None]):
         Binding("d", "cycle_date_range", "Date", show=True),
         Binding("f", "cycle_status_filter", "Filter", show=True),
         Binding("t", "cycle_track_filter", "Track", show=True),
-        Binding("j", "move_down", "Down", show=False),
-        Binding("k", "move_up", "Up", show=False),
         Binding("v", "toggle_detail_view", "View", show=True),
-        Binding("ctrl+c", "go_back", "Back", show=False),
-        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
-    # Reactive state
-    status_text: reactive[str] = reactive("Connecting\u2026")
-    is_loading: reactive[bool] = reactive(True)
     compare_mode: reactive[bool] = reactive(False)
     run_count: reactive[int] = reactive(0)
     _date_range: reactive[str] = reactive("ALL")
     _status_filter: reactive[str] = reactive("ALL")
     _track_filter: reactive[str] = reactive("ALL")
-    _detail_view: reactive[str] = reactive("telemetry")  # "telemetry" or "health"
+    _detail_view: reactive[str] = reactive("telemetry")
+
+    _loading_widget_id: ClassVar[str] = "#telemetry-loading"
+    _status_widget_id: ClassVar[str] = "#telemetry-status"
+    _refresh_interval: ClassVar[float] = 30.0
 
     def __init__(self, api_client: TuiApiClient | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -830,30 +624,19 @@ class TelemetryScreen(Screen[None]):
 
     def on_mount(self) -> None:
         """Initialize the screen and start auto-refresh."""
+        super().on_mount()
         self._update_filters_bar()
-        try:
-            loading = self.query_one("#telemetry-loading", LoadingIndicator)
-            loading.loading = True
-        except Exception:
-            pass
-        self._update_status("Loading runs and telemetry\u2026")
-        self.call_after_refresh(self._refresh_all)
-        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
+        self._update_status_text("Loading runs and telemetry\u2026")
 
     async def on_unmount(self) -> None:
         """Clean up resources when the screen is closing."""
-        if hasattr(self, "_refresh_timer"):
-            self._refresh_timer.stop()
+        await super().on_unmount()
         if self._owns_client:
             await self._api.close()
 
     def _update_status(self, text: str) -> None:
-        """Update the status bar text."""
-        try:
-            status = self.query_one("#telemetry-status", Static)
-            status.update(text)
-        except Exception:
-            pass
+        """Update the status bar text (alias for base class method)."""
+        self._update_status_text(text)
 
     def _update_filters_bar(self) -> None:
         """Update the filters display bar."""
@@ -873,24 +656,15 @@ class TelemetryScreen(Screen[None]):
 
     # ── Data Fetching ────────────────────────────────────────────────
 
-    async def _refresh_all(self) -> None:
+    async def _fetch_data(self) -> None:
         """Fetch all telemetry and run data."""
-        self.is_loading = True
-        self._update_status("Refreshing\u2026")
-        try:
-            # Fetch in parallel-ish sequence
-            await self._fetch_telemetry()
-            await self._fetch_ops_board()
-            await self._fetch_runs()
-            self._update_status(
-                f"  {self.run_count} runs loaded  |  "
-                "[r]efresh  [c]ompare  [s]ort  [/]search  [d]ate  [v]iew"
-            )
-            self.is_loading = False
-        except Exception as exc:
-            self._update_status(f"Error: {friendly_error(exc)}")
-            self.is_loading = False
-            logger.warning("Telemetry refresh failed: %s", exc)
+        await self._fetch_telemetry()
+        await self._fetch_ops_board()
+        await self._fetch_runs()
+        self._update_status_text(
+            f"  {self.run_count} runs loaded  |  "
+            "[r]efresh  [c]ompare  [s]ort  [/]search  [d]ate  [v]iew"
+        )
 
     async def _fetch_telemetry(self) -> None:
         """Fetch telemetry data from CLI telemetry-report command."""
@@ -964,14 +738,6 @@ class TelemetryScreen(Screen[None]):
             pass
 
     # ── Actions ──────────────────────────────────────────────────────
-
-    def action_go_back(self) -> None:
-        """Return to the main screen."""
-        self.app.pop_screen()
-
-    def action_refresh_now(self) -> None:
-        """Force an immediate data refresh."""
-        self.call_after_refresh(self._refresh_all)
 
     def action_focus_search(self) -> None:
         """Focus the search input."""

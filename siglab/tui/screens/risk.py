@@ -22,7 +22,6 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.screen import Screen
 from textual.widgets import Static
 
 from siglab.tui.api_client import TuiApiClient
@@ -35,16 +34,16 @@ from siglab.tui.formatting import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WARNING_YELLOW,
-    friendly_error,
+    severity_color,
 )
 from siglab.tui.loading import LoadingIndicator
+from siglab.tui.screens.base import BaseScreen
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
 
-REFRESH_SECONDS = 15.0
 MAX_ALERTS_DISPLAY = 50
 
 # Color thresholds for risk score gauge
@@ -70,19 +69,6 @@ def _gauge_color(score: float) -> str:
         return WARNING_YELLOW  # warning-yellow — moderate risk
     else:
         return ACCENT_GREEN  # accent-green — low risk / healthy
-
-
-def _severity_color(severity: str) -> str:
-    """Return color hex for alert severity level."""
-    sev = severity.lower().strip()
-    if sev == "critical":
-        return ERROR_RED
-    elif sev == "warning":
-        return WARNING_YELLOW
-    elif sev == "info":
-        return INFO_BLUE
-    else:
-        return TEXT_MUTED
 
 
 def _correlation_color(value: float) -> str:
@@ -351,7 +337,7 @@ class AlertStreamWidget(Static):
             message = str(alert.get("message", ""))
             metric = str(alert.get("metric", ""))
 
-            sev_color = _severity_color(severity.lower())
+            sev_color = severity_color(severity.lower())
 
             result.append(f"  {ts} ", style=TEXT_MUTED)
             result.append(f"{severity:<5}", style=f"bold {sev_color}")
@@ -365,31 +351,25 @@ class AlertStreamWidget(Static):
 # ── Risk Monitor Screen ──────────────────────────────────────────────
 
 
-class RiskScreen(Screen[None]):
+class RiskScreen(BaseScreen):
     """Risk monitoring screen showing portfolio risk metrics.
 
     Layout:
     - Left column: Composite score gauge + Alert stream
     - Right column: Drawdown sparkline + Correlation matrix heatmap
 
-    Auto-refreshes every 15 seconds. Supports WebSocket risk_score
-    subscription for real-time updates.
+    Supports WebSocket risk_score subscription for real-time updates.
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "go_back", "Back", show=True),
-        Binding("r", "refresh_now", "Refresh", show=True),
-        Binding("j", "scroll_down", "Down", show=False),
-        Binding("k", "scroll_up", "Up", show=False),
+    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
         Binding("f", "filter_alerts", "Filter", show=False),
-        Binding("ctrl+c", "go_back", "Back", show=False),
-        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
-    # Reactive state
-    status_text: reactive[str] = reactive("Connecting…")
-    is_loading: reactive[bool] = reactive(True)
     _filter_severity: reactive[str] = reactive("all")
+
+    _loading_widget_id: ClassVar[str] = "#risk-loading"
+    _status_widget_id: ClassVar[str] = "#risk-status"
+    _refresh_interval: ClassVar[float] = 15.0
 
     def __init__(self, api_client: TuiApiClient | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -401,30 +381,23 @@ class RiskScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="risk-layout"):
             with Horizontal(id="risk-main"):
-                # Left column: gauge + alerts
                 with Vertical(id="risk-left"):
                     yield RiskGaugeWidget(id="risk-gauge")
                     yield AlertStreamWidget(id="risk-alerts")
-                # Right column: drawdown + correlation
                 with Vertical(id="risk-right"):
                     yield DrawdownSparklineWidget(id="risk-drawdown")
                     yield CorrelationHeatmapWidget(id="risk-correlation")
-            # Loading indicator + status bar
             yield LoadingIndicator(id="risk-loading")
             yield Static(self.status_text, id="risk-status")
 
     def on_mount(self) -> None:
         """Initialize the screen and start auto-refresh + WebSocket."""
-        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
-        # Fire immediately after mount
-        self.call_after_refresh(self._refresh_all)
-        # Start WebSocket subscription for real-time updates
+        super().on_mount()
         self._ws_task = asyncio.create_task(self._ws_risk_loop())
 
     async def on_unmount(self) -> None:
         """Clean up resources when the screen is closing."""
-        if hasattr(self, "_refresh_timer"):
-            self._refresh_timer.stop()
+        await super().on_unmount()
         if self._ws_task and not self._ws_task.done():
             self._ws_task.cancel()
             try:
@@ -494,30 +467,12 @@ class RiskScreen(Screen[None]):
 
     # ── Data Fetching ────────────────────────────────────────────────
 
-    async def _refresh_all(self) -> None:
+    async def _fetch_data(self) -> None:
         """Fetch all risk data and update widgets."""
-        self.is_loading = True
-        self.status_text = "Refreshing…"
-        try:
-            loading = self.query_one("#risk-loading", LoadingIndicator)
-            loading.loading = True
-        except Exception:
-            pass
-        try:
-            await self._fetch_risk_data()
-            self.status_text = "Live · Risk · refreshed  [r]efresh  [j/k]scroll  [f]ilter  [?]help"
-        except Exception as exc:
-            self.status_text = f"{friendly_error(exc)}  [r]etry"
-            self.notify(friendly_error(exc), severity="error")
-            logger.warning("Risk refresh failed: %s", exc)
-        finally:
-            self.is_loading = False
-            try:
-                loading = self.query_one("#risk-loading", LoadingIndicator)
-                loading.loading = False
-                loading.status_text = self.status_text
-            except Exception:
-                pass
+        await self._fetch_risk_data()
+        self._update_status_text(
+            "Live \u00b7 Risk \u00b7 refreshed  [r]efresh  [j/k]scroll  [f]ilter  [?]help"
+        )
 
     async def _fetch_risk_data(self) -> None:
         """Fetch risk metrics from the /risk endpoint.
@@ -604,27 +559,17 @@ class RiskScreen(Screen[None]):
 
     # ── Actions ──────────────────────────────────────────────────────
 
-    def action_go_back(self) -> None:
-        """Return to the main screen."""
-        self.app.pop_screen()
-
-    def action_refresh_now(self) -> None:
-        """Force an immediate data refresh."""
-        self.call_after_refresh(self._refresh_all)
-
-    def action_scroll_down(self) -> None:
+    def action_move_down(self) -> None:
         """Scroll the alert stream down."""
         try:
-            alerts = self.query_one("#risk-alerts", AlertStreamWidget)
-            alerts.scroll_down()
+            self.query_one("#risk-alerts", AlertStreamWidget).scroll_down()
         except Exception:
             pass
 
-    def action_scroll_up(self) -> None:
+    def action_move_up(self) -> None:
         """Scroll the alert stream up."""
         try:
-            alerts = self.query_one("#risk-alerts", AlertStreamWidget)
-            alerts.scroll_up()
+            self.query_one("#risk-alerts", AlertStreamWidget).scroll_up()
         except Exception:
             pass
 

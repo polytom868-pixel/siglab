@@ -21,35 +21,34 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.cli_bridge import run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
-    ACCENT_PURPLE,
     BORDER_DIM,
     ERROR_RED,
     INFO_BLUE,
     TEXT_MUTED,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
-    WARNING_YELLOW,
     format_drawdown,
     format_return,
     format_score,
     format_sharpe,
+    format_status,
     friendly_error,
     truncate,
 )
 from siglab.tui.loading import LoadingIndicator
+from siglab.tui.screens.base import BaseScreen
+from siglab.tui.widgets.base import ComparisonWidget, FilterableListWidget
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
 
-REFRESH_SECONDS = 30.0
 MAX_COMPARE = 4
 DEFAULT_DECK = "trend_signals_external"
 
@@ -75,36 +74,20 @@ STATUS_FILTERS: list[str] = [
 ]
 
 
-# ── Formatting helpers ───────────────────────────────────────────────
-# Centralized in siglab.tui.formatting; local helpers removed.
-
-
-def _format_status(passed: bool | None) -> Text:
-    """Format pass/fail status."""
-    if passed is None:
-        return Text("pending", style=TEXT_MUTED)
-    if passed:
-        return Text("●", style=ACCENT_GREEN)
-    return Text("○", style=ERROR_RED)
-
-
 # ══════════════════════════════════════════════════════════════════════
 # Strategy List Widget
 # ══════════════════════════════════════════════════════════════════════
 
 
-class StrategyListWidget(Static):
-    """Vertical list of strategy specs with selection and multi-select.
+class StrategyListWidget(FilterableListWidget):
+    """Vertical list of strategy specs with selection and multi-select."""
 
-    Zero-copy: stores a reference to the strategy list from the API.
-    Filtering produces a new list of references (no dict copies).
-    """
-
-    __slots__ = ("_all_strategies", "_filter_text", "_family_filter",
-                 "_status_filter", "_selected_hashes")
+    __slots__ = ("_family_filter", "_status_filter")
 
     strategies: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
-    selected_index: reactive[int] = reactive(0)
+    _items_reactive: ClassVar[str] = "strategies"
+    _multi_select: ClassVar[bool] = True
+    _max_select: ClassVar[int] = MAX_COMPARE
 
     DEFAULT_CSS = """
     StrategyListWidget {
@@ -118,151 +101,94 @@ class StrategyListWidget(Static):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._all_strategies: tuple[dict[str, Any], ...] = ()
-        self._filter_text: str = ""
         self._family_filter: str = "ALL"
         self._status_filter: str = "ALL"
-        self._selected_hashes: set[str] = set()
 
     def set_strategies(self, strategies: list[dict[str, Any]]) -> None:
-        """Store a reference to the strategy list.
-
-        Converts to tuple for immutability — individual dicts are
-        shared, not copied.
-        """
-        self._all_strategies = tuple(strategies)
-        self._apply_filters()
-
-    def set_filter(self, text: str) -> None:
-        """Update the text search filter."""
-        self._filter_text = text.lower().strip()
-        self._apply_filters()
+        """Store a reference to the strategy list."""
+        self.set_data(strategies)
 
     def set_family_filter(self, family: str) -> None:
-        """Update the family filter."""
         self._family_filter = family.upper().strip()
         self._apply_filters()
 
     def set_status_filter(self, status: str) -> None:
-        """Update the status filter."""
         self._status_filter = status.upper().strip()
         self._apply_filters()
 
-    def _apply_filters(self) -> None:
-        """Apply all active filters to the strategy list.
-
-        Uses a single pass through the source data combining all
-        filter predicates, avoiding the previous chained list copies.
-        """
+    def _matches(self, item: dict[str, Any]) -> bool:
         ft = self._filter_text
         ff = self._family_filter
         sf = self._status_filter
+        if ft:
+            if not (
+                ft in str(item.get("spec_hash", "")).lower()
+                or ft in str(item.get("family", "")).lower()
+                or ft in str(item.get("hypothesis", "")).lower()
+                or ft in str(item.get("track", "")).lower()
+            ):
+                return False
+        if ff and ff != "ALL":
+            if ff not in str(item.get("family", "")).upper():
+                return False
+        if sf and sf != "ALL":
+            if sf == "PASSED" and item.get("passed") is not True:
+                return False
+            if sf == "FAILED" and item.get("passed") is not False:
+                return False
+            if sf == "PENDING" and item.get("passed") is not None:
+                return False
+        return True
 
-        def _matches(s: dict[str, Any]) -> bool:
-            if ft:
-                if not (
-                    ft in str(s.get("spec_hash", "")).lower()
-                    or ft in str(s.get("family", "")).lower()
-                    or ft in str(s.get("hypothesis", "")).lower()
-                    or ft in str(s.get("track", "")).lower()
-                ):
-                    return False
-            if ff and ff != "ALL":
-                if ff not in str(s.get("family", "")).upper():
-                    return False
-            if sf and sf != "ALL":
-                if sf == "PASSED" and s.get("passed") is not True:
-                    return False
-                if sf == "FAILED" and s.get("passed") is not False:
-                    return False
-                if sf == "PENDING" and s.get("passed") is not None:
-                    return False
-            return True
-
-        # Single-pass filter — no intermediate copies
-        filtered = [s for s in self._all_strategies if _matches(s)]
-        self.strategies = filtered
-        # Clamp selected index
-        if self.strategies and self.selected_index >= len(self.strategies):
-            self.selected_index = max(0, len(self.strategies) - 1)
-
-    def toggle_select(self) -> None:
-        """Toggle multi-select on the current strategy for comparison."""
-        if not self.strategies or self.selected_index >= len(self.strategies):
-            return
-        item = self.strategies[self.selected_index]
-        h = str(item.get("spec_hash", ""))
-        if not h:
-            return
-        if h in self._selected_hashes:
-            self._selected_hashes.discard(h)
-        else:
-            if len(self._selected_hashes) < MAX_COMPARE:
-                self._selected_hashes.add(h)
-
-    def get_selected_hashes(self) -> set[str]:
-        """Return the set of multi-selected strategy hashes."""
-        return set(self._selected_hashes)
+    def _get_item_key(self, item: dict[str, Any]) -> str | None:
+        return str(item.get("spec_hash", "")) or None
 
     def get_current_hash(self) -> str | None:
         """Return the hash of the currently highlighted strategy."""
-        if self.strategies and 0 <= self.selected_index < len(self.strategies):
-            return str(self.strategies[self.selected_index].get("spec_hash"))
+        item = self.get_current_item()
+        if item:
+            return str(item.get("spec_hash"))
         return None
 
-    def action_move_up(self) -> None:
-        if self.selected_index > 0:
-            self.selected_index -= 1
+    def _render_item(self, item: dict[str, Any], index: int, is_selected: bool) -> Text:
+        h = str(item.get("spec_hash", "?"))[:12]
+        family = str(item.get("family", ""))
+        passed = item.get("passed")
+        score = item.get("aggregate_score")
+        key = str(item.get("spec_hash", ""))
+        is_multi = key in self._selected_hashes
 
-    def action_move_down(self) -> None:
-        if self.selected_index < len(self.strategies) - 1:
-            self.selected_index += 1
+        prefix = "\u2713 " if is_multi else "  "
+        status_dot = "\u25cf" if passed is True else ("\u25cb" if passed is False else "\u00b7")
+        status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
+        score_str = f"{score:.2f}" if score is not None and score == score else "\u2500"
 
-    def render(self) -> Text:
-        if not self.strategies:
-            return Text("  No strategies found", style=TEXT_MUTED)
+        padding = max(0, 16 - len(h) - len(prefix) - 2)
 
-        lines = Text()
-        for i, strat in enumerate(self.strategies):
-            h = str(strat.get("spec_hash", "?"))[:12]
-            family = str(strat.get("family", ""))
-            passed = strat.get("passed")
-            score = strat.get("aggregate_score")
-            is_selected_hash = h in self._selected_hashes or str(strat.get("spec_hash", "")) in self._selected_hashes
-
-            # Build row text
-            prefix = "✓ " if is_selected_hash else "  "
-            status_dot = "●" if passed is True else ("○" if passed is False else "·")
-            status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
-            score_str = f"{score:.2f}" if score is not None and score == score else "─"
-
+        if is_selected:
+            styled_row = Text()
+            styled_row.append(prefix, style=INFO_BLUE if is_multi else "#000000")
+            styled_row.append(status_dot + " ", style=status_color if is_multi else "#000000")
+            styled_row.append(truncate(h, 12), style="bold #000000")
+            styled_row.append(" " * padding, style="#000000")
+            styled_row.append(truncate(family, 10), style="#000000")
+            result = Text()
+            result.append("\u25b8 ", style=ACCENT_GREEN)
+            result.append_text(styled_row)
+            result.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
+            return result
+        else:
             row = Text()
-            row.append(prefix, style=INFO_BLUE if is_selected_hash else TEXT_MUTED)
+            row.append(prefix, style=INFO_BLUE if is_multi else TEXT_MUTED)
             row.append(status_dot + " ", style=status_color)
             row.append(truncate(h, 12), style=TEXT_PRIMARY)
-
-            # Family tag right-aligned
-            padding = max(0, 16 - len(h) - len(prefix) - 2)
             row.append(" " * padding, style=TEXT_MUTED)
             row.append(truncate(family, 10), style=TEXT_SECONDARY)
-
-            if i == self.selected_index:
-                lines.append("▸ ", style=ACCENT_GREEN)
-                styled_row = Text()
-                styled_row.append(prefix, style=INFO_BLUE if is_selected_hash else "#000000")
-                styled_row.append(status_dot + " ", style=status_color if is_selected_hash else "#000000")
-                styled_row.append(truncate(h, 12), style="bold #000000")
-                styled_row.append(" " * padding, style="#000000")
-                styled_row.append(truncate(family, 10), style="#000000")
-                lines.append_text(styled_row)
-                lines.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
-            else:
-                lines.append("  ")
-                lines.append_text(row)
-                lines.append(f"  {score_str}", style=TEXT_MUTED)
-            lines.append("\n")
-
-        return lines
+            result = Text()
+            result.append("  ")
+            result.append_text(row)
+            result.append(f"  {score_str}", style=TEXT_MUTED)
+            return result
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -397,7 +323,7 @@ class ResultsTableWidget(Static):
 
             # Status
             passed = item.get("passed")
-            row.append_text(_format_status(passed))
+            row.append_text(format_status(passed))
             row.append("   ")
 
             # Sparkline (equity curve)
@@ -419,126 +345,47 @@ class ResultsTableWidget(Static):
 # ══════════════════════════════════════════════════════════════════════
 
 
-class ComparisonPanelWidget(Static):
+class ComparisonPanelWidget(ComparisonWidget):
     """Side-by-side comparison of 2+ selected strategies."""
 
     strategies: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
+    items = strategies  # alias for ComparisonWidget base
 
-    DEFAULT_CSS = """
-    ComparisonPanelWidget {
-        height: 1fr;
-        min-height: 10;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0a0a0a;
-    }
-    """
-
-    # Colors for each strategy in the overlay sparkline
-    _STRAT_COLORS: ClassVar[list[str]] = [
-        ACCENT_GREEN,   # green
-        INFO_BLUE,      # blue
-        WARNING_YELLOW, # yellow
-        ACCENT_PURPLE,  # purple
+    _metrics: ClassVar[list[tuple[str, str, str]]] = [
+        ("Score", "aggregate_score", "{:.3f}"),
+        ("PnL%", "validation_total_return", "{:+.2f}%"),
+        ("Sharpe", "sharpe", "{:.2f}"),
+        ("MaxDD", "max_drawdown", "{:.1f}%"),
+        ("Family", "family", "{}"),
     ]
+    _empty_message: ClassVar[str] = "Select 2+ strategies with Space, then press c"
+    _col_width_base: ClassVar[int] = 76
 
     def set_strategies(self, strategies: list[dict[str, Any]]) -> None:
-        """Set strategies for comparison."""
-        self.strategies = strategies
+        self.set_items(strategies)
 
-    def render(self) -> Text:
+    def _get_item_name(self, item: dict[str, Any], index: int) -> str:
+        return str(item.get("spec_hash", f"S{index + 1}"))
+
+    def _render_extra(self) -> Text | None:
+        """Render equity curve overlay sparkline."""
+        if len(self.items) < 2:
+            return None
         result = Text()
-        result.append(" STRATEGY COMPARISON\n", style=f"bold {TEXT_PRIMARY}")
-
-        if len(self.strategies) < 2:
-            result.append(
-                "  Select 2+ strategies with Space, then press c\n", style=TEXT_MUTED
-            )
-            return result
-
-        n = len(self.strategies)
-        col_w = max(12, (76) // (n + 1))  # +1 for delta column
-
-        # Column headers
-        header = Text()
-        header.append("  ")
-        for i, strat in enumerate(self.strategies):
-            name = str(strat.get("spec_hash", f"S{i+1}"))[:col_w]
-            color = self._STRAT_COLORS[i % len(self._STRAT_COLORS)]
-            header.append(f"{name:<{col_w}}", style=f"bold {color}")
-        header.append("DELTA", style=f"bold {WARNING_YELLOW}")
-        result.append_text(header)
-        result.append("\n")
-        result.append("  " + "─" * (col_w * (n + 1) + 4) + "\n", style=BORDER_DIM)
-
-        # Metrics rows
-        metrics = [
-            ("Score", "aggregate_score", "{:.3f}"),
-            ("PnL%", "validation_total_return", "{:+.2f}%"),
-            ("Sharpe", "sharpe", "{:.2f}"),
-            ("MaxDD", "max_drawdown", "{:.1f}%"),
-            ("Family", "family", "{}"),
-        ]
-
-        for label, key, fmt in metrics:
-            row = Text()
-            row.append(f"  {label:<10}", style=TEXT_PRIMARY)
-
-            values: list[float] = []
-            for strat in self.strategies:
-                val = strat.get(key)
-                if val is not None and val == val:  # not NaN
-                    if isinstance(val, (int, float)):
-                        values.append(float(val))
-                    else:
-                        values.append(0.0)
-
-            for i, strat in enumerate(self.strategies):
-                val = strat.get(key)
-                color = self._STRAT_COLORS[i % len(self._STRAT_COLORS)]
-                if val is None or (isinstance(val, float) and val != val):
-                    row.append(f"{'─':<{col_w}}", style=TEXT_MUTED)
-                elif isinstance(val, str):
-                    row.append(f"{val:<{col_w}}", style=color)
-                else:
-                    formatted = fmt.format(val) if "%" not in fmt else fmt.format(val)
-                    row.append(f"{formatted:<{col_w}}", style=color)
-
-            # Delta column
-            if values and len(values) >= 2 and key != "family":
-                delta = max(values) - min(values)
-                if key in ("aggregate_score", "sharpe"):
-                    row.append(f"±{delta:.3f}", style=WARNING_YELLOW)
-                elif key in ("validation_total_return",):
-                    row.append(f"±{delta:.2f}%", style=WARNING_YELLOW)
-                elif key in ("max_drawdown",):
-                    row.append(f"±{delta:.1f}%", style=WARNING_YELLOW)
-                else:
-                    row.append(f"±{delta:.3f}", style=WARNING_YELLOW)
-            elif key == "family":
-                families = [str(s.get("family", ""))[:8] for s in self.strategies]
-                unique = len(set(families))
-                row.append("diff" if unique > 1 else "same", style=WARNING_YELLOW if unique > 1 else TEXT_MUTED)
-
-            result.append_text(row)
-            result.append("\n")
-
-        # Overlay sparkline
         result.append("\n")
         result.append("  EQUITY CURVES\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("  " + "─" * 60 + "\n", style=BORDER_DIM)
-        for i, strat in enumerate(self.strategies):
+        result.append("  " + "\u2500" * 60 + "\n", style=BORDER_DIM)
+        for i, strat in enumerate(self.items):
             equity = strat.get("equity_curve", [])
-            color = self._STRAT_COLORS[i % len(self._STRAT_COLORS)]
-            name = str(strat.get("spec_hash", f"S{i+1}"))[:10]
+            color = self._COLORS[i % len(self._COLORS)]
+            name = str(strat.get("spec_hash", f"S{i + 1}"))[:10]
             result.append(f"  {name:<12}", style=color)
             if equity and len(equity) > 1:
                 spark = sparkline_text(equity, width=40, bullish_color=color, bearish_color=color)
                 result.append_text(spark)
             else:
-                result.append("─" * 40, style=TEXT_MUTED)
+                result.append("\u2500" * 40, style=TEXT_MUTED)
             result.append("\n")
-
         return result
 
 
@@ -547,25 +394,18 @@ class ComparisonPanelWidget(Static):
 # ══════════════════════════════════════════════════════════════════════
 
 
-class StrategyScreen(Screen):
+class StrategyScreen(BaseScreen):
     """Strategy Research screen — browse, search, evaluate, and compare strategies."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "go_back", "Back", show=False),
-        Binding("r", "refresh", "Refresh", show=True),
+    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
         Binding("e", "run_eval", "Evaluate", show=True),
         Binding("i", "init_deck", "Init Deck", show=True),
         Binding("c", "toggle_compare", "Compare", show=True),
         Binding("space", "toggle_select", "Select", show=True),
         Binding("s", "cycle_sort", "Sort", show=True),
         Binding("/", "focus_search", "Search", show=True),
-        Binding("j", "move_down", "Down", show=False),
-        Binding("k", "move_up", "Up", show=False),
-        Binding("ctrl+c", "go_back", "Back", show=False),
-        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
-    # Reactive state
     is_evaluating: reactive[bool] = reactive(False)
     eval_status: reactive[str] = reactive("")
     compare_mode: reactive[bool] = reactive(False)
@@ -576,6 +416,10 @@ class StrategyScreen(Screen):
         layout: vertical;
     }
     """
+
+    _loading_widget_id: ClassVar[str] = "#strategy-loading"
+    _status_widget_id: ClassVar[str] = "#strategy-status"
+    _refresh_interval: ClassVar[float] = 30.0
 
     def __init__(self, deck: str = DEFAULT_DECK, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -595,20 +439,13 @@ class StrategyScreen(Screen):
 
     def on_mount(self) -> None:
         """Initialize the screen after mounting."""
-        try:
-            loading = self.query_one("#strategy-loading", LoadingIndicator)
-            loading.loading = True
-        except Exception:
-            pass
-        self._update_status("Loading strategies…")
-        self.call_after_refresh(self._load_strategies)
-        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._load_strategies)
+        super().on_mount()
+        self._update_status_text_text("Loading strategies\u2026")
         self._spinner_timer = self.set_interval(0.5, self._tick_spinner)
 
     async def on_unmount(self) -> None:
         """Clean up timers when leaving the screen."""
-        if hasattr(self, "_refresh_timer"):
-            self._refresh_timer.stop()
+        await super().on_unmount()
         if hasattr(self, "_spinner_timer"):
             self._spinner_timer.stop()
 
@@ -617,19 +454,9 @@ class StrategyScreen(Screen):
         if self.is_evaluating:
             self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER)
             frame = _SPINNER[self._spinner_idx]
-            self._update_status(f"{frame} {self.eval_status}")
+            self._update_status_text_text(f"{frame} {self.eval_status}")
 
-    def _update_status(self, text: str) -> None:
-        """Update the status bar text."""
-        try:
-            status = self.query_one("#strategy-status", Static)
-            status.update(text)
-        except Exception:
-            pass
-
-    # ── Data Loading ─────────────────────────────────────────────────
-
-    async def _load_strategies(self) -> None:
+    async def _fetch_data(self) -> None:
         """Load strategy list from CLI ancestry command."""
         try:
             result = await run_cli("ancestry", "--json", timeout=15.0)
@@ -650,7 +477,9 @@ class StrategyScreen(Screen):
             list_widget = self.query_one("#strategy-list", StrategyListWidget)
             list_widget.set_strategies(rows)
             self.strategy_count = len(rows)
-            self._update_status(f"  {len(rows)} strategies loaded  |  [e]valuate  [c]ompare  [s]ort  [/]search")
+            self._update_status_text_text(
+                f"  {len(rows)} strategies loaded  |  [e]valuate  [c]ompare  [s]ort  [/]search"
+            )
         except Exception as exc:
             logger.warning("Strategy list update failed: %s", exc)
             self.notify(friendly_error(exc), severity="error")
@@ -674,37 +503,28 @@ class StrategyScreen(Screen):
 
     # ── Actions ──────────────────────────────────────────────────────
 
-    def action_go_back(self) -> None:
-        """Go back to the main screen."""
-        self.app.pop_screen()
-
-    def action_refresh(self) -> None:
+    def action_refresh_now(self) -> None:
         """Force refresh strategy data."""
         self._results_cache.clear()
-        self.run_worker(self._load_strategies())
+        self.call_after_refresh(self._refresh_all)
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
         try:
-            search = self.query_one("#strategy-search", Input)
-            search.focus()
+            self.query_one("#strategy-search", Input).focus()
         except Exception:
             pass
 
     def action_move_up(self) -> None:
-        """Move selection up in the strategy list."""
         try:
-            lw = self.query_one("#strategy-list", StrategyListWidget)
-            lw.action_move_up()
+            self.query_one("#strategy-list", StrategyListWidget).action_move_up()
             self._on_selection_changed()
         except Exception:
             pass
 
     def action_move_down(self) -> None:
-        """Move selection down in the strategy list."""
         try:
-            lw = self.query_one("#strategy-list", StrategyListWidget)
-            lw.action_move_down()
+            self.query_one("#strategy-list", StrategyListWidget).action_move_down()
             self._on_selection_changed()
         except Exception:
             pass
@@ -739,7 +559,7 @@ class StrategyScreen(Screen):
         try:
             rt = self.query_one("#results-table", ResultsTableWidget)
             rt.cycle_sort()
-            self._update_status(f"  Sorted by: {rt.sort_column}")
+            self._update_status_text(f"  Sorted by: {rt.sort_column}")
         except Exception:
             pass
 
@@ -784,7 +604,7 @@ class StrategyScreen(Screen):
 
     async def action_init_deck(self) -> None:
         """Initialize the benchmark deck via CLI."""
-        self._update_status(f"Initializing deck '{self._deck}'…")
+        self._update_status_text(f"Initializing deck '{self._deck}'…")
         try:
             result = await run_cli(
                 "benchmark-init", "--deck", self._deck, "--json", "--force",
@@ -847,6 +667,6 @@ class StrategyScreen(Screen):
             comparison.set_strategies(strats)
             count = len(strats)
             if count >= 2:
-                self._update_status(f"  Comparing {count} strategies  |  [c] toggle view  [space] select")
+                self._update_status_text(f"  Comparing {count} strategies  |  [c] toggle view  [space] select")
         except Exception:
             pass

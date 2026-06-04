@@ -39,22 +39,18 @@ from siglab.tui.formatting import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WARNING_YELLOW,
-    friendly_error,
     format_pnl,
     format_price,
 )
 from siglab.tui.loading import LoadingIndicator
+from siglab.tui.screens.base import BaseScreen
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
 
-REFRESH_SECONDS = 15.0
 PNL_HISTORY_MAX = 120  # Max PnL data points for sparkline
-
-# ── Formatting helpers ───────────────────────────────────────────────
-# Centralized in siglab.tui.formatting; local helpers removed.
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -487,26 +483,10 @@ class OrderHistoryWidget(Static):
 # ══════════════════════════════════════════════════════════════════════
 
 
-class PaperScreen(Screen[None]):
-    """Paper trading screen with positions, order form, history, and PnL chart.
+class PaperScreen(BaseScreen):
+    """Paper trading screen with positions, order form, history, and PnL chart."""
 
-    Layout:
-    ┌──────────────────────────────────────────────┐
-    │  Left column (38w)    │  Right column (fluid) │
-    │  ┌────────────────┐   │  ┌──────────────────┐ │
-    │  │ Order Form     │   │  │ PnL Sparkline    │ │
-    │  ├────────────────┤   │  ├──────────────────┤ │
-    │  │ Account Summary│   │  │ Positions Table  │ │
-    │  └────────────────┘   │  ├──────────────────┤ │
-    │                       │  │ Order History    │ │
-    │                       │  └──────────────────┘ │
-    │  Status bar                                    │
-    └───────────────────────────────────────────────┘
-    """
-
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape", "go_back", "Back", show=True),
-        Binding("r", "refresh_now", "Refresh", show=True),
+    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
         Binding("s", "focus_symbol", "Symbol", show=True),
         Binding("b", "toggle_side", "Buy/Sell", show=True),
         Binding("t", "toggle_type", "Type", show=True),
@@ -515,17 +495,14 @@ class PaperScreen(Screen[None]):
         Binding("enter", "submit_order", "Submit", show=True),
         Binding("n", "new_session", "New Session", show=True),
         Binding("c", "cancel_order", "Cancel Order", show=True),
-        Binding("j", "move_down", "Down", show=False),
-        Binding("k", "move_up", "Up", show=False),
-        Binding("ctrl+c", "go_back", "Back", show=False),
-        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
-    # Reactive state
     session_id: reactive[str] = reactive("")
     session_name: reactive[str] = reactive("")
-    status_text: reactive[str] = reactive("Initializing…")
-    is_loading: reactive[bool] = reactive(True)
+
+    _loading_widget_id: ClassVar[str] = "#paper-loading"
+    _status_widget_id: ClassVar[str] = "#paper-status"
+    _refresh_interval: ClassVar[float] = 15.0
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -553,13 +530,8 @@ class PaperScreen(Screen[None]):
 
     def on_mount(self) -> None:
         """Initialize the screen — create or load a session."""
-        self._timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
+        super().on_mount()
         self.call_after_refresh(self._init_session)
-
-    def on_unmount(self) -> None:
-        """Clean up the refresh timer when leaving the screen."""
-        if hasattr(self, "_timer"):
-            self._timer.stop()
 
     # ── Session Management ────────────────────────────────────────────
 
@@ -602,45 +574,27 @@ class PaperScreen(Screen[None]):
 
     # ── Data Fetching ─────────────────────────────────────────────────
 
-    async def _refresh_all(self) -> None:
+    async def _fetch_data(self) -> None:
         """Fetch all session data and update widgets."""
         if not self.session_id:
             return
-        self.is_loading = True
-        try:
-            loading = self.query_one("#paper-loading", LoadingIndicator)
-            loading.loading = True
-        except Exception:
-            logger.debug("Could not find loading indicator widget")
-        try:
-            result = await run_cli(
-                "paper-status", "--session", self.session_id
-            )
-            if result.returncode == 0:
-                try:
-                    data = json.loads(result.stdout)
-                except json.JSONDecodeError as exc:
-                    self.status_text = f"Bad status response: {exc}  [r]etry"
-                    logger.warning("paper-status JSON decode error: %s", exc)
-                    return
-                self._update_positions(data.get("position", []))
-                self._update_orders(data.get("orders", []))
-                self._update_pnl(data.get("pnl", {}))
-                self.status_text = f"Session {self.session_id[:8]}… · updated  [r]efresh  [s]ymbol [b]uy/sell [?]help"
-            else:
-                self.status_text = f"Refresh error: {result.stderr[:60]}  [r]etry"
-                logger.warning("paper-status failed: %s", result.stderr)
-        except Exception as exc:
-            self.status_text = f"{friendly_error(exc)}  [r]etry"
-            logger.warning("Refresh failed: %s", exc)
-        finally:
-            self.is_loading = False
+        result = await run_cli("paper-status", "--session", self.session_id)
+        if result.returncode == 0:
             try:
-                loading = self.query_one("#paper-loading", LoadingIndicator)
-                loading.loading = False
-                loading.status_text = self.status_text
-            except Exception:
-                logger.debug("Could not update loading indicator in finally block")
+                data = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                self._update_status_text(f"Bad status response: {exc}  [r]etry")
+                logger.warning("paper-status JSON decode error: %s", exc)
+                return
+            self._update_positions(data.get("position", []))
+            self._update_orders(data.get("orders", []))
+            self._update_pnl(data.get("pnl", {}))
+            self._update_status_text(
+                f"Session {self.session_id[:8]}\u2026 \u00b7 updated  [r]efresh  [s]ymbol [b]uy/sell [?]help"
+            )
+        else:
+            self._update_status_text(f"Refresh error: {result.stderr[:60]}  [r]etry")
+            logger.warning("paper-status failed: %s", result.stderr)
 
     def _update_positions(self, positions: list[dict[str, Any]]) -> None:
         """Update the positions table widget.
@@ -825,22 +779,6 @@ class PaperScreen(Screen[None]):
     def action_cancel_order(self) -> None:
         """Cancel the selected open order (placeholder for future enhancement)."""
         self.status_text = "Cancel: select an open order first (coming soon)"
-
-    def action_go_back(self) -> None:
-        """Return to the main screen."""
-        self.app.pop_screen()
-
-    def action_move_down(self) -> None:
-        """Move focus to the next widget."""
-        self.screen.focus_next()
-
-    def action_move_up(self) -> None:
-        """Move focus to the previous widget."""
-        self.screen.focus_previous()
-
-    def action_refresh_now(self) -> None:
-        """Force an immediate data refresh."""
-        self.call_after_refresh(self._refresh_all)
 
     # ── Text Input Overlay ────────────────────────────────────────────
 
