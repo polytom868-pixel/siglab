@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Sequence
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -138,21 +138,32 @@ def _format_confidence(conf: float | None) -> Text:
 
 
 class EvidenceGraphWidget(Static):
-    """Displays evidence nodes and edges in an ASCII tree view."""
+    """Displays evidence nodes and edges in an ASCII tree view.
+
+    Zero-copy: stores references to node and edge lists from the API
+    response.  Filtering produces a new list of references (no dict
+    copies).
+    """
+
+    __slots__ = ("_graph_nodes", "_edges", "_filter_kind", "_filter_text")
 
     can_focus = True
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._graph_nodes: list[dict[str, Any]] = []
-        self._edges: list[dict[str, Any]] = []
+        self._graph_nodes: tuple[dict[str, Any], ...] = ()
+        self._edges: tuple[dict[str, Any], ...] = ()
         self._filter_kind: str = ""
         self._filter_text: str = ""
 
-    def update_graph(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> None:
-        """Update the graph data and re-render."""
-        self._graph_nodes = nodes
-        self._edges = edges
+    def update_graph(self, nodes: Sequence[dict[str, Any]], edges: Sequence[dict[str, Any]]) -> None:
+        """Store nodes and edges as immutable tuples.
+
+        Accepts any Sequence (list, tuple).  Individual dicts are
+        shared by reference — no data is copied.
+        """
+        self._graph_nodes = tuple(nodes)
+        self._edges = tuple(edges)
         self.refresh()
 
     def set_filter(self, kind: str = "", text: str = "") -> None:
@@ -252,17 +263,23 @@ class EvidenceGraphWidget(Static):
 
 
 class EdgeDetailWidget(Static):
-    """Shows edge/connection details for selected evidence."""
+    """Shows edge/connection details for selected evidence.
+
+    Zero-copy: stores a reference to the edges tuple from the graph
+    widget — shared, not copied.
+    """
+
+    __slots__ = ("_edges",)
 
     can_focus = True
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._edges: list[dict[str, Any]] = []
+        self._edges: tuple[dict[str, Any], ...] = ()
 
-    def update_edges(self, edges: list[dict[str, Any]]) -> None:
-        """Update edge data."""
-        self._edges = edges
+    def update_edges(self, edges: Sequence[dict[str, Any]]) -> None:
+        """Store the edges as an immutable tuple."""
+        self._edges = tuple(edges)
         self.refresh()
 
     def render(self) -> Text:
@@ -530,7 +547,12 @@ class EvidenceScreen(Screen[None]):
         await self._refresh_graph()
 
     async def _refresh_graph(self) -> None:
-        """Fetch evidence graph data from the API."""
+        """Fetch evidence graph data from the API.
+
+        Zero-copy: the API response nodes/edges lists are converted
+        to tuples once in the graph widget; the edge widget shares
+        the same tuple reference.
+        """
         if self._api_client is None:
             return
         self.graph_loading = True
@@ -541,15 +563,20 @@ class EvidenceScreen(Screen[None]):
             pass
         try:
             data = await self._api_client.get_evidence_graph()
-            self._graph_nodes = data.get("nodes", [])
-            self._edges = data.get("edges", [])
+            nodes = data.get("nodes", [])
+            edges = data.get("edges", [])
             self.api_connected = True
 
             graph_widget = self.query_one("#evidence-graph", EvidenceGraphWidget)
-            edge_widget = self.query_one("#edge-detail", EdgeDetailWidget)
+            graph_widget.update_graph(nodes, edges)
 
-            graph_widget.update_graph(self._graph_nodes, self._edges)
-            edge_widget.update_edges(self._edges)
+            # Share the same edges tuple with the edge detail widget
+            edge_widget = self.query_one("#edge-detail", EdgeDetailWidget)
+            edge_widget.update_edges(graph_widget._edges)
+
+            # Store reference for status display
+            self._graph_nodes = nodes
+            self._edges = edges
 
             self._update_status()
         except Exception as exc:

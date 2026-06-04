@@ -34,7 +34,8 @@ def sparkline_text(
     Parameters
     ----------
     values : Sequence[float]
-        Price values (oldest first).
+        Price values (oldest first). Accepts any Sequence including
+        tuples, memoryview, and list slices — no copy is made.
     width : int
         Maximum character width of the sparkline.
     bullish_color, bearish_color, neutral_color : str
@@ -48,19 +49,42 @@ def sparkline_text(
     if not values:
         return Text("─" * width, style=neutral_color)
 
-    # Resample to fit width
     n = len(values)
+
+    # Resample to fit width — use index arithmetic directly on the
+    # source sequence without copying into an intermediate list.
     if n > width:
         step = n / width
-        sampled = [values[int(i * step)] for i in range(width)]
-    else:
-        sampled = list(values)
+        lo = hi = values[0]
+        for i in range(width):
+            v = values[int(i * step)]
+            if v < lo:
+                lo = v
+            if v > hi:
+                hi = v
+        span = hi - lo if hi != lo else 1.0
 
-    lo = min(sampled)
-    hi = max(sampled)
+        # Determine trend colour from first and last original values
+        if hi == lo:
+            colour = neutral_color
+        elif values[-1] >= values[0]:
+            colour = bullish_color
+        else:
+            colour = bearish_color
+
+        chars: list[str] = []
+        for i in range(width):
+            v = values[int(i * step)]
+            idx = int((v - lo) / span * (len(_SPARK_CHARS) - 1))
+            idx = max(0, min(idx, len(_SPARK_CHARS) - 1))
+            chars.append(_SPARK_CHARS[idx])
+        return Text("".join(chars), style=colour)
+
+    # n <= width: scan the original sequence directly
+    lo = min(values)
+    hi = max(values)
     span = hi - lo if hi != lo else 1.0
 
-    # Determine trend colour — use neutral when all values are equal
     if hi == lo:
         colour = neutral_color
     elif len(values) >= 2:
@@ -68,8 +92,8 @@ def sparkline_text(
     else:
         colour = neutral_color
 
-    chars: list[str] = []
-    for v in sampled:
+    chars = []
+    for v in values:
         idx = int((v - lo) / span * (len(_SPARK_CHARS) - 1))
         idx = max(0, min(idx, len(_SPARK_CHARS) - 1))
         chars.append(_SPARK_CHARS[idx])
@@ -103,6 +127,8 @@ def ohlc_summary(candles: Sequence[dict]) -> str:
 class SparklineWidget(Static):
     """A widget that renders a sparkline chart from a list of values."""
 
+    __slots__ = ("_chart_width",)
+
     values: reactive[list[float]] = reactive(list, layout=True)
 
     DEFAULT_CSS = """
@@ -121,5 +147,10 @@ class SparklineWidget(Static):
         return sparkline_text(self.values, width=self._chart_width)
 
     def set_values(self, values: Sequence[float]) -> None:
-        """Update the sparkline data."""
-        self.values = list(values)
+        """Update the sparkline data.
+
+        Accepts any Sequence (tuple, list, memoryview).  A new list is
+        only created when *values* is not already a list, to preserve
+        Textual reactivity while avoiding redundant copies.
+        """
+        self.values = values if isinstance(values, list) else list(values)

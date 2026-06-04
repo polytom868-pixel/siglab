@@ -72,17 +72,18 @@ def _make_orderbook(n: int = 5) -> dict:
     return {"bids": bids, "asks": asks, "symbol": "BTC-USD"}
 
 
-def _make_symbols(n: int = 5) -> list[dict]:
-    """Generate fake symbol metadata for testing."""
+def _make_symbols(n: int = 5) -> list:
+    """Generate fake SymbolEntry views for testing."""
+    from siglab.tui.types import SymbolEntry
     syms = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD", "LINK-USD"]
     return [
-        {
-            "name": syms[i],
-            "symbol": syms[i],
-            "pricePrecision": 2,
-            "quantityPrecision": 4,
-            "maxLeverage": 50,
-        }
+        SymbolEntry(
+            name=syms[i],
+            symbol=syms[i],
+            price=50000.0 + i * 1000,
+            change_pct=1.0 + i * 0.5,
+            volume=1_000_000.0 + i * 100_000,
+        )
         for i in range(min(n, len(syms)))
     ]
 
@@ -210,7 +211,7 @@ class TestSymbolListWidget:
         widget.set_symbols(syms)
         widget.set_filter("BTC")
         assert len(widget.symbols) == 1
-        assert widget.symbols[0]["symbol"] == "BTC-USD"
+        assert widget.symbols[0].symbol == "BTC-USD"
 
     def test_filter_case_insensitive(self) -> None:
         widget = SymbolListWidget()
@@ -362,8 +363,8 @@ class TestOrderBookWidget:
 
     def test_init_empty(self) -> None:
         widget = OrderBookWidget()
-        assert widget.bids == []
-        assert widget.asks == []
+        assert widget.bids == ()
+        assert widget.asks == ()
 
     def test_render_loading_state(self) -> None:
         widget = OrderBookWidget()

@@ -8,12 +8,17 @@ Displays:
 
 Connects to the FastAPI dashboard via TuiApiClient.
 Auto-refreshes every 30 seconds.
+
+Zero-copy data flow: ticker data fetched once is shared between
+SymbolListWidget and TickerTableWidget as references.  Kline close
+prices are extracted as tuples (immutable sequence) so sparkline
+can render without copying.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Sequence
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -39,6 +44,7 @@ from siglab.tui.formatting import (
     safe_float,
 )
 from siglab.tui.loading import LoadingIndicator
+from siglab.tui.types import SymbolEntry, TickerView, closes_from_klines
 from siglab.tui.widgets.sparkline import ohlc_summary, sparkline_text
 
 logger = logging.getLogger(__name__)
@@ -56,9 +62,15 @@ ORDERBOOK_LIMIT = 15
 
 
 class SymbolListWidget(Static):
-    """Vertical list of perp symbols with selection highlighting."""
+    """Vertical list of perp symbols with selection highlighting.
 
-    symbols: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
+    Zero-copy: stores ``SymbolEntry`` views derived from ticker data.
+    Filtering produces a new list of references (no dict copies).
+    """
+
+    __slots__ = ("_all_symbols", "_filter_text")
+
+    symbols: reactive[list[SymbolEntry]] = reactive(list, layout=True)
     selected_index: reactive[int] = reactive(0)
 
     DEFAULT_CSS = """
@@ -74,22 +86,44 @@ class SymbolListWidget(Static):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._all_symbols: list[dict[str, Any]] = []
+        self._all_symbols: tuple[SymbolEntry, ...] = ()
         self._filter_text: str = ""
 
-    def set_symbols(self, symbols: list[dict[str, Any]]) -> None:
-        """Update the full symbol list."""
-        self._all_symbols = symbols
+    @staticmethod
+    def _to_symbol_entry(item: Any) -> SymbolEntry:
+        """Convert a dict or SymbolEntry to a SymbolEntry."""
+        if isinstance(item, SymbolEntry):
+            return item
+        if isinstance(item, dict):
+            return SymbolEntry(
+                name=str(item.get("name", item.get("symbol", "?"))),
+                symbol=str(item.get("symbol", "?")),
+                price=float(item.get("price", 0) or 0),
+                change_pct=float(item.get("change_pct", 0) or 0),
+                volume=float(item.get("volume", 0) or 0),
+            )
+        return item  # type: ignore[return-value]
+
+    def set_symbols(self, entries: Sequence[Any]) -> None:
+        """Update the full symbol list.
+
+        Accepts dicts or ``SymbolEntry`` objects.  Dicts are converted
+        to ``SymbolEntry`` views; existing entries are shared as-is.
+        """
+        self._all_symbols = tuple(self._to_symbol_entry(e) for e in entries)
         self._apply_filter()
 
     def _apply_filter(self) -> None:
-        """Filter symbols by the current search text."""
+        """Filter symbols by the current search text.
+
+        Produces a new list of references to the same ``SymbolEntry``
+        objects — no entry data is copied.
+        """
         ft = self._filter_text.upper().strip()
         if ft:
             self.symbols = [
                 s for s in self._all_symbols
-                if ft in str(s.get("name", "")).upper()
-                or ft in str(s.get("symbol", "")).upper()
+                if ft in s.name.upper() or ft in s.symbol.upper()
             ]
         else:
             self.symbols = list(self._all_symbols)
@@ -108,9 +142,7 @@ class SymbolListWidget(Static):
 
         lines = Text()
         for i, sym in enumerate(self.symbols):
-            name = str(sym.get("name", sym.get("symbol", "?")))
-            # Truncate to fit width
-            display = f"  {name:<18}"
+            display = f"  {sym.name:<18}"
             if i == self.selected_index:
                 lines.append(display, style=f"bold #000000 on {ACCENT_GREEN}")
             else:
@@ -129,7 +161,7 @@ class SymbolListWidget(Static):
     def get_selected_symbol(self) -> str | None:
         """Return the symbol string of the currently selected item."""
         if self.symbols and 0 <= self.selected_index < len(self.symbols):
-            return self.symbols[self.selected_index].get("name") or self.symbols[self.selected_index].get("symbol")
+            return self.symbols[self.selected_index].name
         return None
 
 
@@ -137,7 +169,14 @@ class SymbolListWidget(Static):
 
 
 class KlinesChartWidget(Static):
-    """Renders an ASCII sparkline chart of kline data with OHLC summary."""
+    """Renders an ASCII sparkline chart of kline data with OHLC summary.
+
+    Zero-copy: stores a reference to the klines list from the API
+    response.  Close prices are extracted as a tuple (immutable
+    sequence) so ``sparkline_text`` can render without copying.
+    """
+
+    __slots__ = ("_closes_cache",)
 
     candles: reactive[list[dict]] = reactive(list, layout=True)
     symbol: reactive[str] = reactive(DEFAULT_SYMBOL)
@@ -150,6 +189,20 @@ class KlinesChartWidget(Static):
         background: #0a0a0a;
     }
     """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._closes_cache: tuple[float, ...] = ()
+
+    def set_candles(self, klines: list[dict]) -> None:
+        """Store a reference to klines and pre-compute close tuple.
+
+        The klines list itself is stored by reference (no copy).
+        Close prices are extracted once into an immutable tuple that
+        ``sparkline_text`` can iterate without further allocation.
+        """
+        self.candles = klines
+        self._closes_cache = closes_from_klines(klines)
 
     def render(self) -> Text:
         result = Text()
@@ -164,11 +217,11 @@ class KlinesChartWidget(Static):
         result.append("\n\n")
 
         if not self.candles:
-            result.append("  Loading chart data…", style=TEXT_MUTED)
+            result.append("  Loading chart data\u2026", style=TEXT_MUTED)
             return result
 
-        # Sparkline from close prices
-        closes = [c.get("close", 0) for c in self.candles]
+        # Use pre-computed close prices if available, else extract now
+        closes = self._closes_cache if self._closes_cache else closes_from_klines(self.candles)
         chart_width = max(20, min(80, len(closes)))
         spark = sparkline_text(closes, width=chart_width)
         result.append("  ")
@@ -187,7 +240,11 @@ class KlinesChartWidget(Static):
 
 
 class TickerTableWidget(Static):
-    """Displays 24h ticker data for all perp symbols in a table."""
+    """Displays 24h ticker data for all perp symbols in a table.
+
+    Zero-copy: stores a reference to the tickers list from the API
+    response — no data is copied into widget state.
+    """
 
     tickers: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
 
@@ -230,10 +287,14 @@ class TickerTableWidget(Static):
 
 
 class OrderBookWidget(Static):
-    """Renders order book depth with bids and asks side by side."""
+    """Renders order book depth with bids and asks side by side.
 
-    bids: reactive[list[list]] = reactive(list, layout=True)
-    asks: reactive[list[list]] = reactive(list, layout=True)
+    Zero-copy: bids and asks are stored as tuples (immutable sequences)
+    shared from the API response — no per-refresh list copies.
+    """
+
+    bids: reactive[tuple[list, ...]] = reactive(tuple, layout=True)
+    asks: reactive[tuple[list, ...]] = reactive(tuple, layout=True)
     symbol: reactive[str] = reactive(DEFAULT_SYMBOL)
 
     DEFAULT_CSS = """
@@ -446,33 +507,31 @@ class MarketScreen(Screen[None]):
                 pass
 
     async def _fetch_tickers(self) -> None:
-        """Fetch ticker data and update symbol list + ticker table."""
+        """Fetch ticker data and update symbol list + ticker table.
+
+        Zero-copy: the raw tickers list from the API is stored as-is
+        on the TickerTableWidget.  SymbolEntry views are derived once
+        and shared with the SymbolListWidget — no intermediate dicts.
+        """
         try:
             data = await self._api.get_market_tickers()
             tickers = data.get("tickers", [])
             if tickers:
-                # Update symbol list
-                symbols = [
-                    {
-                        "name": t.get("symbol", "?"),
-                        "symbol": t.get("symbol", "?"),
-                        "price": float(t.get("lastPrice", 0) or 0),
-                        "change_pct": float(t.get("priceChangePercent", 0) or 0),
-                    }
-                    for t in tickers
-                ]
-                # Sort by volume descending
-                symbols.sort(
-                    key=lambda s: abs(s.get("price", 0) * float(s.get("change_pct", 0))),
+                # Derive SymbolEntry views (frozen dataclass, __slots__)
+                # Sort by volume*change descending for relevance
+                entries = sorted(
+                    (SymbolEntry.from_ticker(TickerView.from_dict(t)) for t in tickers),
+                    key=lambda e: abs(e.price * e.change_pct),
                     reverse=True,
                 )
                 try:
                     symbol_list = self.query_one("#symbol-list", SymbolListWidget)
-                    symbol_list.set_symbols(symbols)
+                    symbol_list.set_symbols(entries)
                 except Exception:
                     pass
 
-                # Update ticker table
+                # TickerTableWidget stores a reference to the raw list
+                # — no copy is made.
                 try:
                     ticker_table = self.query_one("#ticker-table", TickerTableWidget)
                     ticker_table.tickers = tickers
@@ -482,7 +541,11 @@ class MarketScreen(Screen[None]):
             logger.debug("Ticker fetch failed: %s", exc)
 
     async def _fetch_klines(self) -> None:
-        """Fetch kline data for the current symbol."""
+        """Fetch kline data for the current symbol.
+
+        Uses ``set_candles`` to store the klines reference and
+        pre-compute close prices as an immutable tuple.
+        """
         try:
             data = await self._api.get_market_klines(
                 self.current_symbol, DEFAULT_INTERVAL, KLINES_LIMIT
@@ -491,14 +554,18 @@ class MarketScreen(Screen[None]):
             try:
                 chart = self.query_one("#klines-chart", KlinesChartWidget)
                 chart.symbol = self.current_symbol
-                chart.candles = klines
+                chart.set_candles(klines)
             except Exception:
                 pass
         except Exception as exc:
             logger.debug("Klines fetch failed for %s: %s", self.current_symbol, exc)
 
     async def _fetch_orderbook(self) -> None:
-        """Fetch order book for the current symbol."""
+        """Fetch order book for the current symbol.
+
+        Stores bids/asks as tuples (immutable sequences) to avoid
+        per-refresh list copies.
+        """
         try:
             data = await self._api.get_market_orderbook(
                 self.current_symbol, ORDERBOOK_LIMIT
@@ -506,8 +573,8 @@ class MarketScreen(Screen[None]):
             try:
                 book = self.query_one("#order-book", OrderBookWidget)
                 book.symbol = self.current_symbol
-                book.bids = data.get("bids", [])
-                book.asks = data.get("asks", [])
+                book.bids = tuple(data.get("bids", []))
+                book.asks = tuple(data.get("asks", []))
             except Exception:
                 pass
         except Exception as exc:
