@@ -122,3 +122,80 @@ class TuiApiClient:
         response = await client.get("/risk")
         response.raise_for_status()
         return response.json()
+
+    # ── Market Data ──────────────────────────────────────────────────
+
+    async def get_market_symbols(self) -> dict[str, Any]:
+        """Fetch all tradable SoDEX perp symbols.
+
+        Returns:
+            Dict with 'symbols' list and 'count'.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get("/market/symbols")
+        response.raise_for_status()
+        return response.json()
+
+    async def get_market_tickers(self) -> dict[str, Any]:
+        """Fetch 24-hour ticker data for all perp symbols.
+
+        Returns:
+            Dict with 'tickers' list and 'count'.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get("/market/tickers")
+        response.raise_for_status()
+        return response.json()
+
+    async def get_market_klines(
+        self, symbol: str, interval: str = "1h", limit: int = 60
+    ) -> dict[str, Any]:
+        """Fetch kline/candlestick data for a perp symbol.
+
+        Args:
+            symbol: Perp symbol (e.g. "BTC-USD").
+            interval: Kline interval (1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M).
+            limit: Maximum number of candles.
+
+        Returns:
+            Dict with 'klines' list, 'symbol', 'interval', 'count'.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get(
+            f"/market/klines/{symbol}",
+            params={"interval": interval, "limit": limit},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_market_orderbook(
+        self, symbol: str, limit: int = 20
+    ) -> dict[str, Any]:
+        """Fetch order book depth for a perp symbol.
+
+        Args:
+            symbol: Perp symbol (e.g. "BTC-USD").
+            limit: Number of price levels per side.
+
+        Returns:
+            Dict with 'bids', 'asks', 'symbol'.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get(
+            f"/market/orderbook/{symbol}",
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return response.json()

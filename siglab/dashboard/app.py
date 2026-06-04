@@ -51,6 +51,20 @@ class DashboardState:
         self.lineage: LineageStore | None = None
         self.start_time: float = time.time()
         self.ws_manager: WebSocketManager = WebSocketManager()
+        self._sodex_feeds: Any = None  # lazy SoDEXFeeds instance
+
+    def get_sodex_feeds(self) -> Any:
+        """Return or lazily initialise the SoDEXFeeds instance."""
+        if self._sodex_feeds is None:
+            try:
+                from siglab.data.sodex_feeds import SoDEXFeeds
+                from siglab.data.store import ParquetLake
+
+                lake_dir = self.config.data_lake_dir if self.config else "data/cache"
+                self._sodex_feeds = SoDEXFeeds(ParquetLake(lake_dir))
+            except Exception:
+                return None
+        return self._sodex_feeds
 
 
 @asynccontextmanager

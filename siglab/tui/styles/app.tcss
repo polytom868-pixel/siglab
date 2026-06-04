@@ -120,3 +120,69 @@ Screen {
 .keybinding-desc {
     color: $text-secondary;
 }
+
+/* === Market Overview Screen === */
+MarketScreen {
+    layout: vertical;
+}
+
+#market-layout {
+    layout: vertical;
+    height: 100%;
+}
+
+#symbol-search {
+    height: 3;
+    max-width: 100%;
+    background: $input-bg;
+    border: none;
+    padding: 0 1;
+}
+
+#symbol-search:focus {
+    border: tall $border-focus;
+}
+
+#market-main {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#symbol-list {
+    width: 28;
+    min-width: 22;
+    border-right: solid $border-dim;
+    overflow-y: auto;
+}
+
+#market-detail {
+    layout: vertical;
+    width: 1fr;
+}
+
+#klines-chart {
+    height: 1fr;
+    min-height: 6;
+    border-bottom: solid $border-dim;
+}
+
+#ticker-table {
+    height: auto;
+    max-height: 12;
+    border-bottom: solid $border-dim;
+    overflow-y: auto;
+}
+
+#order-book {
+    height: 1fr;
+    min-height: 8;
+    overflow-y: auto;
+}
+
+#market-status {
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+    dock: bottom;
+}
