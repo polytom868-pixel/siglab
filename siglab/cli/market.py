@@ -72,10 +72,11 @@ def run_command(args: argparse.Namespace) -> None:
         "status": report["status"],
         "warnings": report["warnings"],
     }
+    from siglab.cli.rich_utils import print_json
     if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print_json(payload)
         return
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    print_json(payload)
 
 
 def build_market_report(

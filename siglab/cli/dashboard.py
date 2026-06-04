@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
 
+from siglab.cli.rich_utils import print_error, print_info, print_success
 from siglab.config import load_settings
 from siglab.dashboard import run_dashboard_server
 
@@ -46,7 +46,7 @@ def run_dashboard_start(args: argparse.Namespace) -> None:
     port = int(args.port)
     reload = bool(args.reload)
 
-    print(f"Starting SigLab FastAPI dashboard on http://{host}:{port}")
+    print_info(f"Starting SigLab FastAPI dashboard on http://{host}:{port}")
     uvicorn.run(
         "siglab.dashboard.app:app",
         host=host,
@@ -72,13 +72,13 @@ def run_dashboard_stop(args: argparse.Namespace) -> None:
         )
         pids = [int(p) for p in result.stdout.strip().split() if p.strip()]
         if not pids:
-            print(f"No process found listening on port {port}", file=sys.stderr)
+            print_error(f"No process found listening on port {port}")
             raise SystemExit(1)
         for pid in pids:
             os.kill(pid, signal.SIGTERM)
-        print(f"Stopped dashboard on port {port} (PID{' '.join(str(p) for p in pids)})")
+        print_success(f"Stopped dashboard on port {port} (PID{' '.join(str(p) for p in pids)})")
     except subprocess.TimeoutExpired:
-        print(f"Timeout checking port {port}", file=sys.stderr)
+        print_error(f"Timeout checking port {port}")
         raise SystemExit(1) from None
     except ProcessLookupError:
         pass

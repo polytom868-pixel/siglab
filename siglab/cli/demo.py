@@ -97,10 +97,11 @@ def run_demo_report(args: argparse.Namespace) -> None:
         "readiness": report["readiness"],
         "red_flags": report["red_flags"],
     }
+    from siglab.cli.rich_utils import print_json
     if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print_json(payload)
         return
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    print_json(payload)
 
 
 def _build_demo_report_payload(settings: Any) -> dict[str, Any]:
@@ -233,11 +234,12 @@ def run_demo_manifest(args: argparse.Namespace) -> None:
     )
     html_output.parent.mkdir(parents=True, exist_ok=True)
     html_output.write_text(_demo_manifest_html(manifest), encoding="utf-8")
+    from siglab.cli.rich_utils import print_json, print_success
     if getattr(args, "json", False):
-        print(json.dumps(manifest, indent=2, sort_keys=True, default=str))
+        print_json(manifest)
         return
-    print(f"demo_manifest: {display_path(output, root_dir=settings.root_dir)}")
-    print(f"demo_manifest_html: {display_path(html_output, root_dir=settings.root_dir)}")
+    print_success(f"demo_manifest: {display_path(output, root_dir=settings.root_dir)}")
+    print_success(f"demo_manifest_html: {display_path(html_output, root_dir=settings.root_dir)}")
 
 
 def _build_demo_manifest(settings: Any) -> dict[str, Any]:
@@ -449,10 +451,11 @@ def run_demo_refresh(args: argparse.Namespace) -> None:
         "live_write_allowed": preflight.get("live_write_allowed"),
         "unsafe_claims": wave_payload.get("unsafe_claims"),
     }
+    from siglab.cli.rich_utils import print_json
     if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+        print_json(payload)
         return
-    print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+    print_json(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -469,10 +472,11 @@ def run_wave_status(args: argparse.Namespace) -> None:
     )
     payload = _build_wave_status_payload(args)
     write_json(output, payload)
+    from siglab.cli.rich_utils import print_json, print_success
     if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+        print_json(payload)
         return
-    print(f"wave_status: {display_path(output, root_dir=settings.root_dir)}")
+    print_success(f"wave_status: {display_path(output, root_dir=settings.root_dir)}")
 
 
 def _build_wave_status_payload(args: argparse.Namespace) -> dict[str, Any]:

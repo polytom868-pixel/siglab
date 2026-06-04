@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from typing import Any
 
 from siglab.config import load_settings
@@ -39,12 +38,27 @@ def run_command(args: argparse.Namespace) -> None:
             "blocked_mentions": text.count("blocked"),
         }
     if getattr(args, "json", False):
-        print(json.dumps(report, indent=2, sort_keys=True))
+        from siglab.cli.rich_utils import print_json
+        print_json(report)
         return
+    from siglab.cli.rich_utils import make_table, get_console, status_style
+    from rich.text import Text
+    table = make_table(title="API Surface")
+    table.add_column("Surface", style="label")
+    table.add_column("Exists")
+    table.add_column("Lines", justify="right")
+    table.add_column("Paths", justify="right")
+    table.add_column("Supported", justify="right")
+    table.add_column("Missing", justify="right")
+    table.add_column("Blocked", justify="right")
     for name, payload in report.items():
-        print(
-            f"{name}: exists={payload['exists']} lines={payload['line_count']} "
-            f"paths={payload['endpoint_path_mentions']} supported={payload['supported_mentions']} "
-            f"missing={payload['missing_mentions']} blocked={payload['blocked_mentions']} "
-            f"file={payload['path']}"
+        table.add_row(
+            name,
+            Text(str(payload["exists"]), style=status_style(payload["exists"])),
+            str(payload["line_count"]),
+            str(payload["endpoint_path_mentions"]),
+            str(payload["supported_mentions"]),
+            str(payload["missing_mentions"]),
+            str(payload["blocked_mentions"]),
         )
+    get_console().print(table)

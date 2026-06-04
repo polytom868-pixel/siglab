@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Any
 
@@ -44,24 +43,24 @@ def run_command(args: argparse.Namespace) -> None:
         else "not_applicable"
     )
     if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+        from siglab.cli.rich_utils import print_json
+        print_json(payload)
     else:
-        print(
-            "\n".join(
-                [
-                    f"trace_count: {payload['trace_count']}",
-                    f"stage_counts: {payload['stage_counts']}",
-                    f"provider_counts: {payload['provider_counts']}",
-                    f"model_counts: {payload['model_counts']}",
-                    f"tool_invocation_count: {payload['tool_invocation_count']}",
-                    f"tool_counts: {payload['tool_counts']}",
-                    f"tool_latency_ms: {payload['tool_latency_ms']}",
-                    f"provider_metrics_status: {payload['provider_metrics_status']}",
-                    f"provider_metrics: {payload['provider_metrics']}",
-                    f"confidence: {payload['confidence']}",
-                ]
-            )
-        )
+        from siglab.cli.rich_utils import make_table, get_console
+        import json as _json
+        table = make_table(title="Telemetry Report")
+        table.add_column("Metric", style="label", no_wrap=True)
+        table.add_column("Value")
+        table.add_row("trace_count", str(payload["trace_count"]))
+        table.add_row("stage_counts", _json.dumps(payload["stage_counts"], sort_keys=True))
+        table.add_row("provider_counts", _json.dumps(payload["provider_counts"], sort_keys=True))
+        table.add_row("model_counts", _json.dumps(payload["model_counts"], sort_keys=True))
+        table.add_row("tool_invocation_count", str(payload["tool_invocation_count"]))
+        table.add_row("tool_counts", _json.dumps(payload["tool_counts"], sort_keys=True))
+        table.add_row("tool_latency_ms", _json.dumps(payload["tool_latency_ms"], sort_keys=True))
+        table.add_row("provider_metrics_status", str(payload["provider_metrics_status"]))
+        table.add_row("confidence", str(payload["confidence"]))
+        get_console().print(table)
 
 
 def trace_paths_for_telemetry(*, settings: Any, track: str, run_session_id: str | None) -> list[Path]:

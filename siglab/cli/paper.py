@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 
 from siglab.config import load_settings
 from siglab.data.store import ParquetLake
@@ -48,7 +47,8 @@ async def run_paper_start(args: argparse.Namespace) -> None:
     feeds = SoDEXFeeds(lake=lake)
     client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
     session_id = client.create_session(name=args.session)
-    print(json.dumps({"session_id": session_id, "name": args.session or session_id}))
+    from siglab.cli.rich_utils import print_json
+    print_json({"session_id": session_id, "name": args.session or session_id})
 
 
 async def run_paper_status(args: argparse.Namespace) -> None:
@@ -60,9 +60,11 @@ async def run_paper_status(args: argparse.Namespace) -> None:
     client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
     try:
         status = client.get_session_status(args.session)
-        print(json.dumps(status, indent=2, default=str))
+        from siglab.cli.rich_utils import print_json
+        print_json(status)
     except PaperClientError as exc:
-        print(json.dumps({"error": str(exc)}, indent=2))
+        from siglab.cli.rich_utils import print_error
+        print_error(str(exc))
         raise SystemExit(1)
 
 
@@ -117,12 +119,14 @@ async def run_paper_promote(args: argparse.Namespace) -> None:
             "min_trading_days_required": min_trading_days,
         }
 
-        print(json.dumps(result, indent=2, default=str))
+        from siglab.cli.rich_utils import print_json
+        print_json(result)
 
         if not eligible:
             raise SystemExit(1)
 
     except PaperClientError as exc:
+        from siglab.cli.rich_utils import print_json
         result = {
             "promoted": False,
             "reason": str(exc),
@@ -134,5 +138,5 @@ async def run_paper_promote(args: argparse.Namespace) -> None:
             "consecutive_days_required": args.consecutive_days or DEFAULT_CONSECUTIVE_DAYS,
             "min_trading_days_required": args.min_trading_days or DEFAULT_MIN_TRADING_DAYS,
         }
-        print(json.dumps(result, indent=2, default=str))
+        print_json(result)
         raise SystemExit(1)

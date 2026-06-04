@@ -112,27 +112,24 @@ async def run_evidence_build(args: argparse.Namespace) -> None:
         else output.with_suffix(".summary.json")
     )
     summary = store.write_summary(summary_output, max_day_gap=1, top_links=int(args.summary_top_links))
-    print(
-        json.dumps(
-            {
-                "output": display_path(output, root_dir=settings.root_dir),
-                "summary_output": display_path(summary_output, root_dir=settings.root_dir),
-                "records_appended": appended,
-                "cross_module_links": len(links),
-                "currency": str(args.currency).upper(),
-                "currency_id": currency_id,
-                "link_relations": sorted({str(link.get("relation")) for link in links}),
-                "modules": sorted({record.module for record in records}),
-                "relations": sorted({record.relation for record in records}),
-                "source_counts": dict(sorted(source_counts.items())),
-                "summary_record_count": summary["record_count"],
-                "summary_top_links": len(summary["top_links"]),
-                "append_stats": dict(store.last_append_stats),
-                "observed_at": observed_at,
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    from siglab.cli.rich_utils import print_json
+    print_json(
+        {
+            "output": display_path(output, root_dir=settings.root_dir),
+            "summary_output": display_path(summary_output, root_dir=settings.root_dir),
+            "records_appended": appended,
+            "cross_module_links": len(links),
+            "currency": str(args.currency).upper(),
+            "currency_id": currency_id,
+            "link_relations": sorted({str(link.get("relation")) for link in links}),
+            "modules": sorted({record.module for record in records}),
+            "relations": sorted({record.relation for record in records}),
+            "source_counts": dict(sorted(source_counts.items())),
+            "summary_record_count": summary["record_count"],
+            "summary_top_links": len(summary["top_links"]),
+            "append_stats": dict(store.last_append_stats),
+            "observed_at": observed_at,
+        },
     )
 
 
@@ -161,6 +158,8 @@ def run_evidence_map(args: argparse.Namespace) -> None:
     rendered = write_evidence_graph_html(summary_path, output_path)
     payload = {"summary": str(summary_path), "output": str(rendered)}
     if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        from siglab.cli.rich_utils import print_json
+        print_json(payload)
         return
-    print(f"wrote evidence graph: {rendered}")
+    from siglab.cli.rich_utils import print_success
+    print_success(f"wrote evidence graph: {rendered}")
