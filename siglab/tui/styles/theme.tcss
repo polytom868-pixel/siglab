@@ -5,7 +5,7 @@
  */
 
 /* === Primitive Color Palette === */
-$bg: #000000;
+$bg: #0a0a0a;
 $surface: #0d1210;
 $surface-raised: #162019;
 $text-primary: #e2ebe5;

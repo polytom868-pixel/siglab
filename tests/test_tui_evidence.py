@@ -56,13 +56,13 @@ class TestHelpers:
     """Test helper functions."""
 
     def test_kind_icon_source(self) -> None:
-        assert _kind_icon("source") == "📡"
+        assert _kind_icon("source") == "[*]"
 
     def test_kind_icon_entity(self) -> None:
-        assert _kind_icon("entity") == "🔗"
+        assert _kind_icon("entity") == "[+]"
 
     def test_kind_icon_unknown(self) -> None:
-        assert _kind_icon("unknown") == "●"
+        assert _kind_icon("unknown") == "[.]"
 
     def test_kind_style_source(self) -> None:
         assert _kind_style("source") == "#60a5fa"

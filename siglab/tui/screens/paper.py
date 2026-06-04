@@ -26,6 +26,8 @@ from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.cli_bridge import run_cli
+from siglab.tui.formatting import friendly_error
+from siglab.tui.loading import LoadingIndicator
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
@@ -517,6 +519,10 @@ class PaperScreen(Screen[None]):
         Binding("enter", "submit_order", "Submit", show=True),
         Binding("n", "new_session", "New Session", show=True),
         Binding("c", "cancel_order", "Cancel Order", show=True),
+        Binding("j", "move_down", "Down", show=False),
+        Binding("k", "move_up", "Up", show=False),
+        Binding("ctrl+c", "go_back", "Back", show=False),
+        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
     # Reactive state
@@ -545,7 +551,8 @@ class PaperScreen(Screen[None]):
                     yield PnlChartWidget(id="pnl-chart")
                     yield PositionsTableWidget(id="positions-table")
                     yield OrderHistoryWidget(id="order-history")
-            # Status line
+            # Loading indicator + status line
+            yield LoadingIndicator(id="paper-loading")
             yield Static(self.status_text, id="paper-status")
 
     def on_mount(self) -> None:
@@ -599,6 +606,11 @@ class PaperScreen(Screen[None]):
             return
         self.is_loading = True
         try:
+            loading = self.query_one("#paper-loading", LoadingIndicator)
+            loading.loading = True
+        except Exception:
+            pass
+        try:
             result = await run_cli(
                 "paper-status", "--session", self.session_id
             )
@@ -607,15 +619,21 @@ class PaperScreen(Screen[None]):
                 self._update_positions(data.get("position", []))
                 self._update_orders(data.get("orders", []))
                 self._update_pnl(data.get("pnl", {}))
-                self.status_text = f"Session {self.session_id[:8]}… · updated"
+                self.status_text = f"Session {self.session_id[:8]}… · updated  [r]efresh  [s]ymbol [b]uy/sell [?]help"
             else:
-                self.status_text = f"Refresh error: {result.stderr[:60]}"
+                self.status_text = f"Refresh error: {result.stderr[:60]}  [r]etry"
                 logger.warning("paper-status failed: %s", result.stderr)
         except Exception as exc:
-            self.status_text = f"Refresh error: {exc}"
+            self.status_text = f"{friendly_error(exc)}  [r]etry"
             logger.warning("Refresh failed: %s", exc)
         finally:
             self.is_loading = False
+            try:
+                loading = self.query_one("#paper-loading", LoadingIndicator)
+                loading.loading = False
+                loading.status_text = self.status_text
+            except Exception:
+                pass
 
     def _update_positions(self, positions: list[dict[str, Any]]) -> None:
         """Update the positions table widget."""
@@ -717,6 +735,12 @@ class PaperScreen(Screen[None]):
                     )
                 except Exception:
                     pass
+                # Toast notification for order fill
+                self.notify(
+                    f"Order placed: {params['side']} {params['quantity']} {params['symbol']}",
+                    severity="information",
+                    timeout=3,
+                )
                 # Refresh to show new order
                 await self._refresh_all()
             else:
@@ -737,31 +761,6 @@ class PaperScreen(Screen[None]):
             logger.warning("Order placement error: %s", exc)
 
     # ── Input Handling ────────────────────────────────────────────────
-
-    def on_key(self, event) -> None:
-        """Route key events based on current focus context."""
-        key = event.key
-
-        # Symbol input mode
-        if self._current_focus == "symbol_input":
-            if key == "escape":
-                self._current_focus = "form"
-                event.prevent_default()
-            return
-
-        # Quantity input mode
-        if self._current_focus == "qty_input":
-            if key == "escape":
-                self._current_focus = "form"
-                event.prevent_default()
-            return
-
-        # Price input mode
-        if self._current_focus == "price_input":
-            if key == "escape":
-                self._current_focus = "form"
-                event.prevent_default()
-            return
 
     def action_focus_symbol(self) -> None:
         """Focus symbol input for editing."""
@@ -812,6 +811,14 @@ class PaperScreen(Screen[None]):
     def action_go_back(self) -> None:
         """Return to the main screen."""
         self.app.pop_screen()
+
+    def action_move_down(self) -> None:
+        """Move focus to the next widget."""
+        self.screen.focus_next()
+
+    def action_move_up(self) -> None:
+        """Move focus to the previous widget."""
+        self.screen.focus_previous()
 
     def action_refresh_now(self) -> None:
         """Force an immediate data refresh."""

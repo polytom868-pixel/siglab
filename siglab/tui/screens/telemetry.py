@@ -27,6 +27,7 @@ from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli
+from siglab.tui.loading import LoadingIndicator
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +486,7 @@ class ToolUsageWidget(Static):
         min-height: 8;
         padding: 0 1;
         overflow-y: auto;
-        background: #000000;
+        background: #0a0a0a;
     }
     """
 
@@ -643,7 +644,7 @@ class RunComparisonWidget(Static):
         min-height: 10;
         padding: 0 1;
         overflow-y: auto;
-        background: #000000;
+        background: #0a0a0a;
     }
     """
 
@@ -854,6 +855,8 @@ class TelemetryScreen(Screen[None]):
         Binding("j", "move_down", "Down", show=False),
         Binding("k", "move_up", "Up", show=False),
         Binding("v", "toggle_detail_view", "View", show=True),
+        Binding("ctrl+c", "go_back", "Back", show=False),
+        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
     # Reactive state
@@ -888,6 +891,7 @@ class TelemetryScreen(Screen[None]):
                 yield ToolUsageWidget(id="tool-usage")
                 yield ServiceHealthWidget(id="service-health", classes="hidden")
                 yield RunComparisonWidget(id="telemetry-comparison", classes="hidden")
+        yield LoadingIndicator(id="telemetry-loading")
         yield Static(self.status_text, id="telemetry-status")
 
     def on_mount(self) -> None:
@@ -895,10 +899,12 @@ class TelemetryScreen(Screen[None]):
         self._update_filters_bar()
         self._update_status("Loading runs and telemetry\u2026")
         self.call_after_refresh(self._refresh_all)
-        self.set_interval(REFRESH_SECONDS, self._refresh_all)
+        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
 
     async def on_unmount(self) -> None:
         """Clean up resources when the screen is closing."""
+        if hasattr(self, "_refresh_timer"):
+            self._refresh_timer.stop()
         if self._owns_client:
             await self._api.close()
 
