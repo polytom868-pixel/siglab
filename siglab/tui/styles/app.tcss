@@ -1,22 +1,8 @@
 /* SigLab TUI — Main App Layout
  *
  * Defines the navigation sidebar + content area + status bar layout.
- * Theme colors are defined inline as CSS variables.
+ * Color variables are loaded from theme.tcss (first in CSS_PATH list).
  */
-
-/* === Primitive Color Variables === */
-$bg: #000000;
-$surface: #0d1210;
-$surface-raised: #162019;
-$text-primary: #e2ebe5;
-$text-secondary: #a3b5a8;
-$text-muted: #6b7f70;
-$accent-green: #4ade80;
-$warning-yellow: #f0b456;
-$error-red: #f87171;
-$info-blue: #60a5fa;
-$border-dim: #2a3a30;
-$border-focus: #4ade80;
 
 /* === Screen Layout === */
 Screen {
@@ -67,6 +53,16 @@ Screen {
 }
 
 .nav-item.-highlighted {
+    background: $surface-raised;
+    color: $text-primary;
+}
+
+.nav-item:focus {
+    border-left: tall $border-focus;
+}
+
+.nav-item:focus-visible {
+    border-left: tall $border-focus;
     background: $surface-raised;
     color: $text-primary;
 }
