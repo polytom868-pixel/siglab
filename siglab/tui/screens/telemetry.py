@@ -35,12 +35,16 @@ from siglab.tui.formatting import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WARNING_YELLOW,
+    bar_gauge,
     confidence_color,
     format_count,
     format_date,
     format_latency,
     format_score,
     format_status,
+    render_list_item,
+    safe_query,
+    safe_update_text,
     truncate,
 )
 from siglab.tui.loading import LoadingIndicator
@@ -164,48 +168,16 @@ class TelemetryRunListWidget(FilterableListWidget):
         return sorted(tracks)
 
     def _render_item(self, item: dict[str, Any], index: int, is_selected: bool) -> Text:
-        h = str(item.get("spec_hash", "?"))[:12]
-        track = str(item.get("track", ""))
-        passed = item.get("passed")
-        score = item.get("aggregate_score")
-        deployed = bool(item.get("deployd"))
-        key = str(item.get("spec_hash", ""))
-        is_multi = key in self._selected_hashes
-
-        prefix = "\u2713 " if is_multi else "  "
-        status_dot = "\u25cf" if passed is True else ("\u25cb" if passed is False else "\u00b7")
-        status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
-        if deployed:
-            status_dot = "\u25b2"
-            status_color = INFO_BLUE
-        score_str = f"{score:.2f}" if score is not None and score == score else "\u2500"
-
-        padding = max(0, 16 - len(h) - len(prefix) - 2)
-
-        if is_selected:
-            styled_row = Text()
-            styled_row.append(prefix, style=INFO_BLUE if is_multi else "#000000")
-            styled_row.append(status_dot + " ", style=status_color if is_multi else "#000000")
-            styled_row.append(truncate(h, 12), style="bold #000000")
-            styled_row.append(" " * padding, style="#000000")
-            styled_row.append(truncate(track, 8), style="#000000")
-            result = Text()
-            result.append("\u25b8 ", style=ACCENT_GREEN)
-            result.append_text(styled_row)
-            result.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
-            return result
-        else:
-            row = Text()
-            row.append(prefix, style=INFO_BLUE if is_multi else TEXT_MUTED)
-            row.append(status_dot + " ", style=status_color)
-            row.append(truncate(h, 12), style=TEXT_PRIMARY)
-            row.append(" " * padding, style=TEXT_MUTED)
-            row.append(truncate(track, 8), style=INFO_BLUE)
-            result = Text()
-            result.append("  ")
-            result.append_text(row)
-            result.append(f"  {score_str}", style=TEXT_MUTED)
-            return result
+        return render_list_item(
+            hash_text=str(item.get("spec_hash", "?")),
+            secondary_text=str(item.get("track", "")),
+            score=item.get("aggregate_score"),
+            passed=item.get("passed"),
+            deployed=bool(item.get("deployd")),
+            is_selected=is_selected,
+            is_multi=str(item.get("spec_hash", "")) in self._selected_hashes,
+            secondary_width=8,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -247,10 +219,9 @@ class ProviderMetricsWidget(Static):
             result.append("  Stage Distribution\n", style=f"bold {TEXT_SECONDARY}")
             max_count = max(stage_counts.values()) if stage_counts else 1
             for stage, count in sorted(stage_counts.items()):
-                bar_len = int((count / max_count) * 16) if max_count > 0 else 0
-                bar = "\u2588" * bar_len + "\u2591" * (16 - bar_len)
+                ratio = (count / max_count) if max_count > 0 else 0
                 result.append(f"  {stage:<12}", style=TEXT_SECONDARY)
-                result.append(bar, style=INFO_BLUE)
+                result.append(bar_gauge(ratio, width=16), style=INFO_BLUE)
                 result.append(f" {count}\n", style=TEXT_PRIMARY)
             result.append("\n")
 
@@ -261,10 +232,8 @@ class ProviderMetricsWidget(Static):
             total = sum(model_counts.values())
             for model, count in sorted(model_counts.items(), key=lambda x: -x[1]):
                 pct = (count / total * 100) if total > 0 else 0
-                bar_len = int(pct / 100 * 16)
-                bar = "\u2588" * bar_len + "\u2591" * (16 - bar_len)
                 result.append(f"  {model[:12]:<12}", style=TEXT_SECONDARY)
-                result.append(bar, style=ACCENT_GREEN)
+                result.append(bar_gauge(pct / 100, width=16), style=ACCENT_GREEN)
                 result.append(f" {count} ({pct:.0f}%)\n", style=TEXT_PRIMARY)
             result.append("\n")
 
@@ -640,19 +609,13 @@ class TelemetryScreen(BaseScreen):
 
     def _update_filters_bar(self) -> None:
         """Update the filters display bar."""
-        try:
-            filters = self.query_one("#telemetry-filters", Static)
-            parts = [
-                f"Date: {self._date_range}",
-                f"Status: {self._status_filter}",
-                f"Track: {self._track_filter}",
-            ]
-            filters.update(
-                "  " + "  \u2502  ".join(parts)
-                + "  |  [d]ate  [f]ilter  [t]rack"
-            )
-        except Exception:
-            pass
+        parts = [
+            f"Date: {self._date_range}",
+            f"Status: {self._status_filter}",
+            f"Track: {self._track_filter}",
+        ]
+        text = "  " + "  \u2502  ".join(parts) + "  |  [d]ate  [f]ilter  [t]rack"
+        safe_update_text(self, "#telemetry-filters", text)
 
     # ── Data Fetching ────────────────────────────────────────────────
 
@@ -705,235 +668,186 @@ class TelemetryScreen(BaseScreen):
 
     def _update_provider_metrics(self, data: dict[str, Any]) -> None:
         """Update the provider metrics widget."""
-        try:
-            widget = self.query_one("#provider-metrics", ProviderMetricsWidget)
-            widget.telemetry_data = data
-        except Exception:
-            pass
+        safe_query(self, "#provider-metrics", ProviderMetricsWidget,
+                   lambda w: setattr(w, "telemetry_data", data))
 
     def _update_tool_usage(self, data: dict[str, Any]) -> None:
         """Update the tool usage widget."""
-        try:
-            widget = self.query_one("#tool-usage", ToolUsageWidget)
-            widget.telemetry_data = data
-        except Exception:
-            pass
+        safe_query(self, "#tool-usage", ToolUsageWidget,
+                   lambda w: setattr(w, "telemetry_data", data))
 
     def _update_service_health(self, data: dict[str, Any]) -> None:
         """Update the service health widget."""
-        try:
-            widget = self.query_one("#service-health", ServiceHealthWidget)
-            widget.service_health = data.get("service_health", {})
-            widget.artifact_status = data.get("artifact_status", {})
-        except Exception:
-            pass
+        def _update(w):
+            w.service_health = data.get("service_health", {})
+            w.artifact_status = data.get("artifact_status", {})
+        safe_query(self, "#service-health", ServiceHealthWidget, _update)
 
     def _update_run_list(self, rows: list[dict[str, Any]]) -> None:
         """Update the run list widget with loaded data."""
-        try:
-            list_widget = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
-            list_widget.set_runs(rows)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if lw:
+            lw.set_runs(rows)
             self.run_count = len(rows)
-        except Exception:
-            pass
 
     # ── Actions ──────────────────────────────────────────────────────
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
-        try:
-            search = self.query_one("#telemetry-search", Input)
-            search.focus()
-        except Exception:
-            pass
+        safe_query(self, "#telemetry-search", Input, lambda w: w.focus())
 
     def action_move_up(self) -> None:
         """Move selection up in the run list."""
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if lw:
             lw.action_move_up()
             self._on_selection_changed()
-        except Exception:
-            pass
 
     def action_move_down(self) -> None:
         """Move selection down in the run list."""
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if lw:
             lw.action_move_down()
             self._on_selection_changed()
-        except Exception:
-            pass
 
     def action_toggle_select(self) -> None:
         """Toggle multi-select on current run for comparison."""
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if lw:
             lw.toggle_select()
             self._update_comparison()
-        except Exception:
-            pass
 
     def action_toggle_compare(self) -> None:
         """Toggle between detail view and comparison view."""
         self.compare_mode = not self.compare_mode
-        try:
-            detail = self.query_one("#run-detail", RunDetailWidget)
-            provider = self.query_one("#provider-metrics", ProviderMetricsWidget)
-            tool_usage = self.query_one("#tool-usage", ToolUsageWidget)
-            health = self.query_one("#service-health", ServiceHealthWidget)
-            comparison = self.query_one("#telemetry-comparison", RunComparisonWidget)
+        detail = safe_query(self, "#run-detail", RunDetailWidget)
+        provider = safe_query(self, "#provider-metrics", ProviderMetricsWidget)
+        tool_usage = safe_query(self, "#tool-usage", ToolUsageWidget)
+        health = safe_query(self, "#service-health", ServiceHealthWidget)
+        comparison = safe_query(self, "#telemetry-comparison", RunComparisonWidget)
+        if not all([detail, provider, tool_usage, health, comparison]):
+            return
 
-            if self.compare_mode:
-                detail.add_class("hidden")
+        if self.compare_mode:
+            for w in (detail, provider, tool_usage, health):
+                w.add_class("hidden")
+            comparison.remove_class("hidden")
+            self._update_comparison()
+        else:
+            comparison.add_class("hidden")
+            detail.remove_class("hidden")
+            if self._detail_view == "telemetry":
+                provider.remove_class("hidden")
+                tool_usage.remove_class("hidden")
+                health.add_class("hidden")
+            else:
                 provider.add_class("hidden")
                 tool_usage.add_class("hidden")
-                health.add_class("hidden")
-                comparison.remove_class("hidden")
-                self._update_comparison()
-            else:
-                comparison.add_class("hidden")
-                detail.remove_class("hidden")
-                if self._detail_view == "telemetry":
-                    provider.remove_class("hidden")
-                    tool_usage.remove_class("hidden")
-                    health.add_class("hidden")
-                else:
-                    provider.add_class("hidden")
-                    tool_usage.add_class("hidden")
-                    health.remove_class("hidden")
-        except Exception:
-            pass
+                health.remove_class("hidden")
 
     def action_toggle_detail_view(self) -> None:
         """Toggle between telemetry and health views."""
         if self.compare_mode:
             return
         self._detail_view = "health" if self._detail_view == "telemetry" else "telemetry"
-        try:
-            provider = self.query_one("#provider-metrics", ProviderMetricsWidget)
-            tool_usage = self.query_one("#tool-usage", ToolUsageWidget)
-            health = self.query_one("#service-health", ServiceHealthWidget)
-
-            if self._detail_view == "telemetry":
-                provider.remove_class("hidden")
-                tool_usage.remove_class("hidden")
-                health.add_class("hidden")
-                self.notify("View: Telemetry", severity="information", timeout=1)
-            else:
-                provider.add_class("hidden")
-                tool_usage.add_class("hidden")
-                health.remove_class("hidden")
-                self.notify("View: Service Health", severity="information", timeout=1)
-        except Exception:
-            pass
+        provider = safe_query(self, "#provider-metrics", ProviderMetricsWidget)
+        tool_usage = safe_query(self, "#tool-usage", ToolUsageWidget)
+        health = safe_query(self, "#service-health", ServiceHealthWidget)
+        if not all([provider, tool_usage, health]):
+            return
+        if self._detail_view == "telemetry":
+            provider.remove_class("hidden")
+            tool_usage.remove_class("hidden")
+            health.add_class("hidden")
+            self.notify("View: Telemetry", severity="information", timeout=1)
+        else:
+            provider.add_class("hidden")
+            tool_usage.add_class("hidden")
+            health.remove_class("hidden")
+            self.notify("View: Service Health", severity="information", timeout=1)
 
     def action_cycle_sort(self) -> None:
         """Cycle sort column (date, score, track)."""
-        # Sort the run list by different criteria
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
-            # Cycle through sort options
-            current = getattr(self, "_sort_by", "date")
-            sort_cycle = ["date", "score", "track"]
-            idx = sort_cycle.index(current) if current in sort_cycle else -1
-            next_sort = sort_cycle[(idx + 1) % len(sort_cycle)]
-            self._sort_by = next_sort
-
-            runs = list(lw._all_runs)
-            if next_sort == "date":
-                runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-            elif next_sort == "score":
-                runs.sort(key=lambda r: r.get("aggregate_score") or 0, reverse=True)
-            elif next_sort == "track":
-                runs.sort(key=lambda r: r.get("track", ""))
-
-            lw.set_runs(runs)
-            self.notify(f"Sorted by: {next_sort}", severity="information", timeout=1)
-        except Exception:
-            pass
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if not lw:
+            return
+        current = getattr(self, "_sort_by", "date")
+        sort_cycle = ["date", "score", "track"]
+        idx = sort_cycle.index(current) if current in sort_cycle else -1
+        next_sort = sort_cycle[(idx + 1) % len(sort_cycle)]
+        self._sort_by = next_sort
+        sort_keys = {
+            "date": lambda r: r.get("created_at", ""),
+            "score": lambda r: r.get("aggregate_score") or 0,
+            "track": lambda r: r.get("track", ""),
+        }
+        runs = sorted(lw._all_runs, key=sort_keys[next_sort], reverse=True)
+        lw.set_runs(runs)
+        self.notify(f"Sorted by: {next_sort}", severity="information", timeout=1)
 
     def action_cycle_date_range(self) -> None:
         """Cycle date range filter: ALL → 7d → 30d → TODAY → ALL."""
         idx = DATE_RANGE_FILTERS.index(self._date_range) if self._date_range in DATE_RANGE_FILTERS else 0
         self._date_range = DATE_RANGE_FILTERS[(idx + 1) % len(DATE_RANGE_FILTERS)]
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if lw:
             lw.set_date_range(self._date_range)
             self.run_count = len(lw.runs)
             self._update_filters_bar()
             self.notify(f"Date range: {self._date_range}", severity="information", timeout=1)
-        except Exception:
-            pass
 
     def action_cycle_status_filter(self) -> None:
         """Cycle status filter: ALL → PASSED → FAILED → RUNNING → PENDING → ALL."""
         idx = STATUS_FILTERS.index(self._status_filter) if self._status_filter in STATUS_FILTERS else 0
         self._status_filter = STATUS_FILTERS[(idx + 1) % len(STATUS_FILTERS)]
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if lw:
             lw.set_status_filter(self._status_filter)
             self.run_count = len(lw.runs)
             self._update_filters_bar()
             self.notify(f"Status: {self._status_filter}", severity="information", timeout=1)
-        except Exception:
-            pass
 
     def action_cycle_track_filter(self) -> None:
         """Cycle track filter through available tracks."""
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
-            tracks = ["ALL"] + lw.get_tracks()
-            idx = tracks.index(self._track_filter) if self._track_filter in tracks else 0
-            self._track_filter = tracks[(idx + 1) % len(tracks)]
-            lw.set_track_filter(self._track_filter)
-            self.run_count = len(lw.runs)
-            self._update_filters_bar()
-            self.notify(f"Track: {self._track_filter}", severity="information", timeout=1)
-        except Exception:
-            pass
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if not lw:
+            return
+        tracks = ["ALL"] + lw.get_tracks()
+        idx = tracks.index(self._track_filter) if self._track_filter in tracks else 0
+        self._track_filter = tracks[(idx + 1) % len(tracks)]
+        lw.set_track_filter(self._track_filter)
+        self.run_count = len(lw.runs)
+        self._update_filters_bar()
+        self.notify(f"Track: {self._track_filter}", severity="information", timeout=1)
 
     # ── Event Handlers ───────────────────────────────────────────────
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle search input changes."""
         if event.input.id == "telemetry-search":
-            try:
-                lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
+            lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+            if lw:
                 lw.set_filter(event.value)
                 self.run_count = len(lw.runs)
-            except Exception:
-                pass
 
     def _on_selection_changed(self) -> None:
         """Update detail panel when selection changes."""
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if lw:
             current = lw.get_current_run()
             if current:
-                detail = self.query_one("#run-detail", RunDetailWidget)
-                detail.run = current
-        except Exception:
-            pass
+                safe_query(self, "#run-detail", RunDetailWidget,
+                           lambda w: setattr(w, "run", current))
 
     def _update_comparison(self) -> None:
         """Update the comparison panel with selected runs."""
-        try:
-            lw = self.query_one("#telemetry-run-list", TelemetryRunListWidget)
-            selected = lw.get_selected_hashes()
-            comparison = self.query_one("#telemetry-comparison", RunComparisonWidget)
-
-            # Gather data for selected hashes
-            runs = []
-            for h in selected:
-                for r in self._runs_data:
-                    if str(r.get("spec_hash", "")) == h:
-                        runs.append(r)
-                        break
-
-            comparison.set_runs(runs)
-            count = len(runs)
-            if count >= 2:
-                self._update_status(f"  Comparing {count} runs  |  [c] toggle view  [space] select")
-        except Exception:
-            pass
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        comparison = safe_query(self, "#telemetry-comparison", RunComparisonWidget)
+        if not lw or not comparison:
+            return
+        selected = lw.get_selected_hashes()
+        runs = [r for h in selected for r in self._runs_data
+                if str(r.get("spec_hash", "")) == h]
+        comparison.set_runs(runs)
+        if len(runs) >= 2:
+            self._update_status(f"  Comparing {len(runs)} runs  |  [c] toggle view  [space] select")

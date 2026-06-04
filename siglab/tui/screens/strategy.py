@@ -25,9 +25,7 @@ from textual.widgets import Input, Static
 
 from siglab.tui.cli_bridge import run_cli
 from siglab.tui.formatting import (
-    ACCENT_GREEN,
     BORDER_DIM,
-    ERROR_RED,
     INFO_BLUE,
     TEXT_MUTED,
     TEXT_PRIMARY,
@@ -37,8 +35,8 @@ from siglab.tui.formatting import (
     format_score,
     format_sharpe,
     format_status,
-    friendly_error,
-    truncate,
+    render_list_item,
+    safe_query,
 )
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
@@ -151,44 +149,14 @@ class StrategyListWidget(FilterableListWidget):
         return None
 
     def _render_item(self, item: dict[str, Any], index: int, is_selected: bool) -> Text:
-        h = str(item.get("spec_hash", "?"))[:12]
-        family = str(item.get("family", ""))
-        passed = item.get("passed")
-        score = item.get("aggregate_score")
-        key = str(item.get("spec_hash", ""))
-        is_multi = key in self._selected_hashes
-
-        prefix = "\u2713 " if is_multi else "  "
-        status_dot = "\u25cf" if passed is True else ("\u25cb" if passed is False else "\u00b7")
-        status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
-        score_str = f"{score:.2f}" if score is not None and score == score else "\u2500"
-
-        padding = max(0, 16 - len(h) - len(prefix) - 2)
-
-        if is_selected:
-            styled_row = Text()
-            styled_row.append(prefix, style=INFO_BLUE if is_multi else "#000000")
-            styled_row.append(status_dot + " ", style=status_color if is_multi else "#000000")
-            styled_row.append(truncate(h, 12), style="bold #000000")
-            styled_row.append(" " * padding, style="#000000")
-            styled_row.append(truncate(family, 10), style="#000000")
-            result = Text()
-            result.append("\u25b8 ", style=ACCENT_GREEN)
-            result.append_text(styled_row)
-            result.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
-            return result
-        else:
-            row = Text()
-            row.append(prefix, style=INFO_BLUE if is_multi else TEXT_MUTED)
-            row.append(status_dot + " ", style=status_color)
-            row.append(truncate(h, 12), style=TEXT_PRIMARY)
-            row.append(" " * padding, style=TEXT_MUTED)
-            row.append(truncate(family, 10), style=TEXT_SECONDARY)
-            result = Text()
-            result.append("  ")
-            result.append_text(row)
-            result.append(f"  {score_str}", style=TEXT_MUTED)
-            return result
+        return render_list_item(
+            hash_text=str(item.get("spec_hash", "?")),
+            secondary_text=str(item.get("family", "")),
+            score=item.get("aggregate_score"),
+            passed=item.get("passed"),
+            is_selected=is_selected,
+            is_multi=str(item.get("spec_hash", "")) in self._selected_hashes,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -440,7 +408,7 @@ class StrategyScreen(BaseScreen):
     def on_mount(self) -> None:
         """Initialize the screen after mounting."""
         super().on_mount()
-        self._update_status_text_text("Loading strategies\u2026")
+        self._update_status_text("Loading strategies\u2026")
         self._spinner_timer = self.set_interval(0.5, self._tick_spinner)
 
     async def on_unmount(self) -> None:
@@ -454,7 +422,7 @@ class StrategyScreen(BaseScreen):
         if self.is_evaluating:
             self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER)
             frame = _SPINNER[self._spinner_idx]
-            self._update_status_text_text(f"{frame} {self.eval_status}")
+            self._update_status_text(f"{frame} {self.eval_status}")
 
     async def _fetch_data(self) -> None:
         """Load strategy list from CLI ancestry command."""
@@ -473,16 +441,15 @@ class StrategyScreen(BaseScreen):
 
     def _update_strategy_list(self, rows: list[dict[str, Any]]) -> None:
         """Update the strategy list widget with loaded data."""
-        try:
-            list_widget = self.query_one("#strategy-list", StrategyListWidget)
-            list_widget.set_strategies(rows)
-            self.strategy_count = len(rows)
-            self._update_status_text_text(
-                f"  {len(rows)} strategies loaded  |  [e]valuate  [c]ompare  [s]ort  [/]search"
-            )
-        except Exception as exc:
-            logger.warning("Strategy list update failed: %s", exc)
-            self.notify(friendly_error(exc), severity="error")
+        widget = safe_query(self, "#strategy-list", StrategyListWidget)
+        if widget is None:
+            logger.warning("Strategy list widget not found")
+            return
+        widget.set_strategies(rows)
+        self.strategy_count = len(rows)
+        self._update_status_text(
+            f"  {len(rows)} strategies loaded  |  [e]valuate  [c]ompare  [s]ort  [/]search"
+        )
 
     async def _load_results_for_hash(self, spec_hash: str) -> dict[str, Any] | None:
         """Load detailed results for a single strategy hash."""
@@ -510,58 +477,48 @@ class StrategyScreen(BaseScreen):
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
-        try:
-            self.query_one("#strategy-search", Input).focus()
-        except Exception:
-            pass
+        safe_query(self, "#strategy-search", Input, lambda w: w.focus())
 
     def action_move_up(self) -> None:
-        try:
-            self.query_one("#strategy-list", StrategyListWidget).action_move_up()
+        lw = safe_query(self, "#strategy-list", StrategyListWidget)
+        if lw:
+            lw.action_move_up()
             self._on_selection_changed()
-        except Exception:
-            pass
 
     def action_move_down(self) -> None:
-        try:
-            self.query_one("#strategy-list", StrategyListWidget).action_move_down()
+        lw = safe_query(self, "#strategy-list", StrategyListWidget)
+        if lw:
+            lw.action_move_down()
             self._on_selection_changed()
-        except Exception:
-            pass
 
     def action_toggle_select(self) -> None:
         """Toggle multi-select on current strategy for comparison."""
-        try:
-            lw = self.query_one("#strategy-list", StrategyListWidget)
+        lw = safe_query(self, "#strategy-list", StrategyListWidget)
+        if lw:
             lw.toggle_select()
             self._update_comparison()
-        except Exception:
-            pass
 
     def action_toggle_compare(self) -> None:
         """Toggle between results table and comparison view."""
         self.compare_mode = not self.compare_mode
-        try:
-            results = self.query_one("#results-table", ResultsTableWidget)
-            comparison = self.query_one("#comparison-panel", ComparisonPanelWidget)
-            if self.compare_mode:
-                results.add_class("hidden")
-                comparison.remove_class("hidden")
-                self._update_comparison()
-            else:
-                comparison.add_class("hidden")
-                results.remove_class("hidden")
-        except Exception:
-            pass
+        results = safe_query(self, "#results-table", ResultsTableWidget)
+        comparison = safe_query(self, "#comparison-panel", ComparisonPanelWidget)
+        if not results or not comparison:
+            return
+        if self.compare_mode:
+            results.add_class("hidden")
+            comparison.remove_class("hidden")
+            self._update_comparison()
+        else:
+            comparison.add_class("hidden")
+            results.remove_class("hidden")
 
     def action_cycle_sort(self) -> None:
         """Cycle the sort column in the results table."""
-        try:
-            rt = self.query_one("#results-table", ResultsTableWidget)
+        rt = safe_query(self, "#results-table", ResultsTableWidget)
+        if rt:
             rt.cycle_sort()
             self._update_status_text(f"  Sorted by: {rt.sort_column}")
-        except Exception:
-            pass
 
     async def action_run_eval(self) -> None:
         """Run benchmark evaluation via CLI."""
@@ -623,50 +580,34 @@ class StrategyScreen(BaseScreen):
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle search input changes."""
         if event.input.id == "strategy-search":
-            try:
-                lw = self.query_one("#strategy-list", StrategyListWidget)
+            lw = safe_query(self, "#strategy-list", StrategyListWidget)
+            if lw:
                 lw.set_filter(event.value)
                 self.strategy_count = len(lw.strategies)
-            except Exception:
-                pass
 
     def _on_selection_changed(self) -> None:
         """Update detail panel when selection changes."""
-        try:
-            lw = self.query_one("#strategy-list", StrategyListWidget)
+        lw = safe_query(self, "#strategy-list", StrategyListWidget)
+        if lw:
             current_hash = lw.get_current_hash()
             if current_hash:
                 self.run_worker(self._update_results_for_current(current_hash))
-        except Exception:
-            pass
 
     async def _update_results_for_current(self, spec_hash: str) -> None:
         """Load and display results for the currently selected strategy."""
         detail = await self._load_results_for_hash(spec_hash)
         if detail:
-            try:
-                rt = self.query_one("#results-table", ResultsTableWidget)
-                rt.set_results([detail])
-            except Exception:
-                pass
+            safe_query(self, "#results-table", ResultsTableWidget,
+                       lambda w: w.set_results([detail]))
 
     def _update_comparison(self) -> None:
         """Update the comparison panel with selected strategies."""
-        try:
-            lw = self.query_one("#strategy-list", StrategyListWidget)
-            selected = lw.get_selected_hashes()
-            comparison = self.query_one("#comparison-panel", ComparisonPanelWidget)
-
-            # Gather data for selected hashes
-            strats = []
-            for h in selected:
-                cached = self._results_cache.get(h)
-                if cached:
-                    strats.append(cached)
-
-            comparison.set_strategies(strats)
-            count = len(strats)
-            if count >= 2:
-                self._update_status_text(f"  Comparing {count} strategies  |  [c] toggle view  [space] select")
-        except Exception:
-            pass
+        lw = safe_query(self, "#strategy-list", StrategyListWidget)
+        comparison = safe_query(self, "#comparison-panel", ComparisonPanelWidget)
+        if not lw or not comparison:
+            return
+        selected = lw.get_selected_hashes()
+        strats = [c for h in selected if (c := self._results_cache.get(h))]
+        comparison.set_strategies(strats)
+        if len(strats) >= 2:
+            self._update_status_text(f"  Comparing {len(strats)} strategies  |  [c] toggle view  [space] select")

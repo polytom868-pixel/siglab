@@ -48,12 +48,9 @@ from siglab.tui.screens.risk import (
     RiskScreen,
     _correlation_block,
     _correlation_color,
-    _gauge_color,
-    GAUGE_HIGH_THRESHOLD,
-    GAUGE_MODERATE_THRESHOLD,
     MAX_ALERTS_DISPLAY,
 )
-from siglab.tui.formatting import severity_color
+from siglab.tui.formatting import gauge_color, severity_color
 from siglab.tui.screens.strategy import (
     ComparisonPanelWidget,
     ResultsTableWidget,
@@ -291,11 +288,11 @@ class TestVAL_TUI_005_RiskMetrics:
         text = widget.render()
         assert "Strategies: 5" in text.plain
 
-    def test_gauge_color_coding(self) -> None:
+    def testgauge_color_coding(self) -> None:
         """Gauge colors: green ≥ 0.7, yellow ≥ 0.4, red < 0.4."""
-        assert _gauge_color(0.8) == ACCENT_GREEN
-        assert _gauge_color(0.5) == WARNING_YELLOW
-        assert _gauge_color(0.2) == ERROR_RED
+        assert gauge_color(0.8) == ACCENT_GREEN
+        assert gauge_color(0.5) == WARNING_YELLOW
+        assert gauge_color(0.2) == ERROR_RED
 
     def test_gauge_empty_state(self) -> None:
         """Gauge shows 'No risk data available' when score is None."""
@@ -1284,9 +1281,9 @@ class TestVAL_TUI_010_DesignPolish:
 
     def test_risk_gauge_uses_semantic_colors(self) -> None:
         """Risk gauge colors: green=healthy, yellow=moderate, red=high risk."""
-        assert _gauge_color(0.8) == ACCENT_GREEN
-        assert _gauge_color(0.5) == WARNING_YELLOW
-        assert _gauge_color(0.2) == ERROR_RED
+        assert gauge_color(0.8) == ACCENT_GREEN
+        assert gauge_color(0.5) == WARNING_YELLOW
+        assert gauge_color(0.2) == ERROR_RED
 
     def test_alert_severity_uses_semantic_colors(self) -> None:
         """Alert severity uses red/yellow/blue semantic colors."""

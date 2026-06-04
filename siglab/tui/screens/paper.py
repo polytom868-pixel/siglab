@@ -33,14 +33,19 @@ from siglab.tui.cli_bridge import run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
     BORDER_DIM,
+    COMPACT_CSS,
     ERROR_RED,
+    EXPANDABLE_CSS,
     INFO_BLUE,
     TEXT_MUTED,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
-    WARNING_YELLOW,
+    compact_qty,
     format_pnl,
     format_price,
+    order_status_style,
+    safe_query,
+    side_style,
 )
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
@@ -68,14 +73,10 @@ class PositionsTableWidget(Static):
     positions: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     mark_prices: reactive[dict[str, float]] = reactive(dict, layout=True)
 
-    DEFAULT_CSS = """
-    PositionsTableWidget {
-        height: 1fr;
-        min-height: 6;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0d1210;
-    }
+    DEFAULT_CSS = f"""
+    PositionsTableWidget {{
+        {EXPANDABLE_CSS}
+    }}
     """
 
     def render(self) -> Text:
@@ -127,13 +128,10 @@ class AccountSummaryWidget(Static):
     pnl_data: reactive[dict[str, Any]] = reactive(dict, layout=True)
     session_name: reactive[str] = reactive("", layout=True)
 
-    DEFAULT_CSS = """
-    AccountSummaryWidget {
-        height: auto;
-        min-height: 5;
-        padding: 0 1;
-        background: #0d1210;
-    }
+    DEFAULT_CSS = f"""
+    AccountSummaryWidget {{
+        {COMPACT_CSS}
+    }}
     """
 
     def render(self) -> Text:
@@ -399,14 +397,10 @@ class OrderHistoryWidget(Static):
 
     orders: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
 
-    DEFAULT_CSS = """
-    OrderHistoryWidget {
-        height: 1fr;
-        min-height: 6;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0a0a0a;
-    }
+    DEFAULT_CSS = f"""
+    OrderHistoryWidget {{
+        {EXPANDABLE_CSS}
+    }}
     """
 
     def render(self) -> Text:
@@ -435,32 +429,14 @@ class OrderHistoryWidget(Static):
             fill_price = order.get("fill_price")
             status = str(order.get("status", "?"))
 
-            # Inline status style using constants
-            s = status.upper()
-            if s == "FILLED":
-                status_style = ACCENT_GREEN
-            elif s == "OPEN":
-                status_style = INFO_BLUE
-            elif s == "CANCELLED":
-                status_style = WARNING_YELLOW
-            elif s == "EXPIRED":
-                status_style = TEXT_MUTED
-            else:
-                status_style = TEXT_SECONDARY
+            # Status and side colours from shared helpers
+            s_style = order_status_style(status)
+            sd_style = side_style(side)
 
-            # Inline side style using constants
-            side_style = ACCENT_GREEN if side.upper() == "BUY" else ERROR_RED
-
-            # Compact qty format
-            if abs(qty) >= 1_000_000:
-                qty_str = f"{qty / 1_000_000:.2f}M"
-            elif abs(qty) >= 1_000:
-                qty_str = f"{qty / 1_000:.2f}K"
-            else:
-                qty_str = f"{qty:,.4f}"
+            qty_str = compact_qty(qty)
 
             result.append(f"  {ts_str:<11}", style=TEXT_MUTED)
-            result.append(f" {side:<5}", style=side_style)
+            result.append(f" {side:<5}", style=sd_style)
             result.append(f" {otype:<7}", style=TEXT_SECONDARY)
             result.append(f" {sym:<13}", style=TEXT_PRIMARY)
             result.append(f" {qty_str:>9}", style=TEXT_PRIMARY)
@@ -472,7 +448,7 @@ class OrderHistoryWidget(Static):
             else:
                 result.append(f" {'market':>9}", style=TEXT_MUTED)
 
-            result.append(f" {status}", style=status_style)
+            result.append(f" {status}", style=s_style)
             result.append("\n")
 
         return result
@@ -602,20 +578,15 @@ class PaperScreen(BaseScreen):
         Zero-copy: passes the positions list and mark_prices dict
         as references — no intermediate copies.
         """
-        try:
-            widget = self.query_one("#positions-table", PositionsTableWidget)
-            widget.positions = positions
-            widget.mark_prices = self._mark_prices
-        except Exception:
-            logger.debug("Could not update positions widget")
+        def _update(w):
+            w.positions = positions
+            w.mark_prices = self._mark_prices
+        safe_query(self, "#positions-table", PositionsTableWidget, _update)
 
     def _update_orders(self, orders: list[dict[str, Any]]) -> None:
         """Update the order history widget."""
-        try:
-            widget = self.query_one("#order-history", OrderHistoryWidget)
-            widget.orders = orders
-        except Exception:
-            logger.debug("Could not update order history widget")
+        safe_query(self, "#order-history", OrderHistoryWidget,
+                   lambda w: setattr(w, "orders", orders))
 
     def _update_pnl(self, pnl_data: dict[str, Any]) -> None:
         """Update PnL summary and sparkline history.
@@ -626,12 +597,10 @@ class PaperScreen(BaseScreen):
         the previous ``list(self._pnl_history)`` copy on every cycle.
         """
         # Update account summary — store reference to API response dict
-        try:
-            widget = self.query_one("#account-summary", AccountSummaryWidget)
-            widget.pnl_data = pnl_data
-            widget.session_name = self.session_name
-        except Exception:
-            logger.debug("Could not update account summary widget")
+        def _update_summary(w):
+            w.pnl_data = pnl_data
+            w.session_name = self.session_name
+        safe_query(self, "#account-summary", AccountSummaryWidget, _update_summary)
 
         # Track PnL history for sparkline (append in-place)
         total_pnl = float(pnl_data.get("total_pnl", 0))
@@ -641,22 +610,16 @@ class PaperScreen(BaseScreen):
             self._pnl_history[:] = self._pnl_history[-PNL_HISTORY_MAX:]
 
         # Share the same list object with the chart widget
-        try:
-            chart = self.query_one("#pnl-chart", PnlChartWidget)
-            chart.pnl_history = self._pnl_history
-        except Exception:
-            logger.debug("Could not update PnL chart widget")
+        safe_query(self, "#pnl-chart", PnlChartWidget,
+                   lambda w: setattr(w, "pnl_history", self._pnl_history))
 
     # ── Order Placement ───────────────────────────────────────────────
 
     async def _place_order(self, params: dict[str, str]) -> None:
         """Place a paper order via Python subprocess calling paper_client directly."""
         if not self.session_id:
-            try:
-                form = self.query_one("#order-form", OrderFormWidget)
-                form.show_error("No active session")
-            except Exception:
-                pass
+            safe_query(self, "#order-form", OrderFormWidget,
+                       lambda w: w.show_error("No active session"))
             return
 
         try:
@@ -700,36 +663,23 @@ class PaperScreen(BaseScreen):
             if proc.returncode == 0 and stdout:
                 order_data = json.loads(stdout.split("\n")[-1])
                 order_id = order_data.get("order_id", "?")[:8]
-                try:
-                    form = self.query_one("#order-form", OrderFormWidget)
-                    form.show_success(
-                        f"Order {order_id}… {params['side']} {params['quantity']} {params['symbol']}"
-                    )
-                except Exception:
-                    pass
-                # Toast notification for order fill
+                safe_query(self, "#order-form", OrderFormWidget,
+                           lambda w: w.show_success(f"Order {order_id}… {params['side']} {params['quantity']} {params['symbol']}"))
                 self.notify(
                     f"Order placed: {params['side']} {params['quantity']} {params['symbol']}",
-                    severity="information",
-                    timeout=3,
+                    severity="information", timeout=3,
                 )
-                # Refresh to show new order
                 await self._refresh_all()
             else:
                 error_msg = stderr or "Order placement failed"
-                try:
-                    form = self.query_one("#order-form", OrderFormWidget)
-                    form.show_error(error_msg[:80])
-                except Exception:
-                    pass
+                safe_query(self, "#order-form", OrderFormWidget,
+                           lambda w: w.show_error(error_msg[:80]))
                 logger.warning("Order placement failed: %s", stderr)
 
         except Exception as exc:
-            try:
-                form = self.query_one("#order-form", OrderFormWidget)
-                form.show_error(str(exc)[:80])
-            except Exception:
-                pass
+            err_msg = str(exc)[:80]
+            safe_query(self, "#order-form", OrderFormWidget,
+                       lambda w, m=err_msg: w.show_error(m))
             logger.warning("Order placement error: %s", exc)
 
     # ── Input Handling ────────────────────────────────────────────────
@@ -740,19 +690,11 @@ class PaperScreen(BaseScreen):
 
     def action_toggle_side(self) -> None:
         """Toggle BUY/SELL side."""
-        try:
-            form = self.query_one("#order-form", OrderFormWidget)
-            form.toggle_side()
-        except Exception:
-            pass
+        safe_query(self, "#order-form", OrderFormWidget, lambda w: w.toggle_side())
 
     def action_toggle_type(self) -> None:
         """Toggle MARKET/LIMIT order type."""
-        try:
-            form = self.query_one("#order-form", OrderFormWidget)
-            form.toggle_type()
-        except Exception:
-            pass
+        safe_query(self, "#order-form", OrderFormWidget, lambda w: w.toggle_type())
 
     def action_focus_qty(self) -> None:
         """Focus quantity input."""
@@ -794,16 +736,11 @@ class PaperScreen(BaseScreen):
         if result is None:
             return
         field, value = result
-        try:
-            form = self.query_one("#order-form", OrderFormWidget)
-            if field == "symbol":
-                form.set_symbol(value)
-            elif field == "quantity":
-                form.set_quantity(value)
-            elif field == "price":
-                form.set_price(value)
-        except Exception:
-            pass
+        setters = {"symbol": "set_symbol", "quantity": "set_quantity", "price": "set_price"}
+        method = setters.get(field)
+        if method:
+            safe_query(self, "#order-form", OrderFormWidget,
+                       lambda w: getattr(w, method)(value))
 
 
 # ══════════════════════════════════════════════════════════════════════

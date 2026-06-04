@@ -22,40 +22,39 @@ from siglab.tui.screens.risk import (
     RiskScreen,
     _correlation_block,
     _correlation_color,
-    _gauge_color,
 )
-from siglab.tui.formatting import severity_color
+from siglab.tui.formatting import gauge_color, severity_color
 
 
 # ── Helper function tests ────────────────────────────────────────────
 
 
 class TestGaugeColor:
-    """Test _gauge_color helper."""
+    """Test gauge_color helper."""
 
     def test_high_risk_returns_red(self) -> None:
-        assert _gauge_color(0.2) == "#f87171"
+        assert gauge_color(0.2) == "#f87171"
 
     def test_medium_risk_returns_yellow(self) -> None:
-        assert _gauge_color(0.5) == "#f0b456"
+        assert gauge_color(0.5) == "#f0b456"
 
     def test_low_risk_returns_green(self) -> None:
-        assert _gauge_color(0.8) == "#4ade80"
+        assert gauge_color(0.8) == "#4ade80"
 
     def test_boundary_at_high_risk(self) -> None:
-        assert _gauge_color(0.4) == "#f0b456"  # 0.4 is not < 0.4
+        assert gauge_color(0.4) == "#f0b456"  # 0.4 is not < 0.4
 
     def test_boundary_at_med_risk(self) -> None:
-        assert _gauge_color(0.7) == "#4ade80"  # 0.7 is not < 0.7
+        assert gauge_color(0.7) == "#4ade80"  # 0.7 is not < 0.7
 
     def test_zero_score(self) -> None:
-        assert _gauge_color(0.0) == "#f87171"
+        assert gauge_color(0.0) == "#f87171"
 
     def test_one_score(self) -> None:
-        assert _gauge_color(1.0) == "#4ade80"
+        assert gauge_color(1.0) == "#4ade80"
 
     def test_nan_returns_muted(self) -> None:
-        assert _gauge_color(float("nan")) == "#7d9483"
+        assert gauge_color(float("nan")) == "#7d9483"
 
 
 class TestSeverityColor:
