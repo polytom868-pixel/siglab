@@ -348,7 +348,6 @@ class MarketScreen(BaseScreen):
     """
 
     BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
-        Binding("/", "focus_search", "Search", show=True),
         Binding("enter", "select_symbol", "Select", show=False),
     ]
 
@@ -357,11 +356,9 @@ class MarketScreen(BaseScreen):
     _loading_widget_id: ClassVar[str] = "#market-loading"
     _status_widget_id: ClassVar[str] = "#market-status"
     _refresh_interval: ClassVar[float] = 30.0
-
-    def __init__(self, api_client: TuiApiClient | None = None, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._api = api_client or TuiApiClient()
-        self._owns_client = api_client is None
+    _api_client_class: ClassVar[type] = TuiApiClient
+    _search_input_id: ClassVar[str] = "symbol-search"
+    _search_list_id: ClassVar[str] = "symbol-list"
 
     def compose(self) -> ComposeResult:
         with Vertical(id="market-layout"):
@@ -375,22 +372,16 @@ class MarketScreen(BaseScreen):
             yield LoadingIndicator(id="market-loading")
             yield Static(self.status_text, id="market-status")
 
-    async def on_unmount(self) -> None:
-        await super().on_unmount()
-        if self._owns_client:
-            await self._api.close()
-
     # ── Data Fetching ────────────────────────────────────────────────
 
     async def _fetch_data(self) -> None:
         """Fetch all market data and update widgets."""
-        successes = 0
-        for fetch_fn in (self._fetch_tickers, self._fetch_klines, self._fetch_orderbook):
-            try:
-                await fetch_fn()
-                successes += 1
-            except Exception as exc:
-                logger.debug("Fetch failed: %s", exc)
+        successes = await self._fetch_multiple(
+            self._fetch_tickers(),
+            self._fetch_klines(),
+            self._fetch_orderbook(),
+            label="market",
+        )
 
         if successes == 3:
             self._update_status_text(
@@ -401,11 +392,7 @@ class MarketScreen(BaseScreen):
                 f"Partial update ({successes}/3) \u00b7 {self.current_symbol}  [r]etry"
             )
         else:
-            self._update_status_text("Cannot reach API server  [r]etry")
-            try:
-                self.notify("Data refresh failed", severity="error")
-            except Exception:
-                pass
+            self._update_status_error("Cannot reach API server")
 
     async def _fetch_tickers(self) -> None:
         """Fetch ticker data and update symbol list + ticker table."""
@@ -447,8 +434,8 @@ class MarketScreen(BaseScreen):
     # ── Event Handlers ───────────────────────────────────────────────
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        safe_query(self, "#symbol-list", SymbolListWidget,
-                   lambda w: w.set_filter(event.value))
+        if not self._on_search_input_changed(event):
+            pass  # unhandled input
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         lw = safe_query(self, "#symbol-list", SymbolListWidget)
@@ -458,15 +445,6 @@ class MarketScreen(BaseScreen):
                 self._select_symbol(selected)
 
     # ── Actions ──────────────────────────────────────────────────────
-
-    def action_focus_search(self) -> None:
-        safe_query(self, "#symbol-search", Input, lambda w: w.focus())
-
-    def action_move_up(self) -> None:
-        safe_query(self, "#symbol-list", SymbolListWidget, lambda w: w.action_move_up())
-
-    def action_move_down(self) -> None:
-        safe_query(self, "#symbol-list", SymbolListWidget, lambda w: w.action_move_down())
 
     def action_select_symbol(self) -> None:
         lw = safe_query(self, "#symbol-list", SymbolListWidget)

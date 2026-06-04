@@ -243,6 +243,43 @@ def confidence_color(confidence: str) -> str:
     return TEXT_MUTED
 
 
+def format_confidence(conf: float | None) -> "Text":
+    """Format a numeric confidence value (0.0–1.0) as coloured Rich Text.
+
+    Thresholds:
+      - >= 0.8  → green (high confidence)
+      - >= 0.5  → yellow (moderate)
+      - < 0.5   → red (low)
+    """
+    if conf is None:
+        return Text("\u2500", style=TEXT_MUTED)
+    label = f"{conf:.0%}"
+    if conf >= 0.8:
+        return Text(label, style=ACCENT_GREEN)
+    elif conf >= 0.5:
+        return Text(label, style=WARNING_YELLOW)
+    else:
+        return Text(label, style=ERROR_RED)
+
+
+def classification_color(classification: str) -> str:
+    """Return color hex for a skill classification label.
+
+    Handles classification strings like HIGH_VALUE, MEDIUM_VALUE,
+    LOW_VALUE, NOISY.
+    """
+    c = classification.upper().strip()
+    if c == "HIGH_VALUE":
+        return ACCENT_GREEN
+    elif c == "MEDIUM_VALUE":
+        return INFO_BLUE
+    elif c == "LOW_VALUE":
+        return TEXT_MUTED
+    elif c == "NOISY":
+        return ERROR_RED
+    return TEXT_MUTED
+
+
 def format_latency(ms: float | None) -> Text:
     """Format latency in milliseconds with color."""
     if ms is None:

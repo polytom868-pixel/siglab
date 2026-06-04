@@ -12,6 +12,7 @@ import pytest
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.formatting import (
+    classification_color,
     confidence_color,
     format_count,
     format_date,
@@ -28,7 +29,6 @@ from siglab.tui.screens.telemetry import (
     TelemetryRunListWidget,
     TelemetryScreen,
     ToolUsageWidget,
-    _classification_color,
 )
 
 
@@ -244,13 +244,13 @@ class TestFormatHelpers:
         assert confidence_color("unknown") == "#7d9483"
 
     def test_classification_color_high_value(self) -> None:
-        assert _classification_color("HIGH_VALUE") == "#4ade80"
+        assert classification_color("HIGH_VALUE") == "#4ade80"
 
     def test_classification_color_medium_value(self) -> None:
-        assert _classification_color("MEDIUM_VALUE") == "#60a5fa"
+        assert classification_color("MEDIUM_VALUE") == "#60a5fa"
 
     def test_classification_color_noisy(self) -> None:
-        assert _classification_color("NOISY") == "#f87171"
+        assert classification_color("NOISY") == "#f87171"
 
 
 # ══════════════════════════════════════════════════════════════════════

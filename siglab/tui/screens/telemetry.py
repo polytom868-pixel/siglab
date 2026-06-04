@@ -64,20 +64,6 @@ DATE_RANGE_FILTERS: list[str] = ["ALL", "7d", "30d", "TODAY"]
 STATUS_FILTERS: list[str] = ["ALL", "PASSED", "FAILED", "RUNNING", "PENDING"]
 
 
-def _classification_color(classification: str) -> str:
-    """Return color for skill classification."""
-    c = classification.upper().strip()
-    if c == "HIGH_VALUE":
-        return ACCENT_GREEN
-    elif c == "MEDIUM_VALUE":
-        return INFO_BLUE
-    elif c == "LOW_VALUE":
-        return TEXT_MUTED
-    elif c == "NOISY":
-        return ERROR_RED
-    return TEXT_MUTED
-
-
 # ══════════════════════════════════════════════════════════════════════
 # Run List Widget
 # ══════════════════════════════════════════════════════════════════════
@@ -548,7 +534,6 @@ class TelemetryScreen(BaseScreen):
         Binding("space", "toggle_select", "Select", show=True),
         Binding("c", "toggle_compare", "Compare", show=True),
         Binding("s", "cycle_sort", "Sort", show=True),
-        Binding("/", "focus_search", "Search", show=True),
         Binding("d", "cycle_date_range", "Date", show=True),
         Binding("f", "cycle_status_filter", "Filter", show=True),
         Binding("t", "cycle_track_filter", "Track", show=True),
@@ -565,11 +550,12 @@ class TelemetryScreen(BaseScreen):
     _loading_widget_id: ClassVar[str] = "#telemetry-loading"
     _status_widget_id: ClassVar[str] = "#telemetry-status"
     _refresh_interval: ClassVar[float] = 30.0
+    _api_client_class: ClassVar[type] = TuiApiClient
+    _search_input_id: ClassVar[str] = "telemetry-search"
+    _search_list_id: ClassVar[str] = "telemetry-run-list"
 
-    def __init__(self, api_client: TuiApiClient | None = None, **kwargs: Any) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._api = api_client or TuiApiClient()
-        self._owns_client = api_client is None
         self._telemetry_data: dict[str, Any] = {}
         self._ops_data: dict[str, Any] = {}
         self._runs_data: list[dict[str, Any]] = []
@@ -596,16 +582,6 @@ class TelemetryScreen(BaseScreen):
         super().on_mount()
         self._update_filters_bar()
         self._update_status_text("Loading runs and telemetry\u2026")
-
-    async def on_unmount(self) -> None:
-        """Clean up resources when the screen is closing."""
-        await super().on_unmount()
-        if self._owns_client:
-            await self._api.close()
-
-    def _update_status(self, text: str) -> None:
-        """Update the status bar text (alias for base class method)."""
-        self._update_status_text(text)
 
     def _update_filters_bar(self) -> None:
         """Update the filters display bar."""
@@ -692,23 +668,15 @@ class TelemetryScreen(BaseScreen):
 
     # ── Actions ──────────────────────────────────────────────────────
 
-    def action_focus_search(self) -> None:
-        """Focus the search input."""
-        safe_query(self, "#telemetry-search", Input, lambda w: w.focus())
-
     def action_move_up(self) -> None:
-        """Move selection up in the run list."""
-        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
-        if lw:
-            lw.action_move_up()
-            self._on_selection_changed()
+        """Move selection up and update detail panel."""
+        super().action_move_up()
+        self._on_selection_changed()
 
     def action_move_down(self) -> None:
-        """Move selection down in the run list."""
-        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
-        if lw:
-            lw.action_move_down()
-            self._on_selection_changed()
+        """Move selection down and update detail panel."""
+        super().action_move_down()
+        self._on_selection_changed()
 
     def action_toggle_select(self) -> None:
         """Toggle multi-select on current run for comparison."""
@@ -824,10 +792,10 @@ class TelemetryScreen(BaseScreen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle search input changes."""
-        if event.input.id == "telemetry-search":
+        if self._on_search_input_changed(event):
+            # Update run count after filter
             lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
             if lw:
-                lw.set_filter(event.value)
                 self.run_count = len(lw.runs)
 
     def _on_selection_changed(self) -> None:
@@ -850,4 +818,4 @@ class TelemetryScreen(BaseScreen):
                 if str(r.get("spec_hash", "")) == h]
         comparison.set_runs(runs)
         if len(runs) >= 2:
-            self._update_status(f"  Comparing {len(runs)} runs  |  [c] toggle view  [space] select")
+            self._update_status_text(f"  Comparing {len(runs)} runs  |  [c] toggle view  [space] select")
