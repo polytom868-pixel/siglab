@@ -282,5 +282,193 @@ def section_divider(width: int = 40) -> Text:
     return Text("\u2500" * width + "\n", style=BORDER_DIM)
 
 
+# ── Status / Side / Gauge Style Helpers ──────────────────────────────
+
+
+def status_style(passed: bool | None, deployed: bool = False) -> tuple[str, str]:
+    """Return ``(dot_char, color_hex)`` for a pass/fail/deployed status.
+
+    Used by list widgets and detail views to render consistent
+    status indicators without duplicating the colour mapping logic.
+    """
+    if deployed:
+        return ("\u25b2", INFO_BLUE)
+    if passed is None:
+        return ("\u00b7", TEXT_MUTED)
+    if passed:
+        return ("\u25cf", ACCENT_GREEN)
+    return ("\u25cb", ERROR_RED)
+
+
+def side_style(side: str) -> str:
+    """Return colour hex for a BUY/SELL side label."""
+    return ACCENT_GREEN if side.upper() == "BUY" else ERROR_RED
+
+
+def order_status_style(status: str) -> str:
+    """Return colour hex for an order status label (FILLED, OPEN, …)."""
+    s = status.upper().strip()
+    if s == "FILLED":
+        return ACCENT_GREEN
+    if s == "OPEN":
+        return INFO_BLUE
+    if s == "CANCELLED":
+        return WARNING_YELLOW
+    if s == "EXPIRED":
+        return TEXT_MUTED
+    return TEXT_SECONDARY
+
+
+def gauge_color(score: float) -> str:
+    """Return colour hex for a 0.0–1.0 score gauge.
+
+    Semantics: 1.0 = best/healthiest, 0.0 = worst.
+    Thresholds:
+      - >= 0.7 → green (healthy)
+      - >= 0.4 → yellow (moderate)
+      - < 0.4  → red (high risk)
+    """
+    if score != score:  # NaN
+        return TEXT_MUTED
+    if score < 0.4:
+        return ERROR_RED
+    if score < 0.7:
+        return WARNING_YELLOW
+    return ACCENT_GREEN
+
+
+# ── Reusable Widget Helpers ──────────────────────────────────────────
+
+
+def render_list_item(
+    hash_text: str,
+    secondary_text: str,
+    score: float | None,
+    passed: bool | None,
+    deployed: bool = False,
+    *,
+    is_selected: bool = False,
+    is_multi: bool = False,
+    secondary_width: int = 10,
+) -> Text:
+    """Render a standard list-row with status dot, hash, secondary label, and score.
+
+    This is the canonical rendering pattern used by both the strategy
+    list and the telemetry run list, eliminating ~40 lines of
+    duplication between them.
+    """
+    h = hash_text[:12]
+    prefix = "\u2713 " if is_multi else "  "
+    dot, dot_color = status_style(passed, deployed)
+    score_str = f"{score:.2f}" if score is not None and score == score else "\u2500"
+    padding = max(0, 16 - len(h) - len(prefix) - 2)
+
+    if is_selected:
+        styled_row = Text()
+        styled_row.append(prefix, style=INFO_BLUE if is_multi else "#000000")
+        styled_row.append(dot + " ", style=dot_color if is_multi else "#000000")
+        styled_row.append(truncate(h, 12), style="bold #000000")
+        styled_row.append(" " * padding, style="#000000")
+        styled_row.append(truncate(secondary_text, secondary_width), style="#000000")
+        result = Text()
+        result.append("\u25b8 ", style=ACCENT_GREEN)
+        result.append_text(styled_row)
+        result.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
+        return result
+    else:
+        row = Text()
+        row.append(prefix, style=INFO_BLUE if is_multi else TEXT_MUTED)
+        row.append(dot + " ", style=dot_color)
+        row.append(truncate(h, 12), style=TEXT_PRIMARY)
+        row.append(" " * padding, style=TEXT_MUTED)
+        row.append(truncate(secondary_text, secondary_width), style=TEXT_SECONDARY)
+        result = Text()
+        result.append("  ")
+        result.append_text(row)
+        result.append(f"  {score_str}", style=TEXT_MUTED)
+        return result
+
+
+def safe_query(screen, widget_id: str, widget_type, fn=None):
+    """Safely query a widget and optionally apply a function to it.
+
+    Eliminates the pervasive ``try: self.query_one(id, Type).fn()
+    except Exception: pass`` pattern.  Returns the widget when *fn*
+    is ``None``, or the function result otherwise.
+
+    Usage::
+
+        # Get widget reference
+        widget = safe_query(self, "#my-id", MyWidget)
+
+        # Apply mutation
+        safe_query(self, "#my-id", MyWidget, lambda w: setattr(w, "data", data))
+        safe_query(self, "#my-id", MyWidget, lambda w: w.refresh())
+        safe_query(self, "#my-id", Static, lambda w: w.update(text))
+    """
+    try:
+        widget = screen.query_one(widget_id, widget_type)
+        if fn is not None:
+            return fn(widget)
+        return widget
+    except Exception:
+        return None
+
+
+def safe_update_text(screen, widget_id: str, text: str) -> None:
+    """Shorthand for ``safe_query`` on a ``Static`` widget ``update()``."""
+    from textual.widgets import Static  # local import to avoid circular
+    safe_query(screen, widget_id, Static, lambda w: w.update(text))
+
+
+# ── Table Rendering Helpers ──────────────────────────────────────────
+
+
+def table_header(*columns: tuple[str, int]) -> Text:
+    """Render a table header row and separator line.
+
+    Each column is ``(name, width)``.  Returns a ``Text`` object with
+    the header labels and a ``─`` separator below.
+    """
+    hdr = Text("  ")
+    total = 0
+    for name, width in columns:
+        hdr.append(f"{name:<{width}}", style=TEXT_MUTED)
+        total += width
+    hdr.append("\n")
+    hdr.append("  " + "\u2500" * total + "\n", style=BORDER_DIM)
+    return hdr
+
+
+def bar_gauge(value: float, width: int = 10, *, filled_char: str = "\u2588", empty_char: str = "\u2591") -> str:
+    """Render an ASCII bar gauge string.
+
+    *value* should be in ``[0.0, 1.0]``.  Returns a string of
+    *filled_char* and *empty_char* characters.
+    """
+    filled = max(0, min(width, int(value * width)))
+    return filled_char * filled + empty_char * (width - filled)
+
+
+def compact_qty(qty: float) -> str:
+    """Format a quantity in compact form (K, M) for table cells."""
+    if abs(qty) >= 1_000_000:
+        return f"{qty / 1_000_000:.2f}M"
+    if abs(qty) >= 1_000:
+        return f"{qty / 1_000:.2f}K"
+    return f"{qty:,.4f}"
+
+
+# ── Shared CSS Snippets ─────────────────────────────────────────────
+# Reusable CSS fragments for Textual widgets.  Import and interpolate
+# into ``DEFAULT_CSS`` to avoid repeating the same style blocks across
+# every widget.
+
+PANEL_CSS = "padding: 0 1; background: {bg};".format(bg=SURFACE)
+SCROLLABLE_CSS = "overflow-y: auto; {panel}".format(panel=PANEL_CSS)
+COMPACT_CSS = "height: auto; min-height: 5; {panel}".format(panel=PANEL_CSS)
+EXPANDABLE_CSS = "height: 1fr; min-height: 6; {scroll}".format(scroll=SCROLLABLE_CSS)
+
+
 # Re-export Any for callers that import safe_float
 from typing import Any  # noqa: E402

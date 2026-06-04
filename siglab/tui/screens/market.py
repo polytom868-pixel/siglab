@@ -25,7 +25,6 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.css.query import NoMatches
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
@@ -33,6 +32,7 @@ from siglab.tui.formatting import (
     ACCENT_GREEN,
     BORDER_DIM,
     ERROR_RED,
+    SCROLLABLE_CSS,
     TEXT_MUTED,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
@@ -40,6 +40,7 @@ from siglab.tui.formatting import (
     format_price,
     format_volume,
     safe_float,
+    safe_query,
 )
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
@@ -68,15 +69,13 @@ class SymbolListWidget(FilterableListWidget):
     symbols: reactive[list[SymbolEntry]] = reactive(list, layout=True)
     _items_reactive: ClassVar[str] = "symbols"
 
-    DEFAULT_CSS = """
-    SymbolListWidget {
+    DEFAULT_CSS = f"""
+    SymbolListWidget {{
         width: 28;
         min-width: 22;
         height: 1fr;
-        overflow-y: auto;
-        padding: 0 1;
-        background: #0d1210;
-    }
+        {SCROLLABLE_CSS}
+    }}
     """
 
     @staticmethod
@@ -201,14 +200,12 @@ class TickerTableWidget(Static):
 
     tickers: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
 
-    DEFAULT_CSS = """
-    TickerTableWidget {
+    DEFAULT_CSS = f"""
+    TickerTableWidget {{
         height: auto;
         max-height: 12;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0d1210;
-    }
+        {SCROLLABLE_CSS}
+    }}
     """
 
     def render(self) -> Text:
@@ -420,14 +417,10 @@ class MarketScreen(BaseScreen):
                 key=lambda e: abs(e.price * e.change_pct),
                 reverse=True,
             )
-            try:
-                self.query_one("#symbol-list", SymbolListWidget).set_symbols(entries)
-            except Exception:
-                pass
-            try:
-                self.query_one("#ticker-table", TickerTableWidget).tickers = tickers
-            except Exception:
-                pass
+            safe_query(self, "#symbol-list", SymbolListWidget,
+                       lambda w: w.set_symbols(entries))
+            safe_query(self, "#ticker-table", TickerTableWidget,
+                       lambda w: setattr(w, "tickers", tickers))
 
     async def _fetch_klines(self) -> None:
         """Fetch kline data for the current symbol."""
@@ -435,69 +428,52 @@ class MarketScreen(BaseScreen):
             self.current_symbol, DEFAULT_INTERVAL, KLINES_LIMIT
         )
         klines = data.get("klines", [])
-        try:
-            chart = self.query_one("#klines-chart", KlinesChartWidget)
-            chart.symbol = self.current_symbol
-            chart.set_candles(klines)
-        except Exception:
-            pass
+        def _update_chart(w):
+            w.symbol = self.current_symbol
+            w.set_candles(klines)
+        safe_query(self, "#klines-chart", KlinesChartWidget, _update_chart)
 
     async def _fetch_orderbook(self) -> None:
         """Fetch order book for the current symbol."""
         data = await self._api.get_market_orderbook(
             self.current_symbol, ORDERBOOK_LIMIT
         )
-        try:
-            book = self.query_one("#order-book", OrderBookWidget)
-            book.symbol = self.current_symbol
-            book.bids = tuple(data.get("bids", []))
-            book.asks = tuple(data.get("asks", []))
-        except Exception:
-            pass
+        def _update_book(w):
+            w.symbol = self.current_symbol
+            w.bids = tuple(data.get("bids", []))
+            w.asks = tuple(data.get("asks", []))
+        safe_query(self, "#order-book", OrderBookWidget, _update_book)
 
     # ── Event Handlers ───────────────────────────────────────────────
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        try:
-            self.query_one("#symbol-list", SymbolListWidget).set_filter(event.value)
-        except Exception:
-            pass
+        safe_query(self, "#symbol-list", SymbolListWidget,
+                   lambda w: w.set_filter(event.value))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        try:
-            selected = self.query_one("#symbol-list", SymbolListWidget).get_selected_symbol()
+        lw = safe_query(self, "#symbol-list", SymbolListWidget)
+        if lw:
+            selected = lw.get_selected_symbol()
             if selected:
                 self._select_symbol(selected)
-        except Exception:
-            pass
 
     # ── Actions ──────────────────────────────────────────────────────
 
     def action_focus_search(self) -> None:
-        try:
-            self.query_one("#symbol-search", Input).focus()
-        except NoMatches:
-            pass
+        safe_query(self, "#symbol-search", Input, lambda w: w.focus())
 
     def action_move_up(self) -> None:
-        try:
-            self.query_one("#symbol-list", SymbolListWidget).action_move_up()
-        except NoMatches:
-            pass
+        safe_query(self, "#symbol-list", SymbolListWidget, lambda w: w.action_move_up())
 
     def action_move_down(self) -> None:
-        try:
-            self.query_one("#symbol-list", SymbolListWidget).action_move_down()
-        except NoMatches:
-            pass
+        safe_query(self, "#symbol-list", SymbolListWidget, lambda w: w.action_move_down())
 
     def action_select_symbol(self) -> None:
-        try:
-            selected = self.query_one("#symbol-list", SymbolListWidget).get_selected_symbol()
+        lw = safe_query(self, "#symbol-list", SymbolListWidget)
+        if lw:
+            selected = lw.get_selected_symbol()
             if selected:
                 self._select_symbol(selected)
-        except NoMatches:
-            pass
 
     def _select_symbol(self, symbol: str) -> None:
         if symbol != self.current_symbol:

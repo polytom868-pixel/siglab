@@ -34,6 +34,9 @@ from siglab.tui.formatting import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WARNING_YELLOW,
+    bar_gauge,
+    gauge_color,
+    safe_query,
     severity_color,
 )
 from siglab.tui.loading import LoadingIndicator
@@ -46,29 +49,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ALERTS_DISPLAY = 50
 
-# Color thresholds for risk score gauge
-# Score semantics: 1.0 = best/healthiest (low risk), 0.0 = worst (high risk)
-# Thresholds define where "moderate" and "high" risk begin
-GAUGE_MODERATE_THRESHOLD = 0.7  # Below this = moderate risk (yellow)
-GAUGE_HIGH_THRESHOLD = 0.4      # Below this = high risk (red)
-
-
-# ── Helpers ──────────────────────────────────────────────────────────
-
-
-def _gauge_color(score: float) -> str:
-    """Return color hex based on risk score value.
-
-    Score semantics: 1.0 = healthy (low risk), 0.0 = critical (high risk).
-    """
-    if score != score:  # NaN check
-        return TEXT_MUTED  # muted for NaN
-    if score < GAUGE_HIGH_THRESHOLD:
-        return ERROR_RED  # error-red — high risk
-    elif score < GAUGE_MODERATE_THRESHOLD:
-        return WARNING_YELLOW  # warning-yellow — moderate risk
-    else:
-        return ACCENT_GREEN  # accent-green — low risk / healthy
+# gauge_color is now imported from siglab.tui.formatting (shared)
 
 
 def _correlation_color(value: float) -> str:
@@ -129,17 +110,11 @@ class RiskGaugeWidget(Static):
 
         score = self.composite_score
         pct = int(score * 100)
-        color = _gauge_color(score)
+        color = gauge_color(score)
 
         # Gauge bar
-        bar_width = 24
-        filled = int(score * bar_width)
-        filled = max(0, min(bar_width, filled))
-        empty = bar_width - filled
-
         result.append("\n  ")
-        result.append("█" * filled, style=f"bold {color}")
-        result.append("░" * empty, style=BORDER_DIM)
+        result.append(bar_gauge(score, width=24), style=f"bold {color}")
         result.append(f"  {pct}/100\n", style=f"bold {color}")
 
         # Sub-scores
@@ -153,11 +128,9 @@ class RiskGaugeWidget(Static):
         for key, label in sub_labels.items():
             val = self.sub_scores.get(key)
             if val is not None:
-                val_color = _gauge_color(val)
-                bar_len = int(val * 10)
-                bar = "█" * bar_len + "░" * (10 - bar_len)
+                val_color = gauge_color(val)
                 result.append(f"  {label:<12}", style=TEXT_SECONDARY)
-                result.append(bar, style=val_color)
+                result.append(bar_gauge(val, width=10), style=val_color)
                 result.append(f" {val:.2f}\n", style=TEXT_PRIMARY)
             else:
                 result.append(f"  {label:<12}", style=TEXT_SECONDARY)
@@ -428,40 +401,22 @@ class RiskScreen(BaseScreen):
             # Update gauge
             composite = msg.get("composite_score")
             strategy_count = msg.get("strategy_count", 0)
-            try:
-                gauge = self.query_one("#risk-gauge", RiskGaugeWidget)
-                gauge.composite_score = composite
-                gauge.strategy_count = strategy_count
-            except Exception:
-                pass
+            safe_query(self, "#risk-gauge", RiskGaugeWidget, lambda w: (
+                setattr(w, "composite_score", composite),
+                setattr(w, "strategy_count", strategy_count),
+            ))
 
             # Update drawdown
-            max_dd = msg.get("max_drawdown")
-            try:
-                dd_widget = self.query_one("#risk-drawdown", DrawdownSparklineWidget)
-                dd_widget.max_drawdown = max_dd
-            except Exception:
-                pass
+            safe_query(self, "#risk-drawdown", DrawdownSparklineWidget,
+                       lambda w: setattr(w, "max_drawdown", msg.get("max_drawdown")))
 
             # Update correlation matrix
-            corr_matrix = msg.get("correlation_matrix")
-            try:
-                corr_widget = self.query_one(
-                    "#risk-correlation", CorrelationHeatmapWidget
-                )
-                corr_widget.matrix = corr_matrix
-            except Exception:
-                pass
+            safe_query(self, "#risk-correlation", CorrelationHeatmapWidget,
+                       lambda w: setattr(w, "matrix", msg.get("correlation_matrix")))
 
             self.status_text = "Live · Risk · WS updated"
-            # Toast notification for incoming risk updates
-            composite = msg.get("composite_score")
             if composite is not None:
-                self.notify(
-                    f"Risk score updated: {composite:.2f}",
-                    severity="information",
-                    timeout=2,
-                )
+                self.notify(f"Risk score updated: {composite:.2f}", severity="information", timeout=2)
         except Exception as exc:
             logger.debug("WS risk update handler error: %s", exc)
 
@@ -485,33 +440,25 @@ class RiskScreen(BaseScreen):
             data = await self._api.get_risk()
 
             # Update composite score gauge — pass references
-            try:
-                gauge = self.query_one("#risk-gauge", RiskGaugeWidget)
-                gauge.composite_score = data.get("composite_score")
-                gauge.sub_scores = data.get("sub_scores", {})
-                gauge.strategy_count = int(data.get("strategy_count", 0))
-            except Exception:
-                pass
+            def _update_gauge(w):
+                w.composite_score = data.get("composite_score")
+                w.sub_scores = data.get("sub_scores", {})
+                w.strategy_count = int(data.get("strategy_count", 0))
+            safe_query(self, "#risk-gauge", RiskGaugeWidget, _update_gauge)
 
             # Update drawdown sparkline — pass references
-            try:
-                dd_widget = self.query_one("#risk-drawdown", DrawdownSparklineWidget)
-                dd_widget.drawdown_history = data.get("drawdown_history", [])
-                dd_widget.max_drawdown = data.get("max_drawdown")
-                dd_widget.current_drawdown = data.get("current_drawdown")
-                dd_widget.recovery_periods = data.get("recovery_periods")
-            except Exception:
-                pass
+            def _update_dd(w):
+                w.drawdown_history = data.get("drawdown_history", [])
+                w.max_drawdown = data.get("max_drawdown")
+                w.current_drawdown = data.get("current_drawdown")
+                w.recovery_periods = data.get("recovery_periods")
+            safe_query(self, "#risk-drawdown", DrawdownSparklineWidget, _update_dd)
 
             # Update correlation matrix — pass references
-            try:
-                corr_widget = self.query_one(
-                    "#risk-correlation", CorrelationHeatmapWidget
-                )
-                corr_widget.matrix = data.get("correlation_matrix")
-                corr_widget.strategy_names = data.get("strategy_names", [])
-            except Exception:
-                pass
+            def _update_corr(w):
+                w.matrix = data.get("correlation_matrix")
+                w.strategy_names = data.get("strategy_names", [])
+            safe_query(self, "#risk-correlation", CorrelationHeatmapWidget, _update_corr)
 
             # Update alerts — store reference, not a copy
             self._all_alerts = data.get("alerts", [])
@@ -520,22 +467,14 @@ class RiskScreen(BaseScreen):
         except Exception as exc:
             logger.debug("Risk data fetch failed: %s", exc)
             # Set empty state on all widgets
-            try:
-                self.query_one("#risk-gauge", RiskGaugeWidget).composite_score = None
-            except Exception:
-                pass
-            try:
-                self.query_one("#risk-drawdown", DrawdownSparklineWidget).drawdown_history = []
-            except Exception:
-                pass
-            try:
-                self.query_one("#risk-correlation", CorrelationHeatmapWidget).matrix = None
-            except Exception:
-                pass
-            try:
-                self.query_one("#risk-alerts", AlertStreamWidget).alerts = []
-            except Exception:
-                pass
+            safe_query(self, "#risk-gauge", RiskGaugeWidget,
+                       lambda w: setattr(w, "composite_score", None))
+            safe_query(self, "#risk-drawdown", DrawdownSparklineWidget,
+                       lambda w: setattr(w, "drawdown_history", []))
+            safe_query(self, "#risk-correlation", CorrelationHeatmapWidget,
+                       lambda w: setattr(w, "matrix", None))
+            safe_query(self, "#risk-alerts", AlertStreamWidget,
+                       lambda w: setattr(w, "alerts", []))
 
     def _apply_alert_filter(self) -> None:
         """Apply the current severity filter to the alert list.
@@ -551,27 +490,18 @@ class RiskScreen(BaseScreen):
                 a for a in self._all_alerts
                 if str(a.get("severity", "")).lower() == self._filter_severity
             ]
-        try:
-            alert_widget = self.query_one("#risk-alerts", AlertStreamWidget)
-            alert_widget.alerts = filtered
-        except Exception:
-            pass
+        safe_query(self, "#risk-alerts", AlertStreamWidget,
+                   lambda w: setattr(w, "alerts", filtered))
 
     # ── Actions ──────────────────────────────────────────────────────
 
     def action_move_down(self) -> None:
         """Scroll the alert stream down."""
-        try:
-            self.query_one("#risk-alerts", AlertStreamWidget).scroll_down()
-        except Exception:
-            pass
+        safe_query(self, "#risk-alerts", AlertStreamWidget, lambda w: w.scroll_down())
 
     def action_move_up(self) -> None:
         """Scroll the alert stream up."""
-        try:
-            self.query_one("#risk-alerts", AlertStreamWidget).scroll_up()
-        except Exception:
-            pass
+        safe_query(self, "#risk-alerts", AlertStreamWidget, lambda w: w.scroll_up())
 
     def action_filter_alerts(self) -> None:
         """Cycle through alert severity filters: all → critical → warning → info → all."""
