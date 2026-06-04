@@ -21,6 +21,7 @@ from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli_help
 from siglab.tui.widgets import SigLabStatusBar
 from siglab.tui.screens.market import MarketScreen
+from siglab.tui.screens.paper import PaperScreen
 
 
 # ── Navigation items ──────────────────────────────────────────────────
@@ -184,9 +185,12 @@ _BUILTIN_SCREENS: dict[str, Callable[[], Screen]] = {}
 # Market screen — real implementation
 _BUILTIN_SCREENS["market"] = MarketScreen
 
+# Paper trading screen — real implementation
+_BUILTIN_SCREENS["paper"] = PaperScreen
+
 # Remaining screens — placeholders for now
 for _idx, _label, _screen_id in NAV_ITEMS:
-    if _screen_id == "market":
+    if _screen_id in ("market", "paper"):
         continue  # already registered above
     _BUILTIN_SCREENS[_screen_id] = lambda _lbl=_label, _sid=_screen_id: (
         PlaceholderScreen(_lbl, screen_id=_sid)

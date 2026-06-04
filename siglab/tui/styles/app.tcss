@@ -186,3 +186,69 @@ MarketScreen {
     padding: 0 1;
     dock: bottom;
 }
+
+/* === Paper Trading Screen === */
+PaperScreen {
+    layout: vertical;
+}
+
+#paper-layout {
+    layout: vertical;
+    height: 100%;
+}
+
+#paper-main {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#paper-left {
+    layout: vertical;
+    width: 40;
+    min-width: 34;
+    max-width: 44;
+    border-right: solid $border-dim;
+}
+
+#paper-right {
+    layout: vertical;
+    width: 1fr;
+}
+
+#order-form {
+    height: auto;
+    min-height: 14;
+    border-bottom: solid $border-dim;
+}
+
+#account-summary {
+    height: auto;
+    min-height: 5;
+}
+
+#pnl-chart {
+    height: auto;
+    min-height: 5;
+    border-bottom: solid $border-dim;
+}
+
+#positions-table {
+    height: 1fr;
+    min-height: 6;
+    border-bottom: solid $border-dim;
+    overflow-y: auto;
+}
+
+#order-history {
+    height: 1fr;
+    min-height: 6;
+    overflow-y: auto;
+}
+
+#paper-status {
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+    dock: bottom;
+}
