@@ -554,4 +554,82 @@ async def risk(request: Request) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Market Data (SoDEX perps)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/market/symbols")
+async def market_symbols(request: Request) -> dict[str, Any]:
+    """Return all tradable SoDEX perp symbols with metadata."""
+    state = request.app.state.dashboard
+    feeds = state.get_sodex_feeds()
+    if feeds is None:
+        return {"symbols": [], "note": "SoDEXFeeds not available"}
+    try:
+        symbols = await feeds.fetch_symbols()
+        return {"symbols": symbols, "count": len(symbols)}
+    except Exception as exc:
+        return {"symbols": [], "error": str(exc)}
+
+
+@router.get("/market/tickers")
+async def market_tickers(request: Request) -> dict[str, Any]:
+    """Return 24-hour ticker data for all SoDEX perp symbols."""
+    state = request.app.state.dashboard
+    feeds = state.get_sodex_feeds()
+    if feeds is None:
+        return {"tickers": [], "note": "SoDEXFeeds not available"}
+    try:
+        tickers = await feeds.fetch_tickers()
+        return {"tickers": tickers, "count": len(tickers)}
+    except Exception as exc:
+        return {"tickers": [], "error": str(exc)}
+
+
+@router.get("/market/klines/{symbol}")
+async def market_klines(
+    request: Request,
+    symbol: str,
+    interval: str = "1h",
+    limit: int = 60,
+) -> dict[str, Any]:
+    """Return kline/candlestick data for a perp symbol."""
+    state = request.app.state.dashboard
+    feeds = state.get_sodex_feeds()
+    if feeds is None:
+        return {"klines": [], "symbol": symbol, "note": "SoDEXFeeds not available"}
+    try:
+        frame = await feeds.fetch_klines(symbol, interval, limit=limit)
+        records = frame.reset_index().to_dict(orient="records") if not frame.empty else []
+        # Convert timestamps to ISO strings for JSON serialisation
+        for rec in records:
+            ts = rec.get("timestamp")
+            if ts is not None and hasattr(ts, "isoformat"):
+                rec["timestamp"] = ts.isoformat()
+        return {"klines": records, "symbol": symbol, "interval": interval, "count": len(records)}
+    except Exception as exc:
+        return {"klines": [], "symbol": symbol, "error": str(exc)}
+
+
+@router.get("/market/orderbook/{symbol}")
+async def market_orderbook(
+    request: Request,
+    symbol: str,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Return order book depth for a perp symbol."""
+    state = request.app.state.dashboard
+    feeds = state.get_sodex_feeds()
+    if feeds is None:
+        return {"bids": [], "asks": [], "symbol": symbol, "note": "SoDEXFeeds not available"}
+    try:
+        data = await feeds.fetch_orderbook(symbol, limit=limit)
+        return {
+            "bids": data.get("bids", []),
+            "asks": data.get("asks", []),
+            "symbol": symbol,
+        }
+    except Exception as exc:
+        return {"bids": [], "asks": [], "symbol": symbol, "error": str(exc)}
 

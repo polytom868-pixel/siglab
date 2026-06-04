@@ -20,6 +20,7 @@ from textual.widgets import ListItem, ListView, Static
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli_help
 from siglab.tui.widgets import SigLabStatusBar
+from siglab.tui.screens.market import MarketScreen
 
 
 # ── Navigation items ──────────────────────────────────────────────────
@@ -179,7 +180,14 @@ class NavSidebar(Static):
 # Textual expects SCREENS values to be Screen subclasses or callables,
 # not instances — it instantiates them lazily on first push_screen().
 _BUILTIN_SCREENS: dict[str, Callable[[], Screen]] = {}
+
+# Market screen — real implementation
+_BUILTIN_SCREENS["market"] = MarketScreen
+
+# Remaining screens — placeholders for now
 for _idx, _label, _screen_id in NAV_ITEMS:
+    if _screen_id == "market":
+        continue  # already registered above
     _BUILTIN_SCREENS[_screen_id] = lambda _lbl=_label, _sid=_screen_id: (
         PlaceholderScreen(_lbl, screen_id=_sid)
     )
