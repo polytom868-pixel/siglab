@@ -70,7 +70,7 @@ class PositionsTableWidget(Static):
         min-height: 6;
         padding: 0 1;
         overflow-y: auto;
-        background: $surface;
+        background: #0d1210;
     }
     """
 
@@ -128,7 +128,7 @@ class AccountSummaryWidget(Static):
         height: auto;
         min-height: 5;
         padding: 0 1;
-        background: $surface;
+        background: #0d1210;
     }
     """
 
@@ -181,7 +181,7 @@ class PnlChartWidget(Static):
         height: auto;
         min-height: 5;
         padding: 0 1;
-        background: $bg;
+        background: #0a0a0a;
     }
     """
 
@@ -235,7 +235,7 @@ class OrderFormWidget(Static):
         height: auto;
         min-height: 14;
         padding: 0 1;
-        background: $surface;
+        background: #0d1210;
     }
     """
 
@@ -401,7 +401,7 @@ class OrderHistoryWidget(Static):
         min-height: 6;
         padding: 0 1;
         overflow-y: auto;
-        background: $bg;
+        background: #0a0a0a;
     }
     """
 
@@ -866,16 +866,16 @@ class _TextInputScreen(Screen[tuple[str, str] | None]):
         width: 50;
         height: auto;
         padding: 1 2;
-        background: $surface;
-        border: solid $border-dim;
+        background: #0d1210;
+        border: solid #2a3a30;
     }
     #text-input-prompt {
-        color: $accent-green;
+        color: #4ade80;
         text-style: bold;
         margin: 0 0 1 0;
     }
     #text-input-field {
-        background: $input-bg;
+        background: #1a2a1f;
     }
     """
 

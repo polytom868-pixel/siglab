@@ -105,7 +105,7 @@ class StrategyListWidget(Static):
         height: 1fr;
         overflow-y: auto;
         padding: 0 1;
-        background: $surface;
+        background: #0d1210;
     }
     """
 
@@ -274,7 +274,7 @@ class ResultsTableWidget(Static):
         min-height: 8;
         padding: 0 1;
         overflow-y: auto;
-        background: $bg;
+        background: #0a0a0a;
     }
     """
 
@@ -417,7 +417,7 @@ class ComparisonPanelWidget(Static):
         min-height: 10;
         padding: 0 1;
         overflow-y: auto;
-        background: $bg;
+        background: #0a0a0a;
     }
     """
 

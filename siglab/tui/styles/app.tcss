@@ -106,10 +106,6 @@ Screen {
 
 .nav-item:focus {
     border-left: tall $border-focus;
-}
-
-.nav-item:focus-visible {
-    border-left: tall $border-focus;
     background: $surface-raised;
     color: $text-primary;
 }

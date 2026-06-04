@@ -39,8 +39,8 @@ class LoadingIndicator(Static):
         width: auto;
         min-width: 1;
         padding: 0 1;
-        background: $surface;
-        color: $text-muted;
+        background: #0d1210;
+        color: #7d9483;
     }
     """
 

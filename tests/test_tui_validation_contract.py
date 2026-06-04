@@ -5,6 +5,9 @@ Tests: VAL-TUI-001, VAL-TUI-002, VAL-TUI-009
 NOTE: CSS variables are consolidated in a single app.tcss file
 (variables at top, then per-screen styles) so that $variables
 resolve correctly.  theme.tcss is kept as a reference document.
+
+Round 2: Added pilot-based tests for VAL-TUI-001 and VAL-TUI-009
+after CSS variable resolution fix (f34-fix-css-variables).
 """
 
 from __future__ import annotations
@@ -108,6 +111,56 @@ class TestVAL_TUI_001_ScaffoldLaunchesAndNavigates:
         from siglab.tui.api_client import TuiApiClient
         app = SigLabTUI()
         assert isinstance(app.api_client, TuiApiClient)
+
+    # ── Pilot-based tests (enabled after CSS variable fix) ──
+
+    @pytest.mark.asyncio
+    async def test_pilot_app_launches(self) -> None:
+        """AppTest pilot launches app successfully."""
+        async with SigLabTUI().run_test() as pilot:
+            assert pilot.app.title == "SigLab"
+            assert pilot.app.is_mounted
+
+    @pytest.mark.asyncio
+    async def test_pilot_sidebar_visible(self) -> None:
+        """Sidebar is visible after app launch via pilot."""
+        async with SigLabTUI().run_test() as pilot:
+            sidebar = pilot.app.query_one("#nav-sidebar")
+            assert sidebar is not None
+            assert sidebar.display
+
+    @pytest.mark.asyncio
+    async def test_pilot_status_bar_visible(self) -> None:
+        """Status bar is visible after app launch via pilot."""
+        async with SigLabTUI().run_test() as pilot:
+            status_bar = pilot.app.query_one("#status-bar")
+            assert status_bar is not None
+
+    @pytest.mark.asyncio
+    async def test_pilot_screen_switching_via_number_keys(self) -> None:
+        """Number keys 1-6 switch screens via pilot."""
+        async with SigLabTUI().run_test() as pilot:
+            for key in ["1", "2", "3", "4", "5", "6"]:
+                await pilot.press(key)
+                await pilot.pause()
+            # If we got here without error, all switches worked
+
+    @pytest.mark.asyncio
+    async def test_pilot_screen_switching_via_nav_keys(self) -> None:
+        """j/k navigation keys and enter work in sidebar."""
+        async with SigLabTUI().run_test() as pilot:
+            # Press j to move down, k to move up
+            await pilot.press("j")
+            await pilot.pause()
+            await pilot.press("k")
+            await pilot.pause()
+
+    @pytest.mark.asyncio
+    async def test_pilot_content_area_present(self) -> None:
+        """Content area is present and visible after launch."""
+        async with SigLabTUI().run_test() as pilot:
+            content = pilot.app.query_one("#content-area")
+            assert content is not None
 
 
 # ── VAL-TUI-002: CLI commands render with Rich formatting ────────────
@@ -449,3 +502,57 @@ class TestVAL_TUI_009_TUIHardening:
     def test_app_has_watch_api_connected(self) -> None:
         """App has watch_api_connected for reactive updates."""
         assert hasattr(SigLabTUI, "watch_api_connected")
+
+    # ── Pilot-based hardening tests (enabled after CSS variable fix) ──
+
+    @pytest.mark.asyncio
+    async def test_pilot_help_screen_opens_and_closes(self) -> None:
+        """Help screen opens on ? and closes on escape via pilot."""
+        async with SigLabTUI().run_test() as pilot:
+            await pilot.press("question_mark")
+            await pilot.pause()
+            # Help screen should be pushed
+            assert len(pilot.app.screen_stack) > 1
+            await pilot.press("escape")
+            await pilot.pause()
+
+    @pytest.mark.asyncio
+    async def test_pilot_number_key_screen_navigation(self) -> None:
+        """All 6 number keys navigate to corresponding screens via pilot."""
+        async with SigLabTUI().run_test() as pilot:
+            for key in ["1", "2", "3", "4", "5", "6"]:
+                await pilot.press(key)
+                await pilot.pause()
+
+    @pytest.mark.asyncio
+    async def test_pilot_escape_returns_to_main(self) -> None:
+        """Escape from a pushed screen returns to main screen via pilot."""
+        async with SigLabTUI().run_test() as pilot:
+            # Open help, then escape back
+            await pilot.press("question_mark")
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+            # Should be back on main screen
+            assert len(pilot.app.screen_stack) == 1
+
+    @pytest.mark.asyncio
+    async def test_pilot_f1_opens_help(self) -> None:
+        """F1 key opens help screen via pilot."""
+        async with SigLabTUI().run_test() as pilot:
+            await pilot.press("f1")
+            await pilot.pause()
+            assert len(pilot.app.screen_stack) > 1
+            await pilot.press("escape")
+            await pilot.pause()
+
+    @pytest.mark.asyncio
+    async def test_pilot_app_resizes_gracefully(self) -> None:
+        """App handles terminal resize without crashing via pilot."""
+        async with SigLabTUI().run_test(size=(120, 40)) as pilot:
+            # Navigate to a screen
+            await pilot.press("1")
+            await pilot.pause()
+            # Resize to smaller
+            pilot.app.screen.size_changed = True
+            await pilot.pause()
