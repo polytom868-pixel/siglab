@@ -199,3 +199,170 @@ class TuiApiClient:
         )
         response.raise_for_status()
         return response.json()
+
+    # ── Paper Trading ────────────────────────────────────────────────
+
+    async def list_paper_sessions(self) -> dict[str, Any]:
+        """List all paper trading sessions.
+
+        Returns:
+            Dict with 'sessions' list.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get("/paper/sessions")
+        response.raise_for_status()
+        return response.json()
+
+    async def create_paper_session(self, name: str | None = None) -> dict[str, Any]:
+        """Create a new paper trading session.
+
+        Args:
+            name: Optional session label.
+
+        Returns:
+            Dict with 'session_id' and 'name'.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        body: dict[str, Any] = {}
+        if name:
+            body["name"] = name
+        response = await client.post("/paper/sessions", json=body)
+        response.raise_for_status()
+        return response.json()
+
+    async def get_paper_session(self, session_id: str) -> dict[str, Any]:
+        """Get paper trading session status.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            Dict with session_id, name, position, pnl, orders.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get(f"/paper/sessions/{session_id}")
+        response.raise_for_status()
+        return response.json()
+
+    async def get_paper_positions(self, session_id: str) -> dict[str, Any]:
+        """Get positions for a paper trading session.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            Dict with 'positions' list.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get(f"/paper/sessions/{session_id}/positions")
+        response.raise_for_status()
+        return response.json()
+
+    async def get_paper_orders(self, session_id: str) -> dict[str, Any]:
+        """Get orders for a paper trading session.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            Dict with 'orders' list.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get(f"/paper/sessions/{session_id}/orders")
+        response.raise_for_status()
+        return response.json()
+
+    async def get_paper_pnl(self, session_id: str) -> dict[str, Any]:
+        """Get PnL summary for a paper trading session.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            Dict with realized_pnl, unrealized_pnl, total_pnl, etc.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get(f"/paper/sessions/{session_id}/pnl")
+        response.raise_for_status()
+        return response.json()
+
+    async def place_paper_order(
+        self,
+        session_id: str,
+        *,
+        symbol: str,
+        side: str,
+        quantity: float,
+        order_type: str = "MARKET",
+        price: float | None = None,
+    ) -> dict[str, Any]:
+        """Place a paper order.
+
+        Args:
+            session_id: Target session ID.
+            symbol: Perp symbol (e.g. "BTC-USD").
+            side: "BUY" or "SELL".
+            quantity: Order quantity.
+            order_type: "MARKET" or "LIMIT".
+            price: Limit price (required for LIMIT orders).
+
+        Returns:
+            Dict with order details.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        body: dict[str, Any] = {
+            "symbol": symbol,
+            "side": side,
+            "quantity": quantity,
+            "order_type": order_type,
+        }
+        if price is not None:
+            body["price"] = price
+        response = await client.post(
+            f"/paper/sessions/{session_id}/orders", json=body
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def cancel_paper_order(
+        self, session_id: str, order_id: str
+    ) -> dict[str, Any]:
+        """Cancel a paper order.
+
+        Args:
+            session_id: Target session ID.
+            order_id: Order ID to cancel.
+
+        Returns:
+            Dict with updated order details.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.delete(
+            f"/paper/sessions/{session_id}/orders/{order_id}"
+        )
+        response.raise_for_status()
+        return response.json()
