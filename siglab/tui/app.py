@@ -304,7 +304,10 @@ class SigLabTUI(App):
 
     TITLE = "SigLab"
     SUB_TITLE = "Terminal Dashboard"
-    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss", "styles/market.tcss", "styles/paper.tcss", "styles/risk.tcss", "styles/strategy.tcss", "styles/telemetry.tcss", "styles/evidence.tcss"]
+    # Single CSS file — Textual parses CSS_PATH files independently, so
+    # variables from theme.tcss would not resolve in other files.
+    # All styles (variables + per-screen) are consolidated in app.tcss.
+    CSS_PATH = ["styles/app.tcss"]
 
     # Register screens (placeholders for now, expanded in later features)
     SCREENS: ClassVar[dict[str, Callable[[], Screen]]] = _BUILTIN_SCREENS

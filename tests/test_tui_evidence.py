@@ -367,8 +367,12 @@ class TestEvidenceScreenRegistration:
         assert "a" in binding_keys  # run all
 
     def test_app_css_includes_evidence(self) -> None:
-        from siglab.tui.app import SigLabTUI
-        assert "styles/evidence.tcss" in SigLabTUI.CSS_PATH
+        """Evidence styles are consolidated in app.tcss."""
+        from pathlib import Path
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
+        content = tcss_path.read_text()
+        assert "EvidenceScreen" in content
+        assert "#evidence-layout" in content
 
 
 # ── API Integration Tests ────────────────────────────────────────────
