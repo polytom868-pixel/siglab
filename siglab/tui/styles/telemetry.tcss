@@ -1,0 +1,90 @@
+/* SigLab TUI — Telemetry Browser Screen Styles
+ *
+ * Layout: two-column split with run list on left,
+ * telemetry detail and comparison panels on right.
+ * Filter bar at top, status bar at bottom.
+ */
+
+/* Utility class for toggling visibility */
+.hidden {
+    display: none;
+}
+
+TelemetryScreen {
+    layout: vertical;
+}
+
+#telemetry-search {
+    height: 3;
+    max-width: 100%;
+    background: $input-bg;
+    border: none;
+    padding: 0 1;
+}
+
+#telemetry-search:focus {
+    border: tall $border-focus;
+}
+
+#telemetry-filters {
+    height: 1;
+    padding: 0 1;
+    background: $surface;
+    color: $text-muted;
+}
+
+#telemetry-main {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#telemetry-run-list {
+    width: 32;
+    min-width: 26;
+    max-width: 38;
+    border-right: solid $border-dim;
+    overflow-y: auto;
+}
+
+#telemetry-detail {
+    layout: vertical;
+    width: 1fr;
+}
+
+#provider-metrics {
+    height: auto;
+    min-height: 10;
+    border-bottom: solid $border-dim;
+}
+
+#tool-usage {
+    height: 1fr;
+    min-height: 8;
+    overflow-y: auto;
+}
+
+#credit-sparkline {
+    height: auto;
+    min-height: 6;
+    border-bottom: solid $border-dim;
+}
+
+#latency-sparkline {
+    height: auto;
+    min-height: 6;
+    border-bottom: solid $border-dim;
+}
+
+#telemetry-comparison {
+    height: 1fr;
+    min-height: 10;
+    overflow-y: auto;
+}
+
+#telemetry-status {
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+    dock: bottom;
+}

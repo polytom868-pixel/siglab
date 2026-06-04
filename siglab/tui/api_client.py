@@ -117,6 +117,20 @@ class TuiApiClient:
         response.raise_for_status()
         return response.json()
 
+    async def get_telemetry_report(self) -> dict[str, Any]:
+        """Fetch the /ops-board telemetry data.
+
+        Combines ops-board artifact status with service health for
+        the telemetry browser screen.
+
+        Returns:
+            Dict with artifact_status, service_health, and summary.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        return await self.get_ops_board()
+
     async def get_risk(self) -> dict[str, Any]:
         """Fetch the /risk endpoint.
 
