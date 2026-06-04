@@ -24,6 +24,8 @@ from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
+from siglab.tui.formatting import friendly_error
+from siglab.tui.loading import LoadingIndicator
 from siglab.tui.widgets.sparkline import ohlc_summary, sparkline_text
 
 logger = logging.getLogger(__name__)
@@ -365,6 +367,8 @@ class MarketScreen(Screen[None]):
         Binding("k", "move_up", "Up", show=False),
         Binding("enter", "select_symbol", "Select", show=False),
         Binding("r", "refresh_now", "Refresh", show=True),
+        Binding("ctrl+c", "go_back", "Back", show=False),
+        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
     # Reactive state
@@ -394,17 +398,20 @@ class MarketScreen(Screen[None]):
                     yield TickerTableWidget(id="ticker-table")
                     # Right bottom: Order book
                     yield OrderBookWidget(id="order-book")
-            # Status bar
+            # Loading indicator + status
+            yield LoadingIndicator(id="market-loading")
             yield Static(self.status_text, id="market-status")
 
     def on_mount(self) -> None:
         """Initialize the screen and start auto-refresh."""
-        self._timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
+        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
         # Fire immediately after mount
         self.call_after_refresh(self._refresh_all)
 
     async def on_unmount(self) -> None:
-        """Clean up the API client if we own it."""
+        """Clean up the API client and timer when leaving."""
+        if hasattr(self, "_refresh_timer"):
+            self._refresh_timer.stop()
         if self._owns_client:
             await self._api.close()
 
@@ -415,18 +422,50 @@ class MarketScreen(Screen[None]):
         self.is_loading = True
         self.status_text = "Refreshing…"
         try:
+            loading = self.query_one("#market-loading", LoadingIndicator)
+            loading.loading = True
+        except Exception:
+            pass
+        successes = 0
+        try:
             # Fetch tickers (includes symbol list info)
-            await self._fetch_tickers()
+            try:
+                await self._fetch_tickers()
+                successes += 1
+            except Exception:
+                pass
             # Fetch klines for selected symbol
-            await self._fetch_klines()
+            try:
+                await self._fetch_klines()
+                successes += 1
+            except Exception:
+                pass
             # Fetch order book for selected symbol
-            await self._fetch_orderbook()
-            self.status_text = f"Live · {self.current_symbol} · refreshed"
-            self.is_loading = False
+            try:
+                await self._fetch_orderbook()
+                successes += 1
+            except Exception:
+                pass
+
+            if successes == 3:
+                self.status_text = f"Live · {self.current_symbol} · refreshed  [r]efresh  [/]search  [j/k]nav  [?]help"
+            elif successes > 0:
+                self.status_text = f"Partial update ({successes}/3) · {self.current_symbol}  [r]etry"
+            else:
+                self.status_text = "Cannot reach API server  [r]etry"
+                self.notify("Data refresh failed", severity="error")
         except Exception as exc:
-            self.status_text = f"Error: {exc}"
-            self.is_loading = False
+            self.status_text = f"{friendly_error(exc)}  [r]etry"
+            self.notify(friendly_error(exc), severity="error")
             logger.warning("Market refresh failed: %s", exc)
+        finally:
+            self.is_loading = False
+            try:
+                loading = self.query_one("#market-loading", LoadingIndicator)
+                loading.loading = False
+                loading.status_text = self.status_text
+            except Exception:
+                pass
 
     async def _fetch_tickers(self) -> None:
         """Fetch ticker data and update symbol list + ticker table."""

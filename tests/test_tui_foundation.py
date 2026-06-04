@@ -39,6 +39,8 @@ class TestNavConstants:
             assert isinstance(idx, str) and len(idx) == 1
             assert isinstance(label, str) and len(label) > 0
             assert isinstance(screen_id, str) and len(screen_id) > 0
+            # Labels should use ASCII bracket style, not emoji
+            assert "[" in label and "]" in label, f"Label '{label}' should use bracket style"
 
     def test_screen_ids_match_nav_items(self) -> None:
         expected = {item[2] for item in NAV_ITEMS}
@@ -81,10 +83,11 @@ class TestSigLabTUIApp:
     def test_app_has_bindings(self) -> None:
         binding_keys = [b.key for b in SigLabTUI.BINDINGS]
         assert "q" in binding_keys
-        assert "?" in binding_keys
+        assert "?" in binding_keys or "question_mark" in binding_keys
         assert "escape" in binding_keys
         assert "1" in binding_keys
         assert "6" in binding_keys
+        assert "ctrl+c" in binding_keys
 
     def test_app_instantiation_creates_api_client(self) -> None:
         app = SigLabTUI()
@@ -117,12 +120,30 @@ class TestHelpScreen:
         binding_keys = [b.key for b in HelpScreen.BINDINGS]
         assert "escape" in binding_keys
         assert "q" in binding_keys
-        assert "?" in binding_keys
+        assert "question_mark" in binding_keys or "?" in binding_keys
 
-    def test_help_screen_has_keybindings_list(self) -> None:
-        assert len(HelpScreen.KEYBINDINGS) >= 5
-        keys = [k for k, _ in HelpScreen.KEYBINDINGS]
+    def test_help_screen_has_global_keybindings_list(self) -> None:
+        assert len(HelpScreen.GLOBAL_KEYBINDINGS) >= 7
+        keys = [k for k, _ in HelpScreen.GLOBAL_KEYBINDINGS]
         assert "1-6" in keys
+
+    def test_help_screen_has_screen_keybindings(self) -> None:
+        assert "market" in HelpScreen.SCREEN_KEYBINDINGS
+        assert "paper" in HelpScreen.SCREEN_KEYBINDINGS
+        assert "risk" in HelpScreen.SCREEN_KEYBINDINGS
+        assert "strategy" in HelpScreen.SCREEN_KEYBINDINGS
+        assert "telemetry" in HelpScreen.SCREEN_KEYBINDINGS
+        assert "evidence" in HelpScreen.SCREEN_KEYBINDINGS
+
+    def test_help_screen_accepts_screen_context(self) -> None:
+        screen = HelpScreen(screen_name="Market", screen_id="market")
+        assert screen._screen_name == "Market"
+        assert screen._screen_id == "market"
+
+    def test_help_screen_default_no_context(self) -> None:
+        screen = HelpScreen()
+        assert screen._screen_name == ""
+        assert screen._screen_id == ""
 
 
 # ── API Client Tests ─────────────────────────────────────────────────
@@ -383,6 +404,32 @@ class TestAppCompose:
             method_name = f"action_switch_to_{screen_id}"
             assert hasattr(SigLabTUI, method_name), f"Missing {method_name}"
 
+    def test_all_screens_have_ctrl_c_binding(self) -> None:
+        """Verify all screens have consistent ctrl+c binding."""
+        from siglab.tui.screens.market import MarketScreen
+        from siglab.tui.screens.paper import PaperScreen
+        from siglab.tui.screens.risk import RiskScreen
+        from siglab.tui.screens.strategy import StrategyScreen
+        from siglab.tui.screens.telemetry import TelemetryScreen
+        from siglab.tui.screens.evidence import EvidenceScreen
+        for screen_cls in [MarketScreen, PaperScreen, RiskScreen, StrategyScreen, TelemetryScreen, EvidenceScreen]:
+            keys = [b.key for b in screen_cls.BINDINGS]
+            assert "ctrl+c" in keys, f"{screen_cls.__name__} missing ctrl+c"
+            assert "question_mark" in keys or "?" in keys, f"{screen_cls.__name__} missing ?"
+            assert "escape" in keys, f"{screen_cls.__name__} missing escape"
+
+    def test_all_screens_have_escape_binding(self) -> None:
+        """Verify all screens have escape binding."""
+        from siglab.tui.screens.market import MarketScreen
+        from siglab.tui.screens.paper import PaperScreen
+        from siglab.tui.screens.risk import RiskScreen
+        from siglab.tui.screens.strategy import StrategyScreen
+        from siglab.tui.screens.telemetry import TelemetryScreen
+        from siglab.tui.screens.evidence import EvidenceScreen
+        for screen_cls in [MarketScreen, PaperScreen, RiskScreen, StrategyScreen, TelemetryScreen, EvidenceScreen]:
+            keys = [b.key for b in screen_cls.BINDINGS]
+            assert "escape" in keys, f"{screen_cls.__name__} missing escape"
+
 
 # ── NavSidebar Tests ─────────────────────────────────────────────────
 
@@ -455,6 +502,15 @@ class TestThemeSystem:
         assert "$error" in content
         assert "$info" in content
 
+    def test_theme_bg_not_pure_black(self) -> None:
+        """Background should be slightly off-black for CRT aesthetic."""
+        from pathlib import Path
+
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "theme.tcss"
+        content = tcss_path.read_text()
+        assert "$bg: #0a0a0a;" in content
+        assert "$bg: #000000" not in content
+
 
 # ── Module Structure Tests ───────────────────────────────────────────
 
@@ -489,3 +545,118 @@ class TestModuleStructure:
 
         init_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "__init__.py"
         assert init_path.exists()
+
+
+# ── Formatting Module Tests ──────────────────────────────────────────
+
+
+class TestFormatting:
+    """Test the shared formatting helpers module."""
+
+    def test_friendly_error_connect(self) -> None:
+        from siglab.tui.formatting import friendly_error
+        import httpx
+        exc = httpx.ConnectError("Connection refused")
+        msg = friendly_error(exc)
+        assert "connect" in msg.lower() or "server" in msg.lower()
+
+    def test_friendly_error_timeout(self) -> None:
+        from siglab.tui.formatting import friendly_error
+        import httpx
+        exc = httpx.TimeoutException("Timed out")
+        msg = friendly_error(exc)
+        assert "timed out" in msg.lower() or "timeout" in msg.lower()
+
+    def test_friendly_error_http_status(self) -> None:
+        from siglab.tui.formatting import friendly_error
+        import httpx
+        exc = httpx.HTTPStatusError(
+            "Server Error",
+            request=httpx.Request("GET", "http://test"),
+            response=httpx.Response(500),
+        )
+        msg = friendly_error(exc)
+        assert "500" in msg or "server" in msg.lower()
+
+    def test_friendly_error_generic(self) -> None:
+        from siglab.tui.formatting import friendly_error
+        msg = friendly_error(ValueError("bad value"))
+        assert "unexpected" in msg.lower() or "error" in msg.lower()
+
+    def test_format_price_high(self) -> None:
+        from siglab.tui.formatting import format_price
+        assert format_price(67234.56) == "67,234.56"
+
+    def test_format_price_low(self) -> None:
+        from siglab.tui.formatting import format_price
+        assert format_price(0.00123) == "0.001230"
+
+    def test_format_volume(self) -> None:
+        from siglab.tui.formatting import format_volume
+        assert "B" in format_volume(2_500_000_000)
+        assert "M" in format_volume(5_000_000)
+        assert "K" in format_volume(15_000)
+
+    def test_format_change_positive(self) -> None:
+        from siglab.tui.formatting import format_change
+        text = format_change(2.5)
+        assert "2.50%" in text.plain
+
+    def test_format_change_negative(self) -> None:
+        from siglab.tui.formatting import format_change
+        text = format_change(-1.3)
+        assert "1.30%" in text.plain
+
+    def test_format_pnl(self) -> None:
+        from siglab.tui.formatting import format_pnl
+        text = format_pnl(1234.56)
+        assert "1,234.56" in text.plain
+
+    def test_format_score_high(self) -> None:
+        from siglab.tui.formatting import format_score
+        text = format_score(0.85)
+        assert "0.850" in text.plain
+
+    def test_format_score_none(self) -> None:
+        from siglab.tui.formatting import format_score
+        text = format_score(None)
+        assert text.plain == "\u2500"
+
+    def test_truncate_short(self) -> None:
+        from siglab.tui.formatting import truncate
+        assert truncate("hello", 10) == "hello"
+
+    def test_truncate_long(self) -> None:
+        from siglab.tui.formatting import truncate
+        result = truncate("hello world", 6)
+        assert len(result) == 6
+        assert result.endswith("\u2026")
+
+    def test_color_constants_defined(self) -> None:
+        from siglab.tui import formatting
+        assert formatting.ACCENT_GREEN == "#4ade80"
+        assert formatting.ERROR_RED == "#f87171"
+        assert formatting.WARNING_YELLOW == "#f0b456"
+        assert formatting.INFO_BLUE == "#60a5fa"
+        assert formatting.BG == "#0a0a0a"
+
+
+# ── Loading Indicator Tests ──────────────────────────────────────────
+
+
+class TestLoadingIndicator:
+    """Test the loading indicator widget."""
+
+    def test_loading_indicator_import(self) -> None:
+        from siglab.tui.loading import LoadingIndicator
+        assert LoadingIndicator is not None
+
+    def test_loading_indicator_default_state(self) -> None:
+        from siglab.tui.loading import LoadingIndicator
+        indicator = LoadingIndicator()
+        assert indicator.loading is False
+        assert indicator.status_text == ""
+
+    def test_loading_indicator_has_default_css(self) -> None:
+        from siglab.tui.loading import LoadingIndicator
+        assert "height: 1" in LoadingIndicator.DEFAULT_CSS

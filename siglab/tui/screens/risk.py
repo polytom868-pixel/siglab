@@ -26,6 +26,8 @@ from textual.screen import Screen
 from textual.widgets import Static
 
 from siglab.tui.api_client import TuiApiClient
+from siglab.tui.formatting import friendly_error
+from siglab.tui.loading import LoadingIndicator
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
@@ -197,7 +199,7 @@ class DrawdownSparklineWidget(Static):
         height: auto;
         min-height: 6;
         padding: 0 1;
-        background: #000000;
+        background: #0a0a0a;
     }
     """
 
@@ -348,7 +350,7 @@ class AlertStreamWidget(Static):
         min-height: 6;
         padding: 0 1;
         overflow-y: auto;
-        background: #000000;
+        background: #0a0a0a;
     }
     """
 
@@ -405,6 +407,8 @@ class RiskScreen(Screen[None]):
         Binding("j", "scroll_down", "Down", show=False),
         Binding("k", "scroll_up", "Up", show=False),
         Binding("f", "filter_alerts", "Filter", show=False),
+        Binding("ctrl+c", "go_back", "Back", show=False),
+        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
     # Reactive state
@@ -430,12 +434,13 @@ class RiskScreen(Screen[None]):
                 with Vertical(id="risk-right"):
                     yield DrawdownSparklineWidget(id="risk-drawdown")
                     yield CorrelationHeatmapWidget(id="risk-correlation")
-            # Status bar
+            # Loading indicator + status bar
+            yield LoadingIndicator(id="risk-loading")
             yield Static(self.status_text, id="risk-status")
 
     def on_mount(self) -> None:
         """Initialize the screen and start auto-refresh + WebSocket."""
-        self._timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
+        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)
         # Fire immediately after mount
         self.call_after_refresh(self._refresh_all)
         # Start WebSocket subscription for real-time updates
@@ -443,6 +448,8 @@ class RiskScreen(Screen[None]):
 
     async def on_unmount(self) -> None:
         """Clean up resources when the screen is closing."""
+        if hasattr(self, "_refresh_timer"):
+            self._refresh_timer.stop()
         if self._ws_task and not self._ws_task.done():
             self._ws_task.cancel()
             try:
@@ -493,6 +500,14 @@ class RiskScreen(Screen[None]):
                 pass
 
             self.status_text = "Live · Risk · WS updated"
+            # Toast notification for incoming risk updates
+            composite = msg.get("composite_score")
+            if composite is not None:
+                self.notify(
+                    f"Risk score updated: {composite:.2f}",
+                    severity="information",
+                    timeout=2,
+                )
         except Exception as exc:
             logger.debug("WS risk update handler error: %s", exc)
 
@@ -503,13 +518,25 @@ class RiskScreen(Screen[None]):
         self.is_loading = True
         self.status_text = "Refreshing…"
         try:
+            loading = self.query_one("#risk-loading", LoadingIndicator)
+            loading.loading = True
+        except Exception:
+            pass
+        try:
             await self._fetch_risk_data()
-            self.status_text = "Live · Risk · refreshed"
-            self.is_loading = False
+            self.status_text = "Live · Risk · refreshed  [r]efresh  [j/k]scroll  [f]ilter  [?]help"
         except Exception as exc:
-            self.status_text = f"Error: {exc}"
-            self.is_loading = False
+            self.status_text = f"{friendly_error(exc)}  [r]etry"
+            self.notify(friendly_error(exc), severity="error")
             logger.warning("Risk refresh failed: %s", exc)
+        finally:
+            self.is_loading = False
+            try:
+                loading = self.query_one("#risk-loading", LoadingIndicator)
+                loading.loading = False
+                loading.status_text = self.status_text
+            except Exception:
+                pass
 
     async def _fetch_risk_data(self) -> None:
         """Fetch risk metrics from the /risk endpoint."""

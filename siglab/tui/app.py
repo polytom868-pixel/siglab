@@ -31,12 +31,12 @@ from siglab.tui.screens.evidence import EvidenceScreen
 # ── Navigation items ──────────────────────────────────────────────────
 
 NAV_ITEMS: list[tuple[str, str, str]] = [
-    ("1", "📊 Market", "market"),
-    ("2", "💹 Paper Trade", "paper"),
-    ("3", "🛡️ Risk", "risk"),
-    ("4", "🔬 Strategy", "strategy"),
-    ("5", "📡 Telemetry", "telemetry"),
-    ("6", "📋 Evidence", "evidence"),
+    ("1", "[ MARKET ]", "market"),
+    ("2", "[ PAPER  ]", "paper"),
+    ("3", "[ RISK   ]", "risk"),
+    ("4", "[ STRAT  ]", "strategy"),
+    ("5", "[ TELE   ]", "telemetry"),
+    ("6", "[ EVID   ]", "evidence"),
 ]
 
 SCREEN_NAMES = {screen_id: label for _, label, screen_id in NAV_ITEMS}
@@ -51,7 +51,7 @@ class PlaceholderScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Static(id="placeholder-screen")
-        yield Static("🚧 Coming soon", id="placeholder-text")
+        yield Static("Coming soon", id="placeholder-text")
 
     DEFAULT_CSS = """
     PlaceholderScreen {
@@ -73,7 +73,7 @@ class PlaceholderScreen(Screen):
 
     def on_mount(self) -> None:
         self.query_one("#placeholder-text", Static).update(
-            f"🚧 {self._screen_name} — Coming soon"
+            f"{self._screen_name} — Coming soon"
         )
 
 
@@ -81,7 +81,7 @@ class PlaceholderScreen(Screen):
 
 
 class HelpScreen(ModalScreen[None]):
-    """Overlay showing keyboard shortcuts."""
+    """Overlay showing keyboard shortcuts (global + per-screen)."""
 
     DEFAULT_CSS = """
     HelpScreen {
@@ -90,11 +90,13 @@ class HelpScreen(ModalScreen[None]):
     }
 
     #help-dialog {
-        width: 50;
+        width: 56;
         height: auto;
+        max-height: 80%;
         padding: 1 2;
         background: #0d1210;
         border: solid #2a3a30;
+        overflow-y: auto;
     }
 
     #help-title {
@@ -107,31 +109,109 @@ class HelpScreen(ModalScreen[None]):
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("escape", "dismiss", "Close"),
         Binding("q", "dismiss", "Close"),
-        Binding("?", "dismiss", "Close"),
+        Binding("question_mark", "dismiss", "Close"),
     ]
 
-    KEYBINDINGS: ClassVar[list[tuple[str, str]]] = [
+    # Global keyboard shortcuts (always shown)
+    GLOBAL_KEYBINDINGS: ClassVar[list[tuple[str, str]]] = [
         ("1-6", "Switch to screen"),
-        ("q / Ctrl+Q", "Quit application"),
+        ("q / Ctrl+Q / Ctrl+C", "Quit application"),
         ("? / F1", "Show this help"),
-        ("↑/↓ or k/j", "Navigate sidebar"),
-        ("Enter", "Select sidebar item"),
+        ("k/j", "Navigate lists"),
+        ("Enter", "Select / confirm"),
         ("Escape", "Close dialog / go back"),
+        ("r", "Refresh current screen"),
+        ("/", "Focus search/filter"),
     ]
+
+    # Per-screen keyboard shortcuts
+    SCREEN_KEYBINDINGS: ClassVar[dict[str, list[tuple[str, str]]]] = {
+        "market": [
+            ("j/k", "Navigate symbol list"),
+            ("/", "Search symbols"),
+            ("Enter", "Select symbol"),
+            ("r", "Refresh data"),
+        ],
+        "paper": [
+            ("s", "Set symbol"),
+            ("b", "Toggle buy/sell"),
+            ("t", "Toggle market/limit"),
+            ("Q", "Set quantity"),
+            ("p", "Set price"),
+            ("Enter", "Submit order"),
+            ("n", "New session"),
+            ("r", "Refresh"),
+        ],
+        "risk": [
+            ("r", "Refresh data"),
+            ("j/k", "Scroll alerts"),
+            ("f", "Cycle alert filter"),
+        ],
+        "strategy": [
+            ("j/k", "Navigate strategies"),
+            ("/", "Search strategies"),
+            ("Space", "Toggle select"),
+            ("c", "Toggle comparison"),
+            ("e", "Run evaluation"),
+            ("i", "Initialize deck"),
+            ("s", "Cycle sort column"),
+        ],
+        "telemetry": [
+            ("j/k", "Navigate runs"),
+            ("/", "Search runs"),
+            ("Space", "Toggle select"),
+            ("c", "Toggle comparison"),
+            ("d", "Cycle date range"),
+            ("f", "Cycle status filter"),
+            ("t", "Cycle track filter"),
+            ("v", "Toggle view"),
+        ],
+        "evidence": [
+            ("/", "Filter evidence"),
+            ("Tab", "Switch pane"),
+            ("Enter", "Run demo step"),
+            ("n/p", "Next/prev step"),
+            ("a", "Run all steps"),
+            ("f", "Filter by source"),
+        ],
+    }
+
+    def __init__(self, screen_name: str = "", screen_id: str = "") -> None:
+        super().__init__()
+        self._screen_name = screen_name
+        self._screen_id = screen_id
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static("⌨ Keyboard Shortcuts", id="help-title"),
-            *(self._render_binding(key, desc) for key, desc in self.KEYBINDINGS),
+            Static(self._title_text(), id="help-title"),
+            *(self._render_binding(key, desc) for key, desc in self.GLOBAL_KEYBINDINGS),
+            *self._render_screen_section(),
             Static(""),
             Static("Press Escape, q, or ? to close"),
             id="help-dialog",
         )
 
+    def _title_text(self) -> str:
+        if self._screen_name:
+            return f"\u2328 Keyboard Shortcuts \u2014 {self._screen_name}"
+        return "\u2328 Keyboard Shortcuts"
+
+    def _render_screen_section(self) -> list[Static]:
+        """Render per-screen shortcuts section."""
+        bindings = self.SCREEN_KEYBINDINGS.get(self._screen_id, [])
+        if not bindings:
+            return []
+        items: list[Static] = []
+        items.append(Static(""))
+        items.append(Static(f"  \u2014 {self._screen_name or 'Screen'} Shortcuts \u2014", style="bold #60a5fa"))
+        for key, desc in bindings:
+            items.append(self._render_binding(key, desc))
+        return items
+
     @staticmethod
     def _render_binding(key: str, desc: str) -> Static:
         text = Text.assemble(
-            (f"  {key:<20} ", "bold #60a5fa"),
+            (f"  {key:<24} ", "bold #60a5fa"),
             (desc, "#7d9483"),
         )
         return Static(text)
@@ -231,6 +311,7 @@ class SigLabTUI(App):
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("q", "quit", "Quit", show=True),
         Binding("ctrl+q", "quit", "Quit", show=False),
+        Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("?", "show_help", "Help", show=True),
         Binding("f1", "show_help", "Help", show=False),
         Binding("escape", "go_back", "Back", show=False),
@@ -287,8 +368,11 @@ class SigLabTUI(App):
             pass
 
     def action_show_help(self) -> None:
-        """Show the help overlay."""
-        self.push_screen(HelpScreen())
+        """Show the help overlay with context for the current screen."""
+        current = self.screen
+        screen_id = getattr(current, "id", "")
+        screen_name = SCREEN_NAMES.get(screen_id, "")
+        self.push_screen(HelpScreen(screen_name=screen_name, screen_id=screen_id))
 
     def action_go_back(self) -> None:
         """Go back to the previous screen or dismiss current modal."""

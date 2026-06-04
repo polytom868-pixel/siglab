@@ -26,6 +26,7 @@ from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli
+from siglab.tui.loading import LoadingIndicator
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ DEMO_STEPS: list[dict[str, Any]] = [
 
 def _kind_icon(kind: str) -> str:
     """Return an icon for a node kind."""
-    return {"source": "📡", "entity": "🔗", "module": "📦"}.get(kind, "●")
+    return {"source": "[*]", "entity": "[+]", "module": "[#]"}.get(kind, "[.]")
 
 
 def _kind_style(kind: str) -> str:
@@ -453,16 +454,19 @@ class EvidenceScreen(Screen[None]):
     """
 
     BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "go_back", "Back", show=True),
         Binding("r", "refresh", "Refresh", show=True),
-        Binding("f", "focus_filter", "Filter", show=True),
+        Binding("/", "focus_filter", "Search", show=True),
         Binding("tab", "switch_pane", "Switch Pane", show=True),
         Binding("enter", "run_step", "Run Step", show=True),
         Binding("n", "next_step", "Next Step", show=True),
         Binding("p", "prev_step", "Prev Step", show=True),
         Binding("a", "run_all", "Run All", show=True),
-        Binding("1", "filter_source", "Sources", show=False),
-        Binding("2", "filter_entity", "Entities", show=False),
-        Binding("0", "filter_clear", "All", show=False),
+        Binding("j", "move_down", "Down", show=False),
+        Binding("k", "move_up", "Up", show=False),
+        Binding("f", "filter_source", "Sources", show=False),
+        Binding("ctrl+c", "go_back", "Back", show=False),
+        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
     # Reactive state
@@ -494,14 +498,22 @@ class EvidenceScreen(Screen[None]):
                 # Right: Demo flow
                 with Vertical(id="evidence-demo-pane"):
                     yield DemoFlowWidget(id="demo-flow")
-            # Status bar
+            # Loading indicator + status bar
+            yield LoadingIndicator(id="evidence-loading")
             yield Static("Loading evidence data...", id="evidence-status")
 
     def on_mount(self) -> None:
         """Initialize the screen after mounting."""
         self._api_client = TuiApiClient()
-        self.set_interval(REFRESH_SECONDS, self._refresh_graph)
+        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_graph)
         self.call_after_refresh(self._refresh_all)
+
+    async def on_unmount(self) -> None:
+        """Clean up resources when the screen is closing."""
+        if hasattr(self, "_refresh_timer"):
+            self._refresh_timer.stop()
+        if self._api_client is not None:
+            await self._api_client.close()
 
     async def _refresh_all(self) -> None:
         """Refresh all data on the screen."""
@@ -512,6 +524,11 @@ class EvidenceScreen(Screen[None]):
         if self._api_client is None:
             return
         self.graph_loading = True
+        try:
+            loading = self.query_one("#evidence-loading", LoadingIndicator)
+            loading.loading = True
+        except Exception:
+            pass
         try:
             data = await self._api_client.get_evidence_graph()
             self._nodes = data.get("nodes", [])
@@ -531,6 +548,11 @@ class EvidenceScreen(Screen[None]):
             self._update_status_error(str(exc))
         finally:
             self.graph_loading = False
+            try:
+                loading = self.query_one("#evidence-loading", LoadingIndicator)
+                loading.loading = False
+            except Exception:
+                pass
 
     def _update_status(self) -> None:
         """Update the status bar with current state."""
@@ -539,9 +561,11 @@ class EvidenceScreen(Screen[None]):
             node_count = len(self._nodes)
             edge_count = len(self._edges)
             filter_text = f"  Filter: {self._current_filter}" if self._current_filter else ""
+            conn = "Connected" if self.api_connected else "Disconnected"
+            shortcut_hints = "  [r]efresh  [/]search  [tab]switch  [n/p]step  [?]help"
             status.update(
-                f"  📊 {node_count} nodes  🔗 {edge_count} edges{filter_text}"
-                f"  {'🟢 Connected' if self.api_connected else '🔴 Disconnected'}"
+                f"  {node_count} nodes  {edge_count} edges{filter_text}"
+                f"  {conn}{shortcut_hints}"
             )
         except Exception:
             pass
@@ -550,11 +574,15 @@ class EvidenceScreen(Screen[None]):
         """Update status bar with error message."""
         try:
             status = self.query_one("#evidence-status", Static)
-            status.update(f"  ⚠️ API error: {error[:60]}")
+            status.update(f"  Error: {error[:60]}")
         except Exception:
             pass
 
     # ── Actions ───────────────────────────────────────────────────────
+
+    def action_go_back(self) -> None:
+        """Return to the main screen."""
+        self.app.pop_screen()
 
     def action_refresh(self) -> None:
         """Refresh evidence data."""
@@ -562,7 +590,18 @@ class EvidenceScreen(Screen[None]):
 
     def action_focus_filter(self) -> None:
         """Focus the filter input."""
-        self.query_one("#evidence-filter", Input).focus()
+        try:
+            self.query_one("#evidence-filter", Input).focus()
+        except Exception:
+            pass
+
+    def action_move_down(self) -> None:
+        """Move focus to the next widget."""
+        self.screen.focus_next()
+
+    def action_move_up(self) -> None:
+        """Move focus to the previous widget."""
+        self.screen.focus_previous()
 
     def action_switch_pane(self) -> None:
         """Toggle focus between graph and demo panes."""
@@ -680,7 +719,7 @@ class EvidenceScreen(Screen[None]):
         """Update status bar while a step is running."""
         try:
             status = self.query_one("#evidence-status", Static)
-            status.update(f"  ⟳ Running: {step_title}...")
+            status.update(f"  Running: {step_title}...")
         except Exception:
             pass
 

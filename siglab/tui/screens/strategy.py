@@ -25,6 +25,7 @@ from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.cli_bridge import run_cli
+from siglab.tui.loading import LoadingIndicator
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
@@ -594,6 +595,8 @@ class StrategyScreen(Screen):
         Binding("/", "focus_search", "Search", show=True),
         Binding("j", "move_down", "Down", show=False),
         Binding("k", "move_up", "Up", show=False),
+        Binding("ctrl+c", "go_back", "Back", show=False),
+        Binding("question_mark", "app.show_help", "Help", show=False),
     ]
 
     # Reactive state
@@ -621,14 +624,22 @@ class StrategyScreen(Screen):
             with Vertical(id="strategy-detail"):
                 yield ResultsTableWidget(id="results-table")
                 yield ComparisonPanelWidget(id="comparison-panel", classes="hidden")
+        yield LoadingIndicator(id="strategy-loading")
         yield Static(id="strategy-status")
 
     def on_mount(self) -> None:
         """Initialize the screen after mounting."""
         self._update_status("Loading strategies…")
         self.call_after_refresh(self._load_strategies)
-        self.set_interval(REFRESH_SECONDS, self._load_strategies)
-        self.set_interval(0.5, self._tick_spinner)
+        self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._load_strategies)
+        self._spinner_timer = self.set_interval(0.5, self._tick_spinner)
+
+    async def on_unmount(self) -> None:
+        """Clean up timers when leaving the screen."""
+        if hasattr(self, "_refresh_timer"):
+            self._refresh_timer.stop()
+        if hasattr(self, "_spinner_timer"):
+            self._spinner_timer.stop()
 
     def _tick_spinner(self) -> None:
         """Update the spinner animation during evaluation."""
