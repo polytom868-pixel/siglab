@@ -1,13 +1,21 @@
 """FastAPI HTTP client for the SigLab TUI.
 
 Connects to the FastAPI dashboard running on port 3100.
+Supports both HTTP REST and WebSocket connections.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import json
+import logging
+from typing import Any, Callable, Awaitable
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+# Type for WebSocket message callbacks
+WsCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class TuiApiClient:
@@ -366,3 +374,58 @@ class TuiApiClient:
         )
         response.raise_for_status()
         return response.json()
+
+    # ── WebSocket ────────────────────────────────────────────────────
+
+    async def ws_connect(self) -> Any:
+        """Connect to the WebSocket endpoint.
+
+        Returns:
+            A websockets client connection.
+
+        Raises:
+            Exception: If the connection fails.
+        """
+        import websockets
+
+        ws_url = self._base_url.replace("http://", "ws://").replace(
+            "https://", "wss://"
+        )
+        ws = await websockets.connect(f"{ws_url}/ws")
+        return ws
+
+    async def ws_subscribe_risk(self, callback: WsCallback) -> None:
+        """Subscribe to risk_score updates via WebSocket.
+
+        Connects, subscribes to risk_score, and calls callback for each
+        incoming risk_score message. Runs until cancelled.
+
+        Args:
+            callback: Async function called with each risk_score message dict.
+        """
+        try:
+            ws = await self.ws_connect()
+            try:
+                # Subscribe to risk_score
+                await ws.send(json.dumps({
+                    "action": "subscribe",
+                    "subscription_type": "risk_score",
+                }))
+
+                async for raw in ws:
+                    try:
+                        msg = json.loads(raw)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+                    msg_type = msg.get("type", "")
+                    if msg_type == "risk_score":
+                        await callback(msg)
+                    elif msg_type == "subscribed":
+                        logger.debug("WS subscribed: %s", msg)
+                    elif msg_type == "ping":
+                        await ws.send(json.dumps({"action": "pong"}))
+            finally:
+                await ws.close()
+        except Exception as exc:
+            logger.debug("WS risk subscription failed: %s", exc)
