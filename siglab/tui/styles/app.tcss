@@ -252,3 +252,8 @@ PaperScreen {
     padding: 0 1;
     dock: bottom;
 }
+
+/* === Utility Classes === */
+.hidden {
+    display: none;
+}
