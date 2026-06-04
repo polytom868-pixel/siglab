@@ -231,6 +231,7 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
+    seen_edges: set[tuple[str, str, str]] = set()  # (source, target, label)
 
     for source, count in source_counts.items():
         node_id = f"source:{source}"
@@ -259,12 +260,21 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
     for link in links:
         if not isinstance(link, dict):
             continue
-        entities = [str(item) for item in link.get("entities") or [] if item]
         relation = str(link.get("relation") or "linked")
-        source = str(link.get("source") or "cross-module")
+        source_name = str(link.get("source") or "cross-module")
+        # Support both "entities" list and "entity"/"feed_entity" string fields
+        entities_raw = link.get("entities")
+        if isinstance(entities_raw, list) and entities_raw:
+            entities = [str(item) for item in entities_raw if item]
+        else:
+            entities = []
+            for key in ("entity", "feed_entity"):
+                val = link.get(key)
+                if val:
+                    entities.append(str(val))
         for entity in entities:
             entity_id = f"entity:{entity}"
-            source_id = f"source:{source}"
+            source_id = f"source:{source_name}"
             nodes.setdefault(
                 entity_id,
                 {
@@ -281,7 +291,7 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
                 source_id,
                 {
                     "id": source_id,
-                    "label": source,
+                    "label": source_name,
                     "kind": "source",
                     "count": 0,
                     "spec_hash": None,
@@ -289,10 +299,17 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
                     "score": None,
                 },
             )
+            edge_key = (source_id, entity_id, relation)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
             edges.append({
                 "source": source_id,
                 "target": entity_id,
                 "label": relation,
+                "confidence": link.get("confidence"),
+                "warning": link.get("warning"),
+                "day_gap": link.get("day_gap"),
             })
 
     return {"nodes": list(nodes.values()), "edges": edges}

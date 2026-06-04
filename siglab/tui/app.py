@@ -25,6 +25,7 @@ from siglab.tui.screens.paper import PaperScreen
 from siglab.tui.screens.risk import RiskScreen
 from siglab.tui.screens.strategy import StrategyScreen
 from siglab.tui.screens.telemetry import TelemetryScreen
+from siglab.tui.screens.evidence import EvidenceScreen
 
 
 # ── Navigation items ──────────────────────────────────────────────────
@@ -200,9 +201,12 @@ _BUILTIN_SCREENS["strategy"] = StrategyScreen
 # Telemetry screen — real implementation
 _BUILTIN_SCREENS["telemetry"] = TelemetryScreen
 
+# Evidence screen — real implementation
+_BUILTIN_SCREENS["evidence"] = EvidenceScreen
+
 # Remaining screens — placeholders for now
 for _idx, _label, _screen_id in NAV_ITEMS:
-    if _screen_id in ("market", "paper", "risk", "strategy", "telemetry"):
+    if _screen_id in ("market", "paper", "risk", "strategy", "telemetry", "evidence"):
         continue  # already registered above
     _BUILTIN_SCREENS[_screen_id] = lambda _lbl=_label, _sid=_screen_id: (
         PlaceholderScreen(_lbl, screen_id=_sid)
@@ -219,7 +223,7 @@ class SigLabTUI(App):
 
     TITLE = "SigLab"
     SUB_TITLE = "Terminal Dashboard"
-    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss", "styles/risk.tcss", "styles/strategy.tcss", "styles/telemetry.tcss"]
+    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss", "styles/risk.tcss", "styles/strategy.tcss", "styles/telemetry.tcss", "styles/evidence.tcss"]
 
     # Register screens (placeholders for now, expanded in later features)
     SCREENS: ClassVar[dict[str, Callable[[], Screen]]] = _BUILTIN_SCREENS

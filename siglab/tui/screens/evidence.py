@@ -1,0 +1,702 @@
+"""Evidence Graph and Demo Flow TUI screen for SigLab.
+
+Displays:
+- Evidence graph browser (nodes/edges in ASCII tree)
+- Filter evidence by type, source, currency
+- Interactive buildathon demo flow walkthrough
+- Each demo step shows command and output
+
+Connects to the FastAPI dashboard via TuiApiClient
+and uses CLI bridge for demo step execution.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, ClassVar
+
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.reactive import reactive
+from textual.screen import Screen
+from textual.widgets import Input, Static
+
+from siglab.tui.api_client import TuiApiClient
+from siglab.tui.cli_bridge import run_cli
+
+logger = logging.getLogger(__name__)
+
+# ── Constants ────────────────────────────────────────────────────────
+
+REFRESH_SECONDS = 30.0
+
+# Demo steps from docs/demo-script.md
+DEMO_STEPS: list[dict[str, Any]] = [
+    {
+        "step": 1,
+        "title": "Build SoSoValue Evidence",
+        "command": "evidence-build --currency BTC --etf-type us-btc-spot --news-page-size 20 --news-pages 2 --output runs/evidence/live_sosovalue_probe_btc_pages.jsonl --summary-output runs/evidence/live_sosovalue_probe_btc_pages.summary.json --json",
+        "description": "Ingest ETF inflow data and news from SoSoValue API",
+        "expected": "record_count > 0, ETF + Feed records present",
+    },
+    {
+        "step": 2,
+        "title": "Probe SoDEX WebSocket",
+        "command": "sodex-ws-probe --channel allBookTicker --timeout-seconds 12 --evidence-output runs/evidence/sodex_ws_evidence.jsonl --json",
+        "description": "Capture public SoDEX quote evidence via WebSocket",
+        "expected": "ready: true, signed: false, evidence_records_appended > 0",
+    },
+    {
+        "step": 3,
+        "title": "Render Evidence Graph",
+        "command": "evidence-map --evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl --output runs/evidence/evidence_graph.html --json",
+        "description": "Generate HTML evidence graph visualization",
+        "expected": "HTML file exists, links are not causal claims",
+    },
+    {
+        "step": 4,
+        "title": "Generate Market Report",
+        "command": "market-report --entity BTC --sosovalue-evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl --sodex-evidence runs/evidence/sodex_ws_evidence.jsonl --output runs/market_report_latest.json --html-output runs/market_report_latest.html --json",
+        "description": "Operator-facing decision support from evidence",
+        "expected": "status: READY_FOR_OPERATOR_REVIEW, stance, confirmations",
+    },
+    {
+        "step": 5,
+        "title": "Capture Provider Telemetry",
+        "command": "telemetry-report --track trend_signals --json",
+        "description": "Aggregate provider metrics and credit usage",
+        "expected": "provider_metrics_status: present, latency, tokens",
+    },
+    {
+        "step": 6,
+        "title": "Verify Live Boundary",
+        "command": "sodex-preflight --json",
+        "description": "Check SoDEX signed-write readiness",
+        "expected": "Missing credentials → live write refused",
+    },
+    {
+        "step": 7,
+        "title": "Build Demo Manifest",
+        "command": "demo-manifest --output runs/demo_manifest_latest.json --html-output runs/demo_manifest_latest.html --json",
+        "description": "Index all demo artifacts",
+        "expected": "Artifact paths, readiness flags, red_flags",
+    },
+    {
+        "step": 8,
+        "title": "Open Operator Board",
+        "command": "wave-status --wave-number 1 --phase demo --status running --goal show-input-to-action-flow --agents operator,dashboard,hardening --outputs market-report,ops-board,preflight --blockers signed-SoDEX-unproven --validation-status targeted_pass --next-decision continue-demo-refresh",
+        "description": "Record wave status for ops board",
+        "expected": "Wave status recorded for dashboard display",
+    },
+]
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _kind_icon(kind: str) -> str:
+    """Return an icon for a node kind."""
+    return {"source": "📡", "entity": "🔗", "module": "📦"}.get(kind, "●")
+
+
+def _kind_style(kind: str) -> str:
+    """Return a Rich style for a node kind."""
+    return {
+        "source": "#60a5fa",
+        "entity": "#4ade80",
+        "module": "#f0b456",
+    }.get(kind, "#a3b5a8")
+
+
+def _format_confidence(conf: float | None) -> Text:
+    """Format confidence as colored text."""
+    if conf is None:
+        return Text("—", style="#7d9483")
+    if conf >= 0.8:
+        return Text(f"{conf:.0%}", style="#4ade80")
+    elif conf >= 0.5:
+        return Text(f"{conf:.0%}", style="#f0b456")
+    else:
+        return Text(f"{conf:.0%}", style="#f87171")
+
+
+# ── Evidence Graph Widget ────────────────────────────────────────────
+
+
+class EvidenceGraphWidget(Static):
+    """Displays evidence nodes and edges in an ASCII tree view."""
+
+    can_focus = True
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._nodes: list[dict[str, Any]] = []
+        self._edges: list[dict[str, Any]] = []
+        self._filter_kind: str = ""
+        self._filter_text: str = ""
+
+    def update_graph(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> None:
+        """Update the graph data and re-render."""
+        self._nodes = nodes
+        self._edges = edges
+        self.refresh()
+
+    def set_filter(self, kind: str = "", text: str = "") -> None:
+        """Apply filters to the graph view."""
+        self._filter_kind = kind.lower()
+        self._filter_text = text.lower()
+        self.refresh()
+
+    def _filtered_nodes(self) -> list[dict[str, Any]]:
+        """Return nodes matching current filters."""
+        result = self._nodes
+        if self._filter_kind:
+            result = [n for n in result if n.get("kind") == self._filter_kind]
+        if self._filter_text:
+            result = [
+                n for n in result
+                if self._filter_text in str(n.get("label", "")).lower()
+            ]
+        return result
+
+    def render(self) -> Text:
+        """Render the graph as Rich Text."""
+        nodes = self._filtered_nodes()
+        if not nodes:
+            if self._filter_kind or self._filter_text:
+                filter_desc = self._filter_kind or self._filter_text
+                return Text(f"  No matches for '{filter_desc}'", style="#f0b456")
+            return Text("  No evidence data available", style="#7d9483")
+
+        # Group nodes by kind
+        by_kind: dict[str, list[dict[str, Any]]] = {}
+        for node in nodes:
+            kind = node.get("kind", "unknown")
+            by_kind.setdefault(kind, []).append(node)
+
+        # Build edge lookup
+        edge_map: dict[str, list[dict[str, Any]]] = {}
+        for edge in self._edges:
+            src = edge.get("source", "")
+            edge_map.setdefault(src, []).append(edge)
+
+        lines: list[Text] = []
+        lines.append(Text("  ── Evidence Graph ──", style="bold #4ade80"))
+        lines.append(Text(""))
+
+        for kind in ("source", "entity", "module"):
+            group = by_kind.get(kind, [])
+            if not group:
+                continue
+            icon = _kind_icon(kind)
+            style = _kind_style(kind)
+            lines.append(Text(f"  {icon} {kind.upper()} ({len(group)})", style=f"bold {style}"))
+
+            sorted_nodes = sorted(group, key=lambda n: n.get("count", 0), reverse=True)
+            shown = sorted_nodes[:15]
+            for i, node in enumerate(shown):
+                is_last = i == len(shown) - 1
+                connector = "└──" if is_last else "├──"
+                label = str(node.get("label", "?"))
+                if len(label) > 30:
+                    label = label[:29] + "…"
+                count = node.get("count", 0)
+                node_id = node.get("id", "")
+                connected = edge_map.get(node_id, [])
+                edge_count = len(connected)
+
+                line = Text()
+                line.append(f"  {connector} ", style="#7d9483")
+                line.append(f"{label}", style=style)
+                line.append(f"  ({count})", style="#7d9483")
+                if edge_count > 0:
+                    line.append(f"  →{edge_count} links", style="#60a5fa")
+                lines.append(line)
+
+            remaining = len(sorted_nodes) - len(shown)
+            if remaining > 0:
+                lines.append(Text(f"  │  ... +{remaining} more", style="#7d9483"))
+            lines.append(Text(""))
+
+        # Summary
+        total_nodes = len(self._nodes)
+        total_edges = len(self._edges)
+        filtered = len(nodes)
+        summary = Text()
+        summary.append(f"  {filtered}/{total_nodes} nodes", style="#a3b5a8")
+        summary.append(f"  •  {total_edges} edges", style="#a3b5a8")
+        lines.append(summary)
+
+        result = Text("\n")
+        for line in lines:
+            result.append_text(line)
+            result.append("\n")
+        return result
+
+
+# ── Edge Detail Widget ───────────────────────────────────────────────
+
+
+class EdgeDetailWidget(Static):
+    """Shows edge/connection details for selected evidence."""
+
+    can_focus = True
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._edges: list[dict[str, Any]] = []
+
+    def update_edges(self, edges: list[dict[str, Any]]) -> None:
+        """Update edge data."""
+        self._edges = edges
+        self.refresh()
+
+    def render(self) -> Text:
+        """Render edges as Rich Text."""
+        if not self._edges:
+            return Text("  No connections to display", style="#7d9483")
+
+        lines: list[Text] = []
+        lines.append(Text("  ── Connections ──", style="bold #60a5fa"))
+        lines.append(Text(""))
+
+        for edge in self._edges[:20]:
+            src = str(edge.get("source", "?"))
+            tgt = str(edge.get("target", "?"))
+            label = str(edge.get("label", "linked"))
+            conf = edge.get("confidence")
+            warning = edge.get("warning")
+
+            # Shorten IDs for display with ellipsis
+            src_short = src.split(":", 1)[-1] if ":" in src else src
+            tgt_short = tgt.split(":", 1)[-1] if ":" in tgt else tgt
+            src_display = src_short[:20] + "…" if len(src_short) > 20 else src_short
+            tgt_display = tgt_short[:20] + "…" if len(tgt_short) > 20 else tgt_short
+
+            line = Text()
+            line.append("  ├─ ", style="#7d9483")
+            line.append(src_display, style="#60a5fa")
+            line.append(" ─→ ", style="#7d9483")
+            line.append(tgt_display, style="#4ade80")
+            line.append(f"  [{label}]", style="#a3b5a8")
+            if conf is not None:
+                line.append(" ")
+                line.append_text(_format_confidence(conf))
+            if warning:
+                line.append(f"  ⚠ {warning[:40]}", style="#f0b456")
+            lines.append(line)
+
+        if len(self._edges) > 20:
+            lines.append(Text(f"  ... +{len(self._edges) - 20} more", style="#7d9483"))
+
+        result = Text("\n")
+        for line in lines:
+            result.append_text(line)
+            result.append("\n")
+        return result
+
+
+# ── Demo Flow Widget ─────────────────────────────────────────────────
+
+
+class DemoFlowWidget(Static):
+    """Interactive buildathon demo flow with step-by-step execution."""
+
+    can_focus = True
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._current_step: int = 1  # 1-indexed to match DEMO_STEPS
+        self._step_results: dict[int, dict[str, Any]] = {}
+        self._running: bool = False
+
+    @property
+    def current_step(self) -> int:
+        return self._current_step
+
+    def set_step_result(self, step: int, result: dict[str, Any]) -> None:
+        """Store the result of a demo step execution."""
+        self._step_results[step] = result
+        self.refresh()
+
+    def advance_step(self) -> None:
+        """Move to the next demo step."""
+        if self._current_step < len(DEMO_STEPS):
+            self._current_step += 1
+            self.refresh()
+
+    def retreat_step(self) -> None:
+        """Move to the previous demo step."""
+        if self._current_step > 1:
+            self._current_step -= 1
+            self.refresh()
+
+    def set_running(self, running: bool) -> None:
+        """Set whether a step is currently executing."""
+        self._running = running
+        self.refresh()
+
+    def render(self) -> Text:
+        """Render the demo flow as Rich Text."""
+        lines: list[Text] = []
+        lines.append(Text("  ── Buildathon Demo Flow ──", style="bold #4ade80"))
+        lines.append(Text(""))
+
+        for step_data in DEMO_STEPS:
+            step_num = step_data["step"]
+            title = step_data["title"]
+            desc = step_data["description"]
+            result = self._step_results.get(step_num)
+
+            # Status indicator
+            if result is not None:
+                rc = result.get("returncode", -1)
+                if rc == 0:
+                    status = Text("✓ ", style="#4ade80")
+                else:
+                    status = Text("✗ ", style="#f87171")
+            elif step_num == self._current_step and self._running:
+                status = Text("⟳ ", style="#f0b456")
+            elif step_num == self._current_step:
+                status = Text("▶ ", style="#60a5fa")
+            else:
+                status = Text("○ ", style="#7d9483")
+
+            # Step number
+            num_text = Text(f"  {step_num}. ", style="#7d9483")
+
+            # Title
+            if step_num == self._current_step:
+                title_text = Text(title, style="bold #e2ebe5")
+            elif result is not None:
+                rc = result.get("returncode", -1)
+                title_style = "#4ade80" if rc == 0 else "#f87171"
+                title_text = Text(title, style=title_style)
+            else:
+                title_text = Text(title, style="#a3b5a8")
+
+            line = Text()
+            line.append_text(status)
+            line.append_text(num_text)
+            line.append_text(title_text)
+            lines.append(line)
+
+            # Description (always shown for current step, or if has result)
+            if step_num == self._current_step or result is not None:
+                desc_text = Text(f"       {desc}", style="#7d9483")
+                lines.append(desc_text)
+
+            # Show result summary if available
+            if result is not None:
+                rc = result.get("returncode", -1)
+                stdout = result.get("stdout", "")
+                if rc == 0 and stdout.strip():
+                    try:
+                        data = json.loads(stdout)
+                        # Show key fields
+                        summary_parts = []
+                        if "record_count" in data:
+                            summary_parts.append(f"records: {data['record_count']}")
+                        if "records_appended" in data:
+                            summary_parts.append(f"appended: {data['records_appended']}")
+                        if "ready" in data:
+                            summary_parts.append(f"ready: {data['ready']}")
+                        if "status" in data:
+                            summary_parts.append(f"status: {data['status']}")
+                        if "artifacts" in data:
+                            summary_parts.append(f"artifacts: {len(data['artifacts'])}")
+                        if summary_parts:
+                            result_line = Text(
+                                f"       → {', '.join(summary_parts)}",
+                                style="#4ade80",
+                            )
+                            lines.append(result_line)
+                    except (json.JSONDecodeError, TypeError):
+                        # Show first line of output
+                        first_line = stdout.strip().split("\n")[0][:80]
+                        if first_line:
+                            result_line = Text(f"       → {first_line}", style="#a3b5a8")
+                            lines.append(result_line)
+                elif rc != 0:
+                    stderr = result.get("stderr", "")
+                    err_msg = stderr.strip().split("\n")[0][:60] if stderr else f"exit {rc}"
+                    err_line = Text(f"       → Error: {err_msg}", style="#f87171")
+                    lines.append(err_line)
+
+            lines.append(Text(""))
+
+        # Navigation hint
+        if self._running:
+            lines.append(Text("  ⟳ Running... (Esc to cancel)", style="#f0b456"))
+        else:
+            lines.append(Text("  Enter: run step  •  n/p: next/prev  •  a: run all", style="#7d9483"))
+
+        result = Text("\n")
+        for line in lines:
+            result.append_text(line)
+            result.append("\n")
+        return result
+
+
+# ── Main Screen ──────────────────────────────────────────────────────
+
+
+class EvidenceScreen(Screen[None]):
+    """Evidence Graph and Demo Flow screen.
+
+    Two-pane layout:
+    - Left: Evidence graph browser with filters
+    - Right: Interactive demo flow walkthrough
+    """
+
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("r", "refresh", "Refresh", show=True),
+        Binding("f", "focus_filter", "Filter", show=True),
+        Binding("tab", "switch_pane", "Switch Pane", show=True),
+        Binding("enter", "run_step", "Run Step", show=True),
+        Binding("n", "next_step", "Next Step", show=True),
+        Binding("p", "prev_step", "Prev Step", show=True),
+        Binding("a", "run_all", "Run All", show=True),
+        Binding("1", "filter_source", "Sources", show=False),
+        Binding("2", "filter_entity", "Entities", show=False),
+        Binding("0", "filter_clear", "All", show=False),
+    ]
+
+    # Reactive state
+    api_connected: reactive[bool] = reactive(False)
+    graph_loading: reactive[bool] = reactive(False)
+    demo_running: reactive[bool] = reactive(False)
+    active_pane: reactive[str] = reactive("graph")  # "graph" or "demo"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._api_client: TuiApiClient | None = None
+        self._nodes: list[dict[str, Any]] = []
+        self._edges: list[dict[str, Any]] = []
+        self._current_filter: str = ""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="evidence-layout"):
+            # Filter bar
+            yield Input(
+                placeholder="Filter by source, entity, or type...",
+                id="evidence-filter",
+            )
+            # Main two-pane layout
+            with Horizontal(id="evidence-main"):
+                # Left: Evidence graph
+                with Vertical(id="evidence-graph-pane"):
+                    yield EvidenceGraphWidget(id="evidence-graph")
+                    yield EdgeDetailWidget(id="edge-detail")
+                # Right: Demo flow
+                with Vertical(id="evidence-demo-pane"):
+                    yield DemoFlowWidget(id="demo-flow")
+            # Status bar
+            yield Static("Loading evidence data...", id="evidence-status")
+
+    def on_mount(self) -> None:
+        """Initialize the screen after mounting."""
+        self._api_client = TuiApiClient()
+        self.set_interval(REFRESH_SECONDS, self._refresh_graph)
+        self.call_after_refresh(self._refresh_all)
+
+    async def _refresh_all(self) -> None:
+        """Refresh all data on the screen."""
+        await self._refresh_graph()
+
+    async def _refresh_graph(self) -> None:
+        """Fetch evidence graph data from the API."""
+        if self._api_client is None:
+            return
+        self.graph_loading = True
+        try:
+            data = await self._api_client.get_evidence_graph()
+            self._nodes = data.get("nodes", [])
+            self._edges = data.get("edges", [])
+            self.api_connected = True
+
+            graph_widget = self.query_one("#evidence-graph", EvidenceGraphWidget)
+            edge_widget = self.query_one("#edge-detail", EdgeDetailWidget)
+
+            graph_widget.update_graph(self._nodes, self._edges)
+            edge_widget.update_edges(self._edges)
+
+            self._update_status()
+        except Exception as exc:
+            self.api_connected = False
+            logger.debug(f"Evidence graph refresh failed: {exc}")
+            self._update_status_error(str(exc))
+        finally:
+            self.graph_loading = False
+
+    def _update_status(self) -> None:
+        """Update the status bar with current state."""
+        try:
+            status = self.query_one("#evidence-status", Static)
+            node_count = len(self._nodes)
+            edge_count = len(self._edges)
+            filter_text = f"  Filter: {self._current_filter}" if self._current_filter else ""
+            status.update(
+                f"  📊 {node_count} nodes  🔗 {edge_count} edges{filter_text}"
+                f"  {'🟢 Connected' if self.api_connected else '🔴 Disconnected'}"
+            )
+        except Exception:
+            pass
+
+    def _update_status_error(self, error: str) -> None:
+        """Update status bar with error message."""
+        try:
+            status = self.query_one("#evidence-status", Static)
+            status.update(f"  ⚠️ API error: {error[:60]}")
+        except Exception:
+            pass
+
+    # ── Actions ───────────────────────────────────────────────────────
+
+    def action_refresh(self) -> None:
+        """Refresh evidence data."""
+        self.run_worker(self._refresh_all())
+
+    def action_focus_filter(self) -> None:
+        """Focus the filter input."""
+        self.query_one("#evidence-filter", Input).focus()
+
+    def action_switch_pane(self) -> None:
+        """Toggle focus between graph and demo panes."""
+        if self.active_pane == "graph":
+            self.active_pane = "demo"
+            self.query_one("#demo-flow", DemoFlowWidget).focus()
+        else:
+            self.active_pane = "graph"
+            self.query_one("#evidence-graph", EvidenceGraphWidget).focus()
+
+    def action_filter_source(self) -> None:
+        """Filter graph to show only source nodes."""
+        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
+        graph.set_filter(kind="source")
+        self._current_filter = "source"
+        self._update_status()
+
+    def action_filter_entity(self) -> None:
+        """Filter graph to show only entity nodes."""
+        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
+        graph.set_filter(kind="entity")
+        self._current_filter = "entity"
+        self._update_status()
+
+    def action_filter_clear(self) -> None:
+        """Clear all filters."""
+        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
+        graph.set_filter()
+        self._current_filter = ""
+        self._update_status()
+
+    def action_next_step(self) -> None:
+        """Move to next demo step."""
+        demo = self.query_one("#demo-flow", DemoFlowWidget)
+        demo.advance_step()
+
+    def action_prev_step(self) -> None:
+        """Move to previous demo step."""
+        demo = self.query_one("#demo-flow", DemoFlowWidget)
+        demo.retreat_step()
+
+    async def action_run_step(self) -> None:
+        """Run the current demo step."""
+        demo = self.query_one("#demo-flow", DemoFlowWidget)
+        step_num = demo.current_step
+        step_data = next((s for s in DEMO_STEPS if s["step"] == step_num), None)
+        if step_data is None:
+            return
+
+        command = step_data["command"]
+
+        demo.set_running(True)
+        self.demo_running = True
+        self._update_status_running(step_data["title"])
+
+        try:
+            # Parse command into args
+            args = command.split()
+            result = await run_cli(*args, timeout=60.0)
+            demo.set_step_result(step_data["step"], {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            })
+            # Auto-advance on success
+            if result.returncode == 0:
+                demo.advance_step()
+        except Exception as exc:
+            demo.set_step_result(step_data["step"], {
+                "returncode": -1,
+                "stdout": "",
+                "stderr": str(exc),
+            })
+            logger.debug(f"Demo step {step_data['step']} failed: {exc}")
+        finally:
+            demo.set_running(False)
+            self.demo_running = False
+            self._update_status()
+
+    async def action_run_all(self) -> None:
+        """Run all remaining demo steps sequentially."""
+        demo = self.query_one("#demo-flow", DemoFlowWidget)
+        self.demo_running = True
+
+        for step_data in DEMO_STEPS:
+            step_num = step_data["step"]
+            # Skip already-completed steps
+            if step_num in demo._step_results:
+                continue
+
+            demo._current_step = step_num
+            demo.set_running(True)
+            self._update_status_running(step_data["title"])
+
+            try:
+                args = step_data["command"].split()
+                result = await run_cli(*args, timeout=60.0)
+                demo.set_step_result(step_num, {
+                    "returncode": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                })
+            except Exception as exc:
+                demo.set_step_result(step_num, {
+                    "returncode": -1,
+                    "stdout": "",
+                    "stderr": str(exc),
+                })
+
+        demo.set_running(False)
+        self.demo_running = False
+        self._update_status()
+
+    def _update_status_running(self, step_title: str) -> None:
+        """Update status bar while a step is running."""
+        try:
+            status = self.query_one("#evidence-status", Static)
+            status.update(f"  ⟳ Running: {step_title}...")
+        except Exception:
+            pass
+
+    # ── Event Handlers ────────────────────────────────────────────────
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle filter input changes."""
+        value = event.value.strip()
+        self._current_filter = value
+        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
+        if value:
+            # Try to match as kind first, then as text filter
+            if value.lower() in ("source", "entity", "module"):
+                graph.set_filter(kind=value.lower())
+            else:
+                graph.set_filter(text=value)
+        else:
+            graph.set_filter()
+        self._update_status()
