@@ -144,14 +144,14 @@ class EvidenceGraphWidget(Static):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._nodes: list[dict[str, Any]] = []
+        self._graph_nodes: list[dict[str, Any]] = []
         self._edges: list[dict[str, Any]] = []
         self._filter_kind: str = ""
         self._filter_text: str = ""
 
     def update_graph(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> None:
         """Update the graph data and re-render."""
-        self._nodes = nodes
+        self._graph_nodes = nodes
         self._edges = edges
         self.refresh()
 
@@ -163,7 +163,7 @@ class EvidenceGraphWidget(Static):
 
     def _filtered_nodes(self) -> list[dict[str, Any]]:
         """Return nodes matching current filters."""
-        result = self._nodes
+        result = self._graph_nodes
         if self._filter_kind:
             result = [n for n in result if n.get("kind") == self._filter_kind]
         if self._filter_text:
@@ -233,7 +233,7 @@ class EvidenceGraphWidget(Static):
             lines.append(Text(""))
 
         # Summary
-        total_nodes = len(self._nodes)
+        total_nodes = len(self._graph_nodes)
         total_edges = len(self._edges)
         filtered = len(nodes)
         summary = Text()
@@ -488,7 +488,7 @@ class EvidenceScreen(Screen[None]):
     def __init__(self) -> None:
         super().__init__()
         self._api_client: TuiApiClient | None = None
-        self._nodes: list[dict[str, Any]] = []
+        self._graph_nodes: list[dict[str, Any]] = []
         self._edges: list[dict[str, Any]] = []
         self._current_filter: str = ""
 
@@ -541,14 +541,14 @@ class EvidenceScreen(Screen[None]):
             pass
         try:
             data = await self._api_client.get_evidence_graph()
-            self._nodes = data.get("nodes", [])
+            self._graph_nodes = data.get("nodes", [])
             self._edges = data.get("edges", [])
             self.api_connected = True
 
             graph_widget = self.query_one("#evidence-graph", EvidenceGraphWidget)
             edge_widget = self.query_one("#edge-detail", EdgeDetailWidget)
 
-            graph_widget.update_graph(self._nodes, self._edges)
+            graph_widget.update_graph(self._graph_nodes, self._edges)
             edge_widget.update_edges(self._edges)
 
             self._update_status()
@@ -568,7 +568,7 @@ class EvidenceScreen(Screen[None]):
         """Update the status bar with current state."""
         try:
             status = self.query_one("#evidence-status", Static)
-            node_count = len(self._nodes)
+            node_count = len(self._graph_nodes)
             edge_count = len(self._edges)
             filter_text = f"  Filter: {self._current_filter}" if self._current_filter else ""
             conn = "Connected" if self.api_connected else "Disconnected"
