@@ -21,6 +21,8 @@ optuna = "^4.5.0"
 pydantic = "^2.13.4"
 fastapi = "^0.136.3"
 uvicorn = "^0.48.0"
+textual = "^8.2.7"
+rich = "^15.0.0"
 
 [tool.poetry.scripts]
 siglab = "siglab.cli:main"
@@ -41,5 +43,6 @@ dev = [
     "ruff (>=0.15.6,<0.16.0)",
     "pytest (>=9.0.3,<10.0.0)",
     "pytest-timeout (>=2.4.0,<3.0.0)",
-    "pytest-asyncio (>=1.4.0,<2.0.0)"
+    "pytest-asyncio (>=1.4.0,<2.0.0)",
+    "textual-dev (>=1.8.0,<2.0.0)"
 ]
