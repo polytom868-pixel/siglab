@@ -26,7 +26,17 @@ from textual.screen import Screen
 from textual.widgets import Static
 
 from siglab.tui.api_client import TuiApiClient
-from siglab.tui.formatting import friendly_error
+from siglab.tui.formatting import (
+    ACCENT_GREEN,
+    BORDER_DIM,
+    ERROR_RED,
+    INFO_BLUE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING_YELLOW,
+    friendly_error,
+)
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.widgets.sparkline import sparkline_text
 
@@ -53,36 +63,36 @@ def _gauge_color(score: float) -> str:
     Score semantics: 1.0 = healthy (low risk), 0.0 = critical (high risk).
     """
     if score != score:  # NaN check
-        return "#7d9483"  # muted for NaN
+        return TEXT_MUTED  # muted for NaN
     if score < GAUGE_HIGH_THRESHOLD:
-        return "#f87171"  # error-red — high risk
+        return ERROR_RED  # error-red — high risk
     elif score < GAUGE_MODERATE_THRESHOLD:
-        return "#f0b456"  # warning-yellow — moderate risk
+        return WARNING_YELLOW  # warning-yellow — moderate risk
     else:
-        return "#4ade80"  # accent-green — low risk / healthy
+        return ACCENT_GREEN  # accent-green — low risk / healthy
 
 
 def _severity_color(severity: str) -> str:
     """Return color hex for alert severity level."""
     sev = severity.lower().strip()
     if sev == "critical":
-        return "#f87171"
+        return ERROR_RED
     elif sev == "warning":
-        return "#f0b456"
+        return WARNING_YELLOW
     elif sev == "info":
-        return "#60a5fa"
+        return INFO_BLUE
     else:
-        return "#7d9483"
+        return TEXT_MUTED
 
 
 def _correlation_color(value: float) -> str:
     """Return color hex for correlation value."""
     if value >= 0.7:
-        return "#f87171"  # high correlation — red
+        return ERROR_RED  # high correlation — red
     elif value >= 0.4:
-        return "#f0b456"  # moderate — yellow
+        return WARNING_YELLOW  # moderate — yellow
     else:
-        return "#7d9483"  # low — muted
+        return TEXT_MUTED  # low — muted
 
 
 def _correlation_block(value: float) -> str:
@@ -109,31 +119,22 @@ class RiskGaugeWidget(Static):
     sub_scores: reactive[dict[str, float]] = reactive(dict, layout=True)
     strategy_count: reactive[int] = reactive(0)
 
-    DEFAULT_CSS = """
-    RiskGaugeWidget {
-        height: auto;
-        min-height: 10;
-        padding: 0 1;
-        background: #0d1210;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" COMPOSITE RISK SCORE\n", style="bold #e2ebe5")
-        result.append("─" * 36 + "\n", style="#2a3a30")
+        result.append(" COMPOSITE RISK SCORE\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("─" * 36 + "\n", style=BORDER_DIM)
 
         if self.composite_score is None:
-            result.append("\n  No risk data available\n", style="#7d9483")
+            result.append("\n  No risk data available\n", style=TEXT_MUTED)
             result.append("  ", style="")
-            result.append("░" * 24, style="#2a3a30")
+            result.append("░" * 24, style=BORDER_DIM)
             result.append("\n\n", style="")
             result.append(
                 "  Start a paper session to\n"
                 "  see risk metrics.\n",
-                style="#7d9483",
+                style=TEXT_MUTED,
             )
             return result
 
@@ -149,7 +150,7 @@ class RiskGaugeWidget(Static):
 
         result.append("\n  ")
         result.append("█" * filled, style=f"bold {color}")
-        result.append("░" * empty, style="#2a3a30")
+        result.append("░" * empty, style=BORDER_DIM)
         result.append(f"  {pct}/100\n", style=f"bold {color}")
 
         # Sub-scores
@@ -166,18 +167,18 @@ class RiskGaugeWidget(Static):
                 val_color = _gauge_color(val)
                 bar_len = int(val * 10)
                 bar = "█" * bar_len + "░" * (10 - bar_len)
-                result.append(f"  {label:<12}", style="#a3b5a8")
+                result.append(f"  {label:<12}", style=TEXT_SECONDARY)
                 result.append(bar, style=val_color)
-                result.append(f" {val:.2f}\n", style="#e2ebe5")
+                result.append(f" {val:.2f}\n", style=TEXT_PRIMARY)
             else:
-                result.append(f"  {label:<12}", style="#a3b5a8")
-                result.append("░" * 10, style="#2a3a30")
-                result.append(" ──\n", style="#7d9483")
+                result.append(f"  {label:<12}", style=TEXT_SECONDARY)
+                result.append("░" * 10, style=BORDER_DIM)
+                result.append(" ──\n", style=TEXT_MUTED)
 
         # Strategy count
         if self.strategy_count > 0:
             result.append(
-                f"\n  Strategies: {self.strategy_count}\n", style="#7d9483"
+                f"\n  Strategies: {self.strategy_count}\n", style=TEXT_MUTED
             )
 
         return result
@@ -194,26 +195,17 @@ class DrawdownSparklineWidget(Static):
     current_drawdown: reactive[float | None] = reactive(None)
     recovery_periods: reactive[int | None] = reactive(None)
 
-    DEFAULT_CSS = """
-    DrawdownSparklineWidget {
-        height: auto;
-        min-height: 6;
-        padding: 0 1;
-        background: #0a0a0a;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" DRAWDOWN\n", style="bold #e2ebe5")
-        result.append("─" * 36 + "\n", style="#2a3a30")
+        result.append(" DRAWDOWN\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("─" * 36 + "\n", style=BORDER_DIM)
 
         if not self.drawdown_history:
-            result.append("\n  Collecting equity data…\n", style="#7d9483")
+            result.append("\n  Collecting equity data…\n", style=TEXT_MUTED)
             result.append("  ")
-            result.append("─" * 30, style="#2a3a30")
+            result.append("─" * 30, style=BORDER_DIM)
             result.append("\n")
             return result
 
@@ -221,7 +213,7 @@ class DrawdownSparklineWidget(Static):
         # Negate so that drawdowns appear as dips below the baseline
         values = [-v for v in self.drawdown_history]
         chart_width = max(20, min(60, len(values)))
-        spark = sparkline_text(values, width=chart_width, bearish_color="#f87171")
+        spark = sparkline_text(values, width=chart_width, bearish_color=ERROR_RED)
         result.append("  ")
         result.append_text(spark)
         result.append("\n\n")
@@ -231,25 +223,25 @@ class DrawdownSparklineWidget(Static):
         cur_dd = self.current_drawdown
         recovery = self.recovery_periods
 
-        result.append("  Max DD: ", style="#a3b5a8")
+        result.append("  Max DD: ", style=TEXT_SECONDARY)
         if max_dd is not None:
-            dd_color = "#f87171" if max_dd < -0.1 else "#f0b456" if max_dd < -0.05 else "#7d9483"
+            dd_color = ERROR_RED if max_dd < -0.1 else WARNING_YELLOW if max_dd < -0.05 else TEXT_MUTED
             result.append(f"{max_dd * 100:.1f}%", style=dd_color)
         else:
-            result.append("──", style="#7d9483")
+            result.append("──", style=TEXT_MUTED)
 
-        result.append("   Current: ", style="#a3b5a8")
+        result.append("   Current: ", style=TEXT_SECONDARY)
         if cur_dd is not None:
-            dd_color = "#f87171" if cur_dd < -0.1 else "#f0b456" if cur_dd < -0.05 else "#7d9483"
+            dd_color = ERROR_RED if cur_dd < -0.1 else WARNING_YELLOW if cur_dd < -0.05 else TEXT_MUTED
             result.append(f"{cur_dd * 100:.1f}%", style=dd_color)
         else:
-            result.append("──", style="#7d9483")
+            result.append("──", style=TEXT_MUTED)
 
-        result.append("   Recovery: ", style="#a3b5a8")
+        result.append("   Recovery: ", style=TEXT_SECONDARY)
         if recovery is not None:
-            result.append(f"{recovery} periods", style="#4ade80")
+            result.append(f"{recovery} periods", style=ACCENT_GREEN)
         else:
-            result.append("in progress", style="#f0b456")
+            result.append("in progress", style=WARNING_YELLOW)
 
         result.append("\n")
         return result
@@ -264,22 +256,12 @@ class CorrelationHeatmapWidget(Static):
     matrix: reactive[list[list[float]] | None] = reactive(None, layout=True)
     strategy_names: reactive[list[str]] = reactive(list)
 
-    DEFAULT_CSS = """
-    CorrelationHeatmapWidget {
-        height: 1fr;
-        min-height: 8;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0d1210;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" CORRELATION MATRIX\n", style="bold #e2ebe5")
-        result.append("─" * 36 + "\n", style="#2a3a30")
+        result.append(" CORRELATION MATRIX\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("─" * 36 + "\n", style=BORDER_DIM)
 
         matrix = self.matrix
         names = self.strategy_names
@@ -287,7 +269,7 @@ class CorrelationHeatmapWidget(Static):
         if not matrix or len(matrix) < 2:
             result.append(
                 "\n  Need ≥2 strategies for\n  correlation analysis\n",
-                style="#7d9483",
+                style=TEXT_MUTED,
             )
             return result
 
@@ -302,36 +284,36 @@ class CorrelationHeatmapWidget(Static):
         max_name_len = min(max_name_len, 8)
 
         # Column header
-        result.append(f"  {'':>{max_name_len}}  ", style="#7d9483")
+        result.append(f"  {'':>{max_name_len}}  ", style=TEXT_MUTED)
         for name in names:
             short = name[:max_name_len].rjust(max_name_len)
-            result.append(f"{short} ", style="#60a5fa")
+            result.append(f"{short} ", style=INFO_BLUE)
         result.append("\n")
 
         # Rows
         for i in range(n):
             row_label = names[i][:max_name_len].rjust(max_name_len)
-            result.append(f"  {row_label}  ", style="#a3b5a8")
+            result.append(f"  {row_label}  ", style=TEXT_SECONDARY)
             for j in range(n):
                 val = matrix[i][j] if i < len(matrix) and j < len(matrix[i]) else 0.0
                 block = _correlation_block(val)
-                color = _correlation_color(val) if i != j else "#a3b5a8"
+                color = _correlation_color(val) if i != j else TEXT_SECONDARY
                 cell = f"{block}{val:.2f}"
                 result.append(f"{cell:>{max_name_len}} ", style=color)
             result.append("\n")
 
         # Legend
-        result.append("\n  Legend: ", style="#7d9483")
-        result.append("█", style="#a3b5a8")
-        result.append("=1.0 ", style="#7d9483")
-        result.append("▓", style="#f87171")
-        result.append("≥0.7 ", style="#7d9483")
-        result.append("▒", style="#f0b456")
-        result.append("≥0.4 ", style="#7d9483")
-        result.append("░", style="#7d9483")
-        result.append("≥0.1 ", style="#7d9483")
-        result.append("·", style="#7d9483")
-        result.append("<0.1\n", style="#7d9483")
+        result.append("\n  Legend: ", style=TEXT_MUTED)
+        result.append("█", style=TEXT_SECONDARY)
+        result.append("=1.0 ", style=TEXT_MUTED)
+        result.append("▓", style=ERROR_RED)
+        result.append("≥0.7 ", style=TEXT_MUTED)
+        result.append("▒", style=WARNING_YELLOW)
+        result.append("≥0.4 ", style=TEXT_MUTED)
+        result.append("░", style=TEXT_MUTED)
+        result.append("≥0.1 ", style=TEXT_MUTED)
+        result.append("·", style=TEXT_MUTED)
+        result.append("<0.1\n", style=TEXT_MUTED)
 
         return result
 
@@ -344,28 +326,18 @@ class AlertStreamWidget(Static):
 
     alerts: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
 
-    DEFAULT_CSS = """
-    AlertStreamWidget {
-        height: 1fr;
-        min-height: 6;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0a0a0a;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" ALERT STREAM\n", style="bold #e2ebe5")
-        result.append("─" * 36 + "\n", style="#2a3a30")
+        result.append(" ALERT STREAM\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("─" * 36 + "\n", style=BORDER_DIM)
 
         if not self.alerts:
             result.append(
                 f"\n  No alerts\n  Last check: "
                 f"{datetime.now(UTC).strftime('%H:%M:%S')} UTC\n",
-                style="#7d9483",
+                style=TEXT_MUTED,
             )
             return result
 
@@ -378,11 +350,11 @@ class AlertStreamWidget(Static):
 
             sev_color = _severity_color(severity.lower())
 
-            result.append(f"  {ts} ", style="#7d9483")
+            result.append(f"  {ts} ", style=TEXT_MUTED)
             result.append(f"{severity:<5}", style=f"bold {sev_color}")
             if metric:
-                result.append(f" {metric}", style="#a3b5a8")
-            result.append(f"  {message}\n", style="#e2ebe5")
+                result.append(f" {metric}", style=TEXT_SECONDARY)
+            result.append(f"  {message}\n", style=TEXT_PRIMARY)
 
         return result
 
@@ -461,12 +433,18 @@ class RiskScreen(Screen[None]):
 
     async def _ws_risk_loop(self) -> None:
         """Subscribe to risk_score WebSocket updates in background."""
-        try:
-            await self._api.ws_subscribe_risk(self._on_ws_risk_update)
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            logger.debug("WS risk loop ended: %s", exc)
+        backoff = 1.0
+        max_backoff = 30.0
+        while True:
+            try:
+                backoff = 1.0  # Reset on successful connection
+                await self._api.ws_subscribe_risk(self._on_ws_risk_update)
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.debug("WS risk loop error (retry in %.0fs): %s", backoff, exc)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
 
     async def _on_ws_risk_update(self, msg: dict[str, Any]) -> None:
         """Handle an incoming risk_score WebSocket message."""

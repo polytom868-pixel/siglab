@@ -26,6 +26,15 @@ from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli
+from siglab.tui.formatting import (
+    ACCENT_GREEN,
+    ERROR_RED,
+    INFO_BLUE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING_YELLOW,
+)
 from siglab.tui.loading import LoadingIndicator
 
 logger = logging.getLogger(__name__)
@@ -106,22 +115,22 @@ def _kind_icon(kind: str) -> str:
 def _kind_style(kind: str) -> str:
     """Return a Rich style for a node kind."""
     return {
-        "source": "#60a5fa",
-        "entity": "#4ade80",
-        "module": "#f0b456",
-    }.get(kind, "#a3b5a8")
+        "source": INFO_BLUE,
+        "entity": ACCENT_GREEN,
+        "module": WARNING_YELLOW,
+    }.get(kind, TEXT_SECONDARY)
 
 
 def _format_confidence(conf: float | None) -> Text:
     """Format confidence as colored text."""
     if conf is None:
-        return Text("—", style="#7d9483")
+        return Text("—", style=TEXT_MUTED)
     if conf >= 0.8:
-        return Text(f"{conf:.0%}", style="#4ade80")
+        return Text(f"{conf:.0%}", style=ACCENT_GREEN)
     elif conf >= 0.5:
-        return Text(f"{conf:.0%}", style="#f0b456")
+        return Text(f"{conf:.0%}", style=WARNING_YELLOW)
     else:
-        return Text(f"{conf:.0%}", style="#f87171")
+        return Text(f"{conf:.0%}", style=ERROR_RED)
 
 
 # ── Evidence Graph Widget ────────────────────────────────────────────
@@ -169,8 +178,8 @@ class EvidenceGraphWidget(Static):
         if not nodes:
             if self._filter_kind or self._filter_text:
                 filter_desc = self._filter_kind or self._filter_text
-                return Text(f"  No matches for '{filter_desc}'", style="#f0b456")
-            return Text("  No evidence data available", style="#7d9483")
+                return Text(f"  No matches for '{filter_desc}'", style=WARNING_YELLOW)
+            return Text("  No evidence data available", style=TEXT_MUTED)
 
         # Group nodes by kind
         by_kind: dict[str, list[dict[str, Any]]] = {}
@@ -185,7 +194,7 @@ class EvidenceGraphWidget(Static):
             edge_map.setdefault(src, []).append(edge)
 
         lines: list[Text] = []
-        lines.append(Text("  ── Evidence Graph ──", style="bold #4ade80"))
+        lines.append(Text("  ── Evidence Graph ──", style=f"bold {ACCENT_GREEN}"))
         lines.append(Text(""))
 
         for kind in ("source", "entity", "module"):
@@ -210,16 +219,16 @@ class EvidenceGraphWidget(Static):
                 edge_count = len(connected)
 
                 line = Text()
-                line.append(f"  {connector} ", style="#7d9483")
+                line.append(f"  {connector} ", style=TEXT_MUTED)
                 line.append(f"{label}", style=style)
-                line.append(f"  ({count})", style="#7d9483")
+                line.append(f"  ({count})", style=TEXT_MUTED)
                 if edge_count > 0:
-                    line.append(f"  →{edge_count} links", style="#60a5fa")
+                    line.append(f"  →{edge_count} links", style=INFO_BLUE)
                 lines.append(line)
 
             remaining = len(sorted_nodes) - len(shown)
             if remaining > 0:
-                lines.append(Text(f"  │  ... +{remaining} more", style="#7d9483"))
+                lines.append(Text(f"  │  ... +{remaining} more", style=TEXT_MUTED))
             lines.append(Text(""))
 
         # Summary
@@ -227,8 +236,8 @@ class EvidenceGraphWidget(Static):
         total_edges = len(self._edges)
         filtered = len(nodes)
         summary = Text()
-        summary.append(f"  {filtered}/{total_nodes} nodes", style="#a3b5a8")
-        summary.append(f"  •  {total_edges} edges", style="#a3b5a8")
+        summary.append(f"  {filtered}/{total_nodes} nodes", style=TEXT_SECONDARY)
+        summary.append(f"  •  {total_edges} edges", style=TEXT_SECONDARY)
         lines.append(summary)
 
         result = Text("\n")
@@ -258,10 +267,10 @@ class EdgeDetailWidget(Static):
     def render(self) -> Text:
         """Render edges as Rich Text."""
         if not self._edges:
-            return Text("  No connections to display", style="#7d9483")
+            return Text("  No connections to display", style=TEXT_MUTED)
 
         lines: list[Text] = []
-        lines.append(Text("  ── Connections ──", style="bold #60a5fa"))
+        lines.append(Text("  ── Connections ──", style=f"bold {INFO_BLUE}"))
         lines.append(Text(""))
 
         for edge in self._edges[:20]:
@@ -278,20 +287,20 @@ class EdgeDetailWidget(Static):
             tgt_display = tgt_short[:20] + "…" if len(tgt_short) > 20 else tgt_short
 
             line = Text()
-            line.append("  ├─ ", style="#7d9483")
-            line.append(src_display, style="#60a5fa")
-            line.append(" ─→ ", style="#7d9483")
-            line.append(tgt_display, style="#4ade80")
-            line.append(f"  [{label}]", style="#a3b5a8")
+            line.append("  ├─ ", style=TEXT_MUTED)
+            line.append(src_display, style=INFO_BLUE)
+            line.append(" ─→ ", style=TEXT_MUTED)
+            line.append(tgt_display, style=ACCENT_GREEN)
+            line.append(f"  [{label}]", style=TEXT_SECONDARY)
             if conf is not None:
                 line.append(" ")
                 line.append_text(_format_confidence(conf))
             if warning:
-                line.append(f"  ⚠ {warning[:40]}", style="#f0b456")
+                line.append(f"  ⚠ {warning[:40]}", style=WARNING_YELLOW)
             lines.append(line)
 
         if len(self._edges) > 20:
-            lines.append(Text(f"  ... +{len(self._edges) - 20} more", style="#7d9483"))
+            lines.append(Text(f"  ... +{len(self._edges) - 20} more", style=TEXT_MUTED))
 
         result = Text("\n")
         for line in lines:
@@ -343,7 +352,7 @@ class DemoFlowWidget(Static):
     def render(self) -> Text:
         """Render the demo flow as Rich Text."""
         lines: list[Text] = []
-        lines.append(Text("  ── Buildathon Demo Flow ──", style="bold #4ade80"))
+        lines.append(Text("  ── Buildathon Demo Flow ──", style=f"bold {ACCENT_GREEN}"))
         lines.append(Text(""))
 
         for step_data in DEMO_STEPS:
@@ -356,28 +365,28 @@ class DemoFlowWidget(Static):
             if result is not None:
                 rc = result.get("returncode", -1)
                 if rc == 0:
-                    status = Text("✓ ", style="#4ade80")
+                    status = Text("✓ ", style=ACCENT_GREEN)
                 else:
-                    status = Text("✗ ", style="#f87171")
+                    status = Text("✗ ", style=ERROR_RED)
             elif step_num == self._current_step and self._running:
-                status = Text("⟳ ", style="#f0b456")
+                status = Text("⟳ ", style=WARNING_YELLOW)
             elif step_num == self._current_step:
-                status = Text("▶ ", style="#60a5fa")
+                status = Text("▶ ", style=INFO_BLUE)
             else:
-                status = Text("○ ", style="#7d9483")
+                status = Text("○ ", style=TEXT_MUTED)
 
             # Step number
-            num_text = Text(f"  {step_num}. ", style="#7d9483")
+            num_text = Text(f"  {step_num}. ", style=TEXT_MUTED)
 
             # Title
             if step_num == self._current_step:
-                title_text = Text(title, style="bold #e2ebe5")
+                title_text = Text(title, style=f"bold {TEXT_PRIMARY}")
             elif result is not None:
                 rc = result.get("returncode", -1)
-                title_style = "#4ade80" if rc == 0 else "#f87171"
+                title_style = ACCENT_GREEN if rc == 0 else ERROR_RED
                 title_text = Text(title, style=title_style)
             else:
-                title_text = Text(title, style="#a3b5a8")
+                title_text = Text(title, style=TEXT_SECONDARY)
 
             line = Text()
             line.append_text(status)
@@ -387,7 +396,7 @@ class DemoFlowWidget(Static):
 
             # Description (always shown for current step, or if has result)
             if step_num == self._current_step or result is not None:
-                desc_text = Text(f"       {desc}", style="#7d9483")
+                desc_text = Text(f"       {desc}", style=TEXT_MUTED)
                 lines.append(desc_text)
 
             # Show result summary if available
@@ -412,28 +421,28 @@ class DemoFlowWidget(Static):
                         if summary_parts:
                             result_line = Text(
                                 f"       → {', '.join(summary_parts)}",
-                                style="#4ade80",
+                                style=ACCENT_GREEN,
                             )
                             lines.append(result_line)
                     except (json.JSONDecodeError, TypeError):
                         # Show first line of output
                         first_line = stdout.strip().split("\n")[0][:80]
                         if first_line:
-                            result_line = Text(f"       → {first_line}", style="#a3b5a8")
+                            result_line = Text(f"       → {first_line}", style=TEXT_SECONDARY)
                             lines.append(result_line)
                 elif rc != 0:
                     stderr = result.get("stderr", "")
                     err_msg = stderr.strip().split("\n")[0][:60] if stderr else f"exit {rc}"
-                    err_line = Text(f"       → Error: {err_msg}", style="#f87171")
+                    err_line = Text(f"       → Error: {err_msg}", style=ERROR_RED)
                     lines.append(err_line)
 
             lines.append(Text(""))
 
         # Navigation hint
         if self._running:
-            lines.append(Text("  ⟳ Running... (Esc to cancel)", style="#f0b456"))
+            lines.append(Text("  ⟳ Running... (Esc to cancel)", style=WARNING_YELLOW))
         else:
-            lines.append(Text("  Enter: run step  •  n/p: next/prev  •  a: run all", style="#7d9483"))
+            lines.append(Text("  Enter: run step  •  n/p: next/prev  •  a: run all", style=TEXT_MUTED))
 
         result = Text("\n")
         for line in lines:

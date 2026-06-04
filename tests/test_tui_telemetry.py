@@ -11,6 +11,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from siglab.tui.api_client import TuiApiClient
+from siglab.tui.formatting import (
+    format_latency,
+    format_score,
+    truncate,
+)
 from siglab.tui.screens.telemetry import (
     ProviderMetricsWidget,
     RunComparisonWidget,
@@ -23,10 +28,7 @@ from siglab.tui.screens.telemetry import (
     _classification_color,
     _format_count,
     _format_date,
-    _format_latency,
-    _format_score,
     _format_status,
-    _truncate,
 )
 
 
@@ -125,46 +127,46 @@ def _make_ops_board_data() -> dict:
 class TestFormatHelpers:
     """Test formatting helper functions."""
 
-    def test_format_score_high(self) -> None:
-        text = _format_score(0.85)
+    def testformat_score_high(self) -> None:
+        text = format_score(0.85)
         assert "0.850" in text.plain
         assert text.style == "#4ade80"
 
-    def test_format_score_medium(self) -> None:
-        text = _format_score(0.55)
+    def testformat_score_medium(self) -> None:
+        text = format_score(0.55)
         assert "0.550" in text.plain
         assert text.style == "#f0b456"
 
-    def test_format_score_low(self) -> None:
-        text = _format_score(0.25)
+    def testformat_score_low(self) -> None:
+        text = format_score(0.25)
         assert "0.250" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_score_none(self) -> None:
-        text = _format_score(None)
+    def testformat_score_none(self) -> None:
+        text = format_score(None)
         assert "\u2500" in text.plain
 
-    def test_format_score_nan(self) -> None:
-        text = _format_score(float("nan"))
+    def testformat_score_nan(self) -> None:
+        text = format_score(float("nan"))
         assert "NaN" in text.plain
 
-    def test_format_latency_fast(self) -> None:
-        text = _format_latency(50.0)
+    def testformat_latency_fast(self) -> None:
+        text = format_latency(50.0)
         assert "50ms" in text.plain
         assert text.style == "#4ade80"
 
-    def test_format_latency_moderate(self) -> None:
-        text = _format_latency(200.0)
+    def testformat_latency_moderate(self) -> None:
+        text = format_latency(200.0)
         assert "200ms" in text.plain
         assert text.style == "#f0b456"
 
-    def test_format_latency_slow(self) -> None:
-        text = _format_latency(800.0)
+    def testformat_latency_slow(self) -> None:
+        text = format_latency(800.0)
         assert "800ms" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_latency_none(self) -> None:
-        text = _format_latency(None)
+    def testformat_latency_none(self) -> None:
+        text = format_latency(None)
         assert "\u2500" in text.plain
 
     def test_format_status_passed(self) -> None:
@@ -218,16 +220,16 @@ class TestFormatHelpers:
     def test_format_count_float(self) -> None:
         assert _format_count(50000.0) == "50.0k"
 
-    def test_truncate_short(self) -> None:
-        assert _truncate("hello", 10) == "hello"
+    def testtruncate_short(self) -> None:
+        assert truncate("hello", 10) == "hello"
 
-    def test_truncate_long(self) -> None:
-        result = _truncate("hello world long text", 10)
+    def testtruncate_long(self) -> None:
+        result = truncate("hello world long text", 10)
         assert len(result) == 10
         assert result.endswith("\u2026")
 
-    def test_truncate_exact(self) -> None:
-        assert _truncate("hello", 5) == "hello"
+    def testtruncate_exact(self) -> None:
+        assert truncate("hello", 5) == "hello"
 
     def test_confidence_color_good(self) -> None:
         assert _confidence_color("good") == "#4ade80"

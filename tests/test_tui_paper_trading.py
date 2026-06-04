@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from siglab.tui.formatting import format_pnl, format_price
 from siglab.tui.screens.paper import (
     AccountSummaryWidget,
     OrderFormWidget,
@@ -20,11 +21,6 @@ from siglab.tui.screens.paper import (
     PnlChartWidget,
     PositionsTableWidget,
     _TextInputScreen,
-    _fmt_price,
-    _fmt_pnl,
-    _fmt_qty,
-    _side_style,
-    _status_style,
 )
 
 
@@ -34,59 +30,39 @@ from siglab.tui.screens.paper import (
 class TestFormattingHelpers:
     """Test the formatting utility functions."""
 
-    def test_fmt_price_large(self) -> None:
-        assert _fmt_price(67210.50) == "67,210.50"
+    def testformat_price_large(self) -> None:
+        assert format_price(67210.50) == "67,210.50"
 
-    def test_fmt_price_medium(self) -> None:
-        assert _fmt_price(1.2345) == "1.2345"
+    def testformat_price_medium(self) -> None:
+        assert format_price(1.2345) == "1.2345"
 
-    def test_fmt_price_small(self) -> None:
-        assert _fmt_price(0.001234) == "0.001234"
+    def testformat_price_small(self) -> None:
+        assert format_price(0.001234) == "0.001234"
 
-    def test_fmt_price_zero(self) -> None:
-        assert _fmt_price(0) == "0.000000"
+    def testformat_price_zero(self) -> None:
+        assert format_price(0) == "0.000000"
 
-    def test_fmt_pnl_positive(self) -> None:
-        text = _fmt_pnl(123.45)
+    def testformat_pnl_positive(self) -> None:
+        text = format_pnl(123.45)
         assert "+123.45" in text.plain
 
-    def test_fmt_pnl_negative(self) -> None:
-        text = _fmt_pnl(-456.78)
+    def testformat_pnl_negative(self) -> None:
+        text = format_pnl(-456.78)
         assert "-456.78" in text.plain
 
-    def test_fmt_pnl_zero(self) -> None:
-        text = _fmt_pnl(0.0)
+    def testformat_pnl_zero(self) -> None:
+        text = format_pnl(0.0)
         assert "0.00" in text.plain
 
-    def test_fmt_qty_large(self) -> None:
-        assert _fmt_qty(1_500_000) == "1.50M"
+    def test_format_price_comma_separated(self) -> None:
+        """format_price uses comma-separated formatting."""
+        assert format_price(67210.50) == "67,210.50"
 
-    def test_fmt_qty_medium(self) -> None:
-        assert _fmt_qty(5_000) == "5.00K"
+    def test_format_price_medium(self) -> None:
+        assert format_price(1.2345) == "1.2345"
 
-    def test_fmt_qty_small(self) -> None:
-        assert _fmt_qty(0.5) == "0.5000"
-
-    def test_status_style_filled(self) -> None:
-        assert _status_style("FILLED") == "#4ade80"
-
-    def test_status_style_open(self) -> None:
-        assert _status_style("OPEN") == "#60a5fa"
-
-    def test_status_style_cancelled(self) -> None:
-        assert _status_style("CANCELLED") == "#f0b456"
-
-    def test_status_style_expired(self) -> None:
-        assert _status_style("EXPIRED") == "#7d9483"
-
-    def test_status_style_unknown(self) -> None:
-        assert _status_style("UNKNOWN") == "#a3b5a8"
-
-    def test_side_style_buy(self) -> None:
-        assert _side_style("BUY") == "#4ade80"
-
-    def test_side_style_sell(self) -> None:
-        assert _side_style("SELL") == "#f87171"
+    def test_format_price_small(self) -> None:
+        assert format_price(0.15) == "0.150000"
 
 
 # ── PositionsTableWidget Tests ───────────────────────────────────────
@@ -598,7 +574,7 @@ class TestPaperScreenCSS:
     def test_app_tcss_has_paper_styles(self) -> None:
         from pathlib import Path
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "paper.tcss"
         content = tcss_path.read_text()
         assert "PaperScreen" in content
         assert "#paper-layout" in content
@@ -615,7 +591,7 @@ class TestPaperScreenCSS:
     def test_app_tcss_paper_left_width(self) -> None:
         from pathlib import Path
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "paper.tcss"
         content = tcss_path.read_text()
         # Left column should be fixed width
         assert "width: 40" in content

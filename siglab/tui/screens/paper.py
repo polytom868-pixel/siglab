@@ -26,7 +26,19 @@ from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.cli_bridge import run_cli
-from siglab.tui.formatting import friendly_error
+from siglab.tui.formatting import (
+    ACCENT_GREEN,
+    BORDER_DIM,
+    ERROR_RED,
+    INFO_BLUE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING_YELLOW,
+    friendly_error,
+    format_pnl,
+    format_price,
+)
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.widgets.sparkline import sparkline_text
 
@@ -38,55 +50,7 @@ REFRESH_SECONDS = 15.0
 PNL_HISTORY_MAX = 120  # Max PnL data points for sparkline
 
 # ── Formatting helpers ───────────────────────────────────────────────
-
-
-def _fmt_price(price: float) -> str:
-    """Format a price with appropriate decimal places."""
-    if price >= 1000:
-        return f"{price:,.2f}"
-    elif price >= 1:
-        return f"{price:,.4f}"
-    else:
-        return f"{price:,.6f}"
-
-
-def _fmt_pnl(pnl: float) -> Text:
-    """Format PnL as coloured Rich Text."""
-    if pnl > 0:
-        return Text(f"+{pnl:,.2f}", style="#4ade80")
-    elif pnl < 0:
-        return Text(f"{pnl:,.2f}", style="#f87171")
-    else:
-        return Text(f"{pnl:,.2f}", style="#7d9483")
-
-
-def _fmt_qty(qty: float) -> str:
-    """Format quantity compactly."""
-    if abs(qty) >= 1_000_000:
-        return f"{qty / 1_000_000:.2f}M"
-    elif abs(qty) >= 1_000:
-        return f"{qty / 1_000:.2f}K"
-    else:
-        return f"{qty:,.4f}"
-
-
-def _status_style(status: str) -> str:
-    """Return a Rich style for an order status."""
-    s = status.upper()
-    if s == "FILLED":
-        return "#4ade80"
-    elif s == "OPEN":
-        return "#60a5fa"
-    elif s == "CANCELLED":
-        return "#f0b456"
-    elif s == "EXPIRED":
-        return "#7d9483"
-    return "#a3b5a8"
-
-
-def _side_style(side: str) -> str:
-    """Return a Rich style for BUY/SELL."""
-    return "#4ade80" if side.upper() == "BUY" else "#f87171"
+# Centralized in siglab.tui.formatting; local helpers removed.
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -112,18 +76,18 @@ class PositionsTableWidget(Static):
 
     def render(self) -> Text:
         result = Text()
-        result.append(" POSITIONS\n", style="bold #e2ebe5")
+        result.append(" POSITIONS\n", style=f"bold {TEXT_PRIMARY}")
 
         if not self.positions:
-            result.append("  No open positions\n", style="#7d9483")
+            result.append("  No open positions\n", style=TEXT_MUTED)
             return result
 
         # Header
         result.append(
             "  SYMBOL          SIZE         ENTRY        MARK       UNREAL PnL\n",
-            style="#7d9483",
+            style=TEXT_MUTED,
         )
-        result.append("  " + "─" * 68 + "\n", style="#2a3a30")
+        result.append("  " + "─" * 68 + "\n", style=BORDER_DIM)
 
         for pos in self.positions:
             sym = str(pos.get("symbol", "?"))
@@ -138,11 +102,11 @@ class PositionsTableWidget(Static):
                 else:
                     unrealized = abs(qty) * (entry - mark)
 
-            result.append(f"  {sym:<16}", style="#a3b5a8")
-            result.append(f"{_fmt_qty(qty):>12}  ", style="#e2ebe5")
-            result.append(f"{_fmt_price(entry):>12}  ", style="#e2ebe5")
-            result.append(f"{_fmt_price(mark):>12}  ", style="#60a5fa")
-            result.append_text(_fmt_pnl(unrealized))
+            result.append(f"  {sym:<16}", style=TEXT_SECONDARY)
+            result.append(f"{format_price(qty):>12}  ", style=TEXT_PRIMARY)
+            result.append(f"{format_price(entry):>12}  ", style=TEXT_PRIMARY)
+            result.append(f"{format_price(mark):>12}  ", style=INFO_BLUE)
+            result.append_text(format_pnl(unrealized))
             result.append("\n")
 
         return result
@@ -171,10 +135,10 @@ class AccountSummaryWidget(Static):
     def render(self) -> Text:
         result = Text()
         name = self.session_name or "No session"
-        result.append(f" SESSION: {name}\n", style="bold #4ade80")
+        result.append(f" SESSION: {name}\n", style=f"bold {ACCENT_GREEN}")
 
         if not self.pnl_data:
-            result.append("  No PnL data\n", style="#7d9483")
+            result.append("  No PnL data\n", style=TEXT_MUTED)
             return result
 
         realized = float(self.pnl_data.get("realized_pnl", 0))
@@ -183,21 +147,21 @@ class AccountSummaryWidget(Static):
         funding = float(self.pnl_data.get("total_funding_cost", 0))
         open_count = int(self.pnl_data.get("open_position_count", 0))
 
-        result.append("  Realized:    ", style="#7d9483")
-        result.append_text(_fmt_pnl(realized))
+        result.append("  Realized:    ", style=TEXT_MUTED)
+        result.append_text(format_pnl(realized))
         result.append("\n")
 
-        result.append("  Unrealized:  ", style="#7d9483")
-        result.append_text(_fmt_pnl(unrealized))
+        result.append("  Unrealized:  ", style=TEXT_MUTED)
+        result.append_text(format_pnl(unrealized))
         result.append("\n")
 
-        result.append("  Total PnL:   ", style="#7d9483")
-        result.append_text(_fmt_pnl(total))
+        result.append("  Total PnL:   ", style=TEXT_MUTED)
+        result.append_text(format_pnl(total))
         result.append("\n")
 
-        result.append("  Funding:     ", style="#7d9483")
-        result.append_text(_fmt_pnl(funding))
-        result.append(f"   Open: {open_count}\n", style="#7d9483")
+        result.append("  Funding:     ", style=TEXT_MUTED)
+        result.append_text(format_pnl(funding))
+        result.append(f"   Open: {open_count}\n", style=TEXT_MUTED)
 
         return result
 
@@ -223,10 +187,10 @@ class PnlChartWidget(Static):
 
     def render(self) -> Text:
         result = Text()
-        result.append(" PnL PERFORMANCE\n", style="bold #e2ebe5")
+        result.append(" PnL PERFORMANCE\n", style=f"bold {TEXT_PRIMARY}")
 
         if not self.pnl_history:
-            result.append("  Collecting data…\n", style="#7d9483")
+            result.append("  Collecting data…\n", style=TEXT_MUTED)
             return result
 
         spark = sparkline_text(self.pnl_history, width=50)
@@ -238,12 +202,12 @@ class PnlChartWidget(Static):
         lo = min(self.pnl_history)
         hi = max(self.pnl_history)
         cur = self.pnl_history[-1]
-        result.append("  Low: ", style="#7d9483")
-        result.append_text(_fmt_pnl(lo))
-        result.append("  High: ", style="#7d9483")
-        result.append_text(_fmt_pnl(hi))
-        result.append("  Now: ", style="#7d9483")
-        result.append_text(_fmt_pnl(cur))
+        result.append("  Low: ", style=TEXT_MUTED)
+        result.append_text(format_pnl(lo))
+        result.append("  High: ", style=TEXT_MUTED)
+        result.append_text(format_pnl(hi))
+        result.append("  Now: ", style=TEXT_MUTED)
+        result.append_text(format_pnl(cur))
         result.append("\n")
 
         return result
@@ -291,15 +255,15 @@ class OrderFormWidget(Static):
 
     def render(self) -> Text:
         result = Text()
-        result.append(" PLACE ORDER\n", style="bold #e2ebe5")
+        result.append(" PLACE ORDER\n", style=f"bold {TEXT_PRIMARY}")
 
         # Symbol
         sym_display = self._symbol or "—"
-        result.append(f"  Symbol:  {sym_display}\n", style="#a3b5a8")
+        result.append(f"  Symbol:  {sym_display}\n", style=TEXT_SECONDARY)
 
         # Side toggle
-        buy_style = "bold #000000 on #4ade80" if self._side == "BUY" else "#4ade80"
-        sell_style = "bold #000000 on #f87171" if self._side == "SELL" else "#f87171"
+        buy_style = f"bold #000000 on {ACCENT_GREEN}" if self._side == "BUY" else ACCENT_GREEN
+        sell_style = f"bold #000000 on {ERROR_RED}" if self._side == "SELL" else ERROR_RED
         result.append("  Side:    ")
         result.append(" BUY ", style=buy_style)
         result.append(" ")
@@ -307,8 +271,8 @@ class OrderFormWidget(Static):
         result.append("\n")
 
         # Order type
-        mkt_style = "bold #000000 on #60a5fa" if self._order_type == "MARKET" else "#60a5fa"
-        lmt_style = "bold #000000 on #60a5fa" if self._order_type == "LIMIT" else "#60a5fa"
+        mkt_style = f"bold #000000 on {INFO_BLUE}" if self._order_type == "MARKET" else INFO_BLUE
+        lmt_style = f"bold #000000 on {INFO_BLUE}" if self._order_type == "LIMIT" else INFO_BLUE
         result.append("  Type:    ")
         result.append(" MARKET ", style=mkt_style)
         result.append(" ")
@@ -317,24 +281,24 @@ class OrderFormWidget(Static):
 
         # Quantity
         qty_display = self._quantity or "—"
-        result.append(f"  Qty:     {qty_display}\n", style="#a3b5a8")
+        result.append(f"  Qty:     {qty_display}\n", style=TEXT_SECONDARY)
 
         # Price (only for LIMIT)
         if self._order_type == "LIMIT":
             price_display = self._price or "—"
-            result.append(f"  Price:   {price_display}\n", style="#a3b5a8")
+            result.append(f"  Price:   {price_display}\n", style=TEXT_SECONDARY)
 
         # Error / success messages
         if self._error:
-            result.append(f"  ✗ {self._error}\n", style="#f87171")
+            result.append(f"  ✗ {self._error}\n", style=ERROR_RED)
         if self._success:
-            result.append(f"  ✓ {self._success}\n", style="#4ade80")
+            result.append(f"  ✓ {self._success}\n", style=ACCENT_GREEN)
 
         # Help text
         result.append("\n", style="")
         result.append(
             "  [s]ymbol [b]uy/sell [t]ype [Q]ty [p]rice [Enter]submit\n",
-            style="#7d9483",
+            style=TEXT_MUTED,
         )
 
         return result
@@ -443,18 +407,18 @@ class OrderHistoryWidget(Static):
 
     def render(self) -> Text:
         result = Text()
-        result.append(" ORDER HISTORY\n", style="bold #e2ebe5")
+        result.append(" ORDER HISTORY\n", style=f"bold {TEXT_PRIMARY}")
 
         if not self.orders:
-            result.append("  No orders placed\n", style="#7d9483")
+            result.append("  No orders placed\n", style=TEXT_MUTED)
             return result
 
         # Header
         result.append(
             "  TIME        SIDE  TYPE    SYMBOL        QTY       PRICE    STATUS\n",
-            style="#7d9483",
+            style=TEXT_MUTED,
         )
-        result.append("  " + "─" * 72 + "\n", style="#2a3a30")
+        result.append("  " + "─" * 72 + "\n", style=BORDER_DIM)
 
         for order in self.orders[:50]:  # Show last 50
             created = float(order.get("created_at", 0))
@@ -467,20 +431,44 @@ class OrderHistoryWidget(Static):
             fill_price = order.get("fill_price")
             status = str(order.get("status", "?"))
 
-            result.append(f"  {ts_str:<11}", style="#7d9483")
-            result.append(f" {side:<5}", style=_side_style(side))
-            result.append(f" {otype:<7}", style="#a3b5a8")
-            result.append(f" {sym:<13}", style="#e2ebe5")
-            result.append(f" {_fmt_qty(qty):>9}", style="#e2ebe5")
+            # Inline status style using constants
+            s = status.upper()
+            if s == "FILLED":
+                status_style = ACCENT_GREEN
+            elif s == "OPEN":
+                status_style = INFO_BLUE
+            elif s == "CANCELLED":
+                status_style = WARNING_YELLOW
+            elif s == "EXPIRED":
+                status_style = TEXT_MUTED
+            else:
+                status_style = TEXT_SECONDARY
+
+            # Inline side style using constants
+            side_style = ACCENT_GREEN if side.upper() == "BUY" else ERROR_RED
+
+            # Compact qty format
+            if abs(qty) >= 1_000_000:
+                qty_str = f"{qty / 1_000_000:.2f}M"
+            elif abs(qty) >= 1_000:
+                qty_str = f"{qty / 1_000:.2f}K"
+            else:
+                qty_str = f"{qty:,.4f}"
+
+            result.append(f"  {ts_str:<11}", style=TEXT_MUTED)
+            result.append(f" {side:<5}", style=side_style)
+            result.append(f" {otype:<7}", style=TEXT_SECONDARY)
+            result.append(f" {sym:<13}", style=TEXT_PRIMARY)
+            result.append(f" {qty_str:>9}", style=TEXT_PRIMARY)
 
             if fill_price is not None:
-                result.append(f" {_fmt_price(float(fill_price)):>9}", style="#4ade80")
+                result.append(f" {format_price(float(fill_price)):>9}", style=ACCENT_GREEN)
             elif price > 0:
-                result.append(f" {_fmt_price(price):>9}", style="#a3b5a8")
+                result.append(f" {format_price(price):>9}", style=TEXT_SECONDARY)
             else:
-                result.append(f" {'market':>9}", style="#7d9483")
+                result.append(f" {'market':>9}", style=TEXT_MUTED)
 
-            result.append(f" {status}", style=_status_style(status))
+            result.append(f" {status}", style=status_style)
             result.append("\n")
 
         return result
@@ -576,7 +564,13 @@ class PaperScreen(Screen[None]):
                 "paper-start", "--session", "tui-session"
             )
             if result.returncode == 0:
-                data = json.loads(result.stdout)
+                try:
+                    data = json.loads(result.stdout)
+                except json.JSONDecodeError as exc:
+                    self.status_text = f"Bad session response: {exc}"
+                    self.is_loading = False
+                    logger.warning("paper-start JSON decode error: %s", exc)
+                    return
                 self.session_id = data.get("session_id", "")
                 self.session_name = data.get("name", "tui-session")
                 self.status_text = f"Session {self.session_id[:8]}… ready"
@@ -586,7 +580,7 @@ class PaperScreen(Screen[None]):
                     form = self.query_one("#order-form", OrderFormWidget)
                     form.set_symbol("BTC-USD")
                 except Exception:
-                    pass
+                    logger.debug("Could not set default symbol on order form")
                 # Initial data fetch
                 await self._refresh_all()
             else:
@@ -609,13 +603,18 @@ class PaperScreen(Screen[None]):
             loading = self.query_one("#paper-loading", LoadingIndicator)
             loading.loading = True
         except Exception:
-            pass
+            logger.debug("Could not find loading indicator widget")
         try:
             result = await run_cli(
                 "paper-status", "--session", self.session_id
             )
             if result.returncode == 0:
-                data = json.loads(result.stdout)
+                try:
+                    data = json.loads(result.stdout)
+                except json.JSONDecodeError as exc:
+                    self.status_text = f"Bad status response: {exc}  [r]etry"
+                    logger.warning("paper-status JSON decode error: %s", exc)
+                    return
                 self._update_positions(data.get("position", []))
                 self._update_orders(data.get("orders", []))
                 self._update_pnl(data.get("pnl", {}))
@@ -633,7 +632,7 @@ class PaperScreen(Screen[None]):
                 loading.loading = False
                 loading.status_text = self.status_text
             except Exception:
-                pass
+                logger.debug("Could not update loading indicator in finally block")
 
     def _update_positions(self, positions: list[dict[str, Any]]) -> None:
         """Update the positions table widget."""
@@ -642,7 +641,7 @@ class PaperScreen(Screen[None]):
             widget.positions = positions
             widget.mark_prices = dict(self._mark_prices)
         except Exception:
-            pass
+            logger.debug("Could not update positions widget")
 
     def _update_orders(self, orders: list[dict[str, Any]]) -> None:
         """Update the order history widget."""
@@ -650,7 +649,7 @@ class PaperScreen(Screen[None]):
             widget = self.query_one("#order-history", OrderHistoryWidget)
             widget.orders = orders
         except Exception:
-            pass
+            logger.debug("Could not update order history widget")
 
     def _update_pnl(self, pnl_data: dict[str, Any]) -> None:
         """Update PnL summary and sparkline history."""
@@ -660,7 +659,7 @@ class PaperScreen(Screen[None]):
             widget.pnl_data = pnl_data
             widget.session_name = self.session_name
         except Exception:
-            pass
+            logger.debug("Could not update account summary widget")
 
         # Track PnL history for sparkline
         total_pnl = float(pnl_data.get("total_pnl", 0))
@@ -673,7 +672,7 @@ class PaperScreen(Screen[None]):
             chart = self.query_one("#pnl-chart", PnlChartWidget)
             chart.pnl_history = list(self._pnl_history)
         except Exception:
-            pass
+            logger.debug("Could not update PnL chart widget")
 
     # ── Order Placement ───────────────────────────────────────────────
 
@@ -867,16 +866,16 @@ class _TextInputScreen(Screen[tuple[str, str] | None]):
         width: 50;
         height: auto;
         padding: 1 2;
-        background: #0d1210;
-        border: solid #2a3a30;
+        background: $surface;
+        border: solid $border-dim;
     }
     #text-input-prompt {
-        color: #4ade80;
+        color: $accent-green;
         text-style: bold;
         margin: 0 0 1 0;
     }
     #text-input-field {
-        background: #1a2a1f;
+        background: $input-bg;
     }
     """
 

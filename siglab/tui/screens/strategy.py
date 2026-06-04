@@ -25,6 +25,22 @@ from textual.screen import Screen
 from textual.widgets import Input, Static
 
 from siglab.tui.cli_bridge import run_cli
+from siglab.tui.formatting import (
+    ACCENT_GREEN,
+    ACCENT_PURPLE,
+    BORDER_DIM,
+    ERROR_RED,
+    INFO_BLUE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING_YELLOW,
+    format_drawdown,
+    format_return,
+    format_score,
+    format_sharpe,
+    truncate,
+)
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.widgets.sparkline import sparkline_text
 
@@ -59,80 +75,16 @@ STATUS_FILTERS: list[str] = [
 
 
 # ── Formatting helpers ───────────────────────────────────────────────
-
-
-def _format_score(score: float | None) -> Text:
-    """Format a score with gauge-style color coding."""
-    if score is None:
-        return Text("─", style="#7d9483")
-    if score != score:  # NaN
-        return Text("NaN", style="#7d9483")
-    if score >= 0.7:
-        return Text(f"{score:.3f}", style="#4ade80")
-    elif score >= 0.4:
-        return Text(f"{score:.3f}", style="#f0b456")
-    else:
-        return Text(f"{score:.3f}", style="#f87171")
-
-
-def _format_return(ret: float | None) -> Text:
-    """Format a return percentage with color."""
-    if ret is None:
-        return Text("─", style="#7d9483")
-    if ret != ret:  # NaN
-        return Text("NaN", style="#7d9483")
-    if ret > 0:
-        return Text(f"+{ret:.2f}%", style="#4ade80")
-    elif ret < 0:
-        return Text(f"{ret:.2f}%", style="#f87171")
-    else:
-        return Text(f"{ret:.2f}%", style="#7d9483")
-
-
-def _format_sharpe(sharpe: float | None) -> Text:
-    """Format Sharpe ratio with color."""
-    if sharpe is None:
-        return Text("─", style="#7d9483")
-    if sharpe != sharpe:
-        return Text("NaN", style="#7d9483")
-    if sharpe >= 1.0:
-        return Text(f"{sharpe:.2f}", style="#4ade80")
-    elif sharpe >= 0.5:
-        return Text(f"{sharpe:.2f}", style="#f0b456")
-    else:
-        return Text(f"{sharpe:.2f}", style="#f87171")
-
-
-def _format_drawdown(dd: float | None) -> Text:
-    """Format max drawdown with color."""
-    if dd is None:
-        return Text("─", style="#7d9483")
-    if dd != dd:
-        return Text("NaN", style="#7d9483")
-    # Drawdown is typically negative; display as positive percentage
-    abs_dd = abs(dd)
-    if abs_dd > 20:
-        return Text(f"{abs_dd:.1f}%", style="#f87171")
-    elif abs_dd > 10:
-        return Text(f"{abs_dd:.1f}%", style="#f0b456")
-    else:
-        return Text(f"{abs_dd:.1f}%", style="#7d9483")
+# Centralized in siglab.tui.formatting; local helpers removed.
 
 
 def _format_status(passed: bool | None) -> Text:
     """Format pass/fail status."""
     if passed is None:
-        return Text("pending", style="#7d9483")
+        return Text("pending", style=TEXT_MUTED)
     if passed:
-        return Text("●", style="#4ade80")
-    return Text("○", style="#f87171")
-
-
-def _truncate(text: str, width: int) -> str:
-    """Truncate text to width with ellipsis."""
-    if len(text) <= width:
-        return text
-    return text[: width - 1] + "…"
+        return Text("●", style=ACCENT_GREEN)
+    return Text("○", style=ERROR_RED)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -258,7 +210,7 @@ class StrategyListWidget(Static):
 
     def render(self) -> Text:
         if not self.strategies:
-            return Text("  No strategies found", style="#7d9483")
+            return Text("  No strategies found", style=TEXT_MUTED)
 
         lines = Text()
         for i, strat in enumerate(self.strategies):
@@ -271,33 +223,33 @@ class StrategyListWidget(Static):
             # Build row text
             prefix = "✓ " if is_selected_hash else "  "
             status_dot = "●" if passed is True else ("○" if passed is False else "·")
-            status_color = "#4ade80" if passed is True else ("#f87171" if passed is False else "#7d9483")
+            status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
             score_str = f"{score:.2f}" if score is not None and score == score else "─"
 
             row = Text()
-            row.append(prefix, style="#60a5fa" if is_selected_hash else "#7d9483")
+            row.append(prefix, style=INFO_BLUE if is_selected_hash else TEXT_MUTED)
             row.append(status_dot + " ", style=status_color)
-            row.append(_truncate(h, 12), style="#e2ebe5")
+            row.append(truncate(h, 12), style=TEXT_PRIMARY)
 
             # Family tag right-aligned
             padding = max(0, 16 - len(h) - len(prefix) - 2)
-            row.append(" " * padding, style="#7d9483")
-            row.append(_truncate(family, 10), style="#a3b5a8")
+            row.append(" " * padding, style=TEXT_MUTED)
+            row.append(truncate(family, 10), style=TEXT_SECONDARY)
 
             if i == self.selected_index:
-                lines.append("▸ ", style="#4ade80")
+                lines.append("▸ ", style=ACCENT_GREEN)
                 styled_row = Text()
-                styled_row.append(prefix, style="#60a5fa" if is_selected_hash else "#000000")
+                styled_row.append(prefix, style=INFO_BLUE if is_selected_hash else "#000000")
                 styled_row.append(status_dot + " ", style=status_color if is_selected_hash else "#000000")
-                styled_row.append(_truncate(h, 12), style="bold #000000")
+                styled_row.append(truncate(h, 12), style="bold #000000")
                 styled_row.append(" " * padding, style="#000000")
-                styled_row.append(_truncate(family, 10), style="#000000")
+                styled_row.append(truncate(family, 10), style="#000000")
                 lines.append_text(styled_row)
-                lines.append(f"  {score_str}", style="bold #000000 on #4ade80")
+                lines.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
             else:
                 lines.append("  ")
                 lines.append_text(row)
-                lines.append(f"  {score_str}", style="#7d9483")
+                lines.append(f"  {score_str}", style=TEXT_MUTED)
             lines.append("\n")
 
         return lines
@@ -369,10 +321,10 @@ class ResultsTableWidget(Static):
 
     def render(self) -> Text:
         result = Text()
-        result.append(" EVALUATION RESULTS\n", style="bold #e2ebe5")
+        result.append(" EVALUATION RESULTS\n", style=f"bold {TEXT_PRIMARY}")
 
         if not self.results:
-            result.append("  No results — select a strategy or run evaluation\n", style="#7d9483")
+            result.append("  No results — select a strategy or run evaluation\n", style=TEXT_MUTED)
             return result
 
         # Header
@@ -390,11 +342,11 @@ class ResultsTableWidget(Static):
         ]
         for name, width in cols:
             marker = " ▼" if name.lower().replace("%", "").replace(" ", "_") == self.sort_column.replace("_", " ").replace(" ", "") else ""
-            header.append(f"{name + marker:<{width}}", style="#7d9483")
+            header.append(f"{name + marker:<{width}}", style=TEXT_MUTED)
         result.append_text(header)
         result.append("\n")
         col_total = sum(w for _, w in cols) + 2  # +2 for leading indent
-        result.append("  " + "─" * (col_total - 2) + "\n", style="#2a3a30")
+        result.append("  " + "─" * (col_total - 2) + "\n", style=BORDER_DIM)
 
         # Rows
         for item in self._sorted_results()[:50]:  # Max 50 rows
@@ -403,30 +355,30 @@ class ResultsTableWidget(Static):
 
             # Name (spec_hash truncated)
             name = str(item.get("spec_hash", "?"))[:12]
-            row.append(f"{name:<14}", style="#a3b5a8")
+            row.append(f"{name:<14}", style=TEXT_SECONDARY)
 
             # Family
             family = str(item.get("family", ""))[:8]
-            row.append(f"{family:<10}", style="#60a5fa")
+            row.append(f"{family:<10}", style=INFO_BLUE)
 
             # Score
             score = item.get("aggregate_score")
-            row.append_text(_format_score(score))
+            row.append_text(format_score(score))
             row.append("  " if score is not None else "    ")
 
             # PnL
             pnl = item.get("validation_total_return")
-            row.append_text(_format_return(pnl))
+            row.append_text(format_return(pnl))
             row.append(" " if pnl is not None else " ")
 
             # Sharpe
             sharpe = item.get("sharpe")
-            row.append_text(_format_sharpe(sharpe))
+            row.append_text(format_sharpe(sharpe))
             row.append("  " if sharpe is not None else "   ")
 
             # MaxDD
             dd = item.get("max_drawdown")
-            row.append_text(_format_drawdown(dd))
+            row.append_text(format_drawdown(dd))
             row.append("  " if dd is not None else "   ")
 
             # Status
@@ -440,7 +392,7 @@ class ResultsTableWidget(Static):
                 spark = sparkline_text(equity, width=14)
                 row.append_text(spark)
             else:
-                row.append("─" * 14, style="#7d9483")
+                row.append("─" * 14, style=TEXT_MUTED)
 
             result.append_text(row)
             result.append("\n")
@@ -470,10 +422,10 @@ class ComparisonPanelWidget(Static):
 
     # Colors for each strategy in the overlay sparkline
     _STRAT_COLORS: ClassVar[list[str]] = [
-        "#4ade80",  # green
-        "#60a5fa",  # blue
-        "#f0b456",  # yellow
-        "#a78bfa",  # purple
+        ACCENT_GREEN,   # green
+        INFO_BLUE,      # blue
+        WARNING_YELLOW, # yellow
+        ACCENT_PURPLE,  # purple
     ]
 
     def set_strategies(self, strategies: list[dict[str, Any]]) -> None:
@@ -482,11 +434,11 @@ class ComparisonPanelWidget(Static):
 
     def render(self) -> Text:
         result = Text()
-        result.append(" STRATEGY COMPARISON\n", style="bold #e2ebe5")
+        result.append(" STRATEGY COMPARISON\n", style=f"bold {TEXT_PRIMARY}")
 
         if len(self.strategies) < 2:
             result.append(
-                "  Select 2+ strategies with Space, then press c\n", style="#7d9483"
+                "  Select 2+ strategies with Space, then press c\n", style=TEXT_MUTED
             )
             return result
 
@@ -500,10 +452,10 @@ class ComparisonPanelWidget(Static):
             name = str(strat.get("spec_hash", f"S{i+1}"))[:col_w]
             color = self._STRAT_COLORS[i % len(self._STRAT_COLORS)]
             header.append(f"{name:<{col_w}}", style=f"bold {color}")
-        header.append("DELTA", style="bold #f0b456")
+        header.append("DELTA", style=f"bold {WARNING_YELLOW}")
         result.append_text(header)
         result.append("\n")
-        result.append("  " + "─" * (col_w * (n + 1) + 4) + "\n", style="#2a3a30")
+        result.append("  " + "─" * (col_w * (n + 1) + 4) + "\n", style=BORDER_DIM)
 
         # Metrics rows
         metrics = [
@@ -516,7 +468,7 @@ class ComparisonPanelWidget(Static):
 
         for label, key, fmt in metrics:
             row = Text()
-            row.append(f"  {label:<10}", style="#e2ebe5")
+            row.append(f"  {label:<10}", style=TEXT_PRIMARY)
 
             values: list[float] = []
             for strat in self.strategies:
@@ -531,7 +483,7 @@ class ComparisonPanelWidget(Static):
                 val = strat.get(key)
                 color = self._STRAT_COLORS[i % len(self._STRAT_COLORS)]
                 if val is None or (isinstance(val, float) and val != val):
-                    row.append(f"{'─':<{col_w}}", style="#7d9483")
+                    row.append(f"{'─':<{col_w}}", style=TEXT_MUTED)
                 elif isinstance(val, str):
                     row.append(f"{val:<{col_w}}", style=color)
                 else:
@@ -542,25 +494,25 @@ class ComparisonPanelWidget(Static):
             if values and len(values) >= 2 and key != "family":
                 delta = max(values) - min(values)
                 if key in ("aggregate_score", "sharpe"):
-                    row.append(f"±{delta:.3f}", style="#f0b456")
+                    row.append(f"±{delta:.3f}", style=WARNING_YELLOW)
                 elif key in ("validation_total_return",):
-                    row.append(f"±{delta:.2f}%", style="#f0b456")
+                    row.append(f"±{delta:.2f}%", style=WARNING_YELLOW)
                 elif key in ("max_drawdown",):
-                    row.append(f"±{delta:.1f}%", style="#f0b456")
+                    row.append(f"±{delta:.1f}%", style=WARNING_YELLOW)
                 else:
-                    row.append(f"±{delta:.3f}", style="#f0b456")
+                    row.append(f"±{delta:.3f}", style=WARNING_YELLOW)
             elif key == "family":
                 families = [str(s.get("family", ""))[:8] for s in self.strategies]
                 unique = len(set(families))
-                row.append("diff" if unique > 1 else "same", style="#f0b456" if unique > 1 else "#7d9483")
+                row.append("diff" if unique > 1 else "same", style=WARNING_YELLOW if unique > 1 else TEXT_MUTED)
 
             result.append_text(row)
             result.append("\n")
 
         # Overlay sparkline
         result.append("\n")
-        result.append("  EQUITY CURVES\n", style="bold #e2ebe5")
-        result.append("  " + "─" * 60 + "\n", style="#2a3a30")
+        result.append("  EQUITY CURVES\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("  " + "─" * 60 + "\n", style=BORDER_DIM)
         for i, strat in enumerate(self.strategies):
             equity = strat.get("equity_curve", [])
             color = self._STRAT_COLORS[i % len(self._STRAT_COLORS)]
@@ -570,7 +522,7 @@ class ComparisonPanelWidget(Static):
                 spark = sparkline_text(equity, width=40, bullish_color=color, bearish_color=color)
                 result.append_text(spark)
             else:
-                result.append("─" * 40, style="#7d9483")
+                result.append("─" * 40, style=TEXT_MUTED)
             result.append("\n")
 
         return result
@@ -629,6 +581,11 @@ class StrategyScreen(Screen):
 
     def on_mount(self) -> None:
         """Initialize the screen after mounting."""
+        try:
+            loading = self.query_one("#strategy-loading", LoadingIndicator)
+            loading.loading = True
+        except Exception:
+            pass
         self._update_status("Loading strategies…")
         self.call_after_refresh(self._load_strategies)
         self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._load_strategies)
