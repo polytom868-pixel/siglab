@@ -68,7 +68,7 @@ class SymbolListWidget(Static):
         height: 1fr;
         overflow-y: auto;
         padding: 0 1;
-        background: $surface;
+        background: #0d1210;
     }
     """
 
@@ -147,7 +147,7 @@ class KlinesChartWidget(Static):
         height: 1fr;
         min-height: 6;
         padding: 0 1;
-        background: $bg;
+        background: #0a0a0a;
     }
     """
 
@@ -197,7 +197,7 @@ class TickerTableWidget(Static):
         max-height: 12;
         padding: 0 1;
         overflow-y: auto;
-        background: $surface;
+        background: #0d1210;
     }
     """
 
@@ -241,7 +241,7 @@ class OrderBookWidget(Static):
         height: 1fr;
         min-height: 8;
         padding: 0 1;
-        background: $bg;
+        background: #0a0a0a;
     }
     """
 

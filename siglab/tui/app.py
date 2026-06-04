@@ -95,14 +95,14 @@ class HelpScreen(ModalScreen[None]):
         height: auto;
         max-height: 80%;
         padding: 1 2;
-        background: $surface;
-        border: solid $border-dim;
+        background: #0d1210;
+        border: solid #2a3a30;
         overflow-y: auto;
     }
 
     #help-title {
         text-style: bold;
-        color: $accent-green;
+        color: #4ade80;
         margin: 0 0 1 0;
     }
     """
