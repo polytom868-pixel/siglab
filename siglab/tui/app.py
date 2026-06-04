@@ -22,6 +22,7 @@ from siglab.tui.cli_bridge import run_cli_help
 from siglab.tui.widgets import SigLabStatusBar
 from siglab.tui.screens.market import MarketScreen
 from siglab.tui.screens.paper import PaperScreen
+from siglab.tui.screens.risk import RiskScreen
 
 
 # ── Navigation items ──────────────────────────────────────────────────
@@ -188,9 +189,12 @@ _BUILTIN_SCREENS["market"] = MarketScreen
 # Paper trading screen — real implementation
 _BUILTIN_SCREENS["paper"] = PaperScreen
 
+# Risk monitoring screen — real implementation
+_BUILTIN_SCREENS["risk"] = RiskScreen
+
 # Remaining screens — placeholders for now
 for _idx, _label, _screen_id in NAV_ITEMS:
-    if _screen_id in ("market", "paper"):
+    if _screen_id in ("market", "paper", "risk"):
         continue  # already registered above
     _BUILTIN_SCREENS[_screen_id] = lambda _lbl=_label, _sid=_screen_id: (
         PlaceholderScreen(_lbl, screen_id=_sid)
@@ -207,7 +211,7 @@ class SigLabTUI(App):
 
     TITLE = "SigLab"
     SUB_TITLE = "Terminal Dashboard"
-    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss"]
+    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss", "styles/risk.tcss"]
 
     # Register screens (placeholders for now, expanded in later features)
     SCREENS: ClassVar[dict[str, Callable[[], Screen]]] = _BUILTIN_SCREENS
