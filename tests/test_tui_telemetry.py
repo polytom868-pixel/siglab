@@ -811,8 +811,12 @@ class TestTelemetryRegistration:
         assert hasattr(SigLabTUI, "action_switch_to_telemetry")
 
     def test_telemetry_css_in_path(self) -> None:
-        from siglab.tui.app import SigLabTUI
-        assert "styles/telemetry.tcss" in SigLabTUI.CSS_PATH
+        """Telemetry styles are consolidated in app.tcss."""
+        from pathlib import Path
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
+        content = tcss_path.read_text()
+        assert "TelemetryScreen" in content
+        assert "#telemetry-main" in content
 
     def test_telemetry_screen_exported(self) -> None:
         from siglab.tui.screens import TelemetryScreen as Exported

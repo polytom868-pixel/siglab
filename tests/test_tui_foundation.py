@@ -72,7 +72,8 @@ class TestSigLabTUIApp:
 
     def test_app_has_css_path(self) -> None:
         assert "styles/app.tcss" in SigLabTUI.CSS_PATH
-        assert "styles/theme.tcss" in SigLabTUI.CSS_PATH
+        # CSS is consolidated in app.tcss (variables + all screen styles)
+        assert len(SigLabTUI.CSS_PATH) == 1
 
     def test_app_has_screens_registry(self) -> None:
         assert hasattr(SigLabTUI, "SCREENS")

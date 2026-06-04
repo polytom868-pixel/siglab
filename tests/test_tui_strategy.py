@@ -605,8 +605,12 @@ class TestStrategyRegistration:
         assert hasattr(SigLabTUI, "action_switch_to_strategy")
 
     def test_strategy_css_in_path(self) -> None:
-        from siglab.tui.app import SigLabTUI
-        assert "styles/strategy.tcss" in SigLabTUI.CSS_PATH
+        """Strategy styles are consolidated in app.tcss."""
+        from pathlib import Path
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
+        content = tcss_path.read_text()
+        assert "StrategyScreen" in content
+        assert "#strategy-layout" in content
 
     def test_strategy_screen_exported(self) -> None:
         from siglab.tui.screens import StrategyScreen as Exported

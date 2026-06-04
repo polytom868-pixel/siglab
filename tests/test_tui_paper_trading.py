@@ -569,12 +569,12 @@ class TestPaperScreenIntegration:
 
 
 class TestPaperScreenCSS:
-    """Test that paper screen CSS rules exist."""
+    """Test that paper screen CSS rules exist (consolidated in app.tcss)."""
 
     def test_app_tcss_has_paper_styles(self) -> None:
         from pathlib import Path
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "paper.tcss"
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
         content = tcss_path.read_text()
         assert "PaperScreen" in content
         assert "#paper-layout" in content
@@ -591,7 +591,7 @@ class TestPaperScreenCSS:
     def test_app_tcss_paper_left_width(self) -> None:
         from pathlib import Path
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "paper.tcss"
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
         content = tcss_path.read_text()
         # Left column should be fixed width
         assert "width: 40" in content
