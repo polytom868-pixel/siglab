@@ -62,3 +62,34 @@ RiskScreen {
     padding: 0 1;
     dock: bottom;
 }
+
+/* === Risk Widget Styles === */
+RiskGaugeWidget {
+    height: auto;
+    min-height: 10;
+    padding: 0 1;
+    background: $surface;
+}
+
+DrawdownSparklineWidget {
+    height: auto;
+    min-height: 6;
+    padding: 0 1;
+    background: $bg;
+}
+
+CorrelationHeatmapWidget {
+    height: 1fr;
+    min-height: 8;
+    padding: 0 1;
+    overflow-y: auto;
+    background: $surface;
+}
+
+AlertStreamWidget {
+    height: 1fr;
+    min-height: 6;
+    padding: 0 1;
+    overflow-y: auto;
+    background: $bg;
+}

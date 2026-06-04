@@ -16,6 +16,7 @@ $accent-green: #4ade80;
 $warning-yellow: #f0b456;
 $error-red: #f87171;
 $info-blue: #60a5fa;
+$accent-purple: #a78bfa;
 
 $border-dim: #2a3a30;
 $border-focus: #4ade80;

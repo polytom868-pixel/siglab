@@ -12,6 +12,8 @@ from rich.text import Text
 from textual.reactive import reactive
 from textual.widgets import Static
 
+from siglab.tui.formatting import ACCENT_GREEN, ERROR_RED, TEXT_MUTED
+
 # Unicode block elements from lowest to highest
 _SPARK_CHARS = "▁▂▃▄▅▆▇█"
 
@@ -20,9 +22,9 @@ def sparkline_text(
     values: Sequence[float],
     *,
     width: int = 50,
-    bullish_color: str = "#4ade80",
-    bearish_color: str = "#f87171",
-    neutral_color: str = "#7d9483",
+    bullish_color: str = ACCENT_GREEN,
+    bearish_color: str = ERROR_RED,
+    neutral_color: str = TEXT_MUTED,
 ) -> Text:
     """Render a sequence of price values as a Rich ``Text`` sparkline.
 
@@ -58,8 +60,10 @@ def sparkline_text(
     hi = max(sampled)
     span = hi - lo if hi != lo else 1.0
 
-    # Determine trend colour
-    if len(values) >= 2:
+    # Determine trend colour — use neutral when all values are equal
+    if hi == lo:
+        colour = neutral_color
+    elif len(values) >= 2:
         colour = bullish_color if values[-1] >= values[0] else bearish_color
     else:
         colour = neutral_color

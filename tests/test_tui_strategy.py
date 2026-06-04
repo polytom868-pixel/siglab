@@ -11,17 +11,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from siglab.tui.api_client import TuiApiClient
+from siglab.tui.formatting import (
+    format_drawdown,
+    format_return,
+    format_score,
+    format_sharpe,
+    truncate,
+)
 from siglab.tui.screens.strategy import (
     ComparisonPanelWidget,
     ResultsTableWidget,
     StrategyListWidget,
     StrategyScreen,
-    _format_drawdown,
-    _format_return,
-    _format_score,
-    _format_sharpe,
     _format_status,
-    _truncate,
 )
 
 
@@ -79,80 +81,80 @@ def _make_result(spec_hash: str = "abc0000000000000") -> dict:
 class TestFormatHelpers:
     """Test formatting helper functions."""
 
-    def test_format_score_high(self) -> None:
-        text = _format_score(0.85)
+    def testformat_score_high(self) -> None:
+        text = format_score(0.85)
         assert "0.850" in text.plain
         # Style is applied to the whole Text object
         assert text.style == "#4ade80"
 
-    def test_format_score_medium(self) -> None:
-        text = _format_score(0.55)
+    def testformat_score_medium(self) -> None:
+        text = format_score(0.55)
         assert "0.550" in text.plain
         assert text.style == "#f0b456"
 
-    def test_format_score_low(self) -> None:
-        text = _format_score(0.25)
+    def testformat_score_low(self) -> None:
+        text = format_score(0.25)
         assert "0.250" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_score_none(self) -> None:
-        text = _format_score(None)
+    def testformat_score_none(self) -> None:
+        text = format_score(None)
         assert "─" in text.plain
 
-    def test_format_score_nan(self) -> None:
-        text = _format_score(float("nan"))
+    def testformat_score_nan(self) -> None:
+        text = format_score(float("nan"))
         assert "NaN" in text.plain
 
-    def test_format_return_positive(self) -> None:
-        text = _format_return(12.5)
+    def testformat_return_positive(self) -> None:
+        text = format_return(12.5)
         assert "+12.50%" in text.plain
         assert text.style == "#4ade80"
 
-    def test_format_return_negative(self) -> None:
-        text = _format_return(-8.3)
+    def testformat_return_negative(self) -> None:
+        text = format_return(-8.3)
         assert "-8.30%" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_return_zero(self) -> None:
-        text = _format_return(0.0)
+    def testformat_return_zero(self) -> None:
+        text = format_return(0.0)
         assert "0.00%" in text.plain
         assert text.style == "#7d9483"
 
-    def test_format_return_none(self) -> None:
-        text = _format_return(None)
+    def testformat_return_none(self) -> None:
+        text = format_return(None)
         assert "─" in text.plain
 
-    def test_format_sharpe_high(self) -> None:
-        text = _format_sharpe(1.8)
+    def testformat_sharpe_high(self) -> None:
+        text = format_sharpe(1.8)
         assert "1.80" in text.plain
         assert text.style == "#4ade80"
 
-    def test_format_sharpe_medium(self) -> None:
-        text = _format_sharpe(0.7)
+    def testformat_sharpe_medium(self) -> None:
+        text = format_sharpe(0.7)
         assert "0.70" in text.plain
         assert text.style == "#f0b456"
 
-    def test_format_sharpe_low(self) -> None:
-        text = _format_sharpe(0.3)
+    def testformat_sharpe_low(self) -> None:
+        text = format_sharpe(0.3)
         assert "0.30" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_sharpe_none(self) -> None:
-        text = _format_sharpe(None)
+    def testformat_sharpe_none(self) -> None:
+        text = format_sharpe(None)
         assert "─" in text.plain
 
-    def test_format_drawdown_moderate(self) -> None:
-        text = _format_drawdown(-5.0)
+    def testformat_drawdown_moderate(self) -> None:
+        text = format_drawdown(-5.0)
         assert "5.0%" in text.plain
         assert text.style == "#7d9483"
 
-    def test_format_drawdown_high(self) -> None:
-        text = _format_drawdown(-25.0)
+    def testformat_drawdown_high(self) -> None:
+        text = format_drawdown(-25.0)
         assert "25.0%" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_drawdown_none(self) -> None:
-        text = _format_drawdown(None)
+    def testformat_drawdown_none(self) -> None:
+        text = format_drawdown(None)
         assert "─" in text.plain
 
     def test_format_status_passed(self) -> None:
@@ -170,16 +172,16 @@ class TestFormatHelpers:
         assert "pending" in text.plain
         assert text.style == "#7d9483"
 
-    def test_truncate_short(self) -> None:
-        assert _truncate("hello", 10) == "hello"
+    def testtruncate_short(self) -> None:
+        assert truncate("hello", 10) == "hello"
 
-    def test_truncate_long(self) -> None:
-        result = _truncate("hello world long text", 10)
+    def testtruncate_long(self) -> None:
+        result = truncate("hello world long text", 10)
         assert len(result) == 10
         assert result.endswith("…")
 
-    def test_truncate_exact(self) -> None:
-        assert _truncate("hello", 5) == "hello"
+    def testtruncate_exact(self) -> None:
+        assert truncate("hello", 5) == "hello"
 
 
 # ══════════════════════════════════════════════════════════════════════

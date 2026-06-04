@@ -19,7 +19,7 @@ EvidenceScreen {
     height: 3;
     max-width: 100%;
     background: $input-bg;
-    border: none;
+    border: tall $border-dim;
     padding: 0 1;
 }
 

@@ -12,15 +12,13 @@ import httpx
 import pytest
 
 from siglab.tui.api_client import TuiApiClient
+from siglab.tui.formatting import format_change, format_price, format_volume
 from siglab.tui.screens.market import (
     KlinesChartWidget,
     MarketScreen,
     OrderBookWidget,
     SymbolListWidget,
     TickerTableWidget,
-    _format_change,
-    _format_price,
-    _format_volume,
 )
 from siglab.tui.widgets.sparkline import SparklineWidget, ohlc_summary, sparkline_text
 
@@ -95,44 +93,44 @@ def _make_symbols(n: int = 5) -> list[dict]:
 class TestFormatHelpers:
     """Test the formatting helper functions."""
 
-    def test_format_price_high(self) -> None:
-        result = _format_price(67432.50)
+    def testformat_price_high(self) -> None:
+        result = format_price(67432.50)
         assert result == "67,432.50"
 
-    def test_format_price_medium(self) -> None:
-        result = _format_price(3.14159)
+    def testformat_price_medium(self) -> None:
+        result = format_price(3.14159)
         assert result == "3.1416"
 
-    def test_format_price_low(self) -> None:
-        result = _format_price(0.15)
+    def testformat_price_low(self) -> None:
+        result = format_price(0.15)
         assert "0.15" in result
 
-    def test_format_change_positive(self) -> None:
-        text = _format_change(2.34)
+    def testformat_change_positive(self) -> None:
+        text = format_change(2.34)
         assert "▲" in str(text)
         assert "+2.34%" in str(text)
 
-    def test_format_change_negative(self) -> None:
-        text = _format_change(-0.52)
+    def testformat_change_negative(self) -> None:
+        text = format_change(-0.52)
         assert "▼" in str(text)
         assert "-0.52%" in str(text)
 
-    def test_format_change_zero(self) -> None:
-        text = _format_change(0.0)
+    def testformat_change_zero(self) -> None:
+        text = format_change(0.0)
         assert "──" in str(text)
         assert "0.00%" in str(text)
 
-    def test_format_volume_billions(self) -> None:
-        assert _format_volume(2_500_000_000) == "2.5B"
+    def testformat_volume_billions(self) -> None:
+        assert format_volume(2_500_000_000) == "2.5B"
 
-    def test_format_volume_millions(self) -> None:
-        assert _format_volume(1_230_000) == "1.2M"
+    def testformat_volume_millions(self) -> None:
+        assert format_volume(1_230_000) == "1.2M"
 
-    def test_format_volume_thousands(self) -> None:
-        assert _format_volume(5_600) == "5.6K"
+    def testformat_volume_thousands(self) -> None:
+        assert format_volume(5_600) == "5.6K"
 
-    def test_format_volume_small(self) -> None:
-        assert _format_volume(42) == "42"
+    def testformat_volume_small(self) -> None:
+        assert format_volume(42) == "42"
 
 
 # ── Sparkline Widget Tests ───────────────────────────────────────────
@@ -331,7 +329,7 @@ class TestTickerTableWidget:
     def test_render_loading_state(self) -> None:
         widget = TickerTableWidget()
         text = widget.render()
-        assert "Loading" in str(text)
+        assert "No data available" in str(text)
 
     def test_render_with_tickers(self) -> None:
         widget = TickerTableWidget()
@@ -370,7 +368,7 @@ class TestOrderBookWidget:
     def test_render_loading_state(self) -> None:
         widget = OrderBookWidget()
         text = widget.render()
-        assert "Loading" in str(text)
+        assert "No data available" in str(text)
 
     def test_render_with_data(self) -> None:
         widget = OrderBookWidget()
@@ -397,7 +395,7 @@ class TestOrderBookWidget:
         widget.bids = []
         widget.asks = []
         text = widget.render()
-        assert "Loading" in str(text)
+        assert "No data available" in str(text)
 
     def test_render_asymmetric_book(self) -> None:
         """Test rendering when bids and asks have different lengths."""

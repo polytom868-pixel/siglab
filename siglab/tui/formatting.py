@@ -17,6 +17,7 @@ ACCENT_GREEN = "#4ade80"
 WARNING_YELLOW = "#f0b456"
 ERROR_RED = "#f87171"
 INFO_BLUE = "#60a5fa"
+ACCENT_PURPLE = "#a78bfa"
 
 TEXT_PRIMARY = "#e2ebe5"
 TEXT_SECONDARY = "#a3b5a8"
@@ -27,6 +28,13 @@ SURFACE = "#0d1210"
 SURFACE_RAISED = "#162019"
 BORDER_DIM = "#2a3a30"
 INPUT_BG = "#1a2a1f"
+
+# ── Semantic Aliases ─────────────────────────────────────────────────
+# Use these to make intent clear in widget code.
+GAIN = ACCENT_GREEN
+LOSS = ERROR_RED
+LINK = INFO_BLUE
+CAUTION = WARNING_YELLOW
 
 
 # ── Formatting Helpers ───────────────────────────────────────────────
@@ -198,3 +206,32 @@ def format_latency(ms: float | None) -> Text:
         return Text(f"{ms:.0f}ms", style=WARNING_YELLOW)
     else:
         return Text(f"{ms:.0f}ms", style=ERROR_RED)
+
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning *default* on failure.
+
+    Handles ``None``, non-numeric strings, and ``NaN``.
+    """
+    try:
+        result = float(value) if value is not None else default
+        return default if result != result else result  # NaN guard
+    except (ValueError, TypeError):
+        return default
+
+
+def widget_header(title: str) -> Text:
+    """Render a standardised widget header.
+
+    Consistent uppercase bold style used across all screen widgets.
+    """
+    return Text(f" {title.upper()}\n", style=f"bold {TEXT_PRIMARY}")
+
+
+def section_divider(width: int = 40) -> Text:
+    """Render a horizontal divider line with consistent style."""
+    return Text("\u2500" * width + "\n", style=BORDER_DIM)
+
+
+# Re-export Any for callers that import safe_float
+from typing import Any  # noqa: E402

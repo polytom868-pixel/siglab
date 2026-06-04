@@ -27,6 +27,20 @@ from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli
+from siglab.tui.formatting import (
+    ACCENT_GREEN,
+    ACCENT_PURPLE,
+    BORDER_DIM,
+    ERROR_RED,
+    INFO_BLUE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING_YELLOW,
+    format_latency,
+    format_score,
+    truncate,
+)
 from siglab.tui.loading import LoadingIndicator
 
 logger = logging.getLogger(__name__)
@@ -47,45 +61,18 @@ TRACK_FILTERS_DEFAULT: list[str] = ["ALL"]
 
 
 # ── Formatting helpers ───────────────────────────────────────────────
-
-
-def _format_score(score: float | None) -> Text:
-    """Format a score with gauge-style color coding."""
-    if score is None:
-        return Text("─", style="#7d9483")
-    if score != score:  # NaN
-        return Text("NaN", style="#7d9483")
-    if score >= 0.7:
-        return Text(f"{score:.3f}", style="#4ade80")
-    elif score >= 0.4:
-        return Text(f"{score:.3f}", style="#f0b456")
-    else:
-        return Text(f"{score:.3f}", style="#f87171")
-
-
-def _format_latency(ms: float | None) -> Text:
-    """Format latency in milliseconds with color."""
-    if ms is None:
-        return Text("─", style="#7d9483")
-    if ms != ms:  # NaN
-        return Text("NaN", style="#7d9483")
-    if ms < 100:
-        return Text(f"{ms:.0f}ms", style="#4ade80")
-    elif ms < 500:
-        return Text(f"{ms:.0f}ms", style="#f0b456")
-    else:
-        return Text(f"{ms:.0f}ms", style="#f87171")
+# Centralized in siglab.tui.formatting; local helpers removed.
 
 
 def _format_status(passed: bool | None, deployed: bool = False) -> Text:
     """Format pass/fail/deployed status."""
     if deployed:
-        return Text("▲", style="#60a5fa")
+        return Text("▲", style=INFO_BLUE)
     if passed is None:
-        return Text("·", style="#7d9483")
+        return Text("·", style=TEXT_MUTED)
     if passed:
-        return Text("●", style="#4ade80")
-    return Text("○", style="#f87171")
+        return Text("●", style=ACCENT_GREEN)
+    return Text("○", style=ERROR_RED)
 
 
 def _format_date(date_str: str | None) -> str:
@@ -112,37 +99,30 @@ def _format_count(value: int | float | None) -> str:
         return f"{v:.0f}"
 
 
-def _truncate(text: str, width: int) -> str:
-    """Truncate text to width with ellipsis."""
-    if len(text) <= width:
-        return text
-    return text[: width - 1] + "\u2026"
-
-
 def _confidence_color(confidence: str) -> str:
     """Return color for confidence level."""
     c = confidence.lower().strip()
     if c == "good":
-        return "#4ade80"
+        return ACCENT_GREEN
     elif c == "medium":
-        return "#f0b456"
+        return WARNING_YELLOW
     elif c == "poor":
-        return "#f87171"
-    return "#7d9483"
+        return ERROR_RED
+    return TEXT_MUTED
 
 
 def _classification_color(classification: str) -> str:
     """Return color for skill classification."""
     c = classification.upper().strip()
     if c == "HIGH_VALUE":
-        return "#4ade80"
+        return ACCENT_GREEN
     elif c == "MEDIUM_VALUE":
-        return "#60a5fa"
+        return INFO_BLUE
     elif c == "LOW_VALUE":
-        return "#7d9483"
+        return TEXT_MUTED
     elif c == "NOISY":
-        return "#f87171"
-    return "#7d9483"
+        return ERROR_RED
+    return TEXT_MUTED
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -155,16 +135,6 @@ class TelemetryRunListWidget(Static):
 
     runs: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     selected_index: reactive[int] = reactive(0)
-
-    DEFAULT_CSS = """
-    TelemetryRunListWidget {
-        width: 1fr;
-        height: 1fr;
-        overflow-y: auto;
-        padding: 0 1;
-        background: $surface;
-    }
-    """
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -240,21 +210,18 @@ class TelemetryRunListWidget(Static):
         dr = self._date_range
         if dr and dr != "ALL":
             now = datetime.now(UTC)
-            for r in filtered[:]:
-                created = r.get("created_at", "")
-                if not created:
-                    continue
-                try:
-                    dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                    age_days = (now - dt).days
-                    if dr == "TODAY" and age_days > 0:
-                        filtered.remove(r)
-                    elif dr == "7D" and age_days > 7:
-                        filtered.remove(r)
-                    elif dr == "30D" and age_days > 30:
-                        filtered.remove(r)
-                except (ValueError, TypeError):
-                    pass
+            max_days = {"TODAY": 0, "7D": 7, "30D": 30}.get(dr)
+            if max_days is not None:
+                def _within_range(r: dict[str, Any]) -> bool:
+                    created = r.get("created_at", "")
+                    if not created:
+                        return True
+                    try:
+                        dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                        return (now - dt).days <= max_days
+                    except (ValueError, TypeError):
+                        return True
+                filtered = [r for r in filtered if _within_range(r)]
 
         self.runs = filtered
         # Clamp selected index
@@ -304,7 +271,7 @@ class TelemetryRunListWidget(Static):
 
     def render(self) -> Text:
         if not self.runs:
-            return Text("  No runs found", style="#7d9483")
+            return Text("  No runs found", style=TEXT_MUTED)
 
         lines = Text()
         for i, run in enumerate(self.runs):
@@ -318,36 +285,36 @@ class TelemetryRunListWidget(Static):
             # Build row
             prefix = "\u2713 " if is_selected else "  "
             status_dot = "\u25cf" if passed is True else ("\u25cb" if passed is False else "\u00b7")
-            status_color = "#4ade80" if passed is True else ("#f87171" if passed is False else "#7d9483")
+            status_color = ACCENT_GREEN if passed is True else (ERROR_RED if passed is False else TEXT_MUTED)
             if deployed:
                 status_dot = "\u25b2"
-                status_color = "#60a5fa"
+                status_color = INFO_BLUE
             score_str = f"{score:.2f}" if score is not None and score == score else "\u2500"
 
             row = Text()
-            row.append(prefix, style="#60a5fa" if is_selected else "#7d9483")
+            row.append(prefix, style=INFO_BLUE if is_selected else TEXT_MUTED)
             row.append(status_dot + " ", style=status_color)
-            row.append(_truncate(h, 12), style="#e2ebe5")
+            row.append(truncate(h, 12), style=TEXT_PRIMARY)
 
             # Track tag
             padding = max(0, 16 - len(h) - len(prefix) - 2)
-            row.append(" " * padding, style="#7d9483")
-            row.append(_truncate(track, 8), style="#60a5fa")
+            row.append(" " * padding, style=TEXT_MUTED)
+            row.append(truncate(track, 8), style=INFO_BLUE)
 
             if i == self.selected_index:
-                lines.append("\u25b8 ", style="#4ade80")
+                lines.append("\u25b8 ", style=ACCENT_GREEN)
                 styled_row = Text()
-                styled_row.append(prefix, style="#60a5fa" if is_selected else "#000000")
+                styled_row.append(prefix, style=INFO_BLUE if is_selected else "#000000")
                 styled_row.append(status_dot + " ", style=status_color if is_selected else "#000000")
-                styled_row.append(_truncate(h, 12), style="bold #000000")
+                styled_row.append(truncate(h, 12), style="bold #000000")
                 styled_row.append(" " * padding, style="#000000")
-                styled_row.append(_truncate(track, 8), style="#000000")
+                styled_row.append(truncate(track, 8), style="#000000")
                 lines.append_text(styled_row)
-                lines.append(f"  {score_str}", style="bold #000000 on #4ade80")
+                lines.append(f"  {score_str}", style=f"bold #000000 on {ACCENT_GREEN}")
             else:
                 lines.append("  ")
                 lines.append_text(row)
-                lines.append(f"  {score_str}", style="#7d9483")
+                lines.append(f"  {score_str}", style=TEXT_MUTED)
             lines.append("\n")
 
         return lines
@@ -363,83 +330,74 @@ class ProviderMetricsWidget(Static):
 
     telemetry_data: reactive[dict[str, Any]] = reactive(dict, layout=True)
 
-    DEFAULT_CSS = """
-    ProviderMetricsWidget {
-        height: auto;
-        min-height: 10;
-        padding: 0 1;
-        background: #0d1210;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" PROVIDER METRICS\n", style="bold #e2ebe5")
-        result.append("\u2500" * 50 + "\n", style="#2a3a30")
+        result.append(" PROVIDER METRICS\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
 
         data = self.telemetry_data
         if not data:
-            result.append("\n  No telemetry data available\n", style="#7d9483")
+            result.append("\n  No telemetry data available\n", style=TEXT_MUTED)
             result.append(
                 "  Run a benchmark evaluation\n"
                 "  to see provider metrics.\n",
-                style="#7d9483",
+                style=TEXT_MUTED,
             )
             return result
 
         # Confidence indicator
         confidence = data.get("confidence", "unknown")
         conf_color = _confidence_color(confidence)
-        result.append("  Confidence: ", style="#a3b5a8")
+        result.append("  Confidence: ", style=TEXT_SECONDARY)
         result.append(f"{confidence}\n\n", style=f"bold {conf_color}")
 
         # Stage counts as horizontal bars
         stage_counts = data.get("stage_counts", {})
         if stage_counts:
-            result.append("  Stage Distribution\n", style="bold #a3b5a8")
+            result.append("  Stage Distribution\n", style=f"bold {TEXT_SECONDARY}")
             max_count = max(stage_counts.values()) if stage_counts else 1
             for stage, count in sorted(stage_counts.items()):
                 bar_len = int((count / max_count) * 16) if max_count > 0 else 0
                 bar = "\u2588" * bar_len + "\u2591" * (16 - bar_len)
-                result.append(f"  {stage:<12}", style="#a3b5a8")
-                result.append(bar, style="#60a5fa")
-                result.append(f" {count}\n", style="#e2ebe5")
+                result.append(f"  {stage:<12}", style=TEXT_SECONDARY)
+                result.append(bar, style=INFO_BLUE)
+                result.append(f" {count}\n", style=TEXT_PRIMARY)
             result.append("\n")
 
         # Model counts
         model_counts = data.get("model_counts", {})
         if model_counts:
-            result.append("  Model Usage\n", style="bold #a3b5a8")
+            result.append("  Model Usage\n", style=f"bold {TEXT_SECONDARY}")
             total = sum(model_counts.values())
             for model, count in sorted(model_counts.items(), key=lambda x: -x[1]):
                 pct = (count / total * 100) if total > 0 else 0
                 bar_len = int(pct / 100 * 16)
                 bar = "\u2588" * bar_len + "\u2591" * (16 - bar_len)
-                result.append(f"  {model[:12]:<12}", style="#a3b5a8")
-                result.append(bar, style="#4ade80")
-                result.append(f" {count} ({pct:.0f}%)\n", style="#e2ebe5")
+                result.append(f"  {model[:12]:<12}", style=TEXT_SECONDARY)
+                result.append(bar, style=ACCENT_GREEN)
+                result.append(f" {count} ({pct:.0f}%)\n", style=TEXT_PRIMARY)
             result.append("\n")
 
         # Provider metrics
         provider_metrics = data.get("provider_metrics", {})
         usage = provider_metrics.get("usage", {})
         if usage:
-            result.append("  Token Usage\n", style="bold #a3b5a8")
+            result.append("  Token Usage\n", style=f"bold {TEXT_SECONDARY}")
             prompt = usage.get("prompt_tokens")
             completion = usage.get("completion_tokens")
             total = usage.get("total_tokens")
-            result.append("  Prompt:     ", style="#a3b5a8")
-            result.append(f"{_format_count(prompt)}\n", style="#e2ebe5")
-            result.append("  Completion: ", style="#a3b5a8")
-            result.append(f"{_format_count(completion)}\n", style="#e2ebe5")
-            result.append("  Total:      ", style="#a3b5a8")
-            result.append(f"{_format_count(total)}\n", style="#e2ebe5")
+            result.append("  Prompt:     ", style=TEXT_SECONDARY)
+            result.append(f"{_format_count(prompt)}\n", style=TEXT_PRIMARY)
+            result.append("  Completion: ", style=TEXT_SECONDARY)
+            result.append(f"{_format_count(completion)}\n", style=TEXT_PRIMARY)
+            result.append("  Total:      ", style=TEXT_SECONDARY)
+            result.append(f"{_format_count(total)}\n", style=TEXT_PRIMARY)
             cost_status = usage.get("cost_status", "")
             if cost_status:
-                result.append("  Cost:       ", style="#a3b5a8")
-                result.append(f"{cost_status}\n", style="#7d9483")
+                result.append("  Cost:       ", style=TEXT_SECONDARY)
+                result.append(f"{cost_status}\n", style=TEXT_MUTED)
             result.append("\n")
 
         # Credit pressure
@@ -447,14 +405,14 @@ class ProviderMetricsWidget(Static):
         cp_count = credit_pressure.get("event_count", 0)
         cp_latest = credit_pressure.get("latest")
         if cp_count or cp_latest:
-            result.append("  Credit Pressure\n", style="bold #a3b5a8")
-            result.append("  Events: ", style="#a3b5a8")
-            cp_color = "#f87171" if (cp_count or 0) > 0 else "#4ade80"
+            result.append("  Credit Pressure\n", style=f"bold {TEXT_SECONDARY}")
+            result.append("  Events: ", style=TEXT_SECONDARY)
+            cp_color = ERROR_RED if (cp_count or 0) > 0 else ACCENT_GREEN
             result.append(f"{cp_count}\n", style=cp_color)
             if cp_latest and isinstance(cp_latest, dict):
                 sev = str(cp_latest.get("severity", "")).lower()
-                sev_color = "#f87171" if sev == "critical" else "#f0b456" if sev == "warning" else "#7d9483"
-                result.append("  Latest: ", style="#a3b5a8")
+                sev_color = ERROR_RED if sev == "critical" else WARNING_YELLOW if sev == "warning" else TEXT_MUTED
+                result.append("  Latest: ", style=TEXT_SECONDARY)
                 result.append(f"{sev}\n", style=f"bold {sev_color}")
             result.append("\n")
 
@@ -462,9 +420,9 @@ class ProviderMetricsWidget(Static):
         context_pressure = provider_metrics.get("context_pressure", {})
         ctx_count = context_pressure.get("event_count", 0)
         if ctx_count:
-            result.append("  Context Pressure\n", style="bold #a3b5a8")
-            result.append("  Events: ", style="#a3b5a8")
-            ctx_color = "#f87171" if ctx_count > 0 else "#4ade80"
+            result.append("  Context Pressure\n", style=f"bold {TEXT_SECONDARY}")
+            result.append("  Events: ", style=TEXT_SECONDARY)
+            ctx_color = ERROR_RED if ctx_count > 0 else ACCENT_GREEN
             result.append(f"{ctx_count}\n", style=ctx_color)
 
         return result
@@ -480,26 +438,16 @@ class ToolUsageWidget(Static):
 
     telemetry_data: reactive[dict[str, Any]] = reactive(dict, layout=True)
 
-    DEFAULT_CSS = """
-    ToolUsageWidget {
-        height: 1fr;
-        min-height: 8;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0a0a0a;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" TOOL USAGE\n", style="bold #e2ebe5")
-        result.append("\u2500" * 50 + "\n", style="#2a3a30")
+        result.append(" TOOL USAGE\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
 
         data = self.telemetry_data
         if not data:
-            result.append("\n  No tool data available\n", style="#7d9483")
+            result.append("\n  No tool data available\n", style=TEXT_MUTED)
             return result
 
         tool_counts = data.get("tool_counts", {})
@@ -508,37 +456,37 @@ class ToolUsageWidget(Static):
         tool_invocation_count = data.get("tool_invocation_count", 0)
 
         if not tool_counts:
-            result.append("\n  No tool invocations recorded\n", style="#7d9483")
+            result.append("\n  No tool invocations recorded\n", style=TEXT_MUTED)
             return result
 
         # Summary line
         error_rate = (tool_error_count / tool_invocation_count * 100) if tool_invocation_count > 0 else 0
-        err_color = "#f87171" if error_rate > 10 else "#f0b456" if error_rate > 5 else "#4ade80"
-        result.append(f"  Total: {tool_invocation_count}  ", style="#a3b5a8")
+        err_color = ERROR_RED if error_rate > 10 else WARNING_YELLOW if error_rate > 5 else ACCENT_GREEN
+        result.append(f"  Total: {tool_invocation_count}  ", style=TEXT_SECONDARY)
         result.append(f"Errors: {tool_error_count} ", style=err_color)
         result.append(f"({error_rate:.1f}%)\n", style=err_color)
 
         # Latency summary
         p50 = tool_latency.get("p50")
         p95 = tool_latency.get("p95")
-        result.append("  Latency ", style="#a3b5a8")
-        result.append("p50:", style="#a3b5a8")
-        result.append_text(_format_latency(p50))
-        result.append("  p95:", style="#a3b5a8")
-        result.append_text(_format_latency(p95))
+        result.append("  Latency ", style=TEXT_SECONDARY)
+        result.append("p50:", style=TEXT_SECONDARY)
+        result.append_text(format_latency(p50))
+        result.append("  p95:", style=TEXT_SECONDARY)
+        result.append_text(format_latency(p95))
         result.append("\n\n")
 
         # Tool table header
-        result.append(f"  {'TOOL':<28}{'COUNT':>6}{'ERR':>6}\n", style="#7d9483")
-        result.append("  " + "\u2500" * 42 + "\n", style="#2a3a30")
+        result.append(f"  {'TOOL':<28}{'COUNT':>6}{'ERR':>6}\n", style=TEXT_MUTED)
+        result.append("  " + "\u2500" * 42 + "\n", style=BORDER_DIM)
 
         # Tool rows (sorted by count descending)
         for tool_name, count in sorted(tool_counts.items(), key=lambda x: -x[1]):
-            name = _truncate(tool_name, 26)
-            result.append(f"  {name:<28}", style="#a3b5a8")
-            result.append(f"{count:>6}", style="#e2ebe5")
+            name = truncate(tool_name, 26)
+            result.append(f"  {name:<28}", style=TEXT_SECONDARY)
+            result.append(f"{count:>6}", style=TEXT_PRIMARY)
             # Error indicator (simplified — we don't have per-tool error counts in telemetry data)
-            result.append(f"{'':>6}\n", style="#7d9483")
+            result.append(f"{'':>6}\n", style=TEXT_MUTED)
 
         return result
 
@@ -553,76 +501,67 @@ class RunDetailWidget(Static):
 
     run: reactive[dict[str, Any] | None] = reactive(None, layout=True)
 
-    DEFAULT_CSS = """
-    RunDetailWidget {
-        height: auto;
-        min-height: 8;
-        padding: 0 1;
-        background: #0d1210;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" RUN DETAIL\n", style="bold #e2ebe5")
-        result.append("\u2500" * 50 + "\n", style="#2a3a30")
+        result.append(" RUN DETAIL\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
 
         run = self.run
         if not run:
-            result.append("\n  Select a run to view details\n", style="#7d9483")
+            result.append("\n  Select a run to view details\n", style=TEXT_MUTED)
             return result
 
         # Spec hash
         spec_hash = str(run.get("spec_hash", "?"))
-        result.append("  Hash: ", style="#a3b5a8")
-        result.append(f"{spec_hash}\n", style="#e2ebe5")
+        result.append("  Hash: ", style=TEXT_SECONDARY)
+        result.append(f"{spec_hash}\n", style=TEXT_PRIMARY)
 
         # Track + Family
         track = str(run.get("track", ""))
         family = str(run.get("family", ""))
-        result.append("  Track: ", style="#a3b5a8")
-        result.append(f"{track}\n", style="#60a5fa")
-        result.append("  Family: ", style="#a3b5a8")
-        result.append(f"{family}\n", style="#60a5fa")
+        result.append("  Track: ", style=TEXT_SECONDARY)
+        result.append(f"{track}\n", style=INFO_BLUE)
+        result.append("  Family: ", style=TEXT_SECONDARY)
+        result.append(f"{family}\n", style=INFO_BLUE)
 
         # Date
         created = run.get("created_at", "")
-        result.append("  Created: ", style="#a3b5a8")
-        result.append(f"{_format_date(created)}\n", style="#e2ebe5")
+        result.append("  Created: ", style=TEXT_SECONDARY)
+        result.append(f"{_format_date(created)}\n", style=TEXT_PRIMARY)
 
         # Score
         score = run.get("aggregate_score")
-        result.append("  Score: ", style="#a3b5a8")
-        result.append_text(_format_score(score))
+        result.append("  Score: ", style=TEXT_SECONDARY)
+        result.append_text(format_score(score))
         result.append("\n")
 
         # Status
         passed = run.get("passed")
         deployed = bool(run.get("deployd"))
-        result.append("  Status: ", style="#a3b5a8")
+        result.append("  Status: ", style=TEXT_SECONDARY)
         result.append_text(_format_status(passed, deployed))
         if deployed:
-            result.append(" deployed", style="#60a5fa")
+            result.append(" deployed", style=INFO_BLUE)
         elif passed is True:
-            result.append(" passed", style="#4ade80")
+            result.append(" passed", style=ACCENT_GREEN)
         elif passed is False:
-            result.append(" failed", style="#f87171")
+            result.append(" failed", style=ERROR_RED)
         else:
-            result.append(" pending", style="#7d9483")
+            result.append(" pending", style=TEXT_MUTED)
         result.append("\n")
 
         # Experiment count (for run summaries)
         if "experiment_count" in run:
-            result.append("  Experiments: ", style="#a3b5a8")
-            result.append(f"{run['experiment_count']}\n", style="#e2ebe5")
+            result.append("  Experiments: ", style=TEXT_SECONDARY)
+            result.append(f"{run['experiment_count']}\n", style=TEXT_PRIMARY)
         if "passed_count" in run:
-            result.append("  Passed: ", style="#a3b5a8")
-            result.append(f"{run['passed_count']}\n", style="#e2ebe5")
+            result.append("  Passed: ", style=TEXT_SECONDARY)
+            result.append(f"{run['passed_count']}\n", style=TEXT_PRIMARY)
         if "best_aggregate_score" in run:
-            result.append("  Best Score: ", style="#a3b5a8")
-            result.append_text(_format_score(run.get("best_aggregate_score")))
+            result.append("  Best Score: ", style=TEXT_SECONDARY)
+            result.append_text(format_score(run.get("best_aggregate_score")))
             result.append("\n")
 
         return result
@@ -638,21 +577,11 @@ class RunComparisonWidget(Static):
 
     runs: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
 
-    DEFAULT_CSS = """
-    RunComparisonWidget {
-        height: 1fr;
-        min-height: 10;
-        padding: 0 1;
-        overflow-y: auto;
-        background: #0a0a0a;
-    }
-    """
-
     _RUN_COLORS: ClassVar[list[str]] = [
-        "#4ade80",  # green
-        "#60a5fa",  # blue
-        "#f0b456",  # yellow
-        "#a78bfa",  # purple
+        ACCENT_GREEN,   # green
+        INFO_BLUE,      # blue
+        WARNING_YELLOW, # yellow
+        ACCENT_PURPLE,  # purple
     ]
 
     def set_runs(self, runs: list[dict[str, Any]]) -> None:
@@ -661,11 +590,11 @@ class RunComparisonWidget(Static):
 
     def render(self) -> Text:
         result = Text()
-        result.append(" RUN COMPARISON\n", style="bold #e2ebe5")
+        result.append(" RUN COMPARISON\n", style=f"bold {TEXT_PRIMARY}")
 
         if len(self.runs) < 2:
             result.append(
-                "  Select 2+ runs with Space, then press c\n", style="#7d9483"
+                "  Select 2+ runs with Space, then press c\n", style=TEXT_MUTED
             )
             return result
 
@@ -679,10 +608,10 @@ class RunComparisonWidget(Static):
             name = str(run.get("spec_hash", f"R{i+1}"))[:col_w]
             color = self._RUN_COLORS[i % len(self._RUN_COLORS)]
             header.append(f"{name:<{col_w}}", style=f"bold {color}")
-        header.append("DELTA", style="bold #f0b456")
+        header.append("DELTA", style=f"bold {WARNING_YELLOW}")
         result.append_text(header)
         result.append("\n")
-        result.append("  " + "\u2500" * (col_w * (n + 1) + 4) + "\n", style="#2a3a30")
+        result.append("  " + "\u2500" * (col_w * (n + 1) + 4) + "\n", style=BORDER_DIM)
 
         # Metrics rows
         metrics = [
@@ -695,7 +624,7 @@ class RunComparisonWidget(Static):
 
         for label, key, fmt in metrics:
             row = Text()
-            row.append(f"  {label:<12}", style="#e2ebe5")
+            row.append(f"  {label:<12}", style=TEXT_PRIMARY)
 
             values: list[float] = []
             for run in self.runs:
@@ -707,7 +636,7 @@ class RunComparisonWidget(Static):
                 val = run.get(key)
                 color = self._RUN_COLORS[i % len(self._RUN_COLORS)]
                 if val is None:
-                    row.append(f"{'─':<{col_w}}", style="#7d9483")
+                    row.append(f"{'─':<{col_w}}", style=TEXT_MUTED)
                 elif isinstance(val, bool):
                     status = "passed" if val else "failed"
                     row.append(f"{status:<{col_w}}", style=color)
@@ -715,7 +644,7 @@ class RunComparisonWidget(Static):
                     if key == "created_at":
                         row.append(f"{_format_date(val):<{col_w}}", style=color)
                     else:
-                        row.append(f"{_truncate(val, col_w - 1):<{col_w}}", style=color)
+                        row.append(f"{truncate(val, col_w - 1):<{col_w}}", style=color)
                 else:
                     formatted = fmt.format(val)
                     row.append(f"{formatted:<{col_w}}", style=color)
@@ -724,12 +653,12 @@ class RunComparisonWidget(Static):
             if values and len(values) >= 2 and key != "family" and key != "track":
                 delta = max(values) - min(values)
                 if key == "aggregate_score":
-                    row.append(f"\u00b1{delta:.3f}", style="#f0b456")
+                    row.append(f"\u00b1{delta:.3f}", style=WARNING_YELLOW)
                 else:
-                    row.append(f"\u00b1{delta:.3f}", style="#f0b456")
+                    row.append(f"\u00b1{delta:.3f}", style=WARNING_YELLOW)
             elif key in ("family", "track"):
                 unique_vals = len(set(str(r.get(key, "")) for r in self.runs))
-                row.append("diff" if unique_vals > 1 else "same", style="#f0b456" if unique_vals > 1 else "#7d9483")
+                row.append("diff" if unique_vals > 1 else "same", style=WARNING_YELLOW if unique_vals > 1 else TEXT_MUTED)
 
             result.append_text(row)
             result.append("\n")
@@ -748,25 +677,16 @@ class ServiceHealthWidget(Static):
     service_health: reactive[dict[str, Any]] = reactive(dict, layout=True)
     artifact_status: reactive[dict[str, Any]] = reactive(dict, layout=True)
 
-    DEFAULT_CSS = """
-    ServiceHealthWidget {
-        height: auto;
-        min-height: 6;
-        padding: 0 1;
-        background: #0d1210;
-    }
-    """
-
     def render(self) -> Text:
         result = Text()
 
         # Header
-        result.append(" SERVICE HEALTH\n", style="bold #e2ebe5")
-        result.append("\u2500" * 50 + "\n", style="#2a3a30")
+        result.append(" SERVICE HEALTH\n", style=f"bold {TEXT_PRIMARY}")
+        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
 
         health = self.service_health
         if not health:
-            result.append("\n  No health data available\n", style="#7d9483")
+            result.append("\n  No health data available\n", style=TEXT_MUTED)
             return result
 
         for name, info in sorted(health.items()):
@@ -775,25 +695,25 @@ class ServiceHealthWidget(Static):
             status = str(info.get("status", "unknown")).lower()
             if status in ("ok", "running"):
                 icon = "\u25cf"
-                color = "#4ade80"
+                color = ACCENT_GREEN
             elif status == "external":
                 icon = "\u25cb"
-                color = "#60a5fa"
+                color = INFO_BLUE
             elif status == "missing":
                 icon = "\u25cb"
-                color = "#f87171"
+                color = ERROR_RED
             else:
                 icon = "\u00b7"
-                color = "#7d9483"
+                color = TEXT_MUTED
 
             result.append(f"  {icon} ", style=color)
-            result.append(f"{name:<16}", style="#a3b5a8")
+            result.append(f"{name:<16}", style=TEXT_SECONDARY)
             result.append(f"{status}\n", style=color)
 
         # Artifact freshness
         artifacts = self.artifact_status
         if artifacts:
-            result.append("\n  ARTIFACTS\n", style="bold #a3b5a8")
+            result.append("\n  ARTIFACTS\n", style=f"bold {TEXT_SECONDARY}")
             for name, info in sorted(artifacts.items()):
                 if not isinstance(info, dict):
                     continue
@@ -801,19 +721,19 @@ class ServiceHealthWidget(Static):
                 status = str(info.get("status", "unknown")).lower()
                 if freshness == "fresh":
                     icon = "\u25cf"
-                    color = "#4ade80"
+                    color = ACCENT_GREEN
                 elif freshness == "stale":
                     icon = "\u25cb"
-                    color = "#f0b456"
+                    color = WARNING_YELLOW
                 elif freshness == "expired":
                     icon = "\u25cb"
-                    color = "#f87171"
+                    color = ERROR_RED
                 else:
                     icon = "\u00b7"
-                    color = "#7d9483"
+                    color = TEXT_MUTED
 
                 result.append(f"  {icon} ", style=color)
-                result.append(f"{name:<20}", style="#a3b5a8")
+                result.append(f"{name:<20}", style=TEXT_SECONDARY)
                 result.append(f"{freshness if status == 'present' else status}\n", style=color)
 
         return result
@@ -897,6 +817,11 @@ class TelemetryScreen(Screen[None]):
     def on_mount(self) -> None:
         """Initialize the screen and start auto-refresh."""
         self._update_filters_bar()
+        try:
+            loading = self.query_one("#telemetry-loading", LoadingIndicator)
+            loading.loading = True
+        except Exception:
+            pass
         self._update_status("Loading runs and telemetry\u2026")
         self.call_after_refresh(self._refresh_all)
         self._refresh_timer = self.set_interval(REFRESH_SECONDS, self._refresh_all)

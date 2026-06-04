@@ -12,6 +12,8 @@ from textual.app import ComposeResult
 from textual.widgets import Static
 from textual.widget import Widget
 
+from siglab.tui.formatting import ACCENT_GREEN, ERROR_RED, TEXT_MUTED
+
 
 class SigLabStatusBar(Widget):
     """A status bar showing connection state, version, and current time.
@@ -71,17 +73,17 @@ class SigLabStatusBar(Widget):
     def _update_display(self) -> None:
         now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
         conn_icon = "●" if self._connected else "○"
-        conn_color = "green" if self._connected else "red"
+        conn_color = ACCENT_GREEN if self._connected else ERROR_RED
 
         left = Text.assemble(
             (f" SigLab v{self._version} ", "bold"),
             (f"[{conn_icon}] ", conn_color),
-            (f"{self._api_url}", "dim"),
+            (f"{self._api_url}", TEXT_MUTED),
         )
 
-        center = Text("", style="dim")
+        center = Text("", style=TEXT_MUTED)
 
-        right = Text(now, style="dim")
+        right = Text(now, style=TEXT_MUTED)
 
         self.query_one("#status-left", Static).update(left)
         self.query_one("#status-center", Static).update(center)

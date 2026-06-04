@@ -19,6 +19,7 @@ from textual.widgets import ListItem, ListView, Static
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.cli_bridge import run_cli_help
+from siglab.tui.formatting import INFO_BLUE, TEXT_MUTED
 from siglab.tui.widgets import SigLabStatusBar
 from siglab.tui.screens.market import MarketScreen
 from siglab.tui.screens.paper import PaperScreen
@@ -94,14 +95,14 @@ class HelpScreen(ModalScreen[None]):
         height: auto;
         max-height: 80%;
         padding: 1 2;
-        background: #0d1210;
-        border: solid #2a3a30;
+        background: $surface;
+        border: solid $border-dim;
         overflow-y: auto;
     }
 
     #help-title {
         text-style: bold;
-        color: #4ade80;
+        color: $accent-green;
         margin: 0 0 1 0;
     }
     """
@@ -203,7 +204,7 @@ class HelpScreen(ModalScreen[None]):
             return []
         items: list[Static] = []
         items.append(Static(""))
-        items.append(Static(f"  \u2014 {self._screen_name or 'Screen'} Shortcuts \u2014", style="bold #60a5fa"))
+        items.append(Static(f"  \u2014 {self._screen_name or 'Screen'} Shortcuts \u2014", style=f"bold {INFO_BLUE}"))
         for key, desc in bindings:
             items.append(self._render_binding(key, desc))
         return items
@@ -211,8 +212,8 @@ class HelpScreen(ModalScreen[None]):
     @staticmethod
     def _render_binding(key: str, desc: str) -> Static:
         text = Text.assemble(
-            (f"  {key:<24} ", "bold #60a5fa"),
-            (desc, "#7d9483"),
+            (f"  {key:<24} ", f"bold {INFO_BLUE}"),
+            (desc, TEXT_MUTED),
         )
         return Static(text)
 
@@ -303,7 +304,7 @@ class SigLabTUI(App):
 
     TITLE = "SigLab"
     SUB_TITLE = "Terminal Dashboard"
-    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss", "styles/risk.tcss", "styles/strategy.tcss", "styles/telemetry.tcss", "styles/evidence.tcss"]
+    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss", "styles/market.tcss", "styles/paper.tcss", "styles/risk.tcss", "styles/strategy.tcss", "styles/telemetry.tcss", "styles/evidence.tcss"]
 
     # Register screens (placeholders for now, expanded in later features)
     SCREENS: ClassVar[dict[str, Callable[[], Screen]]] = _BUILTIN_SCREENS
