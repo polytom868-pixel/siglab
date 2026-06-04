@@ -39,6 +39,7 @@ from siglab.tui.formatting import (
     WARNING_YELLOW,
     format_latency,
     format_score,
+    friendly_error,
     truncate,
 )
 from siglab.tui.loading import LoadingIndicator
@@ -874,7 +875,7 @@ class TelemetryScreen(Screen[None]):
             )
             self.is_loading = False
         except Exception as exc:
-            self._update_status(f"Error: {exc}")
+            self._update_status(f"Error: {friendly_error(exc)}")
             self.is_loading = False
             logger.warning("Telemetry refresh failed: %s", exc)
 

@@ -39,6 +39,7 @@ from siglab.tui.formatting import (
     format_return,
     format_score,
     format_sharpe,
+    friendly_error,
     truncate,
 )
 from siglab.tui.loading import LoadingIndicator
@@ -637,8 +638,9 @@ class StrategyScreen(Screen):
             list_widget.set_strategies(rows)
             self.strategy_count = len(rows)
             self._update_status(f"  {len(rows)} strategies loaded  |  [e]valuate  [c]ompare  [s]ort  [/]search")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Strategy list update failed: %s", exc)
+            self.notify(friendly_error(exc), severity="error")
 
     async def _load_results_for_hash(self, spec_hash: str) -> dict[str, Any] | None:
         """Load detailed results for a single strategy hash."""

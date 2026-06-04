@@ -34,6 +34,7 @@ from siglab.tui.formatting import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WARNING_YELLOW,
+    friendly_error,
 )
 from siglab.tui.loading import LoadingIndicator
 
@@ -554,7 +555,7 @@ class EvidenceScreen(Screen[None]):
         except Exception as exc:
             self.api_connected = False
             logger.debug(f"Evidence graph refresh failed: {exc}")
-            self._update_status_error(str(exc))
+            self._update_status_error(friendly_error(exc))
         finally:
             self.graph_loading = False
             try:
