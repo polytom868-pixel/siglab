@@ -24,7 +24,7 @@ class SigLabStatusBar(Widget):
         layout: horizontal;
         height: 1;
         background: #0d1210;
-        color: #6b7f70;
+        color: #7d9483;
     }
 
     SigLabStatusBar > .status-item {

@@ -54,7 +54,7 @@ class PlaceholderScreen(Screen):
         width: 100%;
     }
     #placeholder-text {
-        color: #6b7f70;
+        color: #7d9483;
         text-style: italic;
     }
     """
@@ -126,7 +126,7 @@ class HelpScreen(ModalScreen[None]):
     def _render_binding(key: str, desc: str) -> Static:
         text = Text.assemble(
             (f"  {key:<20} ", "bold #60a5fa"),
-            (desc, "#6b7f70"),
+            (desc, "#7d9483"),
         )
         return Static(text)
 
@@ -195,7 +195,7 @@ class SigLabTUI(App):
 
     TITLE = "SigLab"
     SUB_TITLE = "Terminal Dashboard"
-    CSS_PATH = "styles/app.tcss"
+    CSS_PATH = ["styles/theme.tcss", "styles/app.tcss"]
 
     # Register screens (placeholders for now, expanded in later features)
     SCREENS: ClassVar[dict[str, Callable[[], Screen]]] = _BUILTIN_SCREENS
@@ -206,6 +206,12 @@ class SigLabTUI(App):
         Binding("?", "show_help", "Help", show=True),
         Binding("f1", "show_help", "Help", show=False),
         Binding("escape", "go_back", "Back", show=False),
+        Binding("1", "switch_to_market", "Market", show=False),
+        Binding("2", "switch_to_paper", "Paper", show=False),
+        Binding("3", "switch_to_risk", "Risk", show=False),
+        Binding("4", "switch_to_strategy", "Strategy", show=False),
+        Binding("5", "switch_to_telemetry", "Telemetry", show=False),
+        Binding("6", "switch_to_evidence", "Evidence", show=False),
     ]
 
     # Reactive state
@@ -231,13 +237,18 @@ class SigLabTUI(App):
         self.set_interval(15.0, self._check_api_connection)
         self.call_after_refresh(self._check_api_connection)
 
+    async def on_unmount(self) -> None:
+        """Clean up resources when the app is shutting down."""
+        await self.api_client.close()
+
     async def _check_api_connection(self) -> None:
         """Check whether the FastAPI backend is reachable."""
         try:
             await self.api_client.get_health()
             self.api_connected = True
-        except Exception:
+        except Exception as exc:
             self.api_connected = False
+            self.log.debug(f"API connection check failed: {exc}")
 
     def watch_api_connected(self, connected: bool) -> None:
         """React to changes in API connection state."""
@@ -259,20 +270,43 @@ class SigLabTUI(App):
     def on_screen_resume(self) -> None:
         """Update sidebar highlight when a screen becomes active."""
         current = self.screen
-        for _idx, _label, screen_id in NAV_ITEMS:
-            if current.id == screen_id or isinstance(current, PlaceholderScreen):
-                try:
-                    sidebar = self.query_one(NavSidebar)
-                    sidebar.highlight_item(screen_id)
-                except NoMatches:
-                    pass
-                return
+        current_id = getattr(current, "id", "")
+        if current_id in SCREEN_IDS:
+            try:
+                sidebar = self.query_one(NavSidebar)
+                sidebar.highlight_item(current_id)
+            except NoMatches:
+                pass
 
     # ── Keyboard navigation shortcuts ──
 
     def action_switch_screen(self, screen_id: str) -> None:
         """Switch to a specific screen by its ID."""
         self.push_screen(screen_id)
+
+    def action_switch_to_market(self) -> None:
+        """Switch to the market screen (key 1)."""
+        self.push_screen("market")
+
+    def action_switch_to_paper(self) -> None:
+        """Switch to the paper trading screen (key 2)."""
+        self.push_screen("paper")
+
+    def action_switch_to_risk(self) -> None:
+        """Switch to the risk screen (key 3)."""
+        self.push_screen("risk")
+
+    def action_switch_to_strategy(self) -> None:
+        """Switch to the strategy screen (key 4)."""
+        self.push_screen("strategy")
+
+    def action_switch_to_telemetry(self) -> None:
+        """Switch to the telemetry screen (key 5)."""
+        self.push_screen("telemetry")
+
+    def action_switch_to_evidence(self) -> None:
+        """Switch to the evidence screen (key 6)."""
+        self.push_screen("evidence")
 
     async def action_run_cli_help(self) -> None:
         """Run the CLI help command and display in a debug panel."""

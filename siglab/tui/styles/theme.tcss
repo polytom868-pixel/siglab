@@ -10,7 +10,7 @@ $surface: #0d1210;
 $surface-raised: #162019;
 $text-primary: #e2ebe5;
 $text-secondary: #a3b5a8;
-$text-muted: #6b7f70;
+$text-muted: #7d9483;
 
 $accent-green: #4ade80;
 $warning-yellow: #f0b456;
