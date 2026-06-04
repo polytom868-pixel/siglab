@@ -23,8 +23,8 @@ from siglab.tui.screens.risk import (
     _correlation_block,
     _correlation_color,
     _gauge_color,
-    _severity_color,
 )
+from siglab.tui.formatting import severity_color
 
 
 # ── Helper function tests ────────────────────────────────────────────
@@ -59,23 +59,23 @@ class TestGaugeColor:
 
 
 class TestSeverityColor:
-    """Test _severity_color helper."""
+    """Test severity_color helper."""
 
     def test_critical_returns_red(self) -> None:
-        assert _severity_color("critical") == "#f87171"
+        assert severity_color("critical") == "#f87171"
 
     def test_warning_returns_yellow(self) -> None:
-        assert _severity_color("warning") == "#f0b456"
+        assert severity_color("warning") == "#f0b456"
 
     def test_info_returns_blue(self) -> None:
-        assert _severity_color("info") == "#60a5fa"
+        assert severity_color("info") == "#60a5fa"
 
     def test_unknown_returns_muted(self) -> None:
-        assert _severity_color("unknown") == "#7d9483"
+        assert severity_color("unknown") == "#7d9483"
 
     def test_case_insensitive(self) -> None:
-        assert _severity_color("CRITICAL") == "#f87171"
-        assert _severity_color("Warning") == "#f0b456"
+        assert severity_color("CRITICAL") == "#f87171"
+        assert severity_color("Warning") == "#f0b456"
 
 
 class TestCorrelationColor:

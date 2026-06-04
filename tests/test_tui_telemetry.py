@@ -12,8 +12,12 @@ import pytest
 
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.formatting import (
+    confidence_color,
+    format_count,
+    format_date,
     format_latency,
     format_score,
+    format_status,
     truncate,
 )
 from siglab.tui.screens.telemetry import (
@@ -24,11 +28,7 @@ from siglab.tui.screens.telemetry import (
     TelemetryRunListWidget,
     TelemetryScreen,
     ToolUsageWidget,
-    _confidence_color,
     _classification_color,
-    _format_count,
-    _format_date,
-    _format_status,
 )
 
 
@@ -169,56 +169,56 @@ class TestFormatHelpers:
         text = format_latency(None)
         assert "\u2500" in text.plain
 
-    def test_format_status_passed(self) -> None:
-        text = _format_status(True)
+    def testformat_status_passed(self) -> None:
+        text = format_status(True)
         assert "\u25cf" in text.plain
         assert text.style == "#4ade80"
 
-    def test_format_status_failed(self) -> None:
-        text = _format_status(False)
+    def testformat_status_failed(self) -> None:
+        text = format_status(False)
         assert "\u25cb" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_status_deployed(self) -> None:
-        text = _format_status(True, deployed=True)
+    def testformat_status_deployed(self) -> None:
+        text = format_status(True, deployed=True)
         assert "\u25b2" in text.plain
         assert text.style == "#60a5fa"
 
-    def test_format_status_none(self) -> None:
-        text = _format_status(None)
+    def testformat_status_none(self) -> None:
+        text = format_status(None)
         assert "\u00b7" in text.plain
         assert text.style == "#7d9483"
 
-    def test_format_date_valid(self) -> None:
-        result = _format_date("2026-06-01T10:00:00+00:00")
+    def testformat_date_valid(self) -> None:
+        result = format_date("2026-06-01T10:00:00+00:00")
         assert "06-01" in result
 
-    def test_format_date_none(self) -> None:
-        result = _format_date(None)
+    def testformat_date_none(self) -> None:
+        result = format_date(None)
         assert result == "\u2500\u2500"
 
-    def test_format_date_empty(self) -> None:
-        result = _format_date("")
+    def testformat_date_empty(self) -> None:
+        result = format_date("")
         assert result == "\u2500\u2500"
 
-    def test_format_date_short(self) -> None:
-        result = _format_date("2026-06")
+    def testformat_date_short(self) -> None:
+        result = format_date("2026-06")
         assert "2026" in result
 
-    def test_format_count_small(self) -> None:
-        assert _format_count(42) == "42"
+    def testformat_count_small(self) -> None:
+        assert format_count(42) == "42"
 
-    def test_format_count_thousands(self) -> None:
-        assert _format_count(3200) == "3.2k"
+    def testformat_count_thousands(self) -> None:
+        assert format_count(3200) == "3.2k"
 
-    def test_format_count_millions(self) -> None:
-        assert _format_count(1500000) == "1.5M"
+    def testformat_count_millions(self) -> None:
+        assert format_count(1500000) == "1.5M"
 
-    def test_format_count_none(self) -> None:
-        assert _format_count(None) == "\u2500"
+    def testformat_count_none(self) -> None:
+        assert format_count(None) == "\u2500"
 
-    def test_format_count_float(self) -> None:
-        assert _format_count(50000.0) == "50.0k"
+    def testformat_count_float(self) -> None:
+        assert format_count(50000.0) == "50.0k"
 
     def testtruncate_short(self) -> None:
         assert truncate("hello", 10) == "hello"
@@ -231,17 +231,17 @@ class TestFormatHelpers:
     def testtruncate_exact(self) -> None:
         assert truncate("hello", 5) == "hello"
 
-    def test_confidence_color_good(self) -> None:
-        assert _confidence_color("good") == "#4ade80"
+    def testconfidence_color_good(self) -> None:
+        assert confidence_color("good") == "#4ade80"
 
-    def test_confidence_color_medium(self) -> None:
-        assert _confidence_color("medium") == "#f0b456"
+    def testconfidence_color_medium(self) -> None:
+        assert confidence_color("medium") == "#f0b456"
 
-    def test_confidence_color_poor(self) -> None:
-        assert _confidence_color("poor") == "#f87171"
+    def testconfidence_color_poor(self) -> None:
+        assert confidence_color("poor") == "#f87171"
 
-    def test_confidence_color_unknown(self) -> None:
-        assert _confidence_color("unknown") == "#7d9483"
+    def testconfidence_color_unknown(self) -> None:
+        assert confidence_color("unknown") == "#7d9483"
 
     def test_classification_color_high_value(self) -> None:
         assert _classification_color("HIGH_VALUE") == "#4ade80"
@@ -275,7 +275,7 @@ class TestTelemetryRunListWidget:
         rows = _make_run_rows(3)
         widget.set_runs(rows)
         assert len(widget.runs) == 3
-        assert len(widget._all_runs) == 3
+        assert len(widget._all_data) == 3
 
     def test_filter_by_text(self) -> None:
         widget = TelemetryRunListWidget()
@@ -386,7 +386,7 @@ class TestTelemetryRunListWidget:
     def test_render_empty(self) -> None:
         widget = TelemetryRunListWidget()
         text = widget.render()
-        assert "No runs" in text.plain
+        assert "No items found" in text.plain
 
     def test_render_with_data(self) -> None:
         widget = TelemetryRunListWidget()
@@ -586,7 +586,7 @@ class TestRunComparisonWidget:
         rows = _make_run_rows(2)
         widget.set_runs(rows)
         text = widget.render()
-        assert "RUN COMPARISON" in text.plain
+        assert "COMPARISON" in text.plain
         assert "Score" in text.plain
         assert "Track" in text.plain
         assert "DELTA" in text.plain
@@ -603,7 +603,7 @@ class TestRunComparisonWidget:
         rows = _make_run_rows(4)
         widget.set_runs(rows)
         text = widget.render()
-        assert "RUN COMPARISON" in text.plain
+        assert "COMPARISON" in text.plain
 
 
 # ══════════════════════════════════════════════════════════════════════

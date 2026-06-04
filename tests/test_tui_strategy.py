@@ -18,12 +18,12 @@ from siglab.tui.formatting import (
     format_sharpe,
     truncate,
 )
+from siglab.tui.formatting import format_status
 from siglab.tui.screens.strategy import (
     ComparisonPanelWidget,
     ResultsTableWidget,
     StrategyListWidget,
     StrategyScreen,
-    _format_status,
 )
 
 
@@ -157,19 +157,19 @@ class TestFormatHelpers:
         text = format_drawdown(None)
         assert "─" in text.plain
 
-    def test_format_status_passed(self) -> None:
-        text = _format_status(True)
+    def testformat_status_passed(self) -> None:
+        text = format_status(True)
         assert "●" in text.plain
         assert text.style == "#4ade80"
 
-    def test_format_status_failed(self) -> None:
-        text = _format_status(False)
+    def testformat_status_failed(self) -> None:
+        text = format_status(False)
         assert "○" in text.plain
         assert text.style == "#f87171"
 
-    def test_format_status_none(self) -> None:
-        text = _format_status(None)
-        assert "pending" in text.plain
+    def testformat_status_none(self) -> None:
+        text = format_status(None)
+        assert "·" in text.plain
         assert text.style == "#7d9483"
 
     def testtruncate_short(self) -> None:
@@ -205,7 +205,7 @@ class TestStrategyListWidget:
         rows = _make_strategy_rows(3)
         widget.set_strategies(rows)
         assert len(widget.strategies) == 3
-        assert len(widget._all_strategies) == 3
+        assert len(widget._all_data) == 3
 
     def test_filter_by_text(self) -> None:
         widget = StrategyListWidget()
@@ -309,7 +309,7 @@ class TestStrategyListWidget:
     def test_render_empty(self) -> None:
         widget = StrategyListWidget()
         text = widget.render()
-        assert "No strategies" in text.plain
+        assert "No items found" in text.plain
 
     def test_render_with_data(self) -> None:
         widget = StrategyListWidget()
@@ -434,7 +434,7 @@ class TestComparisonPanelWidget:
         rows = _make_strategy_rows(2)
         widget.set_strategies(rows)
         text = widget.render()
-        assert "STRATEGY COMPARISON" in text.plain
+        assert "COMPARISON" in text.plain
         assert "Score" in text.plain
         assert "PnL%" in text.plain
         assert "Sharpe" in text.plain
@@ -455,7 +455,7 @@ class TestComparisonPanelWidget:
         rows = _make_strategy_rows(4)
         widget.set_strategies(rows)
         text = widget.render()
-        assert "STRATEGY COMPARISON" in text.plain
+        assert "COMPARISON" in text.plain
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -495,7 +495,7 @@ class TestStrategyScreen:
 
     def test_screen_has_action_methods(self) -> None:
         assert hasattr(StrategyScreen, "action_go_back")
-        assert hasattr(StrategyScreen, "action_refresh")
+        assert hasattr(StrategyScreen, "action_refresh_now")
         assert hasattr(StrategyScreen, "action_run_eval")
         assert hasattr(StrategyScreen, "action_toggle_compare")
         assert hasattr(StrategyScreen, "action_cycle_sort")

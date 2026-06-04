@@ -194,6 +194,55 @@ def truncate(text: str, width: int) -> str:
     return text[: width - 1] + "\u2026"
 
 
+def format_date(date_str: str | None) -> str:
+    """Format an ISO date string for compact display (MM-DD HH:MM)."""
+    if not date_str:
+        return "──"
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.strftime("%m-%d %H:%M")
+    except (ValueError, TypeError):
+        return date_str[:10] if len(date_str) >= 10 else date_str
+
+
+def format_count(value: int | float | None) -> str:
+    """Format a count with k/M suffix."""
+    if value is None:
+        return "─"
+    v = float(value)
+    if v >= 1_000_000:
+        return f"{v / 1_000_000:.1f}M"
+    elif v >= 1_000:
+        return f"{v / 1_000:.1f}k"
+    else:
+        return f"{v:.0f}"
+
+
+def severity_color(severity: str) -> str:
+    """Return color hex for alert severity level."""
+    sev = severity.lower().strip()
+    if sev == "critical":
+        return ERROR_RED
+    elif sev == "warning":
+        return WARNING_YELLOW
+    elif sev == "info":
+        return INFO_BLUE
+    return TEXT_MUTED
+
+
+def confidence_color(confidence: str) -> str:
+    """Return color hex for confidence level."""
+    c = confidence.lower().strip()
+    if c == "good":
+        return ACCENT_GREEN
+    elif c == "medium":
+        return WARNING_YELLOW
+    elif c == "poor":
+        return ERROR_RED
+    return TEXT_MUTED
+
+
 def format_latency(ms: float | None) -> Text:
     """Format latency in milliseconds with color."""
     if ms is None:

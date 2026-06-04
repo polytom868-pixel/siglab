@@ -49,19 +49,16 @@ from siglab.tui.screens.risk import (
     _correlation_block,
     _correlation_color,
     _gauge_color,
-    _severity_color,
     GAUGE_HIGH_THRESHOLD,
     GAUGE_MODERATE_THRESHOLD,
     MAX_ALERTS_DISPLAY,
-    REFRESH_SECONDS,
 )
+from siglab.tui.formatting import severity_color
 from siglab.tui.screens.strategy import (
     ComparisonPanelWidget,
     ResultsTableWidget,
     StrategyListWidget,
     StrategyScreen,
-    FAMILY_FILTERS,
-    STATUS_FILTERS,
     MAX_COMPARE,
     DEFAULT_DECK,
 )
@@ -437,11 +434,11 @@ class TestVAL_TUI_005_RiskMetrics:
         text = widget.render()
         assert "No alerts" in text.plain
 
-    def test_alert_severity_colors(self) -> None:
+    def test_alertseverity_colors(self) -> None:
         """Alert severity colors: critical=red, warning=yellow, info=blue."""
-        assert _severity_color("critical") == ERROR_RED
-        assert _severity_color("warning") == WARNING_YELLOW
-        assert _severity_color("info") == INFO_BLUE
+        assert severity_color("critical") == ERROR_RED
+        assert severity_color("warning") == WARNING_YELLOW
+        assert severity_color("info") == INFO_BLUE
 
     def test_alert_stream_max_display(self) -> None:
         """Alert stream limits display to MAX_ALERTS_DISPLAY (50)."""
@@ -497,7 +494,7 @@ class TestVAL_TUI_005_RiskMetrics:
 
     def test_risk_screen_refresh_seconds(self) -> None:
         """Risk screen auto-refresh interval is 15 seconds."""
-        assert REFRESH_SECONDS == 15.0
+        assert RiskScreen._refresh_interval == 15.0
 
     # ── Risk API Client ──
 
@@ -551,7 +548,7 @@ class TestVAL_TUI_006_StrategyResearch:
         """StrategyListWidget shows 'No strategies found' when empty."""
         widget = StrategyListWidget()
         text = widget.render()
-        assert "No strategies" in text.plain
+        assert "No items found" in text.plain
 
     # ── Search/Filter ──
 
@@ -666,7 +663,7 @@ class TestVAL_TUI_006_StrategyResearch:
         widget = ComparisonPanelWidget()
         widget.set_strategies(_make_strategy_rows(2))
         text = widget.render()
-        assert "STRATEGY COMPARISON" in text.plain
+        assert "COMPARISON" in text.plain
         assert "Score" in text.plain
         assert "Sharpe" in text.plain
         assert "DELTA" in text.plain
@@ -730,7 +727,7 @@ class TestVAL_TUI_007_TelemetryBrowser:
         """TelemetryRunListWidget shows 'No runs found' when empty."""
         widget = TelemetryRunListWidget()
         text = widget.render()
-        assert "No runs" in text.plain
+        assert "No items found" in text.plain
 
     def test_run_list_filter_by_text(self) -> None:
         """Run list text filter works."""
@@ -842,7 +839,7 @@ class TestVAL_TUI_007_TelemetryBrowser:
         widget = RunComparisonWidget()
         widget.set_runs(_make_run_rows(2))
         text = widget.render()
-        assert "RUN COMPARISON" in text.plain
+        assert "COMPARISON" in text.plain
         assert "Score" in text.plain
         assert "DELTA" in text.plain
 
@@ -1293,9 +1290,9 @@ class TestVAL_TUI_010_DesignPolish:
 
     def test_alert_severity_uses_semantic_colors(self) -> None:
         """Alert severity uses red/yellow/blue semantic colors."""
-        assert _severity_color("critical") == ERROR_RED
-        assert _severity_color("warning") == WARNING_YELLOW
-        assert _severity_color("info") == INFO_BLUE
+        assert severity_color("critical") == ERROR_RED
+        assert severity_color("warning") == WARNING_YELLOW
+        assert severity_color("info") == INFO_BLUE
 
     # ── WCAG Color Contrast ──
 

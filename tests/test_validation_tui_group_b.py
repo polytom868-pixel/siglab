@@ -109,7 +109,7 @@ class TestVAL_TUI_003_SymbolListPopulated:
         """Widget.render() shows 'No symbols' when empty."""
         widget = SymbolListWidget()
         rendered = str(widget.render())
-        assert "No symbols" in rendered
+        assert "No items found" in rendered
 
     def test_symbol_list_filter_works(self) -> None:
         """Widget.set_filter() narrows the displayed symbols."""
@@ -366,10 +366,10 @@ class TestVAL_TUI_003_AutoRefresh:
         assert "r" in binding_keys
 
     def test_market_screen_has_refresh_interval_constant(self) -> None:
-        """Market screen defines REFRESH_SECONDS constant."""
-        from siglab.tui.screens.market import REFRESH_SECONDS
-        assert REFRESH_SECONDS > 0
-        assert REFRESH_SECONDS <= 60
+        """Market screen defines refresh interval."""
+        from siglab.tui.screens.market import MarketScreen
+        assert MarketScreen._refresh_interval > 0
+        assert MarketScreen._refresh_interval <= 60
 
     def test_market_screen_refresh_all_method(self) -> None:
         """MarketScreen._refresh_all() fetches all data sources."""
