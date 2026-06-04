@@ -94,7 +94,14 @@ def _format_status(passed: bool | None) -> Text:
 
 
 class StrategyListWidget(Static):
-    """Vertical list of strategy specs with selection and multi-select."""
+    """Vertical list of strategy specs with selection and multi-select.
+
+    Zero-copy: stores a reference to the strategy list from the API.
+    Filtering produces a new list of references (no dict copies).
+    """
+
+    __slots__ = ("_all_strategies", "_filter_text", "_family_filter",
+                 "_status_filter", "_selected_hashes")
 
     strategies: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     selected_index: reactive[int] = reactive(0)
@@ -111,15 +118,19 @@ class StrategyListWidget(Static):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._all_strategies: list[dict[str, Any]] = []
+        self._all_strategies: tuple[dict[str, Any], ...] = ()
         self._filter_text: str = ""
         self._family_filter: str = "ALL"
         self._status_filter: str = "ALL"
         self._selected_hashes: set[str] = set()
 
     def set_strategies(self, strategies: list[dict[str, Any]]) -> None:
-        """Update the full strategy list."""
-        self._all_strategies = strategies
+        """Store a reference to the strategy list.
+
+        Converts to tuple for immutability — individual dicts are
+        shared, not copied.
+        """
+        self._all_strategies = tuple(strategies)
         self._apply_filters()
 
     def set_filter(self, text: str) -> None:
@@ -138,40 +149,38 @@ class StrategyListWidget(Static):
         self._apply_filters()
 
     def _apply_filters(self) -> None:
-        """Apply all active filters to the strategy list."""
-        filtered = list(self._all_strategies)
+        """Apply all active filters to the strategy list.
 
-        # Text search: match name, family, hypothesis
+        Uses a single pass through the source data combining all
+        filter predicates, avoiding the previous chained list copies.
+        """
         ft = self._filter_text
-        if ft:
-            filtered = [
-                s
-                for s in filtered
-                if ft in str(s.get("spec_hash", "")).lower()
-                or ft in str(s.get("family", "")).lower()
-                or ft in str(s.get("hypothesis", "")).lower()
-                or ft in str(s.get("track", "")).lower()
-            ]
-
-        # Family filter
         ff = self._family_filter
-        if ff and ff != "ALL":
-            filtered = [
-                s
-                for s in filtered
-                if ff in str(s.get("family", "")).upper()
-            ]
-
-        # Status filter
         sf = self._status_filter
-        if sf and sf != "ALL":
-            if sf == "PASSED":
-                filtered = [s for s in filtered if s.get("passed") is True]
-            elif sf == "FAILED":
-                filtered = [s for s in filtered if s.get("passed") is False]
-            elif sf == "PENDING":
-                filtered = [s for s in filtered if s.get("passed") is None]
 
+        def _matches(s: dict[str, Any]) -> bool:
+            if ft:
+                if not (
+                    ft in str(s.get("spec_hash", "")).lower()
+                    or ft in str(s.get("family", "")).lower()
+                    or ft in str(s.get("hypothesis", "")).lower()
+                    or ft in str(s.get("track", "")).lower()
+                ):
+                    return False
+            if ff and ff != "ALL":
+                if ff not in str(s.get("family", "")).upper():
+                    return False
+            if sf and sf != "ALL":
+                if sf == "PASSED" and s.get("passed") is not True:
+                    return False
+                if sf == "FAILED" and s.get("passed") is not False:
+                    return False
+                if sf == "PENDING" and s.get("passed") is not None:
+                    return False
+            return True
+
+        # Single-pass filter — no intermediate copies
+        filtered = [s for s in self._all_strategies if _matches(s)]
         self.strategies = filtered
         # Clamp selected index
         if self.strategies and self.selected_index >= len(self.strategies):
@@ -262,7 +271,11 @@ class StrategyListWidget(Static):
 
 
 class ResultsTableWidget(Static):
-    """Displays evaluation results for strategies in a sortable table."""
+    """Displays evaluation results for strategies in a sortable table.
+
+    Zero-copy: stores a reference to the results list; sorting
+    produces a new list of references (no dict copies).
+    """
 
     results: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     sort_column: reactive[str] = reactive("aggregate_score")

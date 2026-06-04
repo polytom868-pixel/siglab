@@ -95,8 +95,8 @@ class TestEvidenceGraphWidget:
 
     def test_widget_init(self) -> None:
         widget = EvidenceGraphWidget()
-        assert widget._graph_nodes == []
-        assert widget._edges == []
+        assert widget._graph_nodes == ()
+        assert widget._edges == ()
         assert widget._filter_kind == ""
         assert widget._filter_text == ""
 
@@ -190,7 +190,7 @@ class TestEdgeDetailWidget:
 
     def test_widget_init(self) -> None:
         widget = EdgeDetailWidget()
-        assert widget._edges == []
+        assert widget._edges == ()
 
     def test_widget_can_focus(self) -> None:
         widget = EdgeDetailWidget()

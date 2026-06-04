@@ -113,7 +113,10 @@ def _correlation_block(value: float) -> str:
 
 
 class RiskGaugeWidget(Static):
-    """ASCII bar gauge showing composite risk score (0-100%)."""
+    """ASCII bar gauge showing composite risk score (0-100%).
+
+    Zero-copy: stores references to score data from the API response.
+    """
 
     composite_score: reactive[float | None] = reactive(None, layout=True)
     sub_scores: reactive[dict[str, float]] = reactive(dict, layout=True)
@@ -517,54 +520,46 @@ class RiskScreen(Screen[None]):
                 pass
 
     async def _fetch_risk_data(self) -> None:
-        """Fetch risk metrics from the /risk endpoint."""
+        """Fetch risk metrics from the /risk endpoint.
+
+        Zero-copy: API response fields are passed directly as
+        references to widget reactive attributes.  Lists from the
+        response are stored as-is (no intermediate copies).
+        """
         try:
             data = await self._api.get_risk()
 
-            # Update composite score gauge
-            composite = data.get("composite_score")
-            sub_scores = data.get("sub_scores", {})
-            strategy_count = data.get("strategy_count", 0)
-
+            # Update composite score gauge — pass references
             try:
                 gauge = self.query_one("#risk-gauge", RiskGaugeWidget)
-                gauge.composite_score = composite
-                gauge.sub_scores = sub_scores
-                gauge.strategy_count = strategy_count
+                gauge.composite_score = data.get("composite_score")
+                gauge.sub_scores = data.get("sub_scores", {})
+                gauge.strategy_count = int(data.get("strategy_count", 0))
             except Exception:
                 pass
 
-            # Update drawdown sparkline
-            dd_history = data.get("drawdown_history", [])
-            max_dd = data.get("max_drawdown")
-            cur_dd = data.get("current_drawdown")
-            recovery = data.get("recovery_periods")
-
+            # Update drawdown sparkline — pass references
             try:
                 dd_widget = self.query_one("#risk-drawdown", DrawdownSparklineWidget)
-                dd_widget.drawdown_history = dd_history
-                dd_widget.max_drawdown = max_dd
-                dd_widget.current_drawdown = cur_dd
-                dd_widget.recovery_periods = recovery
+                dd_widget.drawdown_history = data.get("drawdown_history", [])
+                dd_widget.max_drawdown = data.get("max_drawdown")
+                dd_widget.current_drawdown = data.get("current_drawdown")
+                dd_widget.recovery_periods = data.get("recovery_periods")
             except Exception:
                 pass
 
-            # Update correlation matrix
-            corr_matrix = data.get("correlation_matrix")
-            strategy_names = data.get("strategy_names", [])
-
+            # Update correlation matrix — pass references
             try:
                 corr_widget = self.query_one(
                     "#risk-correlation", CorrelationHeatmapWidget
                 )
-                corr_widget.matrix = corr_matrix
-                corr_widget.strategy_names = strategy_names
+                corr_widget.matrix = data.get("correlation_matrix")
+                corr_widget.strategy_names = data.get("strategy_names", [])
             except Exception:
                 pass
 
-            # Update alerts
-            alerts = data.get("alerts", [])
-            self._all_alerts = alerts
+            # Update alerts — store reference, not a copy
+            self._all_alerts = data.get("alerts", [])
             self._apply_alert_filter()
 
         except Exception as exc:
@@ -588,9 +583,14 @@ class RiskScreen(Screen[None]):
                 pass
 
     def _apply_alert_filter(self) -> None:
-        """Apply the current severity filter to the alert list."""
+        """Apply the current severity filter to the alert list.
+
+        Zero-copy: when showing all alerts, shares the reference to
+        ``_all_alerts`` instead of creating a copy.
+        """
         if self._filter_severity == "all":
-            filtered = list(self._all_alerts)
+            # Share reference — no copy needed
+            filtered = self._all_alerts
         else:
             filtered = [
                 a for a in self._all_alerts

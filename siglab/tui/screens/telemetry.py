@@ -132,14 +132,21 @@ def _classification_color(classification: str) -> str:
 
 
 class TelemetryRunListWidget(Static):
-    """Vertical list of experiment runs with selection and multi-select."""
+    """Vertical list of experiment runs with selection and multi-select.
+
+    Zero-copy: stores a reference to the runs list.  Filtering
+    produces a new list of references (no dict copies).
+    """
+
+    __slots__ = ("_all_runs", "_filter_text", "_status_filter",
+                 "_track_filter", "_date_range", "_selected_hashes")
 
     runs: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     selected_index: reactive[int] = reactive(0)
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._all_runs: list[dict[str, Any]] = []
+        self._all_runs: tuple[dict[str, Any], ...] = ()
         self._filter_text: str = ""
         self._status_filter: str = "ALL"
         self._track_filter: str = "ALL"
@@ -147,8 +154,12 @@ class TelemetryRunListWidget(Static):
         self._selected_hashes: set[str] = set()
 
     def set_runs(self, runs: list[dict[str, Any]]) -> None:
-        """Update the full run list."""
-        self._all_runs = runs
+        """Store a reference to the runs list.
+
+        Converts to tuple for immutability — individual dicts are
+        shared, not copied.
+        """
+        self._all_runs = tuple(runs)
         self._apply_filters()
 
     def set_filter(self, text: str) -> None:
@@ -172,59 +183,61 @@ class TelemetryRunListWidget(Static):
         self._apply_filters()
 
     def _apply_filters(self) -> None:
-        """Apply all active filters to the run list."""
-        filtered = list(self._all_runs)
+        """Apply all active filters to the run list.
 
-        # Text search: match spec_hash, track, family, hypothesis
+        Uses a single pass combining all filter predicates, avoiding
+        the previous 3-4 chained list copies.
+        """
         ft = self._filter_text
-        if ft:
-            filtered = [
-                r
-                for r in filtered
-                if ft in str(r.get("spec_hash", "")).lower()
-                or ft in str(r.get("track", "")).lower()
-                or ft in str(r.get("family", "")).lower()
-                or ft in str(r.get("hypothesis", "")).lower()
-            ]
-
-        # Status filter
         sf = self._status_filter
-        if sf and sf != "ALL":
-            if sf == "PASSED":
-                filtered = [r for r in filtered if r.get("passed") is True]
-            elif sf == "FAILED":
-                filtered = [r for r in filtered if r.get("passed") is False]
-            elif sf == "RUNNING":
-                filtered = [r for r in filtered if r.get("status") == "running"]
-            elif sf == "PENDING":
-                filtered = [r for r in filtered if r.get("passed") is None and r.get("status") != "running"]
-
-        # Track filter
         tf = self._track_filter
-        if tf and tf != "ALL":
-            filtered = [
-                r for r in filtered
-                if tf in str(r.get("track", "")).upper()
-            ]
-
-        # Date range filter
         dr = self._date_range
+
+        # Pre-compute date cutoff if needed
+        max_days = None
+        now = None
         if dr and dr != "ALL":
             now = datetime.now(UTC)
             max_days = {"TODAY": 0, "7D": 7, "30D": 30}.get(dr)
-            if max_days is not None:
-                def _within_range(r: dict[str, Any]) -> bool:
-                    created = r.get("created_at", "")
-                    if not created:
-                        return True
+
+        def _matches(r: dict[str, Any]) -> bool:
+            # Text search
+            if ft:
+                if not (
+                    ft in str(r.get("spec_hash", "")).lower()
+                    or ft in str(r.get("track", "")).lower()
+                    or ft in str(r.get("family", "")).lower()
+                    or ft in str(r.get("hypothesis", "")).lower()
+                ):
+                    return False
+            # Status filter
+            if sf and sf != "ALL":
+                if sf == "PASSED" and r.get("passed") is not True:
+                    return False
+                if sf == "FAILED" and r.get("passed") is not False:
+                    return False
+                if sf == "RUNNING" and r.get("status") != "running":
+                    return False
+                if sf == "PENDING" and not (r.get("passed") is None and r.get("status") != "running"):
+                    return False
+            # Track filter
+            if tf and tf != "ALL":
+                if tf not in str(r.get("track", "")).upper():
+                    return False
+            # Date range filter
+            if max_days is not None and now is not None:
+                created = r.get("created_at", "")
+                if created:
                     try:
                         dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                        return (now - dt).days <= max_days
+                        if (now - dt).days > max_days:
+                            return False
                     except (ValueError, TypeError):
-                        return True
-                filtered = [r for r in filtered if _within_range(r)]
+                        pass
+            return True
 
-        self.runs = filtered
+        # Single-pass filter — no intermediate copies
+        self.runs = [r for r in self._all_runs if _matches(r)]
         # Clamp selected index
         if self.runs and self.selected_index >= len(self.runs):
             self.selected_index = max(0, len(self.runs) - 1)

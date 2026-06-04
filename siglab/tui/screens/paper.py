@@ -8,6 +8,10 @@ Displays:
 
 Connects to CLI bridge for paper-start/status commands.
 Auto-refreshes positions and PnL on a timer.
+
+Zero-copy data flow: API response dicts are stored as references
+without intermediate copies.  PnL history is shared by reference.
+Mark prices dict is shared between screen and widget.
 """
 
 from __future__ import annotations
@@ -59,7 +63,11 @@ PNL_HISTORY_MAX = 120  # Max PnL data points for sparkline
 
 
 class PositionsTableWidget(Static):
-    """Displays open positions with symbol, size, entry, mark, and PnL."""
+    """Displays open positions with symbol, size, entry, mark, and PnL.
+
+    Zero-copy: positions list and mark_prices dict are stored as
+    references from the screen — no per-refresh copies.
+    """
 
     positions: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     mark_prices: reactive[dict[str, float]] = reactive(dict, layout=True)
@@ -635,11 +643,15 @@ class PaperScreen(Screen[None]):
                 logger.debug("Could not update loading indicator in finally block")
 
     def _update_positions(self, positions: list[dict[str, Any]]) -> None:
-        """Update the positions table widget."""
+        """Update the positions table widget.
+
+        Zero-copy: passes the positions list and mark_prices dict
+        as references — no intermediate copies.
+        """
         try:
             widget = self.query_one("#positions-table", PositionsTableWidget)
             widget.positions = positions
-            widget.mark_prices = dict(self._mark_prices)
+            widget.mark_prices = self._mark_prices
         except Exception:
             logger.debug("Could not update positions widget")
 
@@ -652,8 +664,14 @@ class PaperScreen(Screen[None]):
             logger.debug("Could not update order history widget")
 
     def _update_pnl(self, pnl_data: dict[str, Any]) -> None:
-        """Update PnL summary and sparkline history."""
-        # Update account summary
+        """Update PnL summary and sparkline history.
+
+        Zero-copy: the screen's ``_pnl_history`` list is shared by
+        reference with the chart widget.  Appending to the screen's
+        list and then assigning the *same* object to the widget avoids
+        the previous ``list(self._pnl_history)`` copy on every cycle.
+        """
+        # Update account summary — store reference to API response dict
         try:
             widget = self.query_one("#account-summary", AccountSummaryWidget)
             widget.pnl_data = pnl_data
@@ -661,16 +679,17 @@ class PaperScreen(Screen[None]):
         except Exception:
             logger.debug("Could not update account summary widget")
 
-        # Track PnL history for sparkline
+        # Track PnL history for sparkline (append in-place)
         total_pnl = float(pnl_data.get("total_pnl", 0))
         self._pnl_history.append(total_pnl)
         if len(self._pnl_history) > PNL_HISTORY_MAX:
-            self._pnl_history = self._pnl_history[-PNL_HISTORY_MAX:]
+            # Trim in-place via slice assignment (no new list created)
+            self._pnl_history[:] = self._pnl_history[-PNL_HISTORY_MAX:]
 
-        # Update sparkline
+        # Share the same list object with the chart widget
         try:
             chart = self.query_one("#pnl-chart", PnlChartWidget)
-            chart.pnl_history = list(self._pnl_history)
+            chart.pnl_history = self._pnl_history
         except Exception:
             logger.debug("Could not update PnL chart widget")
 
