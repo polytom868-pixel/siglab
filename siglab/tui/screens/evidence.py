@@ -33,6 +33,7 @@ from siglab.tui.formatting import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WARNING_YELLOW,
+    format_confidence,
     friendly_error,
 )
 from siglab.tui.loading import LoadingIndicator
@@ -118,19 +119,6 @@ def _kind_style(kind: str) -> str:
         "entity": ACCENT_GREEN,
         "module": WARNING_YELLOW,
     }.get(kind, TEXT_SECONDARY)
-
-
-def _format_confidence(conf: float | None) -> Text:
-    """Format confidence as colored text."""
-    if conf is None:
-        return Text("\u2500", style=TEXT_MUTED)
-    label = f"{conf:.0%}"
-    if conf >= 0.8:
-        return Text(label, style=ACCENT_GREEN)
-    elif conf >= 0.5:
-        return Text(label, style=WARNING_YELLOW)
-    else:
-        return Text(label, style=ERROR_RED)
 
 
 # ── Evidence Graph Widget ────────────────────────────────────────────
@@ -311,7 +299,7 @@ class EdgeDetailWidget(Static):
             line.append(f"  [{label}]", style=TEXT_SECONDARY)
             if conf is not None:
                 line.append(" ")
-                line.append_text(_format_confidence(conf))
+                line.append_text(format_confidence(conf))
             if warning:
                 line.append(f"  ⚠ {warning[:40]}", style=WARNING_YELLOW)
             lines.append(line)
@@ -480,7 +468,6 @@ class EvidenceScreen(BaseScreen):
     """
 
     BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
-        Binding("/", "focus_filter", "Search", show=True),
         Binding("tab", "switch_pane", "Switch Pane", show=True),
         Binding("enter", "run_step", "Run Step", show=True),
         Binding("n", "next_step", "Next Step", show=True),
@@ -497,10 +484,11 @@ class EvidenceScreen(BaseScreen):
     _loading_widget_id: ClassVar[str] = "#evidence-loading"
     _status_widget_id: ClassVar[str] = "#evidence-status"
     _refresh_interval: ClassVar[float] = 30.0
+    _api_client_class: ClassVar[type] = TuiApiClient
+    _search_input_id: ClassVar[str] = "evidence-filter"
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._api_client: TuiApiClient | None = None
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self._graph_nodes: list[dict[str, Any]] = []
         self._edges: list[dict[str, Any]] = []
         self._current_filter: str = ""
@@ -525,17 +513,6 @@ class EvidenceScreen(BaseScreen):
             yield LoadingIndicator(id="evidence-loading")
             yield Static("Loading evidence data...", id="evidence-status")
 
-    def on_mount(self) -> None:
-        """Initialize the screen after mounting."""
-        super().on_mount()
-        self._api_client = TuiApiClient()
-
-    async def on_unmount(self) -> None:
-        """Clean up resources when the screen is closing."""
-        await super().on_unmount()
-        if self._api_client is not None:
-            await self._api_client.close()
-
     async def _fetch_data(self) -> None:
         """Fetch evidence graph data."""
         await self._refresh_graph()
@@ -547,16 +524,11 @@ class EvidenceScreen(BaseScreen):
         to tuples once in the graph widget; the edge widget shares
         the same tuple reference.
         """
-        if self._api_client is None:
+        if self._api is None:
             return
         self.graph_loading = True
         try:
-            loading = self.query_one("#evidence-loading", LoadingIndicator)
-            loading.loading = True
-        except Exception:
-            pass
-        try:
-            data = await self._api_client.get_evidence_graph()
+            data = await self._api.get_evidence_graph()
             nodes = data.get("nodes", [])
             edges = data.get("edges", [])
             self.api_connected = True
@@ -575,15 +547,10 @@ class EvidenceScreen(BaseScreen):
             self._update_status()
         except Exception as exc:
             self.api_connected = False
-            logger.debug(f"Evidence graph refresh failed: {exc}")
+            logger.debug("Evidence graph refresh failed: %s", exc)
             self._update_status_error(friendly_error(exc))
         finally:
             self.graph_loading = False
-            try:
-                loading = self.query_one("#evidence-loading", LoadingIndicator)
-                loading.loading = False
-            except Exception:
-                pass
 
     def _update_status(self) -> None:
         """Update the status bar with current state."""
@@ -596,18 +563,7 @@ class EvidenceScreen(BaseScreen):
             f"  {node_count} nodes  {edge_count} edges{filter_text}  {conn}{hints}"
         )
 
-    def _update_status_error(self, error: str) -> None:
-        """Update status bar with error message."""
-        self._update_status_text(f"  Error: {error[:60]}")
-
     # ── Actions ───────────────────────────────────────────────────────
-
-    def action_focus_filter(self) -> None:
-        """Focus the filter input."""
-        try:
-            self.query_one("#evidence-filter", Input).focus()
-        except Exception:
-            pass
 
     def action_switch_pane(self) -> None:
         """Toggle focus between graph and demo panes."""

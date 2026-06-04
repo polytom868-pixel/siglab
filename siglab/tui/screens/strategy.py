@@ -371,7 +371,6 @@ class StrategyScreen(BaseScreen):
         Binding("c", "toggle_compare", "Compare", show=True),
         Binding("space", "toggle_select", "Select", show=True),
         Binding("s", "cycle_sort", "Sort", show=True),
-        Binding("/", "focus_search", "Search", show=True),
     ]
 
     is_evaluating: reactive[bool] = reactive(False)
@@ -388,6 +387,8 @@ class StrategyScreen(BaseScreen):
     _loading_widget_id: ClassVar[str] = "#strategy-loading"
     _status_widget_id: ClassVar[str] = "#strategy-status"
     _refresh_interval: ClassVar[float] = 30.0
+    _search_input_id: ClassVar[str] = "strategy-search"
+    _search_list_id: ClassVar[str] = "strategy-list"
 
     def __init__(self, deck: str = DEFAULT_DECK, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -475,21 +476,15 @@ class StrategyScreen(BaseScreen):
         self._results_cache.clear()
         self.call_after_refresh(self._refresh_all)
 
-    def action_focus_search(self) -> None:
-        """Focus the search input."""
-        safe_query(self, "#strategy-search", Input, lambda w: w.focus())
-
     def action_move_up(self) -> None:
-        lw = safe_query(self, "#strategy-list", StrategyListWidget)
-        if lw:
-            lw.action_move_up()
-            self._on_selection_changed()
+        """Move up and update detail panel."""
+        super().action_move_up()
+        self._on_selection_changed()
 
     def action_move_down(self) -> None:
-        lw = safe_query(self, "#strategy-list", StrategyListWidget)
-        if lw:
-            lw.action_move_down()
-            self._on_selection_changed()
+        """Move down and update detail panel."""
+        super().action_move_down()
+        self._on_selection_changed()
 
     def action_toggle_select(self) -> None:
         """Toggle multi-select on current strategy for comparison."""
@@ -579,10 +574,10 @@ class StrategyScreen(BaseScreen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle search input changes."""
-        if event.input.id == "strategy-search":
+        if self._on_search_input_changed(event):
+            # Update strategy count after filter
             lw = safe_query(self, "#strategy-list", StrategyListWidget)
             if lw:
-                lw.set_filter(event.value)
                 self.strategy_count = len(lw.strategies)
 
     def _on_selection_changed(self) -> None:

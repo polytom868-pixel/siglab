@@ -343,11 +343,10 @@ class RiskScreen(BaseScreen):
     _loading_widget_id: ClassVar[str] = "#risk-loading"
     _status_widget_id: ClassVar[str] = "#risk-status"
     _refresh_interval: ClassVar[float] = 15.0
+    _api_client_class: ClassVar[type] = TuiApiClient
 
-    def __init__(self, api_client: TuiApiClient | None = None, **kwargs) -> None:
+    def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._api = api_client or TuiApiClient()
-        self._owns_client = api_client is None
         self._all_alerts: list[dict[str, Any]] = []
         self._ws_task: asyncio.Task | None = None
 
@@ -369,16 +368,14 @@ class RiskScreen(BaseScreen):
         self._ws_task = asyncio.create_task(self._ws_risk_loop())
 
     async def on_unmount(self) -> None:
-        """Clean up resources when the screen is closing."""
-        await super().on_unmount()
+        """Clean up WS task, then delegate to base for API client cleanup."""
         if self._ws_task and not self._ws_task.done():
             self._ws_task.cancel()
             try:
                 await self._ws_task
             except asyncio.CancelledError:
                 pass
-        if self._owns_client:
-            await self._api.close()
+        await super().on_unmount()
 
     async def _ws_risk_loop(self) -> None:
         """Subscribe to risk_score WebSocket updates in background."""

@@ -433,12 +433,12 @@ class TestMarketScreen:
         api = TuiApiClient(base_url="http://example.com:9999")
         screen = MarketScreen(api_client=api)
         assert screen._api is api
-        assert screen._owns_client is False
+        assert screen._owns_api is False
 
     def test_screen_init_default_api(self) -> None:
         screen = MarketScreen()
         assert isinstance(screen._api, TuiApiClient)
-        assert screen._owns_client is True
+        assert screen._owns_api is True
 
     def test_screen_has_compose(self) -> None:
         assert hasattr(MarketScreen, "compose")

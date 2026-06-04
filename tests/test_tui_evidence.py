@@ -10,13 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from siglab.tui.formatting import format_confidence
 from siglab.tui.screens.evidence import (
     DEMO_STEPS,
     DemoFlowWidget,
     EdgeDetailWidget,
     EvidenceGraphWidget,
     EvidenceScreen,
-    _format_confidence,
     _kind_icon,
     _kind_style,
 )
@@ -71,20 +71,20 @@ class TestHelpers:
         assert _kind_style("entity") == "#4ade80"
 
     def test_format_confidence_high(self) -> None:
-        result = _format_confidence(0.95)
+        result = format_confidence(0.95)
         assert "95%" in str(result.plain)
 
     def test_format_confidence_medium(self) -> None:
-        result = _format_confidence(0.6)
+        result = format_confidence(0.6)
         assert "60%" in str(result.plain)
 
     def test_format_confidence_low(self) -> None:
-        result = _format_confidence(0.3)
+        result = format_confidence(0.3)
         assert "30%" in str(result.plain)
 
     def test_format_confidence_none(self) -> None:
-        result = _format_confidence(None)
-        assert "—" in str(result.plain)
+        result = format_confidence(None)
+        assert "\u2500" in str(result.plain)
 
 
 # ── Evidence Graph Widget Tests ──────────────────────────────────────
