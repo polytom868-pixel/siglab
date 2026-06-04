@@ -95,7 +95,7 @@ class TestEvidenceGraphWidget:
 
     def test_widget_init(self) -> None:
         widget = EvidenceGraphWidget()
-        assert widget._nodes == []
+        assert widget._graph_nodes == []
         assert widget._edges == []
         assert widget._filter_kind == ""
         assert widget._filter_text == ""
@@ -112,7 +112,7 @@ class TestEvidenceGraphWidget:
         ]
         edges = [{"source": "source:a", "target": "entity:b", "label": "linked"}]
         widget.update_graph(nodes, edges)
-        assert len(widget._nodes) == 2
+        assert len(widget._graph_nodes) == 2
         assert len(widget._edges) == 1
 
     def test_widget_filter_by_kind(self) -> None:
