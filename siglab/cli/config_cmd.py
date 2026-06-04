@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 
 from siglab.config import load_settings
 
@@ -64,12 +63,19 @@ def config_validate_command(args: argparse.Namespace) -> None:
         _report_config_validation(errors)
         return
 
-    print(f"config valid: {config_path}")
-    print(f"  api_base_url: {system.get('api_base_url')}")
+    from siglab.cli.rich_utils import print_key_value_pairs, print_success
+    print_success(f"config valid: {config_path}")
+    print_key_value_pairs(
+        title="Config Details",
+        pairs=[
+            ("api_base_url", str(system.get("api_base_url")), ""),
+        ],
+    )
     raise SystemExit(0)
 
 
 def _report_config_validation(errors: list[str]) -> None:
+    from siglab.cli.rich_utils import print_error
     for error in errors:
-        print(f"ERROR: {error}", file=sys.stderr)
+        print_error(error)
     raise SystemExit(1)

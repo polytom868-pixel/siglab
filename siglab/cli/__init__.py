@@ -94,6 +94,12 @@ from siglab.cli.run import inspect_command
 def main() -> None:
     """Entry point: parse args, dispatch to subcommand handler."""
     parser = argparse.ArgumentParser(prog="siglab")
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        default=False,
+        help="Disable ANSI color output. Also respects NO_COLOR env var.",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Import and register all subcommand parsers
@@ -131,6 +137,10 @@ def main() -> None:
     _run_mod.add_subparser(subparsers)
 
     args = parser.parse_args()
+
+    # Initialize shared Rich console before any command runs
+    from siglab.cli.rich_utils import init_console
+    init_console(force_no_color=getattr(args, "no_color", False))
 
     # Dispatch by command name
     if args.command == "run":

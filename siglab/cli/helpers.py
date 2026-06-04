@@ -550,35 +550,58 @@ def parse_family_scope(
 
 
 def print_run_reflection_short(*, track: str, reflection: dict[str, Any]) -> None:
-    summary = dict(reflection.get("summary") or {})
-    print(
-        f"[{track}] run reflection: llm_runs={summary.get('llm_run_count', 0)} "
-        f"passes={summary.get('passed_count', 0)} "
-        f"median_pre_audit={_format_optional_pct(summary.get('median_pre_audit_canonical_total_return'))} "
-        f"median_active={_format_optional_pct(summary.get('median_active_bar_fraction'))}"
+    from siglab.cli.rich_utils import (
+        make_table,
+        get_console,
+        print_error,
+        print_info,
+        print_success,
     )
+    from rich.text import Text
+
+    summary = dict(reflection.get("summary") or {})
+    table = make_table(title=f"[info]{track}[/] Run Reflection")
+    table.add_column("Metric", style="label", no_wrap=True)
+    table.add_column("Value")
+    table.add_row("LLM runs", str(summary.get("llm_run_count", 0)))
+    passes = summary.get("passed_count", 0)
+    table.add_row("Passes", Text(str(passes), style="success" if passes else ""))
+    table.add_row("Median pre-audit", _format_optional_pct(summary.get("median_pre_audit_canonical_total_return")))
+    table.add_row("Median active bars", _format_optional_pct(summary.get("median_active_bar_fraction")))
+    get_console().print(table)
+
     intent_vs_sweep = dict(reflection.get("intent_vs_sweep") or {})
-    print(
+    print_info(
         f"[{track}] sweep drift: material_share={_format_optional_pct(intent_vs_sweep.get('material_change_share'))} "
         f"median_changed_params={_format_optional_number(intent_vs_sweep.get('median_changed_param_count'))}"
     )
     for line in list(reflection.get("what_improved") or [])[:3]:
-        print(f"[{track}] improved: {line}")
+        print_success(f"[{track}] improved: {line}")
     for line in list(reflection.get("what_failed") or [])[:3]:
-        print(f"[{track}] failed: {line}")
+        print_error(f"[{track}] failed: {line}")
     last_five_runs = list(reflection.get("last_five_runs") or [])[:5]
     if last_five_runs:
-        print(f"[{track}] last five non-deterministic runs:")
-    for row in last_five_runs:
-        print(
-            f"[{track}]   {row['spec_hash']} family={row['family']} "
-            f"median={_format_optional_pct(row.get('median_total_return'))} "
-            f"validation={_format_optional_pct(row.get('validation_total_return'))} "
-            f"pre_audit={_format_optional_pct(row.get('pre_audit_canonical_total_return'))} "
-            f"active={_format_optional_pct(row.get('active_bar_fraction'))} "
-            f"sweep_changes={len(list((row.get('sweep_drift') or {}).get('changed_keys') or []))} "
-            f"bottlenecks={','.join(row.get('gate_bottlenecks') or [])}"
-        )
+        table2 = make_table(title=f"[info]{track}[/] Last 5 Non-Deterministic Runs")
+        table2.add_column("Spec Hash", style="accent")
+        table2.add_column("Family")
+        table2.add_column("Median", justify="right")
+        table2.add_column("Validation", justify="right")
+        table2.add_column("Pre-Audit", justify="right")
+        table2.add_column("Active", justify="right")
+        table2.add_column("Sweep Δ", justify="right")
+        table2.add_column("Bottlenecks")
+        for row in last_five_runs:
+            table2.add_row(
+                str(row["spec_hash"]),
+                str(row["family"]),
+                _format_optional_pct(row.get("median_total_return")),
+                _format_optional_pct(row.get("validation_total_return")),
+                _format_optional_pct(row.get("pre_audit_canonical_total_return")),
+                _format_optional_pct(row.get("active_bar_fraction")),
+                str(len(list((row.get("sweep_drift") or {}).get("changed_keys") or []))),
+                ", ".join(row.get("gate_bottlenecks") or []),
+            )
+        get_console().print(table2)
 
 
 def _format_optional_pct(value: Any) -> str:

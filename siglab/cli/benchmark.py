@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 
 from siglab.benchmark import (
     DEFAULT_BENCHMARK_DECK,
@@ -68,7 +67,8 @@ def run_benchmark_init(args: argparse.Namespace) -> None:
         run_label=args.run_label,
         force=bool(args.force),
     )
-    print(json.dumps(payload, indent=2))
+    from siglab.cli.rich_utils import print_json
+    print_json(payload)
 
 
 async def run_benchmark_eval(args: argparse.Namespace) -> None:
@@ -92,7 +92,8 @@ async def run_benchmark_eval(args: argparse.Namespace) -> None:
         )
     finally:
         await provider.close()
-    print(json.dumps(payload, indent=2))
+    from siglab.cli.rich_utils import print_json
+    print_json(payload)
 
 
 def run_benchmark_status(args: argparse.Namespace) -> None:
@@ -101,4 +102,5 @@ def run_benchmark_status(args: argparse.Namespace) -> None:
         settings=settings,
         deck_name=str(args.deck),
     )
-    print(json.dumps(payload, indent=2))
+    from siglab.cli.rich_utils import print_json
+    print_json(payload)

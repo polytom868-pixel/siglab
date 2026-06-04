@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 
 from siglab.config import load_settings
 from siglab.search import LineageStore
@@ -36,12 +35,27 @@ def run_ancestry(args: argparse.Namespace) -> None:
         track=canonical_track_name(args.track) or args.track,
         limit=args.limit,
     )
+    from siglab.cli.rich_utils import make_table, get_console, status_style
+    from rich.text import Text
+    table = make_table(title="Ancestry")
+    table.add_column("Created", style="muted")
+    table.add_column("Track")
+    table.add_column("Family")
+    table.add_column("Spec Hash", style="accent")
+    table.add_column("Score", justify="right")
+    table.add_column("Passed")
+    table.add_column("Deployed")
     for row in rows:
-        print(
-            f"{row['created_at']} {row['track']} {row['family']} "
-            f"{row['spec_hash']} score={row['aggregate_score']:.4f} "
-            f"passed={row['passed']} deployd={row['deployd']}"
+        table.add_row(
+            str(row["created_at"]),
+            str(row["track"]),
+            str(row["family"]),
+            str(row["spec_hash"]),
+            f"{row['aggregate_score']:.4f}",
+            Text(str(row["passed"]), style=status_style(row["passed"])),
+            Text(str(row["deployd"]), style=status_style(row["deployd"])),
         )
+    get_console().print(table)
 
 
 def run_clear_passed(args: argparse.Namespace) -> None:
@@ -64,4 +78,5 @@ def run_clear_passed(args: argparse.Namespace) -> None:
         "tracks_cleared": len(tracks),
         "passed_specs_removed": removed,
     }
-    print(json.dumps(payload, indent=2))
+    from siglab.cli.rich_utils import print_json
+    print_json(payload)
