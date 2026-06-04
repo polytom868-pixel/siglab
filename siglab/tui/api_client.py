@@ -131,6 +131,86 @@ class TuiApiClient:
         response.raise_for_status()
         return response.json()
 
+    # ── Strategy Research ──────────────────────────────────────────────
+
+    async def get_strategies(
+        self,
+        track: str | None = None,
+        family: str | None = None,
+    ) -> dict[str, Any]:
+        """Fetch strategy list from the ancestry/experiment database.
+
+        Args:
+            track: Optional track filter.
+            family: Optional family filter.
+
+        Returns:
+            Dict with 'strategies' list and 'count'.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        params: dict[str, str] = {}
+        if track:
+            params["track"] = track
+        if family:
+            params["family"] = family
+        response = await client.get("/strategies", params=params)
+        response.raise_for_status()
+        return response.json()
+
+    async def get_strategy_detail(self, spec_hash: str) -> dict[str, Any]:
+        """Fetch detailed results for a single strategy.
+
+        Args:
+            spec_hash: The strategy's spec hash.
+
+        Returns:
+            Dict with spec, summary, equity_curve, etc.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get(f"/strategies/{spec_hash}")
+        response.raise_for_status()
+        return response.json()
+
+    async def get_benchmark_status(self, deck: str = "trend_signals_external") -> dict[str, Any]:
+        """Fetch benchmark deck status.
+
+        Args:
+            deck: Benchmark deck name.
+
+        Returns:
+            Dict with state, recent_results.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get("/benchmark/status", params={"deck": deck})
+        response.raise_for_status()
+        return response.json()
+
+    async def get_benchmark_results(self, deck: str = "trend_signals_external") -> dict[str, Any]:
+        """Fetch benchmark evaluation results.
+
+        Args:
+            deck: Benchmark deck name.
+
+        Returns:
+            Dict with results list.
+
+        Raises:
+            httpx.HTTPError: If the request fails.
+        """
+        client = await self._ensure_client()
+        response = await client.get("/benchmark/results", params={"deck": deck})
+        response.raise_for_status()
+        return response.json()
+
     # ── Market Data ──────────────────────────────────────────────────
 
     async def get_market_symbols(self) -> dict[str, Any]:
