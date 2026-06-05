@@ -524,6 +524,7 @@ class PaperScreen(BaseScreen):
         super().__init__(**kwargs)
         self._pnl_history: list[float] = []
         self._mark_prices: dict[str, float] = {}
+        self._orders: list[dict[str, Any]] = []
         self._current_focus: str = "form"  # form, positions, history
         self._selected_order_idx: int = 0
         self._chart_width: int = 50
@@ -551,11 +552,59 @@ class PaperScreen(BaseScreen):
 
     # ── Session Management ────────────────────────────────────────────
 
+    async def _find_existing_session(self, name: str) -> dict[str, Any] | None:
+        """Check for an existing session with the given name.
+
+        Uses a subprocess to list sessions — kept as a separate method
+        so tests can mock it independently of the CLI bridge.
+        """
+        import asyncio as _asyncio
+        import sys
+
+        list_code = (
+            "import json; "
+            "from siglab.config import load_settings; "
+            "from siglab.live.paper_client import SoDEXPaperPerpsClient; "
+            "s = load_settings(); "
+            "c = SoDEXPaperPerpsClient(sessions_dir=str(s.root_dir / 'sessions')); "
+            "print(json.dumps(c.list_sessions()))"
+        )
+        proc = await _asyncio.create_subprocess_exec(
+            sys.executable, "-c", list_code,
+            stdout=_asyncio.subprocess.PIPE,
+            stderr=_asyncio.subprocess.PIPE,
+        )
+        list_out, _ = await _asyncio.wait_for(proc.communicate(), timeout=10.0)
+        if proc.returncode == 0 and list_out:
+            all_sessions = json.loads(list_out.decode("utf-8").strip())
+            matches = [s for s in all_sessions if s.get("name") == name]
+            if matches:
+                return sorted(matches, key=lambda s: s.get("created_at", 0))[-1]
+        return None
+
     async def _init_session(self) -> None:
-        """Create a new paper session or load existing one."""
+        """Create a new paper session or resume an existing 'tui-session'."""
         self.status_text = "Creating paper session…"
         self.is_loading = True
         try:
+            # Try to reuse an existing "tui-session"
+            try:
+                existing = await self._find_existing_session("tui-session")
+                if existing:
+                    self.session_id = existing["session_id"]
+                    self.session_name = existing.get("name", "tui-session")
+                    self.status_text = f"Resumed session {self.session_id[:8]}…"
+                    self.is_loading = False
+                    try:
+                        form = self.query_one("#order-form", OrderFormWidget)
+                        form.set_symbol("BTC-USD")
+                    except Exception:
+                        logger.debug("Could not set default symbol on order form")
+                    await self._refresh_all()
+                    return
+            except Exception as exc:
+                logger.debug("Session reuse check failed, creating new: %s", exc)
+
             result = await run_cli(
                 "paper-start", "--session", "tui-session"
             )
@@ -602,6 +651,9 @@ class PaperScreen(BaseScreen):
                 self._update_status_text(f"Bad status response: {exc}  [r]etry")
                 logger.warning("paper-status JSON decode error: %s", exc)
                 return
+            mp = data.get("mark_prices")
+            if isinstance(mp, dict):
+                self._mark_prices = mp
             self._update_positions(data.get("position", []))
             self._update_orders(data.get("orders", []))
             self._update_pnl(data.get("pnl", {}))
@@ -624,7 +676,8 @@ class PaperScreen(BaseScreen):
         safe_query(self, "#positions-table", PositionsTableWidget, _update)
 
     def _update_orders(self, orders: list[dict[str, Any]]) -> None:
-        """Update the order history widget."""
+        """Update the order history widget and store orders for cancel logic."""
+        self._orders = orders
         safe_query(self, "#order-history", OrderHistoryWidget,
                    lambda w: setattr(w, "orders", orders))
 
@@ -758,9 +811,76 @@ class PaperScreen(BaseScreen):
         """Create a new paper trading session."""
         self.call_after_refresh(self._init_session)
 
-    def action_cancel_order(self) -> None:
-        """Cancel the selected open order (placeholder for future enhancement)."""
-        self.status_text = "Cancel: select an open order first (coming soon)"
+    async def action_cancel_order(self) -> None:
+        """Cancel an open order — auto-select if only one, otherwise prompt."""
+        if not self.session_id:
+            self.status_text = "No active session"
+            return
+
+        open_orders = [o for o in self._orders if o.get("status") == "OPEN"]
+        if not open_orders:
+            self.status_text = "No open orders to cancel"
+            return
+
+        if len(open_orders) == 1:
+            await self._do_cancel_order(open_orders[0]["order_id"])
+        else:
+            # Show modal with list of open orders for user to pick
+            self.app.push_screen(
+                _CancelOrderScreen(open_orders),
+                callback=self._on_cancel_order_result,
+            )
+
+    def _on_cancel_order_result(self, order_id: str | None) -> None:
+        """Handle cancel order selection from modal."""
+        if order_id:
+            self.call_after_refresh(self._do_cancel_order, order_id)
+
+    async def _do_cancel_order(self, order_id: str) -> None:
+        """Execute order cancellation via subprocess."""
+        import asyncio as _asyncio
+        import sys
+
+        try:
+            cancel_json = json.dumps({
+                "session_id": self.session_id,
+                "order_id": order_id,
+            })
+            code = (
+                "import json, sys; "
+                "from siglab.config import load_settings; "
+                "from siglab.live.paper_client import SoDEXPaperPerpsClient; "
+                "p = json.loads(sys.stdin.read()); "
+                "s = load_settings(); "
+                "c = SoDEXPaperPerpsClient(sessions_dir=str(s.root_dir / 'sessions')); "
+                "r = c.cancel_order(p['session_id'], p['order_id']); "
+                "print(json.dumps(r))"
+            )
+            proc = await _asyncio.create_subprocess_exec(
+                sys.executable, "-c", code,
+                stdin=_asyncio.subprocess.PIPE,
+                stdout=_asyncio.subprocess.PIPE,
+                stderr=_asyncio.subprocess.PIPE,
+            )
+            stdout_bytes, stderr_bytes = await _asyncio.wait_for(
+                proc.communicate(input=cancel_json.encode("utf-8")),
+                timeout=15.0,
+            )
+            stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
+            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
+
+            if proc.returncode == 0 and stdout:
+                data = json.loads(stdout.split("\n")[-1])
+                sym = data.get("symbol", "?")
+                self.status_text = f"Cancelled order for {sym}"
+                self.notify(f"Order cancelled: {sym}", severity="information", timeout=3)
+                await self._refresh_all()
+            else:
+                self.status_text = f"Cancel failed: {sanitize_status_text(stderr, 60)}"
+                logger.warning("Cancel order failed: %s", stderr)
+        except Exception as exc:
+            self.status_text = f"Cancel error: {exc}"
+            logger.warning("Cancel order error: %s", exc)
 
     # ── Text Input Overlay ────────────────────────────────────────────
 
@@ -838,3 +958,71 @@ class _TextInputScreen(Screen[tuple[str, str] | None]):
             self.dismiss((self._field, value))
         else:
             self.dismiss(None)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Cancel Order Modal Screen
+# ══════════════════════════════════════════════════════════════════════
+
+
+class _CancelOrderScreen(Screen[str | None]):
+    """A modal for selecting which open order to cancel."""
+
+    DEFAULT_CSS = """
+    _CancelOrderScreen {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.85);
+    }
+    #cancel-order-dialog {
+        width: 60;
+        height: auto;
+        padding: 1 2;
+        background: #0d1210;
+        border: solid #2a3a30;
+    }
+    #cancel-order-prompt {
+        color: #4ade80;
+        text-style: bold;
+        margin: 0 0 1 0;
+    }
+    #cancel-order-field {
+        background: #1a2a1f;
+    }
+    """
+
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "dismiss", "Cancel"),
+    ]
+
+    def __init__(self, open_orders: list[dict[str, Any]]) -> None:
+        super().__init__()
+        self._open_orders = open_orders
+
+    def compose(self) -> ComposeResult:
+        lines = []
+        for i, o in enumerate(self._open_orders):
+            oid = str(o.get("order_id", "?"))[:8]
+            sym = str(o.get("symbol", "?"))
+            side = str(o.get("side", "?"))
+            qty = o.get("quantity", 0)
+            lines.append(f"{i + 1}) {oid}… {side} {qty} {sym}")
+        prompt = "Enter order # to cancel:\n" + "\n".join(lines)
+        yield Vertical(
+            Static(prompt, id="cancel-order-prompt"),
+            Input(id="cancel-order-field"),
+            id="cancel-order-dialog",
+        )
+
+    def on_mount(self) -> None:
+        self.query_one("#cancel-order-field", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        value = event.value.strip()
+        try:
+            idx = int(value) - 1
+            if 0 <= idx < len(self._open_orders):
+                self.dismiss(self._open_orders[idx]["order_id"])
+                return
+        except (ValueError, TypeError):
+            pass
+        self.dismiss(None)

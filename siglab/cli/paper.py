@@ -59,7 +59,29 @@ async def run_paper_status(args: argparse.Namespace) -> None:
     feeds = SoDEXFeeds(lake=lake)
     client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
     try:
+        # Process open orders against latest klines
+        try:
+            open_orders = client.get_orders(args.session, status="OPEN") if hasattr(client, 'get_orders') else []
+            open_symbols = {o["symbol"] for o in open_orders}
+            for sym in open_symbols:
+                try:
+                    klines = await feeds.fetch_klines(sym, "1m", limit=5)
+                    if not klines.empty:
+                        await client.process_klines(args.session, klines)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         status = client.get_session_status(args.session)
+
+        # Add mark prices for unrealized PnL
+        try:
+            mark_prices = await client.get_mark_prices()
+            status["mark_prices"] = mark_prices
+        except Exception:
+            status["mark_prices"] = {}
+
         from siglab.cli.rich_utils import print_json
         print_json(status)
     except PaperClientError as exc:
