@@ -30,6 +30,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     subscribed_symbols: set[str] = set()
     subscription_types: set[str] = set()
+    risk_push_tasks: set[asyncio.Task[None]] = set()
 
     try:
         # Send welcome message
@@ -64,6 +65,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             await _handle_message(
                 websocket, message, manager, subscribed_symbols, subscription_types,
+                risk_push_tasks,
             )
 
     except WebSocketDisconnect:
@@ -71,9 +73,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except Exception:
         pass
     finally:
+        for task in risk_push_tasks:
+            task.cancel()
+        risk_push_tasks.clear()
         manager.unregister(websocket)
         for symbol in list(subscribed_symbols):
             manager.unsubscribe(symbol, websocket)
+
+
+async def _periodic_risk_push(ws: WebSocket) -> None:
+    """Push risk scores to a WebSocket client every 15 seconds."""
+    try:
+        while True:
+            await asyncio.sleep(15)
+            await _stream_risk_scores(ws)
+    except (asyncio.CancelledError, Exception):
+        pass
 
 
 async def _handle_message(
@@ -82,6 +97,7 @@ async def _handle_message(
     manager: Any,
     subscribed_symbols: set[str],
     subscription_types: set[str],
+    risk_push_tasks: set[asyncio.Task[None]] | None = None,
 ) -> None:
     """Process an incoming WebSocket message."""
     action = str(message.get("action") or message.get("type") or "").strip().lower()
@@ -108,6 +124,11 @@ async def _handle_message(
                 "message": "Subscribed to risk score updates",
             })
             await _stream_risk_scores(websocket)
+            # Start periodic push task
+            if risk_push_tasks is not None:
+                task = asyncio.create_task(_periodic_risk_push(websocket))
+                risk_push_tasks.add(task)
+                task.add_done_callback(risk_push_tasks.discard)
             return
 
         if not symbol:
@@ -329,17 +350,26 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
         strategy_count = len(equity_curves)
         max_dd = float(max_drawdown(equity_curves[0])) if equity_curves else None
 
+        # Compute returns for all equity curves
+        returns_list = []
+        for eq in equity_curves:
+            if eq.size >= 2:
+                rets = np.diff(eq) / np.where(eq[:-1] != 0, eq[:-1], 1.0)
+                returns_list.append(rets)
+
+        # Compute Sharpe ratio from returns
+        sharpe = 0.0
+        if returns_list:
+            all_returns = np.concatenate(returns_list)
+            ret_std = float(np.std(all_returns))
+            if ret_std > 0.0:
+                sharpe = float(np.mean(all_returns) / ret_std * np.sqrt(365))
+
         corr_matrix: list[list[float]] | None = None
-        if len(equity_curves) >= 2:
-            returns_list = []
-            for eq in equity_curves:
-                if eq.size >= 2:
-                    rets = np.diff(eq) / eq[:-1]
-                    returns_list.append(rets)
-            if len(returns_list) >= 2:
-                matrix = correlation_matrix(returns_list)
-                if matrix.size > 0:
-                    corr_matrix = matrix.tolist()
+        if len(returns_list) >= 2:
+            matrix = correlation_matrix(returns_list)
+            if matrix.size > 0:
+                corr_matrix = matrix.tolist()
 
         avg_corr = 0.0
         if corr_matrix is not None and len(corr_matrix) >= 2:
@@ -353,7 +383,7 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
         composite = None
         if max_dd is not None:
             composite = float(compute_composite_score(
-                sharpe=0.0,
+                sharpe=sharpe,
                 drawdown=max_dd,
                 concentration=0.0,
                 correlation_risk=avg_corr,
@@ -365,6 +395,7 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
             "max_drawdown": max_dd,
             "correlation_matrix": corr_matrix,
             "strategy_count": strategy_count,
+            "sharpe_ratio": sharpe,
             "timestamp": datetime.now(UTC).isoformat(),
         })
 
