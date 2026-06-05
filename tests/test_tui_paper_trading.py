@@ -501,6 +501,8 @@ class TestPaperScreenIntegration:
         mock_result.stderr = ""
 
         with patch("siglab.tui.screens.paper.run_cli", new_callable=AsyncMock, return_value=mock_result):
+            # Mock _find_existing_session to prevent real session reuse
+            screen._find_existing_session = AsyncMock(return_value=None)
             # Mock query_one to avoid widget tree issues
             screen.query_one = MagicMock(side_effect=Exception("not mounted"))
             await screen._init_session()
@@ -517,6 +519,8 @@ class TestPaperScreenIntegration:
         mock_result.stderr = "Session creation failed"
 
         with patch("siglab.tui.screens.paper.run_cli", new_callable=AsyncMock, return_value=mock_result):
+            # Mock _find_existing_session to prevent real session reuse
+            screen._find_existing_session = AsyncMock(return_value=None)
             screen.query_one = MagicMock(side_effect=Exception("not mounted"))
             await screen._init_session()
             assert screen.session_id == ""

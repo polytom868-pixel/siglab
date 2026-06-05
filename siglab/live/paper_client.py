@@ -697,6 +697,24 @@ class SoDEXPaperPerpsClient:
             "orders": self.get_orders(session_id),
         }
 
+    async def get_mark_prices(self) -> dict[str, float]:
+        """Return current mark prices for all tracked symbols."""
+        if self.feeds is None:
+            return {}
+        try:
+            mark_data = await self.feeds.fetch_mark_prices()
+            result: dict[str, float] = {}
+            for entry in mark_data:
+                sym = str(entry.get("symbol", ""))
+                mp = entry.get("markPrice", "0")
+                try:
+                    result[sym] = float(mp)
+                except (TypeError, ValueError):
+                    continue
+            return result
+        except Exception:
+            return {}
+
     # ------------------------------------------------------------------
     # Kline processing (order matching and fills)
     # ------------------------------------------------------------------
