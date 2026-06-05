@@ -92,6 +92,7 @@ class HelpScreen(ModalScreen[None]):
 
     #help-dialog {
         width: 56;
+        max-width: 90%;
         height: auto;
         max-height: 80%;
         padding: 1 2;
@@ -141,6 +142,7 @@ class HelpScreen(ModalScreen[None]):
             ("p", "Set price"),
             ("Enter", "Submit order"),
             ("n", "New session"),
+            ("c", "Cancel order"),
             ("r", "Refresh"),
         ],
         "risk": [

@@ -188,9 +188,17 @@ def format_status(passed: bool | None, deployed: bool = False) -> Text:
 
 
 def truncate(text: str, width: int) -> str:
-    """Truncate text to width with ellipsis."""
+    """Truncate text to width with ellipsis.
+
+    Handles edge cases: width <= 0 returns empty string, width == 1
+    returns just the ellipsis character.
+    """
+    if width <= 0:
+        return ""
     if len(text) <= width:
         return text
+    if width == 1:
+        return "\u2026"
     return text[: width - 1] + "\u2026"
 
 
@@ -456,6 +464,25 @@ def safe_update_text(screen, widget_id: str, text: str) -> None:
     """Shorthand for ``safe_query`` on a ``Static`` widget ``update()``."""
     from textual.widgets import Static  # local import to avoid circular
     safe_query(screen, widget_id, Static, lambda w: w.update(text))
+
+
+def sanitize_status_text(text: str, max_len: int = 120) -> str:
+    """Sanitize text for display in a status bar.
+
+    Strips ANSI escape codes, control characters, newlines, and
+    truncates to *max_len* characters.  Prevents raw subprocess
+    stderr from corrupting the TUI layout.
+    """
+    import re
+    # Strip ANSI escape sequences
+    clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
+    # Strip control characters (keep printable + space)
+    clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', clean)
+    # Replace newlines with spaces
+    clean = clean.replace('\n', ' ').replace('\r', '')
+    # Collapse multiple spaces
+    clean = re.sub(r' {2,}', ' ', clean).strip()
+    return truncate(clean, max_len)
 
 
 # ── Table Rendering Helpers ──────────────────────────────────────────

@@ -174,7 +174,9 @@ class DrawdownSparklineWidget(Static):
         # Sparkline from drawdown values (inverted: more negative = lower)
         # Negate so that drawdowns appear as dips below the baseline
         values = [-v for v in self.drawdown_history]
-        chart_width = max(20, min(60, len(values)))
+        # Responsive: cap chart width to available widget width
+        avail = getattr(self.size, 'width', 80) or 80
+        chart_width = max(20, min(avail - 6, min(60, len(values))))
         spark = sparkline_text(values, width=chart_width, bearish_color=ERROR_RED)
         result.append("  ")
         result.append_text(spark)
@@ -241,28 +243,50 @@ class CorrelationHeatmapWidget(Static):
         if not names or len(names) != n:
             names = [f"S{i+1}" for i in range(n)]
 
-        # Truncate names for display
-        max_name_len = max(len(name) for name in names)
-        max_name_len = min(max_name_len, 8)
+        # Responsive: determine available width and adjust accordingly
+        avail = getattr(self.size, 'width', 80) or 80
+        # Each cell: block + "0.00" = 5 chars + 1 space = 6 chars
+        # Row label: max_name_len + 2 indent + 2 padding
+        # Total: (max_name_len + 2) + n * 6
+        # Solve for max_name_len given avail:
+        #   avail >= max_name_len + 2 + n * 6
+        #   max_name_len <= avail - 2 - n * 6
+        cell_width = 6  # block + "0.00" + space
+        max_name_for_avail = max(3, avail - 2 - n * cell_width)
+        max_name_len = min(8, max_name_for_avail)
+
+        # If even with min name length the matrix is too wide, limit strategies shown
+        min_row_width = 3 + 2 + n * cell_width  # min_name(3) + indent(2) + cells
+        show_n = n
+        if min_row_width > avail and n > 2:
+            # Show as many strategies as fit
+            show_n = max(2, (avail - 5) // cell_width)
+            if show_n < n:
+                names = names[:show_n]
+                # We'll show a truncation hint below
 
         # Column header
         result.append(f"  {'':>{max_name_len}}  ", style=TEXT_MUTED)
-        for name in names:
+        for name in names[:show_n]:
             short = name[:max_name_len].rjust(max_name_len)
             result.append(f"{short} ", style=INFO_BLUE)
         result.append("\n")
 
         # Rows
-        for i in range(n):
+        for i in range(min(n, show_n)):
             row_label = names[i][:max_name_len].rjust(max_name_len)
             result.append(f"  {row_label}  ", style=TEXT_SECONDARY)
-            for j in range(n):
+            for j in range(min(n, show_n)):
                 val = matrix[i][j] if i < len(matrix) and j < len(matrix[i]) else 0.0
                 block = _correlation_block(val)
                 color = _correlation_color(val) if i != j else TEXT_SECONDARY
                 cell = f"{block}{val:.2f}"
                 result.append(f"{cell:>{max_name_len}} ", style=color)
             result.append("\n")
+
+        # Show truncation hint if strategies were hidden
+        if show_n < n:
+            result.append(f"  … +{n - show_n} more strategies\n", style=TEXT_MUTED)
 
         # Legend
         result.append("\n  Legend: ", style=TEXT_MUTED)
