@@ -560,7 +560,7 @@ class StrategyScreen(BaseScreen):
                 )
                 # Refresh results
                 self._results_cache.clear()
-                await self._load_strategies()
+                await self._fetch_data()
             else:
                 self.eval_status = f"Eval failed (exit {result.returncode})"
                 logger.warning("benchmark-eval stderr: %s", result.stderr[:200])
@@ -584,7 +584,7 @@ class StrategyScreen(BaseScreen):
             )
             if result.returncode == 0:
                 self.notify(f"Deck '{self._deck}' initialized", severity="information")
-                await self._load_strategies()
+                await self._fetch_data()
             else:
                 self.notify(f"Init failed: {result.stderr[:80]}", severity="error")
         except Exception as exc:
