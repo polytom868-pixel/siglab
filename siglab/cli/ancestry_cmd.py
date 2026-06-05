@@ -18,6 +18,7 @@ def add_subparser(subparsers) -> None:
         default=None,
     )
     ancestry_parser.add_argument("--limit", type=int, default=10)
+    ancestry_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # clear-passed
     clear_parser = subparsers.add_parser("clear-passed")
@@ -35,6 +36,10 @@ def run_ancestry(args: argparse.Namespace) -> None:
         track=canonical_track_name(args.track) or args.track,
         limit=args.limit,
     )
+    if args.json:
+        import json
+        print(json.dumps(rows))
+        return
     from siglab.cli.rich_utils import make_table, get_console, status_style
     from rich.text import Text
     table = make_table(title="Ancestry")
