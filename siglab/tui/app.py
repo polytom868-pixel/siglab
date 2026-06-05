@@ -35,9 +35,9 @@ NAV_ITEMS: list[tuple[str, str, str]] = [
     ("1", "[ MARKET ]", "market"),
     ("2", "[ PAPER  ]", "paper"),
     ("3", "[ RISK   ]", "risk"),
-    ("4", "[ STRAT  ]", "strategy"),
-    ("5", "[ TELE   ]", "telemetry"),
-    ("6", "[ EVID   ]", "evidence"),
+    ("4", "[ STRATEGY ]", "strategy"),
+    ("5", "[ TELEMETRY]", "telemetry"),
+    ("6", "[ EVIDENCE ]", "evidence"),
 ]
 
 SCREEN_NAMES = {screen_id: label for _, label, screen_id in NAV_ITEMS}

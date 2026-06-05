@@ -320,16 +320,14 @@ class ToolUsageWidget(Static):
         result.append("\n\n")
 
         # Tool table header
-        result.append(f"  {'TOOL':<28}{'COUNT':>6}{'ERR':>6}\n", style=TEXT_MUTED)
-        result.append("  " + "\u2500" * 42 + "\n", style=BORDER_DIM)
+        result.append(f"  {'TOOL':<28}{'COUNT':>6}\n", style=TEXT_MUTED)
+        result.append("  " + "\u2500" * 34 + "\n", style=BORDER_DIM)
 
         # Tool rows (sorted by count descending)
         for tool_name, count in sorted(tool_counts.items(), key=lambda x: -x[1]):
             name = truncate(tool_name, 26)
             result.append(f"  {name:<28}", style=TEXT_SECONDARY)
-            result.append(f"{count:>6}", style=TEXT_PRIMARY)
-            # Error indicator (simplified — we don't have per-tool error counts in telemetry data)
-            result.append(f"{'':>6}\n", style=TEXT_MUTED)
+            result.append(f"{count:>6}\n", style=TEXT_PRIMARY)
 
         return result
 
