@@ -35,6 +35,7 @@ build-backend = "poetry.core.masonry.api"
 markers = [
     "integration: marks tests that make real API calls or run CLI subprocesses (run with -m integration)",
     "asyncio: marks async test cases",
+    "tmux: marks tmux-based TUI tests that spawn terminal sessions (run with -m tmux)",
 ]
 asyncio_mode = "auto"
 
