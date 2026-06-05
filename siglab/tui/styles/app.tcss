@@ -58,9 +58,9 @@ Screen {
 
 /* === Navigation Sidebar === */
 #nav-sidebar {
-    width: 24;
-    min-width: 20;
-    max-width: 30;
+    width: 28;
+    min-width: 24;
+    max-width: 34;
     height: 100%;
     background: $surface;
     border-right: solid $border-dim;
@@ -227,6 +227,7 @@ MarketScreen {
 #order-book {
     height: 1fr;
     min-height: 8;
+    border-top: solid $border-dim;
     overflow-y: auto;
 }
 
@@ -283,6 +284,7 @@ PaperScreen {
 #account-summary {
     height: auto;
     min-height: 5;
+    border-bottom: solid $border-dim;
 }
 
 #pnl-chart {
@@ -457,6 +459,7 @@ StrategyScreen {
 #results-table {
     height: 1fr;
     min-height: 8;
+    border-bottom: solid $border-dim;
     overflow-y: auto;
 }
 
