@@ -18,7 +18,6 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import ListItem, ListView, Static
 
 from siglab.tui.api_client import TuiApiClient
-from siglab.tui.cli_bridge import run_cli_help
 from siglab.tui.formatting import INFO_BLUE, TEXT_MUTED
 from siglab.tui.widgets import SigLabStatusBar
 from siglab.tui.screens.market import MarketScreen
@@ -398,10 +397,6 @@ class SigLabTUI(App):
 
     # ── Keyboard navigation shortcuts ──
 
-    def action_switch_screen(self, screen_id: str) -> None:
-        """Switch to a specific screen by its ID."""
-        self.push_screen(screen_id)
-
     def action_switch_to_market(self) -> None:
         """Switch to the market screen (key 1)."""
         self.push_screen("market")
@@ -425,23 +420,6 @@ class SigLabTUI(App):
     def action_switch_to_evidence(self) -> None:
         """Switch to the evidence screen (key 6)."""
         self.push_screen("evidence")
-
-    async def action_run_cli_help(self) -> None:
-        """Run the CLI help command and display in a debug panel."""
-        try:
-            result = await run_cli_help()
-            self.notify(
-                title=f"CLI — exit {result.returncode}",
-                message=f"Found {len(result.stdout)} chars of output",
-                timeout=3,
-            )
-        except Exception as exc:
-            self.notify(
-                title="CLI Error",
-                message=str(exc),
-                severity="error",
-                timeout=5,
-            )
 
 
 if __name__ == "__main__":

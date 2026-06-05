@@ -10,11 +10,6 @@ import asyncio
 import sys
 from typing import NamedTuple
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.syntax import Syntax
-
-
 class CliResult(NamedTuple):
     """Result of a CLI command execution.
 
@@ -82,86 +77,4 @@ async def run_cli(*args: str, timeout: float = 30.0) -> CliResult:
     )
 
 
-def format_cli_output(result: CliResult, console: Console | None = None) -> str:
-    """Format CLI output as Rich-styled text.
 
-    Renders the command, return code, stdout, and stderr as Rich output.
-
-    Args:
-        result: The CliResult to format.
-        console: Optional Console for Rich rendering. If None, creates a new one.
-
-    Returns:
-        A string with the rendered Rich output.
-    """
-    if console is None:
-        console = Console(width=80)
-
-    from io import StringIO
-
-    buf = StringIO()
-    local_console = Console(file=buf, width=80)
-
-    label = (
-        "[green]✓ Success[/]"
-        if result.returncode == 0
-        else f"[red]✗ Failed (exit {result.returncode})[/]"
-    )
-
-    if result.stdout.strip() and result.stderr.strip():
-        # Both stdout and stderr
-        syntax = Syntax(
-            result.stdout.strip(),
-            "text",
-            theme="monokai",
-            word_wrap=True,
-        )
-        panel = Panel(
-            syntax,
-            title=f"[bold]{result.command}[/]",
-            subtitle=label,
-            border_style="blue" if result.returncode == 0 else "red",
-        )
-        local_console.print(panel)
-        # Also print stderr separately
-        local_console.print(
-            Panel(result.stderr.strip(), title="stderr", border_style="red")
-        )
-    elif result.stdout.strip():
-        # Only stdout
-        syntax = Syntax(result.stdout.strip(), "text", theme="monokai", word_wrap=True)
-        panel = Panel(
-            syntax,
-            title=f"[bold]{result.command}[/]",
-            subtitle=label,
-            border_style="blue" if result.returncode == 0 else "red",
-        )
-        local_console.print(panel)
-    elif result.stderr.strip():
-        # Only stderr
-        panel = Panel(
-            result.stderr.strip(),
-            title=f"[bold]{result.command}[/]",
-            subtitle=label,
-            border_style="red",
-        )
-        local_console.print(panel)
-    else:
-        # No output
-        panel = Panel(
-            "(no output)",
-            title=f"[bold]{result.command}[/]",
-            subtitle=label,
-            border_style="blue" if result.returncode == 0 else "red",
-        )
-        local_console.print(panel)
-
-    return buf.getvalue()
-
-
-async def run_cli_help() -> CliResult:
-    """Run ``python3 -m siglab.cli --help`` and return the result.
-
-    Shorthand for ``run_cli("--help")``.
-    """
-    return await run_cli("--help")

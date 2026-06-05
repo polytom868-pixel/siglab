@@ -53,24 +53,6 @@ DEFAULT_DECK = "trend_signals_external"
 # Spinner frames for evaluation progress
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-# Family filter options
-FAMILY_FILTERS: list[str] = [
-    "ALL",
-    "MOM",
-    "REV",
-    "CARRY",
-    "PAIR",
-    "BASKET",
-]
-
-# Status filter options
-STATUS_FILTERS: list[str] = [
-    "ALL",
-    "PASSED",
-    "FAILED",
-    "PENDING",
-]
-
 
 # ══════════════════════════════════════════════════════════════════════
 # Strategy List Widget
