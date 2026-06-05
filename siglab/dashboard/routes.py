@@ -540,19 +540,27 @@ def _compute_risk_metrics(state: Any) -> dict[str, Any]:
             else:
                 dd_history = dd_series.tolist()
 
+        # Compute returns for all equity curves
+        returns_list = []
+        for eq in equity_curves:
+            if eq.size >= 2:
+                rets = np.diff(eq) / np.where(eq[:-1] != 0, eq[:-1], 1.0)
+                returns_list.append(rets)
+
+        # Compute Sharpe ratio from returns
+        sharpe = 0.0
+        if returns_list:
+            all_returns = np.concatenate(returns_list)
+            ret_std = float(np.std(all_returns))
+            if ret_std > 0.0:
+                sharpe = float(np.mean(all_returns) / ret_std * np.sqrt(365))
+
         # Compute correlation matrix if multiple strategies
         corr_matrix: list[list[float]] | None = None
-        if len(equity_curves) >= 2:
-            # Convert equity curves to daily returns for correlation
-            returns_list = []
-            for eq in equity_curves:
-                if eq.size >= 2:
-                    rets = np.diff(eq) / np.where(eq[:-1] != 0, eq[:-1], 1.0)
-                    returns_list.append(rets)
-            if len(returns_list) >= 2:
-                matrix = correlation_matrix(returns_list)
-                if matrix.size > 0:
-                    corr_matrix = matrix.tolist()
+        if len(returns_list) >= 2:
+            matrix = correlation_matrix(returns_list)
+            if matrix.size > 0:
+                corr_matrix = matrix.tolist()
 
         # Compute sub-scores for the gauge
         avg_corr = 0.0
@@ -573,7 +581,7 @@ def _compute_risk_metrics(state: Any) -> dict[str, Any]:
         )
 
         sub_scores = {
-            "sharpe": _normalize_sharpe_score(0.0),
+            "sharpe": _normalize_sharpe_score(sharpe),
             "drawdown": _normalize_drawdown_score(max_dd if max_dd is not None else 0.0),
             "concentration": _normalize_concentration_score(0.0),
             "correlation_risk": _normalize_correlation_score(avg_corr),
@@ -583,7 +591,7 @@ def _compute_risk_metrics(state: Any) -> dict[str, Any]:
         composite: float | None = None
         if max_dd is not None:
             composite = float(compute_composite_score(
-                sharpe=0.0,
+                sharpe=sharpe,
                 drawdown=max_dd,
                 concentration=0.0,
                 correlation_risk=avg_corr,
@@ -618,6 +626,7 @@ def _compute_risk_metrics(state: Any) -> dict[str, Any]:
             "recovery_periods": rec_time,
             "drawdown_history": dd_history,
             "alerts": alerts,
+            "sharpe_ratio": sharpe,
         }
 
     except ImportError:
