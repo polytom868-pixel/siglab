@@ -44,7 +44,7 @@ from siglab.tui.formatting import (
 )
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
-from siglab.tui.types import SymbolEntry, TickerView, closes_from_klines
+from siglab.tui.data_views import SymbolEntry, TickerView, closes_from_klines
 from siglab.tui.widgets.base import FilterableListWidget
 from siglab.tui.widgets.sparkline import ohlc_summary, sparkline_text
 
