@@ -628,7 +628,7 @@ class LineageStore:
 
     def list_rows(self, *, track: str | None, limit: int) -> list[dict[str, Any]]:
         query = (
-            "SELECT created_at, track, family, spec_hash, aggregate_score, passed, deployd "
+            "SELECT created_at, track, family, spec_hash, aggregate_score, passed, deployd, summary_json "
             "FROM experiments "
         )
         params: tuple[Any, ...]
@@ -644,8 +644,10 @@ class LineageStore:
         with self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
 
-        return [
-            {
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            summary = json.loads(row[7]) if row[7] else {}
+            result.append({
                 "created_at": row[0],
                 "track": canonical_track_name(row[1]) or row[1],
                 "family": row[2],
@@ -653,9 +655,12 @@ class LineageStore:
                 "aggregate_score": row[4],
                 "passed": bool(row[5]),
                 "deployd": bool(row[6]),
-            }
-            for row in rows
-        ]
+                "validation_total_return": summary.get("validation_total_return"),
+                "sharpe": summary.get("median_sharpe") or summary.get("validation_sharpe"),
+                "max_drawdown": summary.get("max_drawdown"),
+                "equity_curve": summary.get("equity_curve", []),
+            })
+        return result
 
     def has_spec(self, spec_hash: str) -> bool:
         with self._connect() as connection:
