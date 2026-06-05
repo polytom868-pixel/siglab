@@ -74,7 +74,7 @@ def _make_orderbook(n: int = 5) -> dict:
 
 def _make_symbols(n: int = 5) -> list:
     """Generate fake SymbolEntry views for testing."""
-    from siglab.tui.types import SymbolEntry
+    from siglab.tui.data_views import SymbolEntry
     syms = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD", "LINK-USD"]
     return [
         SymbolEntry(
