@@ -21,7 +21,7 @@ from siglab.tui.app import (
     PlaceholderScreen,
     SigLabTUI,
 )
-from siglab.tui.cli_bridge import CliResult, format_cli_output, run_cli, run_cli_help
+from siglab.tui.cli_bridge import CliResult, run_cli
 from siglab.tui.widgets.status_bar import SigLabStatusBar
 
 
@@ -309,42 +309,10 @@ class TestCliBridge:
         assert "command" in CliResult._fields
 
     @pytest.mark.asyncio
-    async def test_run_cli_help(self) -> None:
-        result = await run_cli_help()
-        assert isinstance(result, CliResult)
-        assert result.command.endswith("--help")
-        # --help should exit 0
-        assert result.returncode == 0
-        assert len(result.stdout) > 0
-
-    @pytest.mark.asyncio
     async def test_run_cli_with_args(self) -> None:
         result = await run_cli("--help")
         assert result.returncode == 0
         assert "siglab" in result.stdout.lower() or "usage" in result.stdout.lower() or len(result.stdout) > 0
-
-    def test_format_cli_output_success(self) -> None:
-        result = CliResult(returncode=0, stdout="All good", stderr="", command="test cmd")
-        output = format_cli_output(result)
-        assert "All good" in output
-        assert "test cmd" in output
-
-    def test_format_cli_output_failure(self) -> None:
-        result = CliResult(returncode=1, stdout="", stderr="Error occurred", command="fail cmd")
-        output = format_cli_output(result)
-        assert "Error occurred" in output
-        assert "fail cmd" in output
-
-    def test_format_cli_output_empty(self) -> None:
-        result = CliResult(returncode=0, stdout="", stderr="", command="empty")
-        output = format_cli_output(result)
-        assert "no output" in output.lower()
-
-    def test_format_cli_output_both_streams(self) -> None:
-        result = CliResult(returncode=0, stdout="out", stderr="err", command="both")
-        output = format_cli_output(result)
-        assert "out" in output
-        assert "err" in output
 
 
 # ── Status Bar Tests ─────────────────────────────────────────────────

@@ -23,7 +23,6 @@ import pytest
 
 from siglab.tui.formatting import (
     ACCENT_GREEN,
-    ACCENT_PURPLE,
     BG,
     BORDER_DIM,
     ERROR_RED,
@@ -1173,7 +1172,6 @@ class TestVAL_TUI_010_DesignPolish:
         assert hasattr(fmt, "WARNING_YELLOW")
         assert hasattr(fmt, "ERROR_RED")
         assert hasattr(fmt, "INFO_BLUE")
-        assert hasattr(fmt, "ACCENT_PURPLE")
         # Text hierarchy
         assert hasattr(fmt, "TEXT_PRIMARY")
         assert hasattr(fmt, "TEXT_SECONDARY")

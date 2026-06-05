@@ -30,8 +30,6 @@ class FilterableListWidget(Static):
     - Single-pass filtering via ``_apply_filters()``
     """
 
-    __slots__ = ("_all_data", "_filter_text", "_selected_hashes")
-
     selected_index: reactive[int] = reactive(0)
 
     # Subclass sets this to the reactive list attribute name
