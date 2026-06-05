@@ -46,6 +46,8 @@ from siglab.tui.formatting import (
     order_status_style,
     safe_query,
     side_style,
+    sanitize_status_text,
+    truncate,
 )
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
@@ -87,12 +89,24 @@ class PositionsTableWidget(Static):
             result.append("  No open positions\n", style=TEXT_MUTED)
             return result
 
-        # Header
-        result.append(
-            "  SYMBOL          SIZE         ENTRY        MARK       UNREAL PnL\n",
-            style=TEXT_MUTED,
-        )
-        result.append("  " + "─" * 68 + "\n", style=BORDER_DIM)
+        # Responsive layout: determine available width
+        avail = getattr(self.size, 'width', 120) or 120
+        # Full layout: SYMBOL(16) + SIZE(14) + ENTRY(14) + MARK(14) + PnL(10) = 68+indent
+        # Compact layout (hide MARK): SYMBOL(14) + SIZE(12) + ENTRY(12) + PnL(10) = 48+indent
+        show_mark = avail >= 70  # need ~68 chars for full layout
+
+        if show_mark:
+            result.append(
+                "  SYMBOL          SIZE         ENTRY        MARK       UNREAL PnL\n",
+                style=TEXT_MUTED,
+            )
+            result.append("  " + "─" * 68 + "\n", style=BORDER_DIM)
+        else:
+            result.append(
+                "  SYMBOL        SIZE       ENTRY      UNREAL PnL\n",
+                style=TEXT_MUTED,
+            )
+            result.append("  " + "─" * 50 + "\n", style=BORDER_DIM)
 
         for pos in self.positions:
             sym = str(pos.get("symbol", "?"))
@@ -107,11 +121,17 @@ class PositionsTableWidget(Static):
                 else:
                     unrealized = abs(qty) * (entry - mark)
 
-            result.append(f"  {sym:<16}", style=TEXT_SECONDARY)
-            result.append(f"{format_price(qty):>12}  ", style=TEXT_PRIMARY)
-            result.append(f"{format_price(entry):>12}  ", style=TEXT_PRIMARY)
-            result.append(f"{format_price(mark):>12}  ", style=INFO_BLUE)
-            result.append_text(format_pnl(unrealized))
+            if show_mark:
+                result.append(f"  {sym:<16}", style=TEXT_SECONDARY)
+                result.append(f"{format_price(qty):>12}  ", style=TEXT_PRIMARY)
+                result.append(f"{format_price(entry):>12}  ", style=TEXT_PRIMARY)
+                result.append(f"{format_price(mark):>12}  ", style=INFO_BLUE)
+                result.append_text(format_pnl(unrealized))
+            else:
+                result.append(f"  {truncate(sym, 14):<14}", style=TEXT_SECONDARY)
+                result.append(f"{format_price(qty):>10}  ", style=TEXT_PRIMARY)
+                result.append(f"{format_price(entry):>10}  ", style=TEXT_PRIMARY)
+                result.append_text(format_pnl(unrealized))
             result.append("\n")
 
         return result
@@ -411,12 +431,24 @@ class OrderHistoryWidget(Static):
             result.append("  No orders placed\n", style=TEXT_MUTED)
             return result
 
-        # Header
-        result.append(
-            "  TIME        SIDE  TYPE    SYMBOL        QTY       PRICE    STATUS\n",
-            style=TEXT_MUTED,
-        )
-        result.append("  " + "─" * 72 + "\n", style=BORDER_DIM)
+        # Responsive layout: determine available width
+        avail = getattr(self.size, 'width', 120) or 120
+        # Full: TIME(11)+SIDE(6)+TYPE(8)+SYM(14)+QTY(10)+PRICE(10)+STATUS = ~72
+        # Compact (hide PRICE): TIME(11)+SIDE(6)+TYPE(8)+SYM(12)+QTY(10)+STATUS = ~55
+        show_price = avail >= 72
+
+        if show_price:
+            result.append(
+                "  TIME        SIDE  TYPE    SYMBOL        QTY       PRICE    STATUS\n",
+                style=TEXT_MUTED,
+            )
+            result.append("  " + "─" * 72 + "\n", style=BORDER_DIM)
+        else:
+            result.append(
+                "  TIME       SIDE  TYPE   SYM       QTY     STATUS\n",
+                style=TEXT_MUTED,
+            )
+            result.append("  " + "─" * 55 + "\n", style=BORDER_DIM)
 
         for order in self.orders[:50]:  # Show last 50
             created = float(order.get("created_at", 0))
@@ -435,20 +467,28 @@ class OrderHistoryWidget(Static):
 
             qty_str = compact_qty(qty)
 
-            result.append(f"  {ts_str:<11}", style=TEXT_MUTED)
-            result.append(f" {side:<5}", style=sd_style)
-            result.append(f" {otype:<7}", style=TEXT_SECONDARY)
-            result.append(f" {sym:<13}", style=TEXT_PRIMARY)
-            result.append(f" {qty_str:>9}", style=TEXT_PRIMARY)
+            if show_price:
+                result.append(f"  {ts_str:<11}", style=TEXT_MUTED)
+                result.append(f" {side:<5}", style=sd_style)
+                result.append(f" {otype:<7}", style=TEXT_SECONDARY)
+                result.append(f" {sym:<13}", style=TEXT_PRIMARY)
+                result.append(f" {qty_str:>9}", style=TEXT_PRIMARY)
 
-            if fill_price is not None:
-                result.append(f" {format_price(float(fill_price)):>9}", style=ACCENT_GREEN)
-            elif price > 0:
-                result.append(f" {format_price(price):>9}", style=TEXT_SECONDARY)
+                if fill_price is not None:
+                    result.append(f" {format_price(float(fill_price)):>9}", style=ACCENT_GREEN)
+                elif price > 0:
+                    result.append(f" {format_price(price):>9}", style=TEXT_SECONDARY)
+                else:
+                    result.append(f" {'market':>9}", style=TEXT_MUTED)
+
+                result.append(f" {status}", style=s_style)
             else:
-                result.append(f" {'market':>9}", style=TEXT_MUTED)
-
-            result.append(f" {status}", style=s_style)
+                result.append(f"  {ts_str:<10}", style=TEXT_MUTED)
+                result.append(f" {side:<5}", style=sd_style)
+                result.append(f" {otype:<6}", style=TEXT_SECONDARY)
+                result.append(f" {truncate(sym, 9):<9}", style=TEXT_PRIMARY)
+                result.append(f" {qty_str:>8}", style=TEXT_PRIMARY)
+                result.append(f" {status}", style=s_style)
             result.append("\n")
 
         return result
@@ -540,7 +580,7 @@ class PaperScreen(BaseScreen):
                 # Initial data fetch
                 await self._refresh_all()
             else:
-                self.status_text = f"Session error: {result.stderr[:80]}"
+                self.status_text = sanitize_status_text(f"Session error: {result.stderr[:80]}")
                 self.is_loading = False
                 logger.warning("paper-start failed: %s", result.stderr)
         except Exception as exc:
@@ -569,7 +609,7 @@ class PaperScreen(BaseScreen):
                 f"Session {self.session_id[:8]}\u2026 \u00b7 updated  [r]efresh  [s]ymbol [b]uy/sell [?]help"
             )
         else:
-            self._update_status_text(f"Refresh error: {result.stderr[:60]}  [r]etry")
+            self._update_status_text(f"Refresh error: {sanitize_status_text(result.stderr, 60)}  [r]etry")
             logger.warning("paper-status failed: %s", result.stderr)
 
     def _update_positions(self, positions: list[dict[str, Any]]) -> None:

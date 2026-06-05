@@ -235,72 +235,92 @@ class ResultsTableWidget(Static):
             result.append("  No results — select a strategy or run evaluation\n", style=TEXT_MUTED)
             return result
 
+        # Responsive column selection based on available width
+        avail = getattr(self.size, 'width', 120) or 120
+
+        # All columns with their widths
+        all_cols = [
+            ("NAME", 14, "name"),
+            ("FAMILY", 10, "family"),
+            ("SCORE", 8, "score"),
+            ("PnL%", 9, "pnl"),
+            ("SHARPE", 8, "sharpe"),
+            ("MAXDD", 8, "maxdd"),
+            ("STATUS", 6, "status"),
+            ("SPARKLINE", 16, "sparkline"),
+        ]
+        # Total width: sum of all = 89 + 2 indent = 91
+
+        # Progressive column hiding:
+        # >= 92: show all 8 columns (89 + indent)
+        # >= 76: hide SPARKLINE (73 + indent)
+        # >= 66: hide SPARKLINE + MAXDD (65 + indent)
+        # >= 56: hide SPARKLINE + MAXDD + PnL% (56 + indent)
+        # < 56: show NAME + SCORE + STATUS only (28 + indent)
+        if avail >= 92:
+            cols = all_cols
+        elif avail >= 76:
+            cols = [c for c in all_cols if c[2] != "sparkline"]
+        elif avail >= 66:
+            cols = [c for c in all_cols if c[2] not in ("sparkline", "maxdd")]
+        elif avail >= 56:
+            cols = [c for c in all_cols if c[2] not in ("sparkline", "maxdd", "pnl")]
+        else:
+            cols = [c for c in all_cols if c[2] in ("name", "score", "status")]
+
         # Header
         header = Text()
         header.append("  ")
-        cols = [
-            ("NAME", 14),
-            ("FAMILY", 10),
-            ("SCORE", 8),
-            ("PnL%", 9),
-            ("SHARPE", 8),
-            ("MAXDD", 8),
-            ("STATUS", 6),
-            ("SPARKLINE", 16),
-        ]
-        for name, width in cols:
+        for name, width, _key in cols:
             marker = " ▼" if name.lower().replace("%", "").replace(" ", "_") == self.sort_column.replace("_", " ").replace(" ", "") else ""
             header.append(f"{name + marker:<{width}}", style=TEXT_MUTED)
         result.append_text(header)
         result.append("\n")
-        col_total = sum(w for _, w in cols) + 2  # +2 for leading indent
+        col_total = sum(w for _, w, _ in cols) + 2  # +2 for leading indent
         result.append("  " + "─" * (col_total - 2) + "\n", style=BORDER_DIM)
+
+        # Build column renderers
+        col_renderers = {
+            "name": lambda item, row: (
+                row.append(f"{str(item.get('spec_hash', '?'))[:12]:<14}", style=TEXT_SECONDARY)
+            ),
+            "family": lambda item, row: (
+                row.append(f"{str(item.get('family', ''))[:8]:<10}", style=INFO_BLUE)
+            ),
+            "score": lambda item, row: (
+                row.append_text(format_score(item.get("aggregate_score"))),
+                row.append("  " if item.get("aggregate_score") is not None else "    "),
+            ),
+            "pnl": lambda item, row: (
+                row.append_text(format_return(item.get("validation_total_return"))),
+                row.append(" " if item.get("validation_total_return") is not None else " "),
+            ),
+            "sharpe": lambda item, row: (
+                row.append_text(format_sharpe(item.get("sharpe"))),
+                row.append("  " if item.get("sharpe") is not None else "   "),
+            ),
+            "maxdd": lambda item, row: (
+                row.append_text(format_drawdown(item.get("max_drawdown"))),
+                row.append("  " if item.get("max_drawdown") is not None else "   "),
+            ),
+            "status": lambda item, row: (
+                row.append_text(format_status(item.get("passed"))),
+                row.append("   "),
+            ),
+            "sparkline": lambda item, row: (
+                row.append_text(sparkline_text(item.get("equity_curve", []), width=14))
+                if item.get("equity_curve") and len(item.get("equity_curve", [])) > 1
+                else row.append("─" * 14, style=TEXT_MUTED)
+            ),
+        }
 
         # Rows
         for item in self._sorted_results()[:50]:  # Max 50 rows
             row = Text()
             row.append("  ")
 
-            # Name (spec_hash truncated)
-            name = str(item.get("spec_hash", "?"))[:12]
-            row.append(f"{name:<14}", style=TEXT_SECONDARY)
-
-            # Family
-            family = str(item.get("family", ""))[:8]
-            row.append(f"{family:<10}", style=INFO_BLUE)
-
-            # Score
-            score = item.get("aggregate_score")
-            row.append_text(format_score(score))
-            row.append("  " if score is not None else "    ")
-
-            # PnL
-            pnl = item.get("validation_total_return")
-            row.append_text(format_return(pnl))
-            row.append(" " if pnl is not None else " ")
-
-            # Sharpe
-            sharpe = item.get("sharpe")
-            row.append_text(format_sharpe(sharpe))
-            row.append("  " if sharpe is not None else "   ")
-
-            # MaxDD
-            dd = item.get("max_drawdown")
-            row.append_text(format_drawdown(dd))
-            row.append("  " if dd is not None else "   ")
-
-            # Status
-            passed = item.get("passed")
-            row.append_text(format_status(passed))
-            row.append("   ")
-
-            # Sparkline (equity curve)
-            equity = item.get("equity_curve", [])
-            if equity and len(equity) > 1:
-                spark = sparkline_text(equity, width=14)
-                row.append_text(spark)
-            else:
-                row.append("─" * 14, style=TEXT_MUTED)
+            for _name, _width, key in cols:
+                col_renderers[key](item, row)
 
             result.append_text(row)
             result.append("\n")

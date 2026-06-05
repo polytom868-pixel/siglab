@@ -749,7 +749,7 @@ class TelemetryScreen(BaseScreen):
             "score": lambda r: r.get("aggregate_score") or 0,
             "track": lambda r: r.get("track", ""),
         }
-        runs = sorted(lw._all_runs, key=sort_keys[next_sort], reverse=True)
+        runs = sorted(lw._all_data, key=sort_keys[next_sort], reverse=True)
         lw.set_runs(runs)
         self.notify(f"Sorted by: {next_sort}", severity="information", timeout=1)
 
