@@ -9,6 +9,7 @@ import sys
 from datetime import UTC, datetime
 from collections import Counter
 
+from siglab.cli.rich_utils import print_json, print_success
 from siglab.config import load_settings
 from siglab.data import EvidenceStore, etf_inflow_evidence, news_evidence
 from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
@@ -113,7 +114,6 @@ async def run_evidence_build(args: argparse.Namespace) -> None:
         else output.with_suffix(".summary.json")
     )
     summary = store.write_summary(summary_output, max_day_gap=1, top_links=int(args.summary_top_links))
-    from siglab.cli.rich_utils import print_json
     print_json(
         {
             "output": display_path(output, root_dir=settings.root_dir),
@@ -160,8 +160,6 @@ def run_evidence_map(args: argparse.Namespace) -> None:
     rendered = write_evidence_graph_html(summary_path, output_path)
     payload = {"summary": str(summary_path), "output": str(rendered)}
     if getattr(args, "json", False):
-        from siglab.cli.rich_utils import print_json
         print_json(payload)
         return
-    from siglab.cli.rich_utils import print_success
     print_success(f"wrote evidence graph: {rendered}")

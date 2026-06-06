@@ -15,6 +15,7 @@ from siglab.cli.helpers import (
     display_deployment_record,
     deployment_eligible,
 )
+from siglab.cli.rich_utils import print_error, print_info, print_json, print_success, print_warning
 
 
 def add_subparser(subparsers) -> None:
@@ -53,7 +54,6 @@ async def run_deploy(args: argparse.Namespace) -> None:
             print(f"No matching spec or deployment found for hash: {spec_hash}", file=sys.stderr)
             raise SystemExit(1)
         detail = display_deployment_record(settings=settings, record=record)
-        from siglab.cli.rich_utils import print_info, print_json
         print_info(f"Found spec {spec_hash} in ancestry (not yet deployed):")
         print_json(detail)
         evaluation = dict(record.get("summary") or {})
@@ -77,12 +77,9 @@ async def run_deploy(args: argparse.Namespace) -> None:
             llm_finalize=bool(args.llm_finalize),
             schedule=bool(args.schedule),
         )
-        from siglab.cli.rich_utils import print_success
         print_success(f"Exported snapshot to: {record_result.strategy_dir}")
         return
-    from siglab.cli.rich_utils import print_info, print_warning
     print_info(f"Found existing deployment for {spec_hash}:")
-    from siglab.cli.rich_utils import print_json
     print_json(existing)
     print_warning("Deployment already exists. Use 'deployments --spec <hash>' to inspect it.")
 
@@ -108,14 +105,13 @@ def run_deployments(args: argparse.Namespace) -> None:
     settings = load_settings()
     ancestry = LineageStore(settings.ancestry_db_path)
     spec_hash = args.spec
-    from siglab.cli.rich_utils import print_error as _print_err, print_json as _print_json
     if spec_hash:
         record = ancestry.deployment(spec_hash)
         if record:
-            _print_json(display_deployment_record(settings=settings, record=record))
+            print_json(display_deployment_record(settings=settings, record=record))
         else:
-            _print_err(f"No deployment found for spec {spec_hash}")
+            print_error(f"No deployment found for spec {spec_hash}")
         return
     deployments = ancestry.list_deployments()
     payload = [display_deployment_record(settings=settings, record=r) for r in deployments]
-    _print_json(payload)
+    print_json(payload)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from siglab.cli.rich_utils import get_console, make_table, print_json, status_style
 from siglab.config import load_settings
 from siglab.search import LineageStore
 from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name
@@ -37,10 +38,8 @@ def run_ancestry(args: argparse.Namespace) -> None:
         limit=args.limit,
     )
     if args.json:
-        from siglab.cli.rich_utils import print_json
         print_json(rows)
         return
-    from siglab.cli.rich_utils import make_table, get_console, status_style
     from rich.text import Text
     table = make_table(title="Ancestry")
     table.add_column("Created", style="muted")
@@ -83,5 +82,4 @@ def run_clear_passed(args: argparse.Namespace) -> None:
         "tracks_cleared": len(tracks),
         "passed_specs_removed": removed,
     }
-    from siglab.cli.rich_utils import print_json
     print_json(payload)

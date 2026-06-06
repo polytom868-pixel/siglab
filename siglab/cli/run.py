@@ -56,6 +56,7 @@ from siglab.cli.helpers import (
     external_research_from_llm_trace,
     print_run_reflection_short,
 )
+from siglab.cli.rich_utils import print_error, print_info, print_json, print_success, print_warning
 
 
 def add_subparser(subparsers) -> None:
@@ -293,7 +294,6 @@ async def _run_iterations(
         if iterations > 0 and iteration_number > iterations:
             break
         if max_runtime_timestamp and datetime.now(UTC).timestamp() >= max_runtime_timestamp:
-            from siglab.cli.rich_utils import print_warning
             print_warning(f"[{track}] max runtime reached, stopping at iteration {iteration_number}")
             break
 
@@ -306,7 +306,6 @@ async def _run_iterations(
             try:
                 research_summary = await provider.build_research_summary(track, parent)
             except Exception as exc:
-                from siglab.cli.rich_utils import print_error
                 print_error(f"[{track}] research_summary failed: {exc}")
                 continue
 
@@ -335,7 +334,6 @@ async def _run_iterations(
             )
             trial_context = dict(planner_payload.get("trial_context") or {})
             if planner_payload.get("skip_write"):
-                from siglab.cli.rich_utils import print_info
                 print_info(f"[{track}] planner skipped write: {planner_payload.get('skip_reason')}")
                 continue
 
@@ -350,7 +348,6 @@ async def _run_iterations(
                     use_historical_seeds=use_historical_seeds,
                 )
                 if not base_payload:
-                    from siglab.cli.rich_utils import print_info
                     print_info(f"[{track}] no seed spec payload available, skipping iteration")
                     continue
                 spec_payload = base_payload
@@ -362,7 +359,6 @@ async def _run_iterations(
                     planner_payload=planner_payload,
                 )
             if not spec_payload:
-                from siglab.cli.rich_utils import print_error
                 print_error(f"[{track}] writer returned no spec payload")
                 continue
 
@@ -382,7 +378,6 @@ async def _run_iterations(
             evaluation.setdefault("passed", bool(summary.get("passed")))
 
             if not evaluation.get("spec_hash"):
-                from siglab.cli.rich_utils import print_error
                 print_error(f"[{track}] evaluation returned empty spec_hash, skipping")
                 continue
 
@@ -423,7 +418,6 @@ async def _run_iterations(
                     reason="credit_budget_exhausted",
                     payload=credit_stop,
                 )
-                from siglab.cli.rich_utils import print_warning
                 print_warning(f"[{track}] credit budget exhausted, stopping")
                 break
 
@@ -483,7 +477,6 @@ async def _run_iterations(
                 run_session_id=run_session_id,
             )
             if reflection is not None:
-                from siglab.cli.rich_utils import print_success
                 print_success(f"[{track}] reflection recorded at {reflection}")
 
         finally:
@@ -540,7 +533,6 @@ async def _run_burn_in_phase(
             try:
                 research_summary = await provider.build_research_summary(track, parent)
             except Exception as exc:
-                from siglab.cli.rich_utils import print_error
                 print_error(f"[{track}] burn_in research_summary failed: {exc}")
                 continue
             research_summary["external_research"] = tool_only_external_research(
@@ -879,7 +871,6 @@ async def inspect_command(args: argparse.Namespace) -> None:
                         market_bundle=summary.get("market_bundle"),
                     )
                 )
-                from siglab.cli.rich_utils import print_json
                 print_json(summary)
             finally:
                 provider.clear_iteration_bundle()

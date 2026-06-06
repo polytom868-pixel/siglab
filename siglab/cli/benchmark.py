@@ -12,6 +12,7 @@ from siglab.benchmark import (
     supported_deck_names,
 )
 from siglab.cli.helpers import require_sosovalue_config
+from siglab.cli.rich_utils import print_json
 from siglab.config import load_settings
 from siglab.data import MarketDataProvider, ParquetLake
 from siglab.evaluator import ResearchEvaluator
@@ -67,7 +68,6 @@ def run_benchmark_init(args: argparse.Namespace) -> None:
         run_label=args.run_label,
         force=bool(args.force),
     )
-    from siglab.cli.rich_utils import print_json
     print_json(payload)
 
 
@@ -92,7 +92,6 @@ async def run_benchmark_eval(args: argparse.Namespace) -> None:
         )
     finally:
         await provider.close()
-    from siglab.cli.rich_utils import print_json
     print_json(payload)
 
 
@@ -102,5 +101,4 @@ def run_benchmark_status(args: argparse.Namespace) -> None:
         settings=settings,
         deck_name=str(args.deck),
     )
-    from siglab.cli.rich_utils import print_json
     print_json(payload)
