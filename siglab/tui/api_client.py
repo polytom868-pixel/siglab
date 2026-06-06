@@ -6,6 +6,7 @@ Supports both HTTP REST and WebSocket connections.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Callable, Awaitable
@@ -33,6 +34,12 @@ class TuiApiClient:
         self._client: httpx.AsyncClient | None = None
         self._timeout = timeout
 
+    async def __aenter__(self) -> TuiApiClient:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        await self.close()
+
     async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
@@ -40,6 +47,37 @@ class TuiApiClient:
                 timeout=self._timeout,
             )
         return self._client
+
+    async def _request_with_retry(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Single retry with 0.5s backoff on transient errors.
+
+        Args:
+            method: HTTP method name (e.g. "get", "post", "delete").
+            path: URL path relative to base_url.
+            **kwargs: Forwarded to the httpx client method (params, json, etc.).
+
+        Returns:
+            Parsed JSON response dict.
+
+        Raises:
+            httpx.HTTPStatusError: On 4xx errors or repeated 5xx failures.
+            httpx.ConnectError: If connection fails after retry.
+            httpx.TimeoutException: If request times out after retry.
+        """
+        client = await self._ensure_client()
+        try:
+            response = await getattr(client, method)(path, **kwargs)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500:
+                raise  # Don't retry 4xx
+            logger.warning("Request %s %s failed (%s), retrying in 0.5s", method, path, exc)
+            await asyncio.sleep(0.5)
+            client = await self._ensure_client()
+            response = await getattr(client, method)(path, **kwargs)
+            response.raise_for_status()
+            return response.json()
 
     async def close(self) -> None:
         """Close the underlying HTTP client session."""
@@ -52,82 +90,50 @@ class TuiApiClient:
 
         Returns:
             Dict with status, version, uptime_seconds fields.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/health")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/health")
 
     async def get_config(self) -> dict[str, Any]:
         """Fetch the /config endpoint.
 
         Returns:
             Dict with system, sosovalue, claude configuration.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/config")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/config")
 
     async def get_ops_board(self) -> dict[str, Any]:
         """Fetch the /ops-board endpoint.
 
         Returns:
             Dict with artifact_status, summary, and service_health.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/ops-board")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/ops-board")
 
     async def get_evidence_graph(self) -> dict[str, Any]:
         """Fetch the /evidence-graph endpoint.
 
         Returns:
             Dict with nodes and edges arrays.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/evidence-graph")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/evidence-graph")
 
     async def get_skill_report(self) -> dict[str, Any]:
         """Fetch the /skill-report endpoint.
 
         Returns:
             Dict with per-skill metrics.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/skill-report")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/skill-report")
 
     async def get_telemetry_report(self) -> dict[str, Any]:
         """Fetch the /ops-board telemetry data.
 
-        Combines ops-board artifact status with service health for
-        the telemetry browser screen.
+        Alias for :meth:`get_ops_board` — the ops-board endpoint serves
+        both artifact status and service health used by the telemetry
+        browser screen.
 
         Returns:
             Dict with artifact_status, service_health, and summary.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
         return await self.get_ops_board()
 
@@ -136,14 +142,8 @@ class TuiApiClient:
 
         Returns:
             Dict with composite_score, max_drawdown, correlation_matrix.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/risk")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/risk")
 
     # ── Strategy Research ──────────────────────────────────────────────
 
@@ -160,19 +160,13 @@ class TuiApiClient:
 
         Returns:
             Dict with 'strategies' list and 'count'.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
         params: dict[str, str] = {}
         if track:
             params["track"] = track
         if family:
             params["family"] = family
-        response = await client.get("/strategies", params=params)
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/strategies", params=params)
 
     async def get_strategy_detail(self, spec_hash: str) -> dict[str, Any]:
         """Fetch detailed results for a single strategy.
@@ -182,14 +176,8 @@ class TuiApiClient:
 
         Returns:
             Dict with spec, summary, equity_curve, etc.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get(f"/strategies/{spec_hash}")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", f"/strategies/{spec_hash}")
 
     async def get_benchmark_status(self, deck: str = "trend_signals_external") -> dict[str, Any]:
         """Fetch benchmark deck status.
@@ -199,14 +187,8 @@ class TuiApiClient:
 
         Returns:
             Dict with state, recent_results.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/benchmark/status", params={"deck": deck})
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/benchmark/status", params={"deck": deck})
 
     async def get_benchmark_results(self, deck: str = "trend_signals_external") -> dict[str, Any]:
         """Fetch benchmark evaluation results.
@@ -216,14 +198,8 @@ class TuiApiClient:
 
         Returns:
             Dict with results list.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/benchmark/results", params={"deck": deck})
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/benchmark/results", params={"deck": deck})
 
     # ── Market Data ──────────────────────────────────────────────────
 
@@ -232,28 +208,16 @@ class TuiApiClient:
 
         Returns:
             Dict with 'symbols' list and 'count'.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/market/symbols")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/market/symbols")
 
     async def get_market_tickers(self) -> dict[str, Any]:
         """Fetch 24-hour ticker data for all perp symbols.
 
         Returns:
             Dict with 'tickers' list and 'count'.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/market/tickers")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/market/tickers")
 
     async def get_market_klines(
         self, symbol: str, interval: str = "1h", limit: int = 60
@@ -267,17 +231,11 @@ class TuiApiClient:
 
         Returns:
             Dict with 'klines' list, 'symbol', 'interval', 'count'.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get(
-            f"/market/klines/{symbol}",
+        return await self._request_with_retry(
+            "get", f"/market/klines/{symbol}",
             params={"interval": interval, "limit": limit},
         )
-        response.raise_for_status()
-        return response.json()
 
     async def get_market_orderbook(
         self, symbol: str, limit: int = 20
@@ -290,17 +248,11 @@ class TuiApiClient:
 
         Returns:
             Dict with 'bids', 'asks', 'symbol'.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get(
-            f"/market/orderbook/{symbol}",
+        return await self._request_with_retry(
+            "get", f"/market/orderbook/{symbol}",
             params={"limit": limit},
         )
-        response.raise_for_status()
-        return response.json()
 
     # ── Paper Trading ────────────────────────────────────────────────
 
@@ -309,14 +261,8 @@ class TuiApiClient:
 
         Returns:
             Dict with 'sessions' list.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get("/paper/sessions")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", "/paper/sessions")
 
     async def create_paper_session(self, name: str | None = None) -> dict[str, Any]:
         """Create a new paper trading session.
@@ -326,17 +272,11 @@ class TuiApiClient:
 
         Returns:
             Dict with 'session_id' and 'name'.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
         body: dict[str, Any] = {}
         if name:
             body["name"] = name
-        response = await client.post("/paper/sessions", json=body)
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("post", "/paper/sessions", json=body)
 
     async def get_paper_session(self, session_id: str) -> dict[str, Any]:
         """Get paper trading session status.
@@ -346,14 +286,8 @@ class TuiApiClient:
 
         Returns:
             Dict with session_id, name, position, pnl, orders.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get(f"/paper/sessions/{session_id}")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", f"/paper/sessions/{session_id}")
 
     async def get_paper_positions(self, session_id: str) -> dict[str, Any]:
         """Get positions for a paper trading session.
@@ -363,14 +297,8 @@ class TuiApiClient:
 
         Returns:
             Dict with 'positions' list.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get(f"/paper/sessions/{session_id}/positions")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", f"/paper/sessions/{session_id}/positions")
 
     async def get_paper_orders(self, session_id: str) -> dict[str, Any]:
         """Get orders for a paper trading session.
@@ -380,14 +308,8 @@ class TuiApiClient:
 
         Returns:
             Dict with 'orders' list.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get(f"/paper/sessions/{session_id}/orders")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", f"/paper/sessions/{session_id}/orders")
 
     async def get_paper_pnl(self, session_id: str) -> dict[str, Any]:
         """Get PnL summary for a paper trading session.
@@ -397,14 +319,8 @@ class TuiApiClient:
 
         Returns:
             Dict with realized_pnl, unrealized_pnl, total_pnl, etc.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.get(f"/paper/sessions/{session_id}/pnl")
-        response.raise_for_status()
-        return response.json()
+        return await self._request_with_retry("get", f"/paper/sessions/{session_id}/pnl")
 
     async def place_paper_order(
         self,
@@ -428,11 +344,7 @@ class TuiApiClient:
 
         Returns:
             Dict with order details.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
         body: dict[str, Any] = {
             "symbol": symbol,
             "side": side,
@@ -441,11 +353,9 @@ class TuiApiClient:
         }
         if price is not None:
             body["price"] = price
-        response = await client.post(
-            f"/paper/sessions/{session_id}/orders", json=body
+        return await self._request_with_retry(
+            "post", f"/paper/sessions/{session_id}/orders", json=body
         )
-        response.raise_for_status()
-        return response.json()
 
     async def cancel_paper_order(
         self, session_id: str, order_id: str
@@ -458,16 +368,10 @@ class TuiApiClient:
 
         Returns:
             Dict with updated order details.
-
-        Raises:
-            httpx.HTTPError: If the request fails.
         """
-        client = await self._ensure_client()
-        response = await client.delete(
-            f"/paper/sessions/{session_id}/orders/{order_id}"
+        return await self._request_with_retry(
+            "delete", f"/paper/sessions/{session_id}/orders/{order_id}"
         )
-        response.raise_for_status()
-        return response.json()
 
     # ── WebSocket ────────────────────────────────────────────────────
 
@@ -522,4 +426,4 @@ class TuiApiClient:
             finally:
                 await ws.close()
         except Exception as exc:
-            logger.debug("WS risk subscription failed: %s", exc)
+            logger.warning("WS risk subscription failed: %s", exc)
