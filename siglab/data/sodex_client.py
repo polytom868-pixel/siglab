@@ -156,6 +156,16 @@ class SoDEXPublicPerpsClient:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise SoDEXFormatError("perps.orderbook data was not an object", payload=payload)
+        bids = data.get("bids", [])
+        asks = data.get("asks", [])
+        if bids and asks:
+            best_bid = float(bids[0][0])
+            best_ask = float(asks[0][0])
+            mid = (best_bid + best_ask) / 2.0
+            if mid > 0:
+                spread_pct = (best_ask - best_bid) / mid
+                if spread_pct > 0.05:
+                    raise SoDEXFormatError(f"orderbook spread {spread_pct:.2%} exceeds 5% threshold")
         return dict(data)
 
     async def klines(
@@ -268,8 +278,8 @@ class SoDEXPublicPerpsClient:
     ) -> dict[str, Any]:
         metrics = self._metrics_for(endpoint)
         last_error: SoDEXError | None = None
+        await self.weight_scheduler.acquire(weight)
         for attempt in range(self.retries + 1):
-            await self.weight_scheduler.acquire(weight)
             metrics.attempts += 1
             started = time.perf_counter()
             try:
