@@ -19,7 +19,10 @@ Exception hierarchy
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -29,6 +32,8 @@ from typing import Any, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+from siglab.live.sodex_client import SoDEXTransportError, SoDEXUpstreamError
 
 if TYPE_CHECKING:
     from siglab.data.sodex_feeds import SoDEXFeeds
@@ -412,9 +417,27 @@ class SoDEXPaperPerpsClient:
     def list_sessions(self) -> list[dict[str, Any]]:
         """List all known sessions with their metadata."""
         sessions: list[dict[str, Any]] = []
-        for path in sorted(self.sessions_dir.glob("*.npy")):
+        seen_stems: set[str] = set()
+        for path in sorted(self.sessions_dir.glob("*.json")):
             try:
-                data = self._read_npy(path)
+                data = self._read_session_file(path)
+                sessions.append({
+                    "session_id": data.get("session_id", path.stem),
+                    "name": data.get("name", path.stem),
+                    "created_at": data.get("created_at", 0.0),
+                    "order_count": len(data.get("orders", {})),
+                    "position_count": len(data.get("positions", {})),
+                    "pnl": data.get("pnl", 0.0),
+                })
+                seen_stems.add(path.stem)
+            except Exception:
+                logger.warning("Failed to read session file %s", path)
+        # Also pick up any legacy .npy-only sessions not yet migrated
+        for path in sorted(self.sessions_dir.glob("*.npy")):
+            if path.stem in seen_stems:
+                continue
+            try:
+                data = self._read_session_file(path)
                 sessions.append({
                     "session_id": data.get("session_id", path.stem),
                     "name": data.get("name", path.stem),
@@ -428,8 +451,10 @@ class SoDEXPaperPerpsClient:
         return sessions
 
     def session_path(self, session_id: str) -> Path:
-        """Return the .npy file path for a session."""
-        return self.sessions_dir / f"{session_id}.npy"
+        """Return the .json file path for a session."""
+        if "/" in session_id or ".." in session_id or "\\" in session_id:
+            raise PaperClientError("Invalid session_id")
+        return self.sessions_dir / f"{session_id}.json"
 
     # ------------------------------------------------------------------
     # Order management
@@ -486,16 +511,13 @@ class SoDEXPaperPerpsClient:
         now = _now_timestamp()
         order_id = _generate_order_id()
 
-        # Compute expiry for non-GTC orders
+        # Compute expiry based on time-in-force
         expires_at: float | None = None
-        if tif_enum != PaperTimeInForce.GTC:
-            if tif_enum == PaperTimeInForce.IOC:
-                expires_at = now + 60  # 1 minute
-            elif tif_enum == PaperTimeInForce.FOK:
-                expires_at = now + 10  # 10 seconds
-            elif tif_enum == PaperTimeInForce.GTX:
-                expires_at = now + DEFAULT_TIME_IN_FORCE_HOURS * 3600
-        else:
+        if tif_enum == PaperTimeInForce.IOC:
+            expires_at = now + 60  # 1 minute
+        elif tif_enum == PaperTimeInForce.FOK:
+            expires_at = now + 10  # 10 seconds
+        else:  # GTC or GTX
             expires_at = now + DEFAULT_TIME_IN_FORCE_HOURS * 3600
 
         order = PaperOrder(
@@ -712,7 +734,7 @@ class SoDEXPaperPerpsClient:
                 except (TypeError, ValueError):
                     continue
             return result
-        except Exception:
+        except (SoDEXUpstreamError, SoDEXTransportError):
             return {}
 
     # ------------------------------------------------------------------
@@ -834,6 +856,14 @@ class SoDEXPaperPerpsClient:
     ) -> None:
         """Execute a fill for an order."""
         now = _now_timestamp()
+        logger.info(
+            "Filled order %s: %s %s %s @ %.4f",
+            order.order_id,
+            order.side.value,
+            order.quantity,
+            order.symbol,
+            fill_price,
+        )
         order.status = PaperOrderStatus.FILLED
         order.fill_price = fill_price
         order.fill_timestamp = now
@@ -1029,24 +1059,35 @@ class SoDEXPaperPerpsClient:
     # ------------------------------------------------------------------
 
     def _save_session_to_disk(self, session: PaperSession) -> None:
-        """Persist session state to a .npy file."""
+        """Persist session state to a JSON file (atomic write)."""
         path = self.session_path(session.session_id)
         data = session.to_dict()
         try:
-            np.save(str(path), data, allow_pickle=True)  # type: ignore[arg-type]
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.sessions_dir), suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "w") as f:
+                    json.dump(data, f)
+                os.replace(tmp_path, str(path))
+            except BaseException:
+                os.unlink(tmp_path)
+                raise
         except Exception as exc:
             logger.error("Failed to save session %s: %s", session.session_id, exc)
             raise
 
     def _load_session_from_disk(self, session_id: str) -> PaperSession:
-        """Load session state from a .npy file."""
+        """Load session state from a JSON file (with npy fallback)."""
         path = self.session_path(session_id)
-        if not path.exists():
+        # Try JSON first; fall back to legacy .npy path
+        npy_path = path.with_suffix(".npy")
+        if not path.exists() and not npy_path.exists():
             raise PaperSessionNotFoundError(
                 f"session {session_id} not found (file {path} does not exist)"
             )
         try:
-            data = self._read_npy(path)
+            data = self._read_session_file(path)
         except Exception as exc:
             raise PaperSessionNotFoundError(
                 f"failed to load session {session_id}: {exc}"
@@ -1054,16 +1095,33 @@ class SoDEXPaperPerpsClient:
         return PaperSession.from_dict(data)
 
     @staticmethod
-    def _read_npy(path: Path) -> dict[str, Any]:
-        """Read a .npy file and return the contained dict."""
-        data: Any = np.load(str(path), allow_pickle=True)
-        if isinstance(data, np.ndarray) and data.ndim == 0:
-            data = data.item()
-        if not isinstance(data, dict):
-            raise PaperClientError(
-                f"expected dict in .npy file {path}, got {type(data).__name__}"
-            )
-        return dict(data)
+    def _read_session_file(path: Path) -> dict[str, Any]:
+        """Read a session file (JSON first, legacy npy fallback)."""
+        json_path = path if path.suffix == ".json" else path.with_suffix(".json")
+        npy_path = path.with_suffix(".npy")
+
+        # Prefer JSON
+        if json_path.exists():
+            with open(json_path, "r") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise PaperClientError(
+                    f"expected dict in JSON file {json_path}, got {type(data).__name__}"
+                )
+            return data
+
+        # Fall back to legacy npy
+        if npy_path.exists():
+            data: Any = np.load(str(npy_path), allow_pickle=True)
+            if isinstance(data, np.ndarray) and data.ndim == 0:
+                data = data.item()
+            if not isinstance(data, dict):
+                raise PaperClientError(
+                    f"expected dict in .npy file {npy_path}, got {type(data).__name__}"
+                )
+            return dict(data)
+
+        raise PaperClientError(f"session file not found: {path}")
 
     async def close(self) -> None:
         """Release resources (no-op, kept for API consistency)."""

@@ -17,6 +17,7 @@ Covers:
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -160,6 +161,15 @@ class TestInputValidation:
         with pytest.raises(PaperClientError, match="too large"):
             _validate_quantity(1e13)
 
+    def test_session_id_path_traversal_rejected(
+        self,
+        paper_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """session_id with path traversal chars raises PaperClientError."""
+        for bad_id in ("../etc/passwd", "foo/bar", "foo\\bar"):
+            with pytest.raises(PaperClientError, match="Invalid session_id"):
+                paper_client.session_path(bad_id)
+
 
 # ---------------------------------------------------------------------------
 # Order placement and persistence (VAL-PAPER-001)
@@ -186,16 +196,17 @@ class TestPlaceOrder:
         assert order["price"] == 50000.0
         assert order["status"] == "OPEN"
 
-    async def test_place_order_persists_to_npy(self, paper_client: SoDEXPaperPerpsClient) -> None:
+    async def test_place_order_persists_to_json(self, paper_client: SoDEXPaperPerpsClient) -> None:
         session_id = paper_client.create_session("persist_test")
         paper_client.place_order(session_id, symbol="ETH-USD", side="SELL", quantity=2.0, price=3000.0)
 
-        # Check .npy file exists
-        npy_path = paper_client.session_path(session_id)
-        assert npy_path.exists()
+        # Check .json file exists
+        json_path = paper_client.session_path(session_id)
+        assert json_path.exists()
 
-        # Read .npy data directly
-        data = np.load(str(npy_path), allow_pickle=True).item()
+        # Read JSON data directly
+        with open(json_path) as f:
+            data = json.load(f)
         assert isinstance(data, dict)
         orders = data.get("orders", {})
         assert len(orders) == 1
