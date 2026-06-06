@@ -214,10 +214,25 @@ def _archive_counts(rows: list[dict[str, Any]]) -> dict[str, defaultdict[str, in
     return counts
 
 
+def _param_distance(a_params: dict, b_params: dict) -> float:
+    """Compute normalized distance between numeric params."""
+    shared = set(a_params or {}) & set(b_params or {})
+    if not shared:
+        return 1.0
+    dists = []
+    for k in shared:
+        va, vb = a_params.get(k), b_params.get(k)
+        if isinstance(va, (int, float)) and isinstance(vb, (int, float)):
+            denom = max(abs(va), abs(vb), 1e-6)
+            dists.append(min(abs(va - vb) / denom, 1.0))
+    return sum(dists) / len(dists) if dists else 1.0
+
+
 def _descriptor_novelty(
     *,
     payload: dict[str, Any],
     archive_counts: dict[str, defaultdict[str, int]],
+    same_cell_params: list[dict] | None = None,
 ) -> float:
     descriptor = _spec_descriptor(payload)
     parts = [
@@ -228,7 +243,13 @@ def _descriptor_novelty(
         1.0 / (1.0 + float(archive_counts["book"][descriptor["book"]])),
         1.0 / (1.0 + float(archive_counts["motif"][descriptor["motif"]])),
     ]
-    return sum(parts) / len(parts)
+    discrete = sum(parts) / len(parts)
+    if same_cell_params:
+        candidate_params = dict(payload.get("params") or {})
+        cell_dists = [_param_distance(candidate_params, p) for p in same_cell_params]
+        continuous = max(cell_dists) if cell_dists else 1.0
+        return 0.7 * discrete + 0.3 * continuous
+    return discrete
 
 
 def _descriptor_distance(left: dict[str, Any], right: dict[str, Any]) -> float:
@@ -358,11 +379,17 @@ def pick_deterministic_parent(
 
     items.sort(key=lambda item: item[1], reverse=True)
     frontier = items[: min(3, len(items))]
-    return _mixed_softmax_choice(
+    chosen = _mixed_softmax_choice(
         frontier,
         temperature=1.0 if iteration_number < 4 else 0.85,
         uniform_mix=0.08 if iteration_number < 4 else 0.05,
     )
+    if len(frontier) >= 2 and _RNG.random() < 0.4:
+        from siglab.search.mutate import crossover_specs
+        other = _RNG.choice([spec for spec, _ in frontier if spec.strategy_hash() != chosen.strategy_hash()])
+        child_dict = crossover_specs(chosen.canonical_dict(), other.canonical_dict())
+        return SignalSpec.from_dict(child_dict)
+    return chosen
 
 
 def rank_deterministic_specs(
