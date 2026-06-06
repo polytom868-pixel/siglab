@@ -476,7 +476,7 @@ def _compute_risk_metrics(state: Any) -> dict[str, Any]:
     if config is None:
         return _empty_risk_response()
 
-    sessions_dir = config.live_dir / "paper_sessions"
+    sessions_dir = config.root_dir / "sessions"
     if not sessions_dir.exists():
         return _empty_risk_response()
 

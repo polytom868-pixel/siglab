@@ -105,7 +105,7 @@ Classifications: `HIGH_VALUE` (probe/suggest tools), `MEDIUM_VALUE` (search/work
 
 ### `/risk` — `GET`
 
-Returns portfolio risk metrics computed from `.npy` paper trading sessions in `live/paper_sessions/`.
+Returns portfolio risk metrics computed from `.npy` paper trading sessions in `sessions/`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -231,7 +231,7 @@ When a client subscribes with `subscription_type: "risk_score"`:
 
 ### `_compute_risk_metrics(state)`
 
-Loads `.npy` session files from `config.live_dir / "paper_sessions"` and computes:
+Loads `.npy` session files from `config.root_dir / "sessions"` and computes:
 
 1. **Equity curve extraction**: Each `.npy` file is loaded with `allow_pickle=True`. If the array has a structured `equity` field, it's used directly; otherwise float arrays are treated as equity curves.
 2. **Max drawdown**: Computed via `siglab.risk.guardian.max_drawdown()` on the first equity curve.

@@ -346,8 +346,6 @@ sessions/
 
 The `sessions/` directory is created automatically by `SoDEXPaperPerpsClient.__init__()`.
 
-> **Known path mismatch**: The paper client stores sessions under `{root_dir}/sessions/`, but the dashboard risk module reads from `{root_dir}/live/paper_sessions/`. These are different directories. Risk metrics will not see paper trading sessions until the paths are reconciled.
-
 ---
 
 ## Testing

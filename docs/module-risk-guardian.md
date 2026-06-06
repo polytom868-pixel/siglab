@@ -20,7 +20,7 @@ The module is a pure computation layer with no side effects or I/O. All function
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      Paper Trading Sessions                         │
-│                  (live/paper_sessions/*.npy)                        │
+│                      (sessions/*.npy)                               │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │ equity curves, returns
                                ▼
@@ -54,9 +54,7 @@ The module is a pure computation layer with no side effects or I/O. All function
 
 **Data flow:**
 
-1. Paper trading sessions produce `.npy` files under `live/paper_sessions/`.
-
-> **Note**: The paper client writes sessions to `{root_dir}/sessions/` by default, not `live/paper_sessions/`. The dashboard must be pointed at the correct directory, or sessions must be copied/symlinked for risk monitoring to work.
+1. Paper trading sessions produce `.npy` files under `sessions/`.
 
 2. The dashboard route `_compute_risk_metrics()` and WebSocket handler `_stream_risk_scores()` load these files, extract equity curves, and compute returns.
 3. Guardian functions (`max_drawdown`, `correlation_matrix`, `compute_composite_score`, etc.) process the returns into risk metrics.
@@ -277,7 +275,7 @@ drawdown_series = (equity_curve - peak) / peak
 
 Defined in `siglab/dashboard/routes.py`, the `/risk` endpoint:
 
-1. Loads `.npy` session files from `live/paper_sessions/`.
+1. Loads `.npy` session files from `sessions/`.
 2. Extracts equity curves (structured arrays with `"equity"` field, or raw float arrays).
 3. Computes: max drawdown, current drawdown, recovery time, Sharpe ratio, correlation matrix, sub-scores, composite score, drawdown history, and alerts.
 4. Returns a JSON response:

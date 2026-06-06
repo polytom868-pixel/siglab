@@ -95,7 +95,7 @@ class TestRiskEndpoint:
             config = _create_test_config(tmp_dir)
 
             # Create paper sessions directory with mock data
-            sessions_dir = config.live_dir / "paper_sessions"
+            sessions_dir = config.root_dir / "sessions"
             sessions_dir.mkdir(parents=True)
 
             # Create a few mock equity curves
@@ -132,7 +132,7 @@ class TestRiskEndpoint:
             tmp_dir = Path(tmp)
             config = _create_test_config(tmp_dir)
 
-            sessions_dir = config.live_dir / "paper_sessions"
+            sessions_dir = config.root_dir / "sessions"
             sessions_dir.mkdir(parents=True)
             _make_paper_session_file(
                 sessions_dir / "session_1.npy",
@@ -181,7 +181,7 @@ class TestRiskEndpoint:
             tmp_dir = Path(tmp)
             config = _create_test_config(tmp_dir)
 
-            sessions_dir = config.live_dir / "paper_sessions"
+            sessions_dir = config.root_dir / "sessions"
             sessions_dir.mkdir(parents=True)
 
             # Create perfectly correlated strategies
@@ -219,7 +219,7 @@ class TestRiskEndpoint:
             tmp_dir = Path(tmp)
             config = _create_test_config(tmp_dir)
 
-            sessions_dir = config.live_dir / "paper_sessions"
+            sessions_dir = config.root_dir / "sessions"
             sessions_dir.mkdir(parents=True)
             _make_paper_session_file(
                 sessions_dir / "test.npy",
@@ -279,7 +279,7 @@ class TestRiskWebSocket:
             tmp_dir = Path(tmp)
             config = _create_test_config(tmp_dir)
 
-            sessions_dir = config.live_dir / "paper_sessions"
+            sessions_dir = config.root_dir / "sessions"
             sessions_dir.mkdir(parents=True)
             _make_paper_session_file(
                 sessions_dir / "session_1.npy",
@@ -312,7 +312,7 @@ class TestRiskWebSocket:
             tmp_dir = Path(tmp)
             config = _create_test_config(tmp_dir)
 
-            sessions_dir = config.live_dir / "paper_sessions"
+            sessions_dir = config.root_dir / "sessions"
             sessions_dir.mkdir(parents=True)
 
             rng = np.random.default_rng(42)
@@ -390,7 +390,7 @@ class TestRiskWebSocket:
             tmp_dir = Path(tmp)
             config = _create_test_config(tmp_dir)
 
-            sessions_dir = config.live_dir / "paper_sessions"
+            sessions_dir = config.root_dir / "sessions"
             sessions_dir.mkdir(parents=True)
             _make_paper_session_file(
                 sessions_dir / "s1.npy",
