@@ -125,8 +125,7 @@ class BaseScreen(Screen[None]):
             self._set_loading(False)
 
     async def _fetch_data(self) -> None:
-        """Override to implement the actual data fetching."""
-        raise NotImplementedError
+        """Override in subclass to fetch screen data."""
 
     async def _fetch_multiple(
         self, *fetch_fns: Coroutine[Any, Any, None], label: str = "data"
