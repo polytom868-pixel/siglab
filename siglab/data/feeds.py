@@ -1097,26 +1097,45 @@ class MarketDataProvider:
         if prices.empty:
             raise ValueError("No common non-null price coverage after aligning SoDEX klines")
 
-        # Fetch the latest funding rates from SoDEX mark-prices snapshot
-        funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+        # Fetch latest funding snapshot for fallback values
+        funding_rate_map: dict[str, float] = {}
         try:
             mark_prices = await self.sodex_feeds.fetch_mark_prices()
-            funding_rate_map: dict[str, float] = {}
             for mp in mark_prices:
                 mp_symbol = str(mp.get("symbol", ""))
-                # SoDEX symbols are "BTC-USD", extract base "BTC"
                 if mp_symbol.endswith("-USD"):
                     base = mp_symbol[:-4]
                     if base in symbols:
                         funding_rate_map[base] = float(mp.get("fundingRate") or 0.0)
-            for base_sym in prices.columns:
-                if base_sym in funding_rate_map:
-                    funding[base_sym] = funding_rate_map[base_sym]
         except Exception:
-            # If funding rate fetch fails, default to zero (no silent ETF proxy)
-            logger.warning(
-                "SoDEX mark_prices fetch failed; funding rates default to zero"
-            )
+            logger.warning("SoDEX mark_prices fetch failed; funding snapshots unavailable")
+
+        # Fetch historical funding rates per symbol and build aligned funding frame
+        funding_series_list: list[pd.Series] = []
+        start_ms = int(prices.index.min().timestamp() * 1000)
+        end_ms = int(prices.index.max().timestamp() * 1000)
+        for base_symbol in valid_symbols:
+            sodex_symbol = f"{base_symbol}-USD"
+            try:
+                history = await self.sodex_feeds._client.funding_history(
+                    sodex_symbol,
+                    start_time=start_ms,
+                    end_time=end_ms,
+                )
+                if history:
+                    hist_df = pd.DataFrame(history)
+                    time_col = "fundingTime" if "fundingTime" in hist_df.columns else "timestamp"
+                    hist_df["timestamp"] = pd.to_datetime(hist_df[time_col], unit="ms", utc=True)
+                    hist_df = hist_df.set_index("timestamp").sort_index()
+                    fs = hist_df["fundingRate"].astype(float).rename(base_symbol)
+                    fs = fs.reindex(prices.index).ffill(limit=8).fillna(0.0)
+                else:
+                    fs = pd.Series(funding_rate_map.get(base_symbol, 0.0), index=prices.index, name=base_symbol)
+            except Exception:
+                logger.warning("funding_history failed for %s, using latest snapshot", sodex_symbol)
+                fs = pd.Series(funding_rate_map.get(base_symbol, 0.0), index=prices.index, name=base_symbol)
+            funding_series_list.append(fs)
+        funding = pd.concat(funding_series_list, axis=1).astype(float) if funding_series_list else pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
 
         source = "sodex_perp_klines"
 
