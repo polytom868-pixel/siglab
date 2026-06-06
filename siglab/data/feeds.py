@@ -226,7 +226,17 @@ class MarketDataProvider:
         self._bundle_components: list[dict[str, Any]] = []
         self._bundle_manifest: dict[str, Any] = {}
 
+    def metrics_snapshot(self) -> dict[str, Any]:
+        """Aggregate provider-level metrics from all data clients."""
+        snap: dict[str, Any] = {
+            "sosovalue": self.sosovalue.metrics_snapshot(),
+        }
+        if self.sodex_feeds is not None:
+            snap["sodex"] = self.sodex_feeds.metrics_snapshot()
+        return snap
+
     async def close(self) -> None:
+        logger.info("data_pipeline_metrics %s", json.dumps(self.metrics_snapshot(), default=str))
         await self.sosovalue.close()
         if self.sodex_feeds is not None:
             await self.sodex_feeds.close()
