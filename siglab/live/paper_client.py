@@ -177,6 +177,8 @@ class PaperSession:
     pnl: float = 0.0
     last_funding_time: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    initial_balance: float = 10_000.0
+    maintenance_margin_rate: float = 0.005
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -188,6 +190,8 @@ class PaperSession:
             "pnl": self.pnl,
             "last_funding_time": self.last_funding_time,
             "metadata": dict(self.metadata),
+            "initial_balance": self.initial_balance,
+            "maintenance_margin_rate": self.maintenance_margin_rate,
         }
 
     @classmethod
@@ -199,6 +203,8 @@ class PaperSession:
             pnl=data.get("pnl", 0.0),
             last_funding_time=data.get("last_funding_time"),
             metadata=dict(data.get("metadata", {})),
+            initial_balance=data.get("initial_balance", 10_000.0),
+            maintenance_margin_rate=data.get("maintenance_margin_rate", 0.005),
         )
         for oid, odata in data.get("orders", {}).items():
             session.orders[oid] = PaperOrder.from_dict(odata)
@@ -797,7 +803,21 @@ class SoDEXPaperPerpsClient:
             kline_fills = self._match_orders(session, kline)
             fills.extend(kline_fills)
 
-        if fills:
+        # Check for liquidations using kline close prices as mark prices
+        mark_prices: dict[str, float] = {}
+        for kline in kline_dicts:
+            sym = kline.get("s", "")
+            close = float(kline.get("c", 0))
+            if close > 0:
+                if sym:
+                    mark_prices[sym] = close
+                else:
+                    # Kline without symbol applies to all positions
+                    for pos_sym in session.positions:
+                        mark_prices[pos_sym] = close
+        liq_events = self._check_liquidation(session, mark_prices)
+
+        if fills or liq_events:
             self._save_session_to_disk(session)
             logger.info(
                 "Processed %d klines for session %s: %d fills",
@@ -927,6 +947,44 @@ class SoDEXPaperPerpsClient:
         # Mark positions with zero quantity for cleanup
         if pos.quantity == 0:
             del session.positions[order.symbol]
+
+    def _check_liquidation(
+        self,
+        session: PaperSession,
+        mark_prices: dict[str, float],
+    ) -> list[dict[str, Any]]:
+        """Check all positions for liquidation and force-close if margin breached."""
+        liq_events: list[dict[str, Any]] = []
+        for pos in list(session.positions.values()):
+            mark = mark_prices.get(pos.symbol, pos.entry_price)
+            notional = abs(pos.quantity) * mark
+            mm = notional * session.maintenance_margin_rate
+            # Compute unrealized PnL
+            if pos.quantity > 0:
+                unrealized = pos.quantity * (mark - pos.entry_price)
+            else:
+                unrealized = abs(pos.quantity) * (pos.entry_price - mark)
+            equity = session.initial_balance + session.pnl + unrealized + pos.accumulated_funding
+            if equity < mm:
+                # Liquidate
+                liq_slip = mark * 0.002  # 20 bps liquidation penalty
+                close_price = mark * (1 - liq_slip) if pos.quantity > 0 else mark * (1 + liq_slip)
+                liq_qty = abs(pos.quantity)
+                pnl = liq_qty * (close_price - pos.entry_price) if pos.quantity > 0 else liq_qty * (pos.entry_price - close_price)
+                session.pnl += pnl
+                logger.warning(
+                    "LIQUIDATION: %s qty=%.6f entry=%.4f close=%.4f pnl=%.2f",
+                    pos.symbol, pos.quantity, pos.entry_price, close_price, pnl,
+                )
+                liq_events.append({
+                    "symbol": pos.symbol,
+                    "quantity": pos.quantity,
+                    "entry_price": pos.entry_price,
+                    "close_price": close_price,
+                    "pnl": pnl,
+                })
+                del session.positions[pos.symbol]
+        return liq_events
 
     def _expire_orders(self, session: PaperSession) -> bool:
         """Expire orders whose time_in_force has elapsed.
