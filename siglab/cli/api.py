@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from siglab.cli.rich_utils import get_console, make_table, print_json, status_style
 from siglab.config import load_settings
 
 
@@ -38,10 +39,8 @@ def run_command(args: argparse.Namespace) -> None:
             "blocked_mentions": text.count("blocked"),
         }
     if getattr(args, "json", False):
-        from siglab.cli.rich_utils import print_json
         print_json(report)
         return
-    from siglab.cli.rich_utils import make_table, get_console, status_style
     from rich.text import Text
     table = make_table(title="API Surface")
     table.add_column("Surface", style="label")

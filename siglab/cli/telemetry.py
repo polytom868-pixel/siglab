@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from siglab.cli.rich_utils import get_console, make_table, print_json
 from siglab.config import load_settings
 from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 
@@ -43,10 +44,8 @@ def run_command(args: argparse.Namespace) -> None:
         else "not_applicable"
     )
     if getattr(args, "json", False):
-        from siglab.cli.rich_utils import print_json
         print_json(payload)
     else:
-        from siglab.cli.rich_utils import make_table, get_console
         import json as _json
         table = make_table(title="Telemetry Report")
         table.add_column("Metric", style="label", no_wrap=True)

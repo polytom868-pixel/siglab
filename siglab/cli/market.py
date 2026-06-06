@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from siglab.cli.rich_utils import print_json
 from siglab.config import load_settings
 from siglab.path_utils import resolve_path_from_root
 from siglab.cli.helpers import (
@@ -72,7 +73,6 @@ def run_command(args: argparse.Namespace) -> None:
         "status": report["status"],
         "warnings": report["warnings"],
     }
-    from siglab.cli.rich_utils import print_json
     if getattr(args, "json", False):
         print_json(payload)
         return

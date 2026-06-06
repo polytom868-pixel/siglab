@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from siglab.cli.rich_utils import print_error, print_json
 from siglab.config import load_settings
 from siglab.data.store import ParquetLake
 from siglab.data.sodex_feeds import SoDEXFeeds
@@ -52,7 +53,6 @@ async def run_paper_start(args: argparse.Namespace) -> None:
     """Create a new paper trading session."""
     client = _make_paper_client(args)
     session_id = client.create_session(name=args.session)
-    from siglab.cli.rich_utils import print_json
     print_json({"session_id": session_id, "name": args.session or session_id})
 
 
@@ -86,10 +86,8 @@ async def run_paper_status(args: argparse.Namespace) -> None:
         except Exception:
             status["mark_prices"] = {}
 
-        from siglab.cli.rich_utils import print_json
         print_json(status)
     except PaperClientError as exc:
-        from siglab.cli.rich_utils import print_error
         print_error(str(exc))
         raise SystemExit(1)
 
@@ -141,14 +139,12 @@ async def run_paper_promote(args: argparse.Namespace) -> None:
             "min_trading_days_required": min_trading_days,
         }
 
-        from siglab.cli.rich_utils import print_json
         print_json(result)
 
         if not eligible:
             raise SystemExit(1)
 
     except PaperClientError as exc:
-        from siglab.cli.rich_utils import print_json
         result = {
             "promoted": False,
             "reason": str(exc),

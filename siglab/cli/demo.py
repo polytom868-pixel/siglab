@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from siglab.cli.rich_utils import print_json, print_success
 from siglab.config import load_settings
 from siglab.io_utils import write_json
 from siglab.path_utils import display_path, resolve_path_from_root
@@ -97,7 +98,6 @@ def run_demo_report(args: argparse.Namespace) -> None:
         "readiness": report["readiness"],
         "red_flags": report["red_flags"],
     }
-    from siglab.cli.rich_utils import print_json
     if getattr(args, "json", False):
         print_json(payload)
         return
@@ -234,7 +234,6 @@ def run_demo_manifest(args: argparse.Namespace) -> None:
     )
     html_output.parent.mkdir(parents=True, exist_ok=True)
     html_output.write_text(_demo_manifest_html(manifest), encoding="utf-8")
-    from siglab.cli.rich_utils import print_json, print_success
     if getattr(args, "json", False):
         print_json(manifest)
         return
@@ -451,7 +450,6 @@ def run_demo_refresh(args: argparse.Namespace) -> None:
         "live_write_allowed": preflight.get("live_write_allowed"),
         "unsafe_claims": wave_payload.get("unsafe_claims"),
     }
-    from siglab.cli.rich_utils import print_json
     if getattr(args, "json", False):
         print_json(payload)
         return
@@ -472,7 +470,6 @@ def run_wave_status(args: argparse.Namespace) -> None:
     )
     payload = _build_wave_status_payload(args)
     write_json(output, payload)
-    from siglab.cli.rich_utils import print_json, print_success
     if getattr(args, "json", False):
         print_json(payload)
         return
