@@ -47,6 +47,9 @@ STABLE_PT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Maximum bars to forward-fill before treating a gap as missing data.
+MAX_FFILL_BARS = 5
+
 
 def _frame_column_or_default(
     frame: pd.DataFrame,
@@ -61,7 +64,11 @@ def _frame_column_or_default(
     Series of *default* values aligned to *frame*'s index.
     """
     if column in frame.columns:
-        return pd.to_numeric(frame[column], errors="coerce").fillna(default)
+        series = pd.to_numeric(frame[column], errors="coerce")
+        n_missing = int(series.isna().sum())
+        if n_missing:
+            logger.warning("data_nan_fill column=%s missing=%d default=%.2f", column, n_missing, default)
+        return series.fillna(default)
     return pd.Series(default, index=frame.index, dtype=float)
 
 
@@ -221,7 +228,7 @@ def _align_perp_bundle_frames(
     prices = prices.dropna(how="any")
     if prices.empty:
         raise ValueError("Perp bundle has no common non-null price coverage across requested symbols")
-    funding = funding.reindex(prices.index).ffill().fillna(0.0).astype(float)
+    funding = funding.reindex(prices.index).ffill(limit=MAX_FFILL_BARS).fillna(0.0).astype(float)
     return prices, funding
 
 
@@ -946,14 +953,14 @@ class MarketDataProvider:
             self._bundle_cache[bundle_cache_key] = copy.deepcopy(bundle)
             return bundle
 
-        prices = pd.concat(price_series, axis=1).sort_index().ffill().dropna(how="all")
+        prices = pd.concat(price_series, axis=1).sort_index().ffill(limit=MAX_FFILL_BARS).dropna(how="all")
 
         def _align(rows: list[pd.Series]) -> pd.DataFrame:
             return (
                 pd.concat(rows, axis=1)
                 .sort_index()
                 .reindex(prices.index)
-                .ffill()
+                .ffill(limit=MAX_FFILL_BARS)
                 .dropna(how="all")
             )
 
@@ -1086,7 +1093,7 @@ class MarketDataProvider:
 
         # Align all price series to a common timestamp index
         prices = pd.concat(price_series_list, axis=1).sort_index()
-        prices = prices.ffill().dropna(how="any")
+        prices = prices.ffill(limit=MAX_FFILL_BARS).dropna(how="any")
         if prices.empty:
             raise ValueError("No common non-null price coverage after aligning SoDEX klines")
 
