@@ -242,6 +242,18 @@ class MarketDataProvider:
         self._warm_cache: dict[str, Any] = {}
         self._bundle_components: list[dict[str, Any]] = []
         self._bundle_manifest: dict[str, Any] = {}
+        self._atexit_handler = atexit.register(self._close_sync)
+
+    def _close_sync(self) -> None:
+        """Synchronous atexit hook to release HTTP client resources."""
+        atexit.unregister(self._close_sync)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return
+            loop.run_until_complete(self.close())
+        except (RuntimeError, OSError):
+            pass
 
     def metrics_snapshot(self) -> dict[str, Any]:
         """Aggregate provider-level metrics from all data clients."""
@@ -260,6 +272,7 @@ class MarketDataProvider:
         rates, and SoDEX metrics if present), then closes the underlying
         HTTP clients to release connection pools.
         """
+        atexit.unregister(self._close_sync)
         logger.info("data_pipeline_metrics %s", json.dumps(self.metrics_snapshot(), default=str))
         await self.sosovalue.close()
         if self.sodex_feeds is not None:
