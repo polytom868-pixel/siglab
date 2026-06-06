@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import math
+from collections.abc import Callable
 from typing import Any
 
 
@@ -143,7 +144,7 @@ def summarize_return_attribution(
     price_contribution = None
     carry_contribution = None
     tx_cost_contribution = None
-    if decomposition_available:
+    if total_return is not None and fee_total is not None and funding_total is not None:
         price_contribution = total_return + fee_total + funding_total
         carry_contribution = -funding_total
         tx_cost_contribution = -fee_total
@@ -396,7 +397,7 @@ def clone_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def apply_path_value(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
-    target = payload
+    target: Any = payload
     parts = _path_parts(path)
     for index, part in enumerate(parts):
         is_last = index == len(parts) - 1
@@ -460,7 +461,7 @@ def _spec_hash(payload: dict[str, Any]) -> str | None:
         from siglab.schemas import SignalSpec
 
         return SignalSpec.from_dict(payload).strategy_hash()
-    except Exception:
+    except (ImportError, ValueError, TypeError, KeyError, AttributeError):
         return None
 
 
@@ -561,7 +562,7 @@ def _canonical_total_return(canonical_run: dict[str, Any]) -> float | None:
         return None
     first = _float_or_none(values[0])
     last = _float_or_none(values[-1])
-    if first in (None, 0.0) or last is None:
+    if first is None or first == 0.0 or last is None:
         return None
     return (last / first) - 1.0
 
@@ -757,9 +758,10 @@ def _inferred_return_driver(
     if exposure_profile in {"net_long", "net_short"}:
         return "price_dominant"
 
+    feature_roles_for_formula: Callable[[str], set[str]] | None
     try:
         from siglab.orchestration.contracts import feature_roles_for_formula
-    except Exception:  # noqa: BLE001
+    except ImportError:
         feature_roles_for_formula = None
 
     contributors = list(
@@ -775,7 +777,7 @@ def _inferred_return_driver(
         if feature_roles_for_formula is not None:
             try:
                 roles = set(feature_roles_for_formula(feature))
-            except Exception:  # noqa: BLE001
+            except (KeyError, TypeError, ValueError):
                 roles = set()
         if "core_carry" in roles or "carry_term_structure" in roles or "funding" in roles:
             carry_roles += 1
