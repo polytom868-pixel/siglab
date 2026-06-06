@@ -21,6 +21,8 @@ class BacktestConfig:
     funding_rates: pd.DataFrame | None = None
     rebalance_threshold: float = 0.0
     enable_liquidation: bool = True
+    taker_fee_bps: float = 7.5
+    slippage_bps: float = 15.0
 
 
 @dataclass(frozen=True)
@@ -58,10 +60,29 @@ def run_backtest(
     returns = prices.pct_change().replace([np.inf, -np.inf], np.nan).fillna(0.0)
     weights = weights.reindex(columns=prices.columns, fill_value=0.0)
     pnl = returns.mul(weights.shift(1).fillna(0.0)).sum(axis=1) * float(config.leverage)
+
+    # --- Transaction costs, slippage, funding ---
+    weight_changes = weights.diff().abs().fillna(0.0)  # first bar has no prior position
+
+    # Fee: proportional to weight traded
+    fee_bps = getattr(config, "taker_fee_bps", 7.5)
+    fee_by_bar = weight_changes.sum(axis=1) * (fee_bps / 10_000)
+    pnl = pnl.sub(fee_by_bar.reindex(pnl.index, fill_value=0.0))
+
+    # Slippage: proportional to weight traded (same units as fee)
+    slippage_bps = getattr(config, "slippage_bps", 15.0)
+    slippage_by_bar = weight_changes.sum(axis=1) * (slippage_bps / 10_000)
+    pnl = pnl.sub(slippage_by_bar.reindex(pnl.index, fill_value=0.0))
+
+    # Funding: only at 8-hour settlement boundaries
     if config.funding_rates is not None:
         funding = config.funding_rates.reindex(prices.index).ffill().fillna(0.0)
         funding = funding.reindex(columns=prices.columns, fill_value=0.0)
-        pnl = pnl.add(funding.mul(weights.shift(1).fillna(0.0)).sum(axis=1), fill_value=0.0)
+        funding_settlement = (pnl.index.hour % 8 == 0) & (pnl.index.minute == 0)
+        funding_cost = funding.mul(weights.shift(1).fillna(0.0)).sum(axis=1)
+        funding_cost = funding_cost.where(funding_settlement, 0.0)
+        pnl = pnl.add(funding_cost, fill_value=0.0)
+
     equity = (1.0 + pnl).cumprod()
     if equity.empty:
         equity = pd.Series([1.0], index=prices.index[:1])
@@ -76,10 +97,12 @@ def run_backtest(
     if config.funding_rates is not None:
         funding = config.funding_rates.reindex(prices.index).ffill().fillna(0.0)
         funding = funding.reindex(columns=prices.columns, fill_value=0.0)
-        metrics_by_period["funding_amount"] = funding.mul(weights.shift(1).fillna(0.0)).sum(axis=1)
+        funding_settlement_mask = (pnl.index.hour % 8 == 0) & (pnl.index.minute == 0)
+        funding_amounts = funding.mul(weights.shift(1).fillna(0.0)).sum(axis=1)
+        metrics_by_period["funding_amount"] = funding_amounts.where(funding_settlement_mask, 0.0)
     else:
         metrics_by_period["funding_amount"] = 0.0
-    metrics_by_period["fee_amount"] = 0.0
+    metrics_by_period["fee_amount"] = fee_by_bar.reindex(pnl.index, fill_value=0.0)
     trades_frame = weights.diff().abs().fillna(weights.abs())
     trades_frame = trades_frame.stack().rename("size").reset_index()
     trades_frame.columns = ["timestamp", "symbol", "size"]
@@ -119,7 +142,10 @@ def _stats(equity: pd.Series, returns: pd.Series) -> dict[str, Any]:
     mean = float(returns.mean()) if len(returns) else 0.0
     std = float(returns.std()) if len(returns) else 0.0
     sharpe = mean / std * (annual_factor ** 0.5) if std > 0 else 0.0
-    cagr = float((1.0 + total_return) ** (annual_factor / periods) - 1.0) if total_return > -1.0 else -1.0
+    try:
+        cagr = float((1.0 + total_return) ** (annual_factor / periods) - 1.0) if total_return > -1.0 else -1.0
+    except (OverflowError, FloatingPointError):
+        cagr = float("inf") if total_return > 0 else -1.0
     drawdown = equity / equity.cummax() - 1.0
     max_drawdown = float(drawdown.min()) if len(drawdown) else 0.0
     calmar = cagr / abs(max_drawdown) if max_drawdown < 0 else 0.0
