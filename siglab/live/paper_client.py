@@ -1059,23 +1059,38 @@ class SoDEXPaperPerpsClient:
     # ------------------------------------------------------------------
 
     def _save_session_to_disk(self, session: PaperSession) -> None:
-        """Persist session state to a JSON file (atomic write)."""
+        """Persist session state to a JSON file (atomic write with retry)."""
         path = self.session_path(session.session_id)
         data = session.to_dict()
-        try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(self.sessions_dir), suffix=".tmp"
-            )
+        last_exc: Exception | None = None
+        for attempt in range(2):
             try:
-                with os.fdopen(fd, "w") as f:
-                    json.dump(data, f)
-                os.replace(tmp_path, str(path))
-            except BaseException:
-                os.unlink(tmp_path)
-                raise
-        except Exception as exc:
-            logger.error("Failed to save session %s: %s", session.session_id, exc)
-            raise
+                fd, tmp_path = tempfile.mkstemp(
+                    dir=str(self.sessions_dir), suffix=".tmp"
+                )
+                try:
+                    with os.fdopen(fd, "w") as f:
+                        json.dump(data, f)
+                    os.replace(tmp_path, str(path))
+                except BaseException:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
+                return  # success
+            except Exception as exc:
+                last_exc = exc
+                if attempt == 0:
+                    logger.warning(
+                        "Session %s save attempt %d failed, retrying: %s",
+                        session.session_id,
+                        attempt + 1,
+                        exc,
+                    )
+        assert last_exc is not None
+        logger.error("Failed to save session %s: %s", session.session_id, last_exc)
+        raise last_exc
 
     def _load_session_from_disk(self, session_id: str) -> PaperSession:
         """Load session state from a JSON file (with npy fallback)."""
