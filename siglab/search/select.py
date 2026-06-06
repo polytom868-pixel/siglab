@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 from siglab.schemas import SignalSpec
+from siglab.evaluation.score import _bounded
 from siglab.search.lineage import LineageStore
 from siglab.strategy_semantics import (
     spec_feature_roles,
@@ -26,19 +27,19 @@ def _row_quality(row: dict[str, Any]) -> float:
         quality += 0.25
     holdout_total_return = summary.get("holdout_total_return")
     if holdout_total_return is not None:
-        quality += float(holdout_total_return) * 4.0
+        quality += _bounded(float(holdout_total_return), lower=-1.0, upper=5.0) * 4.0
     holdout_sharpe = summary.get("holdout_sharpe")
     if holdout_sharpe is not None:
         quality += float(holdout_sharpe) * 0.05
     pre_audit_total_return = summary.get("pre_audit_canonical_total_return")
     if pre_audit_total_return is not None:
-        quality += float(pre_audit_total_return) * 10.0
+        quality += _bounded(float(pre_audit_total_return), lower=-1.0, upper=5.0) * 10.0
     validation_total_return = summary.get("validation_total_return")
     if validation_total_return is not None:
-        quality += float(validation_total_return) * 6.0
+        quality += _bounded(float(validation_total_return), lower=-1.0, upper=5.0) * 6.0
     median_total_return = summary.get("median_total_return")
     if median_total_return is not None:
-        quality += float(median_total_return) * 3.0
+        quality += _bounded(float(median_total_return), lower=-1.0, upper=5.0) * 3.0
     pre_audit_max_drawdown = summary.get("pre_audit_canonical_max_drawdown")
     if pre_audit_max_drawdown is not None:
         quality += float(pre_audit_max_drawdown) * 2.0
@@ -70,6 +71,16 @@ def _mixed_softmax_choice(
         ((1.0 - uniform_mix) * weight) + (uniform_mix * uniform_weight)
         for weight in softmax_weights
     ]
+    # Flat portfolio detection: if effective N < 1.5, increase uniform mix
+    hhi = sum(w * w for w in mixed_weights)
+    n_eff = 1.0 / hhi if hhi > 0 else len(items)
+    if n_eff < 1.5:
+        uniform_mix = min(uniform_mix * 2.0, 0.5)
+        uniform_weight = 1.0 / len(items)
+        mixed_weights = [
+            ((1.0 - uniform_mix) * weight) + (uniform_mix * uniform_weight)
+            for weight in softmax_weights
+        ]
     choice = _RNG.random()
     cumulative = 0.0
     for (item, _score), weight in zip(items, mixed_weights, strict=False):
