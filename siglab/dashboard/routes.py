@@ -225,7 +225,8 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
 
     try:
         summary = json.loads(summaries[0].read_text())
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        logger.warning("Failed to load evidence summary: %s", exc)
         return None
 
     source_counts = dict(summary.get("source_counts") or {})
@@ -321,6 +322,7 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
 @router.get("/evidence-graph")
 async def evidence_graph(request: Request) -> dict[str, Any]:
     """Return evidence graph nodes and edges with metadata."""
+    logger.debug("Evidence graph requested")
     state = request.app.state.dashboard
     graph = _build_evidence_graph(state)
     if graph is None:
@@ -339,7 +341,8 @@ def _build_skill_report(state: Any) -> list[dict[str, Any]]:
         return []
     try:
         rows = state.lineage.dashboard_rows()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to load skill report rows: %s", exc)
         return []
 
     # Aggregate tool call data from experiment tool traces
@@ -452,6 +455,7 @@ def _classify_skill(name: str, usage_count: int) -> str:
 @router.get("/skill-report")
 async def skill_report(request: Request) -> dict[str, Any]:
     """Return per-skill metrics with classification."""
+    logger.debug("Skill report requested")
     state = request.app.state.dashboard
     report = _build_skill_report(state)
     return {
@@ -471,6 +475,7 @@ def _compute_risk_metrics(state: Any) -> dict[str, Any]:
     """Compute risk metrics from available data in the dashboard state."""
     from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
 
+    logger.debug("Computing risk metrics")
     config = state.config
     if config is None:
         return empty_risk_response()
@@ -484,8 +489,8 @@ def _compute_risk_metrics(state: Any) -> dict[str, Any]:
     except ImportError:
         return {**empty_risk_response(), "note": "numpy not available"}
     except Exception as exc:
-        logger.warning("Risk computation error: %s", exc)
-        return {**empty_risk_response(), "note": f"Error: {exc}"}
+        logger.warning("Risk computation failed: %s", exc)
+        return {**empty_risk_response(), "note": "Error computing risk metrics"}
 
 
 @router.get("/risk")
@@ -495,6 +500,7 @@ async def risk(request: Request) -> dict[str, Any]:
     Returns data computed from available paper trading sessions.
     Returns None-valued fields when no data is available.
     """
+    logger.debug("Risk metrics requested")
     state = request.app.state.dashboard
     metrics = _compute_risk_metrics(state)
     return {
@@ -511,6 +517,7 @@ async def risk(request: Request) -> dict[str, Any]:
 @router.get("/market/symbols")
 async def market_symbols(request: Request) -> dict[str, Any]:
     """Return all tradable SoDEX perp symbols with metadata."""
+    logger.debug("Market symbols requested")
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
@@ -519,12 +526,14 @@ async def market_symbols(request: Request) -> dict[str, Any]:
         symbols = await feeds.fetch_symbols()
         return {"symbols": symbols, "count": len(symbols)}
     except Exception as exc:
-        return {"symbols": [], "error": str(exc)}
+        logger.warning("Market symbols error: %s", exc)
+        return {"symbols": [], "error": "Internal error"}
 
 
 @router.get("/market/tickers")
 async def market_tickers(request: Request) -> dict[str, Any]:
     """Return 24-hour ticker data for all SoDEX perp symbols."""
+    logger.debug("Market tickers requested")
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
@@ -533,7 +542,8 @@ async def market_tickers(request: Request) -> dict[str, Any]:
         tickers = await feeds.fetch_tickers()
         return {"tickers": tickers, "count": len(tickers)}
     except Exception as exc:
-        return {"tickers": [], "error": str(exc)}
+        logger.warning("Market tickers error: %s", exc)
+        return {"tickers": [], "error": "Internal error"}
 
 
 @router.get("/market/klines/{symbol}")
@@ -544,6 +554,7 @@ async def market_klines(
     limit: int = 60,
 ) -> dict[str, Any]:
     """Return kline/candlestick data for a perp symbol."""
+    logger.debug("Market klines requested: %s", symbol)
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
@@ -558,7 +569,8 @@ async def market_klines(
                 rec["timestamp"] = ts.isoformat()
         return {"klines": records, "symbol": symbol, "interval": interval, "count": len(records)}
     except Exception as exc:
-        return {"klines": [], "symbol": symbol, "error": str(exc)}
+        logger.warning("Market klines error (%s): %s", symbol, exc)
+        return {"klines": [], "symbol": symbol, "error": "Internal error"}
 
 
 @router.get("/market/orderbook/{symbol}")
@@ -568,6 +580,7 @@ async def market_orderbook(
     limit: int = 20,
 ) -> dict[str, Any]:
     """Return order book depth for a perp symbol."""
+    logger.debug("Market orderbook requested: %s", symbol)
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
@@ -580,5 +593,6 @@ async def market_orderbook(
             "symbol": symbol,
         }
     except Exception as exc:
-        return {"bids": [], "asks": [], "symbol": symbol, "error": str(exc)}
+        logger.warning("Market orderbook error (%s): %s", symbol, exc)
+        return {"bids": [], "asks": [], "symbol": symbol, "error": "Internal error"}
 
