@@ -54,12 +54,23 @@ def _frame_column_or_default(
     *,
     default: float = 0.0,
 ) -> pd.Series:
+    """Return *column* from *frame* as a numeric Series, or a constant default.
+
+    Coerces the column to numeric (NaN on failure) and fills remaining
+    NaNs with *default*.  If the column is missing entirely, returns a
+    Series of *default* values aligned to *frame*'s index.
+    """
     if column in frame.columns:
         return pd.to_numeric(frame[column], errors="coerce").fillna(default)
     return pd.Series(default, index=frame.index, dtype=float)
 
 
 def _sanitize_perp_symbols(symbols: list[str]) -> list[str]:
+    """Normalise, deduplicate, and filter perp symbol strings.
+
+    Strips whitespace, uppercases, removes blanks and the literal ``"USD"``,
+    and preserves first-occurrence order.
+    """
     cleaned: list[str] = []
     seen: set[str] = set()
     for symbol in symbols:
@@ -72,12 +83,21 @@ def _sanitize_perp_symbols(symbols: list[str]) -> list[str]:
 
 
 def _dedupe_time_index(frame: pd.DataFrame) -> pd.DataFrame:
+    """Deduplicate rows sharing the same index value, keeping the last.
+
+    Also sorts the resulting frame by index.
+    """
     if frame.empty:
         return frame
     return frame.groupby(level=0).last().sort_index()
 
 
 def _safe_float(value: Any, digits: int = 8) -> float | None:
+    """Convert *value* to a finite float rounded to *digits* decimal places.
+
+    Returns ``None`` on ``TypeError``, ``ValueError``, or non-finite
+    results (NaN, ±Inf).
+    """
     try:
         numeric = float(value)
     except (TypeError, ValueError):
@@ -88,6 +108,11 @@ def _safe_float(value: Any, digits: int = 8) -> float | None:
 
 
 def _percentile_map(series: pd.Series, percentiles: list[float]) -> dict[str, float | None]:
+    """Compute percentile values for *series*, returning a ``{pN: value}`` map.
+
+    Non-finite values are dropped before calculation.  Returns ``None``
+    for each percentile if the cleaned series is empty.
+    """
     clean = pd.to_numeric(series, errors="coerce").replace([float("inf"), float("-inf")], pd.NA).dropna()
     if clean.empty:
         return {f"p{int(percentile)}": None for percentile in percentiles}
@@ -103,6 +128,13 @@ def _pair_calibration_snapshot(
     funding: pd.DataFrame,
     symbols: list[str],
 ) -> dict[str, Any]:
+    """Compute pair-trading calibration metrics for the first two *symbols*.
+
+    Returns a dict containing funding-spread percentiles, 72 h rolling
+    pair volatility/correlation, 24 h return spread, residual z-score,
+    and observed directional fractions.  Returns ``{}`` when fewer than
+    two symbols are available or prices are missing.
+    """
     if len(symbols) < 2:
         return {}
     asset_1_symbol, asset_2_symbol = symbols[:2]
@@ -178,6 +210,12 @@ def _align_perp_bundle_frames(
     prices: pd.DataFrame,
     funding: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Deduplicate and align perp price and funding frames to a common index.
+
+    Drops rows with any NaN prices, then forward-fills and zero-fills
+    the funding frame to match.  Raises ``ValueError`` if no non-null
+    price rows remain after alignment.
+    """
     prices = _dedupe_time_index(prices)
     funding = _dedupe_time_index(funding)
     prices = prices.dropna(how="any")
@@ -982,6 +1020,11 @@ class MarketDataProvider:
         return None
 
     def _market_matches_group(self, market_name: str, group: str) -> bool:
+        """Check whether *market_name* belongs to the given *group*.
+
+        For ``"USD"`` group, matches against the stable-PT regex pattern;
+        otherwise performs a case-insensitive substring check.
+        """
         if group.upper() == "USD":
             return STABLE_PT_PATTERN.search(market_name) is not None
         return group.upper() in market_name.upper()
@@ -1130,6 +1173,11 @@ class MarketDataProvider:
         return normalized
 
     def _normalize_news_item(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Normalise a SoSoValue news item into a flat dict.
+
+        Extracts the first multilingual content entry for ``title`` and
+        ``summary``, and flattens tags, matched currencies, and metadata.
+        """
         multilingual = list(row.get("multilanguageContent") or [])
         first_content = dict(multilingual[0] or {}) if multilingual else {}
         return {
@@ -1144,6 +1192,12 @@ class MarketDataProvider:
         }
 
     def _bundle_cache_key(self, kind: str, **params: Any) -> str:
+        """Derive a deterministic cache key scoped to the active bundle.
+
+        When no bundle is active the key depends only on *kind* and
+        *params*; otherwise the active ``bundle_id`` is included so that
+        different bundles never share cache entries.
+        """
         if self._active_bundle_id is None:
             base = {"kind": kind, **params}
         else:
@@ -1151,10 +1205,19 @@ class MarketDataProvider:
         return sha256(jsonable_dict(base).encode("utf-8")).hexdigest()[:20]
 
     def _warm_cache_key(self, kind: str, **params: Any) -> str:
+        """Derive a deterministic cache key for the warm (cross-bundle) cache.
+
+        Unlike ``_bundle_cache_key``, the bundle ID is never included so
+        that warm-cache entries survive across bundles within a session.
+        """
         base = {"kind": kind, **params}
         return sha256(jsonable_dict(base).encode("utf-8")).hexdigest()[:20]
 
     def _bind_bundle_to_active_context(self, bundle: dict[str, Any]) -> dict[str, Any]:
+        """Stamp the active ``bundle_id`` and ``bundle_as_of`` onto *bundle*.
+
+        Returns a deep copy so the warm-cache original is not mutated.
+        """
         rebound = copy.deepcopy(bundle)
         rebound["bundle_id"] = self._active_bundle_id
         rebound["bundle_as_of"] = (self._active_as_of or datetime.now(UTC)).isoformat()
@@ -1167,6 +1230,11 @@ class MarketDataProvider:
         prices: pd.DataFrame,
         funding: pd.DataFrame | None = None,
     ) -> None:
+        """Persist price (and optionally funding) DataFrames to the lake.
+
+        Also records each frame as a bundle component for manifest
+        tracking.
+        """
         self.lake.write_frame("market_bundle_prices", cache_key, prices)
         self._record_bundle_component(
             namespace="market_bundle_prices",
@@ -1182,6 +1250,7 @@ class MarketDataProvider:
             )
 
     def _persist_bundle_json(self, cache_key: str, payload: Any) -> None:
+        """Persist a JSON-serialisable payload to the lake and record it as a bundle component."""
         self.lake.write_json("market_bundle_json", cache_key, payload)
         self._record_bundle_component(
             namespace="market_bundle_json",
@@ -1196,6 +1265,11 @@ class MarketDataProvider:
         cache_key: str,
         kind: str,
     ) -> None:
+        """Register a persisted artifact as a bundle manifest component.
+
+        No-op when no bundle is active.  Deduplicates identical
+        components and updates the on-disk manifest.
+        """
         if self._active_bundle_id is None:
             return
         component = {
@@ -1210,6 +1284,11 @@ class MarketDataProvider:
         self._write_bundle_manifest(self._bundle_manifest)
 
     def _write_bundle_manifest(self, payload: dict[str, Any]) -> None:
+        """Merge *payload* into the bundle manifest and persist to the lake.
+
+        No-op when neither an active bundle ID nor a ``bundle_id`` key
+        in *payload* is present.
+        """
         if self._active_bundle_id is None and not payload.get("bundle_id"):
             return
         self._bundle_manifest = {
@@ -1225,6 +1304,10 @@ class MarketDataProvider:
 
 
 def jsonable_iteration_payload(*, track: str, parent_hash: str, as_of: datetime) -> str:
+    """Serialise iteration bundle identity fields to a sorted JSON string.
+
+    Used to derive a deterministic bundle ID via SHA-256.
+    """
     return json.dumps(
         {
             "track": track,
@@ -1236,5 +1319,6 @@ def jsonable_iteration_payload(*, track: str, parent_hash: str, as_of: datetime)
 
 
 def jsonable_dict(payload: dict[str, Any]) -> str:
+    """Serialise a dict to a sorted JSON string, coercing non-serialisable values via ``str``."""
     return json.dumps(payload, sort_keys=True, default=str)
 
