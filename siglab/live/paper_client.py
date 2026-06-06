@@ -867,7 +867,32 @@ class SoDEXPaperPerpsClient:
                 kline, order.side, order.price, order.order_type
             )
             if did_fill:
-                self._fill_order(session, order, fill_price)
+                # Cap fill quantity based on kline volume (10% participation)
+                kline_volume = float(kline.get("v", 0))
+                if kline_volume > 0 and order.order_type == PaperOrderType.MARKET:
+                    max_fill = kline_volume * 0.10
+                    fill_qty = min(order.quantity, max_fill)
+                    if fill_qty < order.quantity:
+                        # Partial fill: fill what we can, create remainder order
+                        original_qty = order.quantity
+                        order.quantity = fill_qty
+                        self._fill_order(session, order, fill_price)
+                        # Create remainder order
+                        remainder = PaperOrder(
+                            order_id=str(uuid.uuid4()),
+                            symbol=order.symbol,
+                            side=order.side,
+                            quantity=original_qty - fill_qty,
+                            price=order.price,
+                            order_type=order.order_type,
+                            time_in_force=order.time_in_force,
+                            expires_at=order.expires_at,
+                        )
+                        session.orders[remainder.order_id] = remainder
+                    else:
+                        self._fill_order(session, order, fill_price)
+                else:
+                    self._fill_order(session, order, fill_price)
                 if order.status == PaperOrderStatus.FILLED:
                     fills.append(order.to_dict())
 
