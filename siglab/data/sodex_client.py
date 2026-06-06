@@ -208,6 +208,24 @@ class SoDEXPublicPerpsClient:
             "perps.trades",
         )
 
+    async def funding_history(
+        self,
+        symbol: str,
+        start_time: int,
+        end_time: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch historical funding rates for *symbol* between *start_time* and *end_time* (ms epochs)."""
+        return self._rows(
+            await self._request(
+                "GET",
+                f"/markets/{symbol}/fundingRate",
+                endpoint="perps.funding_history",
+                params={"startTime": int(start_time), "endTime": int(end_time)},
+                weight=SoDEXWeightScheduler.documented_weight("perps.funding_history"),
+            ),
+            "perps.funding_history",
+        )
+
     async def account_balances(self, *, user_address: str, account_id: int | None = None) -> dict[str, Any]:
         return await self._account_object(
             endpoint="perps.account_balances",
