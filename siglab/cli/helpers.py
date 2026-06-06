@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -295,7 +296,8 @@ def parse_sodex_enum(value: Any, aliases: dict[str, int], field_name: str) -> in
     if normalized in aliases:
         return aliases[normalized]
     accepted = ", ".join([*aliases.keys(), *[str(v) for v in sorted(set(aliases.values()))]])
-    raise SystemExit(f"--{field_name.replace('_', '-')} must be one of: {accepted}")
+    print(f"--{field_name.replace('_', '-')} must be one of: {accepted}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def require_sosovalue_config(settings: Any) -> Path:
@@ -304,11 +306,13 @@ def require_sosovalue_config(settings: Any) -> Path:
         root_dir=settings.root_dir,
     )
     if not config_path.exists():
-        raise SystemExit(
+        print(
             "SOSOVALUE_CONFIG_PATH is required for this command and must point to an existing file. "
             f"Tried: {config_path}. Create it with `cp config.example.json config.json` "
-            "or point SOSOVALUE_CONFIG_PATH at an existing SoSoValue config."
+            "or point SOSOVALUE_CONFIG_PATH at an existing SoSoValue config.",
+            file=sys.stderr,
         )
+        raise SystemExit(1)
     settings.sosovalue_config_path = config_path
     return config_path
 
@@ -538,14 +542,16 @@ def parse_family_scope(
     families: str | None,
 ) -> str | list[str] | None:
     if family and families:
-        raise SystemExit("Use either --family or --families, not both")
+        print("Use either --family or --families, not both", file=sys.stderr)
+        raise SystemExit(1)
     if family:
         return family
     if not families:
         return None
     parsed = [item.strip() for item in str(families).split(",") if item.strip()]
     if not parsed:
-        raise SystemExit("--families must contain at least one family")
+        print("--families must contain at least one family", file=sys.stderr)
+        raise SystemExit(1)
     return parsed
 
 

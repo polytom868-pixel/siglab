@@ -10,6 +10,15 @@ from siglab.data.sodex_feeds import SoDEXFeeds
 from siglab.live.paper_client import PaperClientError, SoDEXPaperPerpsClient
 
 
+def _make_paper_client(args: argparse.Namespace) -> SoDEXPaperPerpsClient:
+    """Shared construction of a SoDEXPaperPerpsClient from CLI args."""
+    settings = load_settings()
+    sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
+    lake = ParquetLake(settings.root_dir / "data" / "cache")
+    feeds = SoDEXFeeds(lake=lake)
+    return SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
+
+
 def add_subparser(subparsers) -> None:
     # paper-start
     start_parser = subparsers.add_parser(
@@ -41,11 +50,7 @@ def add_subparser(subparsers) -> None:
 
 async def run_paper_start(args: argparse.Namespace) -> None:
     """Create a new paper trading session."""
-    settings = load_settings()
-    sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
-    lake = ParquetLake(settings.root_dir / "data" / "cache")
-    feeds = SoDEXFeeds(lake=lake)
-    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
+    client = _make_paper_client(args)
     session_id = client.create_session(name=args.session)
     from siglab.cli.rich_utils import print_json
     print_json({"session_id": session_id, "name": args.session or session_id})
@@ -53,16 +58,15 @@ async def run_paper_start(args: argparse.Namespace) -> None:
 
 async def run_paper_status(args: argparse.Namespace) -> None:
     """Show paper trading session status."""
-    settings = load_settings()
-    sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
-    lake = ParquetLake(settings.root_dir / "data" / "cache")
-    feeds = SoDEXFeeds(lake=lake)
-    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
+    client = _make_paper_client(args)
     try:
         # Process open orders against latest klines
         try:
             open_orders = client.get_orders(args.session, status="OPEN") if hasattr(client, 'get_orders') else []
             open_symbols = {o["symbol"] for o in open_orders}
+            settings = load_settings()
+            lake = ParquetLake(settings.root_dir / "data" / "cache")
+            feeds = SoDEXFeeds(lake=lake)
             for sym in open_symbols:
                 try:
                     klines = await feeds.fetch_klines(sym, "1m", limit=5)
@@ -103,11 +107,7 @@ async def run_paper_promote(args: argparse.Namespace) -> None:
         DEFAULT_MIN_TRADING_DAYS,
     )
 
-    settings = load_settings()
-    sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
-    lake = ParquetLake(settings.root_dir / "data" / "cache")
-    feeds = SoDEXFeeds(lake=lake)
-    client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
+    client = _make_paper_client(args)
 
     try:
         metrics = extract_session_metrics(client, args.session)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import Any
 
 from siglab.config import load_settings
@@ -49,7 +50,8 @@ async def run_deploy(args: argparse.Namespace) -> None:
     if not existing:
         record = ancestry.experiment_detail(spec_hash)
         if not record:
-            raise SystemExit(f"No matching spec or deployment found for hash: {spec_hash}")
+            print(f"No matching spec or deployment found for hash: {spec_hash}", file=sys.stderr)
+            raise SystemExit(1)
         detail = display_deployment_record(settings=settings, record=record)
         from siglab.cli.rich_utils import print_info, print_json
         print_info(f"Found spec {spec_hash} in ancestry (not yet deployed):")
@@ -62,7 +64,8 @@ async def run_deploy(args: argparse.Namespace) -> None:
             reasons = _deployment_ineligible_reasons_fn(
                 summary=evaluation, trial_context=trial_context
             )
-            raise SystemExit(f"Spec {spec_hash} is not deployment-eligible: {', '.join(reasons)}")
+            print(f"Spec {spec_hash} is not deployment-eligible: {', '.join(reasons)}", file=sys.stderr)
+            raise SystemExit(1)
         config_path = args.config or settings.sosovalue_config_path
         record_result = await manager.deploy(
             spec_hash=spec_hash,

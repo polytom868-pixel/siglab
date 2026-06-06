@@ -37,8 +37,8 @@ def run_ancestry(args: argparse.Namespace) -> None:
         limit=args.limit,
     )
     if args.json:
-        import json
-        print(json.dumps(rows))
+        from siglab.cli.rich_utils import print_json
+        print_json(rows)
         return
     from siglab.cli.rich_utils import make_table, get_console, status_style
     from rich.text import Text
