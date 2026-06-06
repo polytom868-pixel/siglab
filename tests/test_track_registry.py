@@ -25,6 +25,9 @@ class TestCanonicalTrackName:
     def test_unknown_passthrough(self):
         assert canonical_track_name("unknown_track") == "unknown_track"
 
+    def test_short_alias_passthrough(self):
+        assert canonical_track_name("trend") == "trend"
+
     def test_none_returns_none(self):
         assert canonical_track_name(None) is None
 
@@ -60,3 +63,8 @@ class TestMatchingTrackNames:
         names = matching_track_names("custom_track")
         assert isinstance(names, tuple)
         assert "custom_track" in names
+
+    def test_partial_alias_resolves(self):
+        names = matching_track_names("trend_signals")
+        assert "trend_signals" in names
+        assert isinstance(names, tuple)
