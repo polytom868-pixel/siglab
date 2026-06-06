@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import UTC, datetime
 from typing import Any
 
@@ -253,7 +254,8 @@ def _sodex_preview_payload(args: argparse.Namespace) -> dict[str, Any]:
         request = SoDEXSignedRequest(method="POST", path="/trade/orders/schedule-cancel", body=body, weight=1)
     elif args.kind == "update-margin":
         if args.amount is None:
-            raise SystemExit("--amount is required for --kind update-margin")
+            print("--amount is required for --kind update-margin", file=sys.stderr)
+            raise SystemExit(1)
         body = perps_update_margin_body(
             account_id=int(args.account_id),
             symbol_id=int(args.symbol_id),

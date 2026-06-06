@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from datetime import UTC, datetime
 from itertools import count
@@ -154,10 +155,12 @@ async def run_command(args: argparse.Namespace) -> None:
     burn_in_iterations = int(getattr(args, "burn_in_iterations", 0) or 0)
     max_runtime_seconds = getattr(args, "max_runtime_seconds", None)
     if getattr(args, "max_total_cost", None) is not None:
-        raise SystemExit(
+        print(
             "--max-total-cost is not enforced yet because provider token/cost telemetry is not available; "
-            "omit it or add real cost accounting first"
+            "omit it or add real cost accounting first",
+            file=sys.stderr,
         )
+        raise SystemExit(1)
     loop_policy = {
         "max_total_cost": getattr(args, "max_total_cost", None),
         "max_total_credits": getattr(args, "max_total_credits", None),
@@ -990,10 +993,12 @@ def _write_provider_metrics_artifact_internal(
 def _resume_safe_check_internal(*, settings: Any, run_session_id: str) -> None:
     session_dir = settings.artifact_dir / "trend_signals" / "workspaces" / run_session_id
     if not session_dir.exists():
-        raise SystemExit(f"--resume-safe-check failed: workspace session not found: {session_dir}")
+        print(f"--resume-safe-check failed: workspace session not found: {session_dir}", file=sys.stderr)
+        raise SystemExit(1)
     state_path = session_dir / "current" / "SESSION_STATE.json"
     if not state_path.exists():
-        raise SystemExit(f"--resume-safe-check failed: missing session state: {state_path}")
+        print(f"--resume-safe-check failed: missing session state: {state_path}", file=sys.stderr)
+        raise SystemExit(1)
 
 
 def _write_run_reflection_internal(

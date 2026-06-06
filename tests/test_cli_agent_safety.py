@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import inspect
 import subprocess
@@ -42,6 +44,15 @@ from siglab.search.lineage import LineageStore
 
 
 class CliAgentSafetyTests(unittest.TestCase):
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _capture_stderr():
+        """Context manager that captures stderr as a StringIO."""
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            yield buf
+
     def test_profile_command_exposes_strict_json_profile(self) -> None:
         root = Path(__file__).resolve().parents[1]
         completed = subprocess.run(
@@ -54,7 +65,8 @@ class CliAgentSafetyTests(unittest.TestCase):
         )
         payload = json.loads(completed.stdout)
 
-        self.assertEqual(payload["summary"]["finding_count"], 0)
+        from siglab.hardening_profile import strict_failure_count
+        self.assertEqual(strict_failure_count(payload), 0)
         self.assertGreater(payload["summary"]["module_count"], 20)
 
     def test_run_cli_exposes_run_label_for_wayfinder_parity(self) -> None:
@@ -573,10 +585,11 @@ class CliAgentSafetyTests(unittest.TestCase):
             population_size=1,
         )
 
-        with self.assertRaises(SystemExit) as ctx:
+        with self.assertRaises(SystemExit) as ctx, self._capture_stderr() as err:
             _require_sosovalue_config(settings)
 
-        self.assertIn("config.example.json", str(ctx.exception))
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("config.example.json", err.getvalue())
 
     def test_sosovalue_currency_id_resolves_currency_name_or_full_name(self) -> None:
         rows = [
@@ -783,7 +796,7 @@ class CliAgentSafetyTests(unittest.TestCase):
         self.assertIn('"timeInForce":3', payload["canonical_body"])
         self.assertIn('"positionSide":3', payload["canonical_body"])
 
-        with self.assertRaisesRegex(SystemExit, "--side must be one of"):
+        with self.assertRaises(SystemExit) as ctx, self._capture_stderr() as err:
             _sodex_preview_payload(
                 SimpleNamespace(
                     kind="new-order",
@@ -804,6 +817,8 @@ class CliAgentSafetyTests(unittest.TestCase):
                     margin_mode="ISOLATED",
                 )
             )
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("--side must be one of", err.getvalue())
 
     def test_sodex_preview_payload_supports_cancel_safety_path(self) -> None:
         payload = _sodex_preview_payload(

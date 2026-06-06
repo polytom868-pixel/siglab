@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from datetime import UTC, datetime
 from collections import Counter
 
@@ -148,7 +149,8 @@ def run_evidence_map(args: argparse.Namespace) -> None:
             key=lambda item: item.stat().st_mtime,
         )
         if not candidates:
-            raise SystemExit("No evidence summary found. Run `siglab evidence-build` first or pass --summary.")
+            print("No evidence summary found. Run `siglab evidence-build` first or pass --summary.", file=sys.stderr)
+            raise SystemExit(1)
         summary_path = candidates[-1]
     output_path = (
         resolve_path_from_root(args.output, root_dir=settings.root_dir)
