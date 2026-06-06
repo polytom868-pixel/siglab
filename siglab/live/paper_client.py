@@ -380,10 +380,14 @@ class SoDEXPaperPerpsClient:
         self,
         feeds: SoDEXFeeds | None = None,
         sessions_dir: str | Path = "sessions",
+        slippage_bps: float = 15.0,
+        min_notional_usd: float = 10.0,
     ) -> None:
         self.feeds = feeds
         self.sessions_dir = Path(sessions_dir)
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        self.slippage_bps = slippage_bps
+        self.min_notional_usd = min_notional_usd
         self._sessions: dict[str, PaperSession] = {}
 
     # ------------------------------------------------------------------
@@ -864,7 +868,8 @@ class SoDEXPaperPerpsClient:
             )
             if did_fill:
                 self._fill_order(session, order, fill_price)
-                fills.append(order.to_dict())
+                if order.status == PaperOrderStatus.FILLED:
+                    fills.append(order.to_dict())
 
         return fills
 
@@ -875,6 +880,24 @@ class SoDEXPaperPerpsClient:
         fill_price: float,
     ) -> None:
         """Execute a fill for an order."""
+        # Apply slippage to market orders
+        if order.order_type == PaperOrderType.MARKET:
+            slip = fill_price * self.slippage_bps / 10_000
+            if order.side == PaperOrderSide.BUY:
+                fill_price = fill_price + slip
+            else:
+                fill_price = fill_price - slip
+
+        # Reject orders below minimum notional
+        notional = order.quantity * fill_price
+        if notional < self.min_notional_usd:
+            order.status = PaperOrderStatus.CANCELLED
+            logger.warning(
+                "Order %s cancelled: notional $%.2f below minimum $%.2f",
+                order.order_id, notional, self.min_notional_usd,
+            )
+            return
+
         now = _now_timestamp()
         logger.info(
             "Filled order %s: %s %s %s @ %.4f",
