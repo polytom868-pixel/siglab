@@ -74,7 +74,7 @@ def _weighted_score(
 
     score = None
     for name in chosen:
-        if normalization == "time_series":
+        if normalization == "time_series" or feature_frames[name].shape[1] <= 1:
             component = _time_series_zscore(feature_frames[name], window=z_window)
         else:
             component = _cross_sectional_zscore(feature_frames[name])
@@ -103,7 +103,7 @@ def _weighted_component_frames(
 
     components: dict[str, pd.DataFrame] = {}
     for name in chosen:
-        if normalization == "time_series":
+        if normalization == "time_series" or feature_frames[name].shape[1] <= 1:
             component = _time_series_zscore(feature_frames[name], window=z_window)
         else:
             component = _cross_sectional_zscore(feature_frames[name])
@@ -883,6 +883,7 @@ async def compile_spec(
             asset_1_symbol=asset_1_symbol,
             asset_2_symbol=asset_2_symbol,
         )
+        raw_frames = {k: v.shift(1) for k, v in raw_frames.items()}
         feature_frames = resolve_feature_frames(
             spec.features,
             aliases=feature_aliases,
@@ -982,6 +983,7 @@ async def compile_spec(
             interval=spec.universe.interval,
         )
         raw_frames = _perp_raw_frames(bundle["prices"], bundle["funding"])
+        raw_frames = {k: v.shift(1) for k, v in raw_frames.items()}
         feature_frames = resolve_feature_frames(
             spec.features,
             aliases=feature_aliases,
@@ -1076,6 +1078,7 @@ async def compile_spec(
             interval=spec.universe.interval,
         )
         raw_frames = _perp_raw_frames(bundle["prices"], bundle["funding"])
+        raw_frames = {k: v.shift(1) for k, v in raw_frames.items()}
         feature_frames = resolve_feature_frames(
             spec.features,
             aliases=feature_aliases,
@@ -1161,16 +1164,18 @@ async def compile_spec(
             markets,
             histories,
         )
+        raw_frames = _pt_raw_frames(
+            prices=prices,
+            implied_apy=implied_apy,
+            underlying_apy=underlying_apy,
+            total_tvl=total_tvl,
+            days_to_expiry=days_to_expiry,
+        )
+        raw_frames = {k: v.shift(1) for k, v in raw_frames.items()}
         feature_frames = resolve_feature_frames(
             spec.features,
             aliases=feature_aliases,
-            raw_frames=_pt_raw_frames(
-                prices=prices,
-                implied_apy=implied_apy,
-                underlying_apy=underlying_apy,
-                total_tvl=total_tvl,
-                days_to_expiry=days_to_expiry,
-            ),
+            raw_frames=raw_frames,
         )
         pt_state = classify_pt_market_state(
             prices=prices,
@@ -1258,16 +1263,18 @@ async def compile_spec(
             markets,
             histories,
         )
+        raw_frames = _pt_raw_frames(
+            prices=prices,
+            implied_apy=implied_apy,
+            underlying_apy=underlying_apy,
+            total_tvl=total_tvl,
+            days_to_expiry=days_to_expiry,
+        )
+        raw_frames = {k: v.shift(1) for k, v in raw_frames.items()}
         feature_frames = resolve_feature_frames(
             spec.features,
             aliases=feature_aliases,
-            raw_frames=_pt_raw_frames(
-                prices=prices,
-                implied_apy=implied_apy,
-                underlying_apy=underlying_apy,
-                total_tvl=total_tvl,
-                days_to_expiry=days_to_expiry,
-            ),
+            raw_frames=raw_frames,
         )
         pt_state = classify_pt_market_state(
             prices=prices,
@@ -1420,6 +1427,7 @@ async def compile_spec(
             borrow_apr=lending_bundle["borrow_apr"],
             borrow_tvl_usd=lending_bundle["borrow_tvl_usd"],
         )
+        raw_frames = {k: v.shift(1) for k, v in raw_frames.items()}
         feature_frames = resolve_feature_frames(
             spec.features,
             aliases=feature_aliases,
