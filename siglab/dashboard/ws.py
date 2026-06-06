@@ -241,7 +241,7 @@ async def _stream_positions(websocket: WebSocket) -> None:
             })
             return
 
-        sessions_dir = config.live_dir / "paper_sessions"
+        sessions_dir = config.root_dir / "sessions"
         if not sessions_dir.exists():
             await _send_json(websocket, {
                 "type": "positions",
@@ -306,7 +306,7 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
             })
             return
 
-        sessions_dir = config.live_dir / "paper_sessions"
+        sessions_dir = config.root_dir / "sessions"
         if not sessions_dir.exists():
             await _send_json(websocket, {
                 "type": "risk_score",
