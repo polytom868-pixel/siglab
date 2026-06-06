@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import random
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -84,6 +85,30 @@ PAIR_CARRY_REGIME_FEATURES = [
     "funding_spread_dispersion_z_168h",
     "pair_corr_z_168h",
 ]
+
+
+def crossover_specs(a_dict: dict, b_dict: dict) -> dict:
+    """Uniform crossover on discrete fields, average on numeric params."""
+    child = {}
+    for key in set(a_dict) | set(b_dict):
+        va, vb = a_dict.get(key), b_dict.get(key)
+        if key == "features":
+            pool = list(set(va or []) | set(vb or []))
+            child[key] = random.sample(pool, min(len(pool), max(len(va or []), 1)))
+        elif key == "params" and isinstance(va, dict) and isinstance(vb, dict):
+            merged = {}
+            for pk in set(va) | set(vb):
+                pa, pb = va.get(pk), vb.get(pk)
+                if isinstance(pa, (int, float)) and isinstance(pb, (int, float)):
+                    merged[pk] = (pa + pb) / 2.0
+                else:
+                    merged[pk] = random.choice([pa, pb])
+            child[key] = merged
+        elif key == "family":
+            child[key] = random.choice([va, vb])
+        else:
+            child[key] = random.choice([va, vb])
+    return child
 
 
 def _ordered_pair_universes(
@@ -218,6 +243,8 @@ class SpecMutator:
         family_scope: set[str] | None,
     ) -> list[SignalSpec]:
         storage_track = storage_track_name(track)
+        if storage_track is None:
+            return []
         artifact_root = Path(getattr(self.settings, "artifact_dir", self.settings.root_dir / "runs"))
         search_dirs = [artifact_root / storage_track]
         search_dirs.extend(
@@ -1579,7 +1606,7 @@ class SpecMutator:
                 raw_series=raw_series,
             ):
                 continue
-            gate_spec = {"expression": expression}
+            gate_spec: dict[str, str | float] = {"expression": expression}
             if minimum is not None:
                 gate_spec["min"] = float(minimum)
             if maximum is not None:
