@@ -72,7 +72,10 @@ def mock_feeds() -> MagicMock:
 @pytest.fixture
 def paper_client(tmp_sessions: Path, mock_feeds: MagicMock) -> SoDEXPaperPerpsClient:
     """A SoDEXPaperPerpsClient with mocked feeds and temp sessions dir."""
-    return SoDEXPaperPerpsClient(feeds=mock_feeds, sessions_dir=tmp_sessions)
+    return SoDEXPaperPerpsClient(
+        feeds=mock_feeds, sessions_dir=tmp_sessions,
+        slippage_bps=0.0, min_notional_usd=0.0,
+    )
 
 
 @pytest.fixture
@@ -1329,3 +1332,173 @@ class TestMarketOrder:
         # Should have realized PnL
         pnl = paper_client.get_pnl(session_id)
         assert pnl["realized_pnl"] > 0  # Bought at 101, sold at >=103
+
+
+# ---------------------------------------------------------------------------
+# Slippage model tests
+# ---------------------------------------------------------------------------
+
+
+class TestSlippage:
+    """Slippage is applied to market order fills."""
+
+    @pytest.fixture
+    def no_slip_client(self, tmp_sessions: Path, mock_feeds: MagicMock) -> SoDEXPaperPerpsClient:
+        return SoDEXPaperPerpsClient(
+            feeds=mock_feeds, sessions_dir=tmp_sessions,
+            slippage_bps=0.0, min_notional_usd=0.0,
+        )
+
+    @pytest.fixture
+    def slip_client(self, tmp_sessions: Path, mock_feeds: MagicMock) -> SoDEXPaperPerpsClient:
+        return SoDEXPaperPerpsClient(
+            feeds=mock_feeds, sessions_dir=tmp_sessions,
+            slippage_bps=100.0, min_notional_usd=0.0,  # 100 bps = 1%
+        )
+
+    async def test_market_buy_gets_worse_fill_with_slippage(
+        self, slip_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """MARKET BUY fill price is higher than kline close (buyer pays more)."""
+        sid = slip_client.create_session("slip_buy")
+        slip_client.place_order(sid, symbol="BTC-USD", side="BUY", quantity=1.0, order_type="MARKET")
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "100.0"}
+        fills = await slip_client.process_klines(sid, [kline])
+        assert len(fills) == 1
+        assert fills[0]["fill_price"] > 100.0  # slippage makes it worse for buyer
+
+    async def test_market_sell_gets_worse_fill_with_slippage(
+        self, slip_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """MARKET SELL fill price is lower than kline close (seller gets less)."""
+        sid = slip_client.create_session("slip_sell")
+        slip_client.place_order(sid, symbol="BTC-USD", side="SELL", quantity=1.0, order_type="MARKET")
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "100.0"}
+        fills = await slip_client.process_klines(sid, [kline])
+        assert len(fills) == 1
+        assert fills[0]["fill_price"] < 100.0
+
+    async def test_slippage_amount_matches_bps(
+        self, slip_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """Fill price delta equals close * slippage_bps / 10_000."""
+        sid = slip_client.create_session("slip_amount")
+        slip_client.place_order(sid, symbol="BTC-USD", side="BUY", quantity=1.0, order_type="MARKET")
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "1000.0"}
+        fills = await slip_client.process_klines(sid, [kline])
+        expected_slip = 1000.0 * 100.0 / 10_000  # = 10.0
+        assert fills[0]["fill_price"] == pytest.approx(1000.0 + expected_slip)
+
+    async def test_zero_slippage_fills_at_close(
+        self, no_slip_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """With slippage_bps=0, market fill equals kline close."""
+        sid = no_slip_client.create_session("no_slip")
+        no_slip_client.place_order(sid, symbol="BTC-USD", side="BUY", quantity=1.0, order_type="MARKET")
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "103.5"}
+        fills = await no_slip_client.process_klines(sid, [kline])
+        assert fills[0]["fill_price"] == 103.5
+
+    async def test_slippage_not_applied_to_limit_orders(
+        self, slip_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """LIMIT orders are not affected by slippage."""
+        sid = slip_client.create_session("slip_limit")
+        slip_client.place_order(sid, symbol="BTC-USD", side="BUY", quantity=1.0, price=100.0)
+        kline = {"t": 1, "o": "100", "h": "105", "l": "95", "c": "103.0"}
+        fills = await slip_client.process_klines(sid, [kline])
+        assert len(fills) == 1
+        # LIMIT fill at 100.0 (no slippage adjustment)
+        assert fills[0]["fill_price"] <= 100.0
+
+
+# ---------------------------------------------------------------------------
+# Minimum notional enforcement tests
+# ---------------------------------------------------------------------------
+
+
+class TestMinNotional:
+    """Orders below minimum notional are cancelled at fill time."""
+
+    @pytest.fixture
+    def min_notional_client(self, tmp_sessions: Path, mock_feeds: MagicMock) -> SoDEXPaperPerpsClient:
+        return SoDEXPaperPerpsClient(
+            feeds=mock_feeds, sessions_dir=tmp_sessions,
+            slippage_bps=0.0, min_notional_usd=50.0,
+        )
+
+    async def test_small_order_cancelled_below_minimum(
+        self, min_notional_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """Order with notional < min_notional_usd is cancelled."""
+        sid = min_notional_client.create_session("min_cancel")
+        min_notional_client.place_order(
+            sid, symbol="BTC-USD", side="BUY", quantity=0.1, order_type="MARKET",
+        )
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "100.0"}
+        fills = await min_notional_client.process_klines(sid, [kline])
+        assert len(fills) == 0  # no fill event
+        orders = min_notional_client.get_orders(sid)
+        assert orders[0]["status"] == "CANCELLED"
+
+    async def test_order_above_minimum_fills_normally(
+        self, min_notional_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """Order with notional >= min_notional_usd fills normally."""
+        sid = min_notional_client.create_session("min_fill")
+        min_notional_client.place_order(
+            sid, symbol="BTC-USD", side="BUY", quantity=1.0, order_type="MARKET",
+        )
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "100.0"}
+        fills = await min_notional_client.process_klines(sid, [kline])
+        assert len(fills) == 1
+        assert fills[0]["status"] == "FILLED"
+
+    async def test_cancelled_below_minimum_no_position_created(
+        self, min_notional_client: SoDEXPaperPerpsClient,
+    ) -> None:
+        """Cancelled order does not create a position."""
+        sid = min_notional_client.create_session("min_no_pos")
+        min_notional_client.place_order(
+            sid, symbol="BTC-USD", side="BUY", quantity=0.1, order_type="MARKET",
+        )
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "100.0"}
+        await min_notional_client.process_klines(sid, [kline])
+        positions = min_notional_client.get_positions(sid)
+        assert len(positions) == 0
+
+    async def test_exact_minimum_notional_fills(
+        self, tmp_sessions: Path, mock_feeds: MagicMock,
+    ) -> None:
+        """Order with notional exactly equal to minimum still fills."""
+        client = SoDEXPaperPerpsClient(
+            feeds=mock_feeds, sessions_dir=tmp_sessions,
+            slippage_bps=0.0, min_notional_usd=100.0,
+        )
+        sid = client.create_session("exact_min")
+        client.place_order(
+            sid, symbol="BTC-USD", side="BUY", quantity=1.0, order_type="MARKET",
+        )
+        kline = {"t": 1, "o": "100", "h": "105", "l": "99", "c": "100.0"}
+        fills = await client.process_klines(sid, [kline])
+        assert len(fills) == 1
+        assert fills[0]["status"] == "FILLED"
+
+    async def test_min_notional_with_slippage_combined(
+        self, tmp_sessions: Path, mock_feeds: MagicMock,
+    ) -> None:
+        """Slippage-adjusted price used in notional check."""
+        client = SoDEXPaperPerpsClient(
+            feeds=mock_feeds, sessions_dir=tmp_sessions,
+            slippage_bps=15.0, min_notional_usd=100.0,
+        )
+        sid = client.create_session("combined")
+        # qty=1, close=99 → notional = 99 * (1 + 15/10000) = 99.1485 → below 100
+        client.place_order(
+            sid, symbol="BTC-USD", side="BUY", quantity=1.0, order_type="MARKET",
+        )
+        kline = {"t": 1, "o": "99", "h": "100", "l": "98", "c": "99.0"}
+        fills = await client.process_klines(sid, [kline])
+        assert len(fills) == 0
+        orders = client.get_orders(sid)
+        assert orders[0]["status"] == "CANCELLED"
