@@ -59,6 +59,12 @@ def _mixed_softmax_choice(
         return items[0][0]
 
     scores = [score for _item, score in items]
+    # Normalize scores within the candidate pool for stable softmax
+    if len(scores) >= 3:
+        s_min = min(scores)
+        s_max = max(scores)
+        if s_max - s_min > 1e-9:
+            scores = [(s - s_min) / (s_max - s_min) for s in scores]
     anchor = max(scores)
     exp_weights = [
         math.exp(max(-60.0, min(60.0, (score - anchor) / max(temperature, 1e-6))))
@@ -338,6 +344,8 @@ def pick_deterministic_parent(
             anchor_bonus += 0.35
         if row_scores.get(spec_hash, -1.0) > 0.0:
             anchor_bonus += 0.2
+        anchor_bonus = min(anchor_bonus, 0.3)
+        anchor_bonus *= max(0.0, 1.0 - iteration_number / 20.0)
         total = (
             exploit_weight * exploit_scores.get(spec_hash, 0.5)
             + novelty_weight * novelty_scores.get(spec_hash, 0.0)
@@ -404,6 +412,7 @@ def rank_deterministic_specs(
             anchor_bonus += 0.1
         if spec.family == parent.family:
             anchor_bonus += 0.05
+        anchor_bonus = min(anchor_bonus, 0.25)
         base_scores[spec_hash] = (
             exploit_weight * exploit_scores.get(spec_hash, 0.5)
             + novelty_weight * novelty_scores.get(spec_hash, 0.0)
