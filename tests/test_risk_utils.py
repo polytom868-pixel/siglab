@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from siglab.dashboard.risk_utils import (
+    STALE_THRESHOLD_SECONDS,
     compute_risk_metrics,
     empty_risk_response,
     load_equity_curves,
@@ -34,6 +37,24 @@ class TestLoadEquityCurves:
 
             curves = load_equity_curves(tmp_path)
             assert curves == []
+
+    def test_stale_session_filtered_out(self) -> None:
+        """Sessions older than STALE_THRESHOLD_SECONDS are skipped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Fresh session
+            fresh = tmp_path / "fresh.npy"
+            np.save(str(fresh), np.array([1.0, 1.1, 1.2], dtype=np.float64))
+            # Stale session (modified 8 days ago)
+            stale = tmp_path / "stale.npy"
+            np.save(str(stale), np.array([1.0, 0.9, 0.8], dtype=np.float64))
+            old_time = time.time() - (8 * 24 * 3600)
+            os.utime(stale, (old_time, old_time))
+
+            curves = load_equity_curves(tmp_path)
+            names = [name for name, _ in curves]
+            assert "fresh" in names
+            assert "stale" not in names
 
 
 class TestEmptyRiskResponse:

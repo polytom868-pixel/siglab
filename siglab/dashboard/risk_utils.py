@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,8 @@ from siglab.risk.guardian import (
 
 logger = logging.getLogger(__name__)
 
+STALE_THRESHOLD_SECONDS = 7 * 24 * 3600  # 7 days
+
 
 def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
     """Load all .npy session files and extract equity curves.
@@ -32,6 +35,10 @@ def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
     npy_files = sorted(sessions_dir.glob("*.npy"))
     curves: list[tuple[str, np.ndarray]] = []
     for npy_file in npy_files:
+        mtime = npy_file.stat().st_mtime
+        if (time.time() - mtime) > STALE_THRESHOLD_SECONDS:
+            logger.warning("Session %s is stale (last modified %ds ago), skipping", npy_file.stem, int(time.time() - mtime))
+            continue
         try:
             data = np.load(npy_file, allow_pickle=True)
             if isinstance(data, np.ndarray) and data.size > 0:
