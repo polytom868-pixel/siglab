@@ -116,17 +116,21 @@ class SoDEXWebSocketClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_reconnect_budget_is_enforced(self) -> None:
         calls = 0
 
-        async def connect(_url: str) -> FakeWebSocket:
+        async def flaky_connect(_url: str) -> FakeWebSocket:
             nonlocal calls
             calls += 1
+            if calls > 1:
+                raise ConnectionError("refused")
             return FakeWebSocket([])
 
-        client = SoDEXWebSocketClient(connect=connect, max_reconnects=1)
+        client = SoDEXWebSocketClient(connect=flaky_connect, max_reconnects=1)
         await client.connect()
-        await client.reconnect()
+        # First reconnect: budget ok (0→1), connect fails → counter stays at 1
+        with self.assertRaises(ConnectionError):
+            await client.reconnect()
+        # Second reconnect: budget exhausted (1→2 > 1)
         with self.assertRaises(SoDEXWebSocketDisconnected):
             await client.reconnect()
-        self.assertEqual(calls, 2)
 
 
 async def _return(value: FakeWebSocket) -> FakeWebSocket:

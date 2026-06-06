@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -113,7 +114,7 @@ class SoDEXWebSocketClient:
         connect: ConnectFactory | None = None,
         idle_timeout_s: float = 45.0,
         pong_timeout_s: float = 10.0,
-        max_reconnects: int = 2,
+        max_reconnects: int = 10,
     ) -> None:
         self.environment = _validate_choice(environment, {"mainnet", "testnet"}, "environment")
         self.market = _validate_choice(market, {"spot", "perps"}, "market")
@@ -141,6 +142,7 @@ class SoDEXWebSocketClient:
                 self._connection = await self._connect(self.url)
             self.metrics.connections += 1
             self.metrics.latencies_ms.append((time.perf_counter() - started) * 1000.0)
+            self.metrics.reconnects = 0
         return self._connection
 
     async def subscribe(self, params: dict[str, Any], *, request_id: int | None = None) -> dict[str, Any]:
@@ -195,6 +197,8 @@ class SoDEXWebSocketClient:
         self.metrics.reconnects += 1
         if self.metrics.reconnects > self.max_reconnects:
             raise SoDEXWebSocketDisconnected("SoDEX WebSocket reconnect budget exhausted")
+        delay = min(0.5 * (2 ** self.metrics.reconnects), 30.0) * (0.5 + random.random() * 0.5)
+        await asyncio.sleep(delay)
         await self.connect()
 
     def snapshot(self) -> dict[str, Any]:
