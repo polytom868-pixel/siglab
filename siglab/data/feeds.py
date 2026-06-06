@@ -1,6 +1,16 @@
+"""Market data provider for SigLab research pipelines.
+
+Centralises access to SoSoValue market data, SoDEX perp klines/funding,
+Pendle PT markets, and Delta Lab lending markets.  All live HTTP/WS calls
+are made through the ``SoSoValueClient`` and ``SoDEXFeeds`` adapters;
+``MarketDataProvider`` adds caching (warm + per-bundle), bundle manifests,
+and a ``metrics_snapshot`` / ``close`` lifecycle for observability.
+"""
+
 from __future__ import annotations
 
 import asyncio
+import atexit
 import copy
 import json
 import logging
@@ -206,6 +216,13 @@ class MarketDataProvider:
         config_path: str | None = None,
         sodex_feeds: SoDEXFeeds | None = None,
     ) -> None:
+        """Initialise the market data provider.
+
+        Sets up the ``SoSoValueClient`` from *settings*, stores the
+        ``ParquetLake`` reference, and prepares the internal warm/bundle
+        caches.  ``sodex_feeds`` may be provided up-front or lazily
+        assigned when SoDEX data is first requested.
+        """
         self.settings = settings
         self.lake = lake
         self.sosovalue = SoSoValueClient(
@@ -236,6 +253,13 @@ class MarketDataProvider:
         return snap
 
     async def close(self) -> None:
+        """Shut down the provider and log final metrics.
+
+        Emits a ``data_pipeline_metrics`` log line containing the full
+        ``metrics_snapshot`` (SoSoValue request counts, latencies, error
+        rates, and SoDEX metrics if present), then closes the underlying
+        HTTP clients to release connection pools.
+        """
         logger.info("data_pipeline_metrics %s", json.dumps(self.metrics_snapshot(), default=str))
         await self.sosovalue.close()
         if self.sodex_feeds is not None:
@@ -247,6 +271,14 @@ class MarketDataProvider:
         track: str,
         parent: SignalSpec,
     ) -> dict[str, Any]:
+        """Start a new iteration bundle and reset caches.
+
+        Computes a deterministic ``bundle_id`` from the track name,
+        parent strategy hash, and timestamp, then clears the warm and
+        per-bundle caches so all subsequent fetches are fresh.
+
+        HTTP: none (local state only)
+        """
         as_of = datetime.now(UTC).replace(microsecond=0)
         payload = jsonable_iteration_payload(
             track=canonical_track_name(track) or track,
@@ -270,6 +302,10 @@ class MarketDataProvider:
         return metadata
 
     def current_bundle_context(self) -> dict[str, Any] | None:
+        """Return the active bundle ID and as-of timestamp, or ``None``.
+
+        HTTP: none (local state only)
+        """
         if self._active_bundle_id is None or self._active_as_of is None:
             return None
         return {
@@ -278,6 +314,10 @@ class MarketDataProvider:
         }
 
     def clear_iteration_bundle(self) -> None:
+        """Tear down the active bundle and release all caches.
+
+        HTTP: none (local state only)
+        """
         self._active_bundle_id = None
         self._active_as_of = None
         self._bundle_cache = {}
@@ -289,6 +329,15 @@ class MarketDataProvider:
         track: str,
         parent: SignalSpec,
     ) -> dict[str, Any]:
+        """Build a full research summary for a track/parent pair.
+
+        Fetches perp bundle data and, for ``yield_flows`` tracks, also
+        discovers stable-PT, rotation-PT, and lending markets.
+
+        HTTP: multiple calls via ``discover_perp_symbols``,
+        ``fetch_perp_bundle``, ``discover_stable_pt_markets``,
+        ``discover_pt_markets``, and ``discover_lending_markets``.
+        """
         track = canonical_track_name(track) or track
         summary: dict[str, Any] = {
             "track": track,
@@ -433,6 +482,11 @@ class MarketDataProvider:
         *,
         limit: int,
     ) -> list[str]:
+        """Resolve perp symbols from preferred list, falling back to ``["BTC", "ETH"]``.
+
+        Cached: warm cache (survives across bundles within a session).
+        HTTP: optional ``delta_lab.get_basis_symbols`` call if no cache hit.
+        """
         preferred_symbols = _sanitize_perp_symbols(preferred_symbols)
         warm_key = self._warm_cache_key(
             "perp_symbols",
@@ -463,6 +517,16 @@ class MarketDataProvider:
         lookback_days: int,
         interval: str,
     ) -> dict[str, Any]:
+        """Fetch perp klines and funding rates for *symbols*.
+
+        Returns a dict with keys ``prices``, ``funding``, ``source``,
+        ``bundle_as_of``, and ``bundle_id``.
+
+        Cached: warm cache + per-bundle cache.  Frames are also persisted
+        to the ``ParquetLake``.
+        HTTP: ``SoDEXFeeds.fetch_klines`` + ``SoDEXFeeds.fetch_mark_prices``
+        (or ``delta_lab`` variant) on cache miss.
+        """
         symbols = _sanitize_perp_symbols(symbols)
         if not symbols:
             raise ValueError("No supported perp symbols after filtering synthetic stable labels")
@@ -518,6 +582,10 @@ class MarketDataProvider:
         *,
         limit: int,
     ) -> list[dict[str, Any]]:
+        """Discover stable-PT markets by delegating to ``discover_pt_markets``.
+
+        HTTP: same as ``discover_pt_markets`` (cached via lake JSON).
+        """
         return await self.discover_pt_markets(
             universe,
             limit=limit,
@@ -531,6 +599,14 @@ class MarketDataProvider:
         limit: int,
         stable_only: bool = False,
     ) -> list[dict[str, Any]]:
+        """Discover Pendle PT markets matching *universe* criteria.
+
+        Cached: per-bundle cache, plus lake JSON (12 h TTL when no active
+        bundle).  Currently returns ``[]`` as the Pendle data source is
+        not wired.
+
+        HTTP: none at present (Pendle API not integrated).
+        """
         bundle_cache_key = self._bundle_cache_key(
             "pt_markets",
             groups=list(universe.basis_groups),
@@ -562,6 +638,11 @@ class MarketDataProvider:
         *,
         lookback_days: int,
     ) -> dict[str, pd.DataFrame]:
+        """Fetch historical price frames for Pendle PT markets.
+
+        Cached: per-bundle cache, plus lake parquet (24 h TTL).
+        HTTP: none at present (Pendle API not integrated).
+        """
         if not markets:
             return {}
         bundle_cache_key = self._bundle_cache_key(
@@ -596,6 +677,15 @@ class MarketDataProvider:
         *,
         limit: int,
     ) -> list[dict[str, Any]]:
+        """Discover lending markets via ``delta_lab.screen_lending``.
+
+        Enriches each row with ``basisSymbol``, ``marketLabel``, and
+        ``hedgeSymbol``, deduplicates by best combined APR, and persists
+        results to the lake (6 h TTL).
+
+        Cached: per-bundle cache, plus lake JSON.
+        HTTP: ``delta_lab.screen_lending`` per basis group on cache miss.
+        """
         bundle_cache_key = self._bundle_cache_key(
             "lending_markets",
             groups=list(universe.basis_groups),
@@ -631,6 +721,7 @@ class MarketDataProvider:
                     exclude_frozen=True,
                 )
             except Exception:
+                logger.warning("delta_lab.screen_lending failed for basis=%s, skipping", basis)
                 continue
             for row in payload.get("data") or []:
                 if allowed_chain_ids and int(row.get("chain_id") or 0) not in allowed_chain_ids:
@@ -665,6 +756,14 @@ class MarketDataProvider:
         *,
         lookback_days: int,
     ) -> dict[str, Any]:
+        """Fetch lending time-series (prices, supply APR, utilization, etc.).
+
+        Returns a dict with DataFrames keyed by market label, plus
+        ``hedge_symbols``, ``source``, ``bundle_as_of``, and ``bundle_id``.
+
+        Cached: per-bundle cache.  Price frames are persisted to the lake.
+        HTTP: ``delta_lab.get_asset_timeseries`` per basis symbol on cache miss.
+        """
         bundle_cache_key = self._bundle_cache_key(
             "lending_bundle",
             markets=[self.lending_market_label(row) for row in markets],
@@ -716,6 +815,7 @@ class MarketDataProvider:
                     series="price,lending",
                 )
             except Exception:
+                logger.warning("delta_lab.get_asset_timeseries failed for %s, skipping", basis_symbol)
                 continue
             price_df = payload.get("price")
             lending_df = payload.get("lending")
@@ -826,11 +926,21 @@ class MarketDataProvider:
         return bundle
 
     def market_label(self, row: dict[str, Any]) -> str:
+        """Return a canonical label for a Pendle PT market row.
+
+        Format: ``<sanitised_marketName>_<chainId>``.
+        HTTP: none (pure string transform).
+        """
         name = str(row.get("marketName") or "pt")
         compact_name = re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_")
         return f"{compact_name}_{row.get('chainId')}"
 
     def lending_market_label(self, row: dict[str, Any]) -> str:
+        """Return a canonical label for a lending market row.
+
+        Format: ``<basisSymbol>_<symbol>_<venue_name>_<market_id>``.
+        HTTP: none (pure string transform).
+        """
         venue = re.sub(r"[^A-Za-z0-9]+", "_", str(row.get("venue_name") or "lending")).strip("_")
         symbol = re.sub(r"[^A-Za-z0-9]+", "_", str(row.get("symbol") or "asset")).strip("_")
         market_id = str(row.get("market_id") or "0")
@@ -843,6 +953,12 @@ class MarketDataProvider:
         *,
         preferred_symbols: list[str] | None = None,
     ) -> str | None:
+        """Guess a hedge symbol for a PT market from its name.
+
+        Returns ``"USD"`` for stable-PT markets, a major perp symbol if
+        one appears in the market name, or ``None`` if no match is found.
+        HTTP: none (pure string matching).
+        """
         market_name = str(row.get("marketName") or "").upper()
         symbol_pool = preferred_symbols or MAJOR_PERP_SYMBOLS
         for symbol in symbol_pool:
@@ -961,6 +1077,11 @@ class MarketDataProvider:
         }
 
     async def fetch_etf_historical_inflow(self, *, etf_type: str = "us-btc-spot") -> list[dict[str, Any]]:
+        """Fetch historical ETF inflow data from SoSoValue.
+
+        Cached: lake JSON (6 h TTL).
+        HTTP: ``SoSoValueClient.etf_historical_inflow`` on cache miss.
+        """
         cache_key = f"historical_inflow_{etf_type}"
         cached = None
         if hasattr(self.lake, "latest_json"):
@@ -980,6 +1101,11 @@ class MarketDataProvider:
         currency_id: int | None = None,
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
+        """Fetch featured news articles from SoSoValue and persist to the lake.
+
+        Always-fresh: no cache, always hits the API.
+        HTTP: ``SoSoValueClient.featured_news_by_currency``.
+        """
         rows = await self.sosovalue.featured_news_by_currency(
             page_num=page_num,
             page_size=page_size,
