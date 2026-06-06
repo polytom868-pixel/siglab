@@ -63,7 +63,7 @@ def empty_risk_response() -> dict[str, Any]:
     }
 
 
-def compute_risk_metrics(sessions_dir: Path) -> dict[str, Any]:
+def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int = 365) -> dict[str, Any]:
     """Compute full risk metrics from session data.
 
     Returns a dict with composite_score, max_drawdown, correlation_matrix,
@@ -101,13 +101,15 @@ def compute_risk_metrics(sessions_dir: Path) -> dict[str, Any]:
             rets = np.diff(eq) / np.where(eq[:-1] != 0, eq[:-1], 1.0)
             returns_list.append(rets)
 
-    # Sharpe ratio
+    # Sharpe ratio (per-strategy average, frequency-aware)
     sharpe = 0.0
     if returns_list:
-        all_returns = np.concatenate(returns_list)
-        ret_std = float(np.std(all_returns))
-        if ret_std > 0.0:
-            sharpe = float(np.mean(all_returns) / ret_std * np.sqrt(365))
+        sharpes = []
+        for rets in returns_list:
+            s = np.std(rets, ddof=1)
+            if s > 0:
+                sharpes.append(float(np.mean(rets) / s * np.sqrt(periods_per_year)))
+        sharpe = float(np.mean(sharpes)) if sharpes else 0.0
 
     # Correlation matrix
     corr_matrix: list[list[float]] | None = None
@@ -126,11 +128,16 @@ def compute_risk_metrics(sessions_dir: Path) -> dict[str, Any]:
                 corr_values.append(corr_matrix[i][j])
         avg_corr = float(np.mean(corr_values)) if corr_values else 0.0
 
+    # Concentration from HHI
+    n = len(returns_list)
+    hhi = 1.0 / n if n > 0 else 1.0
+    concentration = 1.0 - hhi  # 0.0 = max concentration (1 strat), approaches 1.0 as N grows
+
     # Sub-scores
     sub_scores = {
         "sharpe": _normalize_sharpe_score(sharpe),
         "drawdown": _normalize_drawdown_score(max_dd),
-        "concentration": _normalize_concentration_score(0.0),
+        "concentration": _normalize_concentration_score(concentration),
         "correlation_risk": _normalize_correlation_score(avg_corr),
     }
 
@@ -139,7 +146,7 @@ def compute_risk_metrics(sessions_dir: Path) -> dict[str, Any]:
     composite = float(compute_composite_score(
         sharpe=sharpe,
         drawdown=max_dd,
-        concentration=0.0,
+        concentration=concentration,
         correlation_risk=avg_corr,
     ))
 
