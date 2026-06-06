@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -70,8 +73,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         pass
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("WS error: %s", exc)
     finally:
         for task in risk_push_tasks:
             task.cancel()
@@ -286,11 +289,7 @@ async def _stream_positions(websocket: WebSocket) -> None:
 
 async def _stream_risk_scores(websocket: WebSocket) -> None:
     """Stream current risk metrics to a WebSocket client."""
-    from siglab.risk.guardian import (
-        compute_composite_score,
-        correlation_matrix,
-        max_drawdown,
-    )
+    from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
 
     try:
         state = websocket.app.state.dashboard
@@ -298,10 +297,7 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
         if config is None:
             await _send_json(websocket, {
                 "type": "risk_score",
-                "composite_score": None,
-                "max_drawdown": None,
-                "correlation_matrix": None,
-                "strategy_count": 0,
+                **empty_risk_response(),
                 "note": "Config not loaded",
             })
             return
@@ -310,111 +306,28 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
         if not sessions_dir.exists():
             await _send_json(websocket, {
                 "type": "risk_score",
-                "composite_score": None,
-                "max_drawdown": None,
-                "correlation_matrix": None,
-                "strategy_count": 0,
+                **empty_risk_response(),
                 "note": "No paper sessions found",
             })
             return
 
-        npy_files = sorted(sessions_dir.glob("*.npy"))
-        if not npy_files:
-            await _send_json(websocket, {
-                "type": "risk_score",
-                "composite_score": None,
-                "max_drawdown": None,
-                "correlation_matrix": None,
-                "strategy_count": 0,
-                "note": "No session data available",
-            })
-            return
-
-        # Attempt to build equity curves from session files
-        import numpy as np
-
-        equity_curves: list[np.ndarray] = []
-        for npy_file in npy_files:
-            try:
-                data = np.load(npy_file, allow_pickle=True)
-                if isinstance(data, np.ndarray) and data.size > 0:
-                    if data.dtype.names is not None and "equity" in data.dtype.names:
-                        eq = data["equity"]
-                        if isinstance(eq, np.ndarray) and eq.size > 0:
-                            equity_curves.append(eq.astype(float))
-                    elif data.dtype in (np.float64, np.float32):
-                        equity_curves.append(data)
-            except Exception:
-                continue
-
-        strategy_count = len(equity_curves)
-        max_dd = float(max_drawdown(equity_curves[0])) if equity_curves else None
-
-        # Compute returns for all equity curves
-        returns_list = []
-        for eq in equity_curves:
-            if eq.size >= 2:
-                rets = np.diff(eq) / np.where(eq[:-1] != 0, eq[:-1], 1.0)
-                returns_list.append(rets)
-
-        # Compute Sharpe ratio from returns
-        sharpe = 0.0
-        if returns_list:
-            all_returns = np.concatenate(returns_list)
-            ret_std = float(np.std(all_returns))
-            if ret_std > 0.0:
-                sharpe = float(np.mean(all_returns) / ret_std * np.sqrt(365))
-
-        corr_matrix: list[list[float]] | None = None
-        if len(returns_list) >= 2:
-            matrix = correlation_matrix(returns_list)
-            if matrix.size > 0:
-                corr_matrix = matrix.tolist()
-
-        avg_corr = 0.0
-        if corr_matrix is not None and len(corr_matrix) >= 2:
-            n = len(corr_matrix)
-            corr_values = []
-            for i in range(n):
-                for j in range(i + 1, n):
-                    corr_values.append(corr_matrix[i][j])
-            avg_corr = float(np.mean(corr_values)) if corr_values else 0.0
-
-        composite = None
-        if max_dd is not None:
-            composite = float(compute_composite_score(
-                sharpe=sharpe,
-                drawdown=max_dd,
-                concentration=0.0,
-                correlation_risk=avg_corr,
-            ))
-
+        metrics = compute_risk_metrics(sessions_dir)
         await _send_json(websocket, {
             "type": "risk_score",
-            "composite_score": composite,
-            "max_drawdown": max_dd,
-            "correlation_matrix": corr_matrix,
-            "strategy_count": strategy_count,
-            "sharpe_ratio": sharpe,
+            **metrics,
             "timestamp": datetime.now(UTC).isoformat(),
         })
 
     except ImportError:
         await _send_json(websocket, {
             "type": "risk_score",
-            "composite_score": None,
-            "max_drawdown": None,
-            "correlation_matrix": None,
-            "strategy_count": 0,
+            **empty_risk_response(),
             "note": "numpy not available",
         })
     except Exception as exc:
         await _send_json(websocket, {
             "type": "risk_score",
-            "composite_score": None,
-            "max_drawdown": None,
-            "correlation_matrix": None,
-            "strategy_count": 0,
+            **empty_risk_response(),
             "note": f"Error: {exc}",
         })
 

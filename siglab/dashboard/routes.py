@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from siglab.config import SiglabConfig
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -465,190 +468,24 @@ async def skill_report(request: Request) -> dict[str, Any]:
 
 
 def _compute_risk_metrics(state: Any) -> dict[str, Any]:
-    """Compute risk metrics from available data in the dashboard state.
+    """Compute risk metrics from available data in the dashboard state."""
+    from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
 
-    Returns a dict with composite_score, max_drawdown, correlation_matrix,
-    sub_scores, drawdown_history, strategy_names, alerts, and other
-    risk-related data. Returns empty structure if no data available.
-    """
-    # Attempt to load paper session data for risk computation
     config = state.config
     if config is None:
-        return _empty_risk_response()
+        return empty_risk_response()
 
     sessions_dir = config.root_dir / "sessions"
     if not sessions_dir.exists():
-        return _empty_risk_response()
+        return empty_risk_response()
 
-    # Look for .npy session files and extract metrics from them
     try:
-        import numpy as np
-
-        from siglab.risk.guardian import (
-            compute_composite_score,
-            correlation_matrix,
-            current_drawdown,
-            max_drawdown,
-            recovery_time,
-            track_drawdown_events,
-        )
-
-        npy_files = sorted(sessions_dir.glob("*.npy"))
-        if not npy_files:
-            return _empty_risk_response()
-
-        # Build equity curves from session data
-        equity_curves: list[np.ndarray] = []
-        session_names: list[str] = []
-        for npy_file in npy_files:
-            try:
-                data = np.load(npy_file, allow_pickle=True)
-                if isinstance(data, np.ndarray) and data.size > 0:
-                    # If data is a structured array or object, try to extract equity
-                    if data.dtype.names is not None and "equity" in data.dtype.names:
-                        eq = data["equity"]
-                        if isinstance(eq, np.ndarray) and eq.size > 0:
-                            equity_curves.append(eq.astype(float))
-                            session_names.append(npy_file.stem)
-                    elif data.dtype == np.float64 or data.dtype == np.float32:
-                        equity_curves.append(data)
-                        session_names.append(npy_file.stem)
-            except Exception:
-                continue
-
-        # Compute max drawdown from the first available equity curve
-        max_dd: float | None = None
-        cur_dd: float | None = None
-        rec_time: int | None = None
-        dd_history: list[float] = []
-
-        if equity_curves:
-            eq = equity_curves[0]
-            max_dd = float(max_drawdown(eq))
-            cur_dd = float(current_drawdown(eq))
-            rec_time = recovery_time(eq)
-
-            # Build drawdown history for sparkline
-            peak = np.maximum.accumulate(eq)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                dd_series = np.where(peak > 0, (eq - peak) / peak, 0.0)
-            # Downsample to ~60 points for sparkline
-            n = len(dd_series)
-            if n > 60:
-                step = n / 60
-                dd_history = [float(dd_series[int(i * step)]) for i in range(60)]
-            else:
-                dd_history = dd_series.tolist()
-
-        # Compute returns for all equity curves
-        returns_list = []
-        for eq in equity_curves:
-            if eq.size >= 2:
-                rets = np.diff(eq) / np.where(eq[:-1] != 0, eq[:-1], 1.0)
-                returns_list.append(rets)
-
-        # Compute Sharpe ratio from returns
-        sharpe = 0.0
-        if returns_list:
-            all_returns = np.concatenate(returns_list)
-            ret_std = float(np.std(all_returns))
-            if ret_std > 0.0:
-                sharpe = float(np.mean(all_returns) / ret_std * np.sqrt(365))
-
-        # Compute correlation matrix if multiple strategies
-        corr_matrix: list[list[float]] | None = None
-        if len(returns_list) >= 2:
-            matrix = correlation_matrix(returns_list)
-            if matrix.size > 0:
-                corr_matrix = matrix.tolist()
-
-        # Compute sub-scores for the gauge
-        avg_corr = 0.0
-        if corr_matrix is not None and len(corr_matrix) >= 2:
-            n = len(corr_matrix)
-            corr_values = []
-            for i in range(n):
-                for j in range(i + 1, n):
-                    corr_values.append(corr_matrix[i][j])
-            avg_corr = float(np.mean(corr_values)) if corr_values else 0.0
-
-        # Compute normalized sub-scores
-        from siglab.risk.guardian import (
-            _normalize_sharpe_score,
-            _normalize_drawdown_score,
-            _normalize_concentration_score,
-            _normalize_correlation_score,
-        )
-
-        sub_scores = {
-            "sharpe": _normalize_sharpe_score(sharpe),
-            "drawdown": _normalize_drawdown_score(max_dd if max_dd is not None else 0.0),
-            "concentration": _normalize_concentration_score(0.0),
-            "correlation_risk": _normalize_correlation_score(avg_corr),
-        }
-
-        # Compute composite score
-        composite: float | None = None
-        if max_dd is not None:
-            composite = float(compute_composite_score(
-                sharpe=sharpe,
-                drawdown=max_dd,
-                concentration=0.0,
-                correlation_risk=avg_corr,
-            ))
-
-        # Build alert list from drawdown events
-        alerts: list[dict[str, Any]] = []
-        if equity_curves:
-            events = track_drawdown_events(equity_curves[0])
-            for event in events[-20:]:  # Last 20 events
-                sev = "warning" if abs(event.max_drawdown_pct) < 0.15 else "critical"
-                alerts.append({
-                    "timestamp": event.trough_date,
-                    "metric": "drawdown",
-                    "severity": sev,
-                    "value": event.max_drawdown_pct,
-                    "threshold": 0.0,
-                    "message": (
-                        f"Drawdown {event.max_drawdown_pct * 100:.1f}% "
-                        f"({event.peak_date} → {event.trough_date})"
-                    ),
-                })
-
-        return {
-            "composite_score": composite,
-            "max_drawdown": max_dd,
-            "correlation_matrix": corr_matrix,
-            "strategy_count": len(equity_curves),
-            "strategy_names": session_names,
-            "sub_scores": sub_scores,
-            "current_drawdown": cur_dd,
-            "recovery_periods": rec_time,
-            "drawdown_history": dd_history,
-            "alerts": alerts,
-            "sharpe_ratio": sharpe,
-        }
-
+        return compute_risk_metrics(sessions_dir)
     except ImportError:
-        return {**_empty_risk_response(), "note": "numpy not available"}
+        return {**empty_risk_response(), "note": "numpy not available"}
     except Exception as exc:
-        return {**_empty_risk_response(), "note": f"Error: {exc}"}
-
-
-def _empty_risk_response() -> dict[str, Any]:
-    """Return an empty risk response with all fields set to None/empty."""
-    return {
-        "composite_score": None,
-        "max_drawdown": None,
-        "correlation_matrix": None,
-        "strategy_count": 0,
-        "strategy_names": [],
-        "sub_scores": {},
-        "current_drawdown": None,
-        "recovery_periods": None,
-        "drawdown_history": [],
-        "alerts": [],
-    }
+        logger.warning("Risk computation error: %s", exc)
+        return {**empty_risk_response(), "note": f"Error: {exc}"}
 
 
 @router.get("/risk")
