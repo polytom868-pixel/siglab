@@ -289,6 +289,8 @@ class SoDEXFeeds:
             frame["timestamp"] = pd.to_numeric(frame["timestamp"], errors="coerce")
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], unit="ms", utc=True)
             frame = frame.set_index("timestamp").sort_index()
+            if not frame.empty:
+                frame.index = frame.index.round("1h")
 
         return frame
 
