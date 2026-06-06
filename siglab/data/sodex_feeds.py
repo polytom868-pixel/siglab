@@ -28,7 +28,7 @@ from typing import Any
 import pandas as pd
 
 from siglab.data.store import ParquetLake
-from siglab.live.sodex_client import (
+from siglab.data.sodex_client import (
     SoDEXError,
     SoDEXFormatError,
     SoDEXPublicPerpsClient,
@@ -36,7 +36,7 @@ from siglab.live.sodex_client import (
     SoDEXTransportError,
     SoDEXUpstreamError,
 )
-from siglab.live.sodex_rate_limit import SoDEXWeightScheduler
+from siglab.data.sodex_rate_limit import SoDEXWeightScheduler
 
 logger = logging.getLogger(__name__)
 
