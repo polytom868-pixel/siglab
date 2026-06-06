@@ -77,22 +77,33 @@ def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int = 365) -> 
     session_names = [name for name, _ in curves]
     equity_arrays = [eq for _, eq in curves]
 
-    # Drawdown metrics from first equity curve
-    first_eq = equity_arrays[0]
-    max_dd = float(max_drawdown(first_eq))
-    cur_dd = float(current_drawdown(first_eq))
-    rec_time = recovery_time(first_eq)
-
-    # Drawdown history for sparkline
-    peak = np.maximum.accumulate(first_eq)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dd_series = np.where(peak > 0, (first_eq - peak) / peak, 0.0)
-    n = len(dd_series)
-    if n > 60:
-        step = n / 60
-        dd_history: list[float] = [float(dd_series[int(i * step)]) for i in range(60)]
+    # Drawdown metrics from worst equity curve across all sessions
+    if equity_arrays:
+        all_max_dds = [float(max_drawdown(eq)) for eq in equity_arrays]
+        all_cur_dds = [float(current_drawdown(eq)) for eq in equity_arrays]
+        max_dd = min(all_max_dds)  # most negative = worst
+        cur_dd = min(all_cur_dds)
+        worst_idx = all_max_dds.index(max_dd)
+        rec_time = recovery_time(equity_arrays[worst_idx])
     else:
-        dd_history = dd_series.tolist()
+        max_dd = cur_dd = 0.0
+        rec_time = None
+        worst_idx = 0
+
+    # Drawdown history for sparkline (from worst session)
+    first_eq = equity_arrays[worst_idx] if equity_arrays else np.array([])
+    if first_eq.size > 0:
+        peak = np.maximum.accumulate(first_eq)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            dd_series = np.where(peak > 0, (first_eq - peak) / peak, 0.0)
+        n = len(dd_series)
+        if n > 60:
+            step = n / 60
+            dd_history: list[float] = [float(dd_series[int(i * step)]) for i in range(60)]
+        else:
+            dd_history = dd_series.tolist()
+    else:
+        dd_history = []
 
     # Compute returns for all equity curves
     returns_list = []
@@ -150,9 +161,10 @@ def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int = 365) -> 
         correlation_risk=avg_corr,
     ))
 
-    # Alerts from drawdown events
+    # Alerts from drawdown events (worst session)
     alerts: list[dict[str, Any]] = []
-    events = track_drawdown_events(first_eq)
+    worst_eq = equity_arrays[worst_idx] if equity_arrays and worst_idx < len(equity_arrays) else np.array([])
+    events = track_drawdown_events(worst_eq) if worst_eq.size > 0 else []
     for event in events[-20:]:
         sev = "warning" if abs(event.max_drawdown_pct) < 0.15 else "critical"
         alerts.append({
