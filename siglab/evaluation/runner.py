@@ -1074,16 +1074,35 @@ class ResearchEvaluator:
                     activity_summary=activity_summary,
                     policy=policy,
                 )
+                changed_param_count = sum(
+                    1 for key in ("entry_abs_score", "exit_abs_score", "flip_abs_score",
+                                   "max_holding_bars", "cooldown_bars")
+                    if key in policy and key in base_policy
+                    and not math.isclose(float(policy.get(key, 0)), float(base_policy.get(key, 0)),
+                                         rel_tol=0.05, abs_tol=0.01)
+                )
+                complexity_penalty = 0.02 * changed_param_count
                 rank = (
-                    float(aggregate.get("aggregate_score") or -1e9) - activity_penalty,
+                    float(aggregate.get("aggregate_score") or -1e9) - activity_penalty - complexity_penalty,
                     float(aggregate.get("median_total_return") or -1e9),
                     float(aggregate.get("profitable_window_pct") or -1e9),
                     -activity_penalty,
                     -abs(float(policy["entry_abs_score"]) - float(base_policy["entry_abs_score"])),
                 )
+                if best_summary is not None:
+                    best_changed_count = sum(
+                        1 for key in ("entry_abs_score", "exit_abs_score", "flip_abs_score",
+                                       "max_holding_bars", "cooldown_bars")
+                        if key in best_policy and key in base_policy
+                        and not math.isclose(float(best_policy.get(key, 0)), float(base_policy.get(key, 0)),
+                                             rel_tol=0.05, abs_tol=0.01)
+                    )
+                    best_complexity_penalty = 0.02 * best_changed_count
+                else:
+                    best_complexity_penalty = 0.0
                 best_rank = (
                     float(best_summary.get("aggregate_score") or -1e9)
-                    - float(best_summary.get("activity_penalty") or 0.0),
+                    - float(best_summary.get("activity_penalty") or 0.0) - best_complexity_penalty,
                     float(best_summary.get("median_total_return") or -1e9),
                     float(best_summary.get("profitable_window_pct") or -1e9),
                     -float(best_summary.get("activity_penalty") or 0.0),
@@ -1094,6 +1113,7 @@ class ResearchEvaluator:
                     best_summary = {
                         **dict(aggregate),
                         "activity_penalty": activity_penalty,
+                        "complexity_penalty": complexity_penalty,
                         "activity_summary": activity_summary,
                     }
 
