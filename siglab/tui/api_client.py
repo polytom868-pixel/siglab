@@ -79,6 +79,14 @@ class TuiApiClient:
             response.raise_for_status()
             return response.json()
 
+    async def _get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """GET request with retry. Thin wrapper around _request_with_retry."""
+        return await self._request_with_retry("get", path, **kwargs)
+
+    async def _post(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """POST request with retry. Thin wrapper around _request_with_retry."""
+        return await self._request_with_retry("post", path, **kwargs)
+
     async def close(self) -> None:
         """Close the underlying HTTP client session."""
         if self._client is not None:
@@ -91,7 +99,7 @@ class TuiApiClient:
         Returns:
             Dict with status, version, uptime_seconds fields.
         """
-        return await self._request_with_retry("get", "/health")
+        return await self._get("/health")
 
     async def get_config(self) -> dict[str, Any]:
         """Fetch the /config endpoint.
@@ -99,7 +107,7 @@ class TuiApiClient:
         Returns:
             Dict with system, sosovalue, claude configuration.
         """
-        return await self._request_with_retry("get", "/config")
+        return await self._get("/config")
 
     async def get_ops_board(self) -> dict[str, Any]:
         """Fetch the /ops-board endpoint.
@@ -107,7 +115,7 @@ class TuiApiClient:
         Returns:
             Dict with artifact_status, summary, and service_health.
         """
-        return await self._request_with_retry("get", "/ops-board")
+        return await self._get("/ops-board")
 
     async def get_evidence_graph(self) -> dict[str, Any]:
         """Fetch the /evidence-graph endpoint.
@@ -115,7 +123,7 @@ class TuiApiClient:
         Returns:
             Dict with nodes and edges arrays.
         """
-        return await self._request_with_retry("get", "/evidence-graph")
+        return await self._get("/evidence-graph")
 
     async def get_skill_report(self) -> dict[str, Any]:
         """Fetch the /skill-report endpoint.
@@ -123,7 +131,7 @@ class TuiApiClient:
         Returns:
             Dict with per-skill metrics.
         """
-        return await self._request_with_retry("get", "/skill-report")
+        return await self._get("/skill-report")
 
     async def get_telemetry_report(self) -> dict[str, Any]:
         """Fetch the /ops-board telemetry data.
@@ -143,7 +151,7 @@ class TuiApiClient:
         Returns:
             Dict with composite_score, max_drawdown, correlation_matrix.
         """
-        return await self._request_with_retry("get", "/risk")
+        return await self._get("/risk")
 
     # ── Strategy Research ──────────────────────────────────────────────
 
@@ -166,7 +174,7 @@ class TuiApiClient:
             params["track"] = track
         if family:
             params["family"] = family
-        return await self._request_with_retry("get", "/strategies", params=params)
+        return await self._get("/strategies", params=params)
 
     async def get_strategy_detail(self, spec_hash: str) -> dict[str, Any]:
         """Fetch detailed results for a single strategy.
@@ -177,7 +185,7 @@ class TuiApiClient:
         Returns:
             Dict with spec, summary, equity_curve, etc.
         """
-        return await self._request_with_retry("get", f"/strategies/{spec_hash}")
+        return await self._get(f"/strategies/{spec_hash}")
 
     async def get_benchmark_status(self, deck: str = "trend_signals_external") -> dict[str, Any]:
         """Fetch benchmark deck status.
@@ -188,7 +196,7 @@ class TuiApiClient:
         Returns:
             Dict with state, recent_results.
         """
-        return await self._request_with_retry("get", "/benchmark/status", params={"deck": deck})
+        return await self._get("/benchmark/status", params={"deck": deck})
 
     async def get_benchmark_results(self, deck: str = "trend_signals_external") -> dict[str, Any]:
         """Fetch benchmark evaluation results.
@@ -199,7 +207,7 @@ class TuiApiClient:
         Returns:
             Dict with results list.
         """
-        return await self._request_with_retry("get", "/benchmark/results", params={"deck": deck})
+        return await self._get("/benchmark/results", params={"deck": deck})
 
     # ── Market Data ──────────────────────────────────────────────────
 
@@ -209,7 +217,7 @@ class TuiApiClient:
         Returns:
             Dict with 'symbols' list and 'count'.
         """
-        return await self._request_with_retry("get", "/market/symbols")
+        return await self._get("/market/symbols")
 
     async def get_market_tickers(self) -> dict[str, Any]:
         """Fetch 24-hour ticker data for all perp symbols.
@@ -217,7 +225,7 @@ class TuiApiClient:
         Returns:
             Dict with 'tickers' list and 'count'.
         """
-        return await self._request_with_retry("get", "/market/tickers")
+        return await self._get("/market/tickers")
 
     async def get_market_klines(
         self, symbol: str, interval: str = "1h", limit: int = 60
@@ -232,8 +240,8 @@ class TuiApiClient:
         Returns:
             Dict with 'klines' list, 'symbol', 'interval', 'count'.
         """
-        return await self._request_with_retry(
-            "get", f"/market/klines/{symbol}",
+        return await self._get(
+            f"/market/klines/{symbol}",
             params={"interval": interval, "limit": limit},
         )
 
@@ -249,8 +257,8 @@ class TuiApiClient:
         Returns:
             Dict with 'bids', 'asks', 'symbol'.
         """
-        return await self._request_with_retry(
-            "get", f"/market/orderbook/{symbol}",
+        return await self._get(
+            f"/market/orderbook/{symbol}",
             params={"limit": limit},
         )
 
@@ -262,7 +270,7 @@ class TuiApiClient:
         Returns:
             Dict with 'sessions' list.
         """
-        return await self._request_with_retry("get", "/paper/sessions")
+        return await self._get("/paper/sessions")
 
     async def create_paper_session(self, name: str | None = None) -> dict[str, Any]:
         """Create a new paper trading session.
@@ -276,7 +284,7 @@ class TuiApiClient:
         body: dict[str, Any] = {}
         if name:
             body["name"] = name
-        return await self._request_with_retry("post", "/paper/sessions", json=body)
+        return await self._post("/paper/sessions", json=body)
 
     async def get_paper_session(self, session_id: str) -> dict[str, Any]:
         """Get paper trading session status.
@@ -287,7 +295,7 @@ class TuiApiClient:
         Returns:
             Dict with session_id, name, position, pnl, orders.
         """
-        return await self._request_with_retry("get", f"/paper/sessions/{session_id}")
+        return await self._get(f"/paper/sessions/{session_id}")
 
     async def get_paper_positions(self, session_id: str) -> dict[str, Any]:
         """Get positions for a paper trading session.
@@ -298,7 +306,7 @@ class TuiApiClient:
         Returns:
             Dict with 'positions' list.
         """
-        return await self._request_with_retry("get", f"/paper/sessions/{session_id}/positions")
+        return await self._get(f"/paper/sessions/{session_id}/positions")
 
     async def get_paper_orders(self, session_id: str) -> dict[str, Any]:
         """Get orders for a paper trading session.
@@ -309,7 +317,7 @@ class TuiApiClient:
         Returns:
             Dict with 'orders' list.
         """
-        return await self._request_with_retry("get", f"/paper/sessions/{session_id}/orders")
+        return await self._get(f"/paper/sessions/{session_id}/orders")
 
     async def get_paper_pnl(self, session_id: str) -> dict[str, Any]:
         """Get PnL summary for a paper trading session.
@@ -320,7 +328,7 @@ class TuiApiClient:
         Returns:
             Dict with realized_pnl, unrealized_pnl, total_pnl, etc.
         """
-        return await self._request_with_retry("get", f"/paper/sessions/{session_id}/pnl")
+        return await self._get(f"/paper/sessions/{session_id}/pnl")
 
     async def place_paper_order(
         self,
@@ -353,8 +361,8 @@ class TuiApiClient:
         }
         if price is not None:
             body["price"] = price
-        return await self._request_with_retry(
-            "post", f"/paper/sessions/{session_id}/orders", json=body
+        return await self._post(
+            f"/paper/sessions/{session_id}/orders", json=body
         )
 
     async def cancel_paper_order(
