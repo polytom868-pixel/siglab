@@ -28,7 +28,7 @@ from siglab.live.sodex_client import (
     SoDEXTransportError,
     SoDEXUpstreamError,
 )
-from siglab.live.sodex_rate_limit import SoDEXWeightLimitError, SoDEXWeightScheduler
+from siglab.data.sodex_rate_limit import SoDEXWeightLimitError, SoDEXWeightScheduler
 from siglab.live.sodex_signing import (
     SoDEXConfigError,
     SoDEXDryRunSigner,

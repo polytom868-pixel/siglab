@@ -8,7 +8,7 @@ from typing import Any
 from siglab.io_utils import write_json
 from siglab.llm import ClaudeClient
 from siglab.orchestration.contracts import ReflectorOutput
-from siglab.strategy_semantics import gate_dimensions, motif_signature
+from siglab.evaluation.strategy_semantics import gate_dimensions, motif_signature
 from siglab.workspace.cards import dump_frontmatter, parse_frontmatter
 from siglab.workspace.builder import WorkspaceSession
 

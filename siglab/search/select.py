@@ -8,7 +8,7 @@ from typing import Any
 from siglab.schemas import SignalSpec
 from siglab.evaluation.score import _bounded
 from siglab.search.lineage import LineageStore
-from siglab.strategy_semantics import (
+from siglab.evaluation.strategy_semantics import (
     spec_feature_roles,
     gate_dimensions,
     motif_signature,
