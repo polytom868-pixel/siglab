@@ -7,6 +7,7 @@ across screen modules and ensure theme consistency.
 from __future__ import annotations
 
 from rich.text import Text
+from siglab.utils import safe_float
 
 
 # ── Color Constants ──────────────────────────────────────────────────
@@ -300,16 +301,6 @@ def format_latency(ms: float | None) -> Text:
         return Text(f"{ms:.0f}ms", style=ERROR_RED)
 
 
-def safe_float(value: Any, default: float = 0.0) -> float:
-    """Safely convert a value to float, returning *default* on failure.
-
-    Handles ``None``, non-numeric strings, and ``NaN``.
-    """
-    try:
-        result = float(value) if value is not None else default
-        return default if result != result else result  # NaN guard
-    except (ValueError, TypeError):
-        return default
 
 
 def widget_header(title: str) -> Text:

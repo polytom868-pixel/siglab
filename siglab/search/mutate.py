@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from siglab.feature_dsl import is_valid_feature_expression, load_feature_spec
+from siglab.evaluation.feature_dsl import is_valid_feature_expression, load_feature_spec
 from siglab.families import (
     family_execution_profile,
     family_prompt_module,
@@ -20,7 +20,7 @@ from siglab.llm import ClaudeClient, ClaudeTool
 from siglab.schemas import SignalSpec
 from siglab.search.select import rank_deterministic_specs
 from siglab.config import SiglabConfig
-from siglab.track_registry import canonical_track_name, storage_track_name
+from siglab.track_registry import canonical_track_name, resolve_track, storage_track_name
 
 PAIR_UNIVERSES: list[list[str]] = [
     ["ETH", "BTC"],
@@ -39,10 +39,7 @@ LEVERED_PAIR_FAMILY = "perp_pair_trade_levered"
 BASKET_NEUTRAL_UNLEVERED_FAMILY = "perp_basket_neutral_unlevered"
 BASKET_NEUTRAL_LEVERED_FAMILY = "perp_basket_neutral_levered"
 MULTI_ASSET_CARRY_FAMILY = "perp_multi_asset_carry"
-PAIR_TRADE_FAMILIES = {
-    UNLEVERED_PAIR_FAMILY,
-    LEVERED_PAIR_FAMILY,
-}
+from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
 BASKET_NEUTRAL_FAMILIES = {
     UNLEVERED_PAIR_FAMILY,
     LEVERED_PAIR_FAMILY,
@@ -197,7 +194,7 @@ class SpecMutator:
         payload = yaml.safe_load(
             (self.settings.root_dir / "mutable" / "graph_lab.yaml").read_text()
         )
-        canonical_track = canonical_track_name(track) or track
+        canonical_track = resolve_track(track)
         family_scope = _family_scope(family)
         rows = [
             SignalSpec.from_dict(row)
@@ -1939,12 +1936,7 @@ def _family_scope(family: str | list[str] | None) -> set[str] | None:
     return {str(item) for item in family}
 
 
-def _safe_float(value: Any) -> float | None:
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return None
-    return numeric
+from siglab.utils import safe_float as _safe_float
 
 
 
