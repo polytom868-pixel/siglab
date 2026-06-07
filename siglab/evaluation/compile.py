@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from hashlib import sha256
 from typing import Any
 
 import numpy as np
@@ -25,10 +24,8 @@ from siglab.schemas import SignalSpec, CompiledChild
 from siglab.config import SiglabConfig
 from siglab.evaluation.backtest import convert_to_spot
 
-PAIR_TRADE_FAMILIES = {
-    "perp_pair_trade_unlevered",
-    "perp_pair_trade_levered",
-}
+from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
+
 PERP_EXECUTION_PROFILES = {
     "ranked_directional",
     "basket_neutral_spread",
@@ -570,23 +567,7 @@ def _single_column_frame(series: pd.Series, *, name: str) -> pd.DataFrame:
     return clean.rename(name).to_frame()
 
 
-def _mean_pairwise_rolling_corr(
-    returns: pd.DataFrame,
-    *,
-    window: int,
-) -> pd.Series:
-    columns = list(returns.columns)
-    if not columns:
-        return pd.Series(dtype=float)
-    if len(columns) == 1:
-        return pd.Series(1.0, index=returns.index, dtype=float)
-    rows: list[pd.Series] = []
-    for left_idx in range(len(columns)):
-        for right_idx in range(left_idx + 1, len(columns)):
-            rows.append(returns.iloc[:, left_idx].rolling(window).corr(returns.iloc[:, right_idx]))
-    if not rows:
-        return pd.Series(dtype=float)
-    return pd.concat(rows, axis=1).mean(axis=1)
+from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
 
 
 def _perp_global_raw_frames(
@@ -763,9 +744,7 @@ def _build_lending_price_frames(
     return root_prices.reindex(carry_factor.index).ffill().mul(carry_factor)
 
 
-def _feature_hash(features: list[str]) -> str:
-    payload = "|".join(sorted(features))
-    return sha256(payload.encode("utf-8")).hexdigest()[:16]
+from siglab.utils import feature_hash as _feature_hash
 
 
 def _history_bounds(frame: pd.DataFrame) -> dict[str, str | None]:

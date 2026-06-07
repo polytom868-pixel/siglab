@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 from collections import Counter
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +17,13 @@ from siglab.evaluator.compile import (
     _perp_raw_frames,
     compile_spec,
 )
-from siglab.feature_dsl import (
+from siglab.evaluation.feature_dsl import (
     is_valid_feature_expression,
     load_feature_spec,
     resolve_feature_frames,
 )
+from siglab.utils import short_hash
+
 from siglab.llm import ClaudeTool
 from siglab.schemas import SignalSpec
 from siglab.search import LineageStore
@@ -1183,7 +1184,7 @@ class HypothesisSandbox:
             sort_keys=True,
             separators=(",", ":"),
         )
-        return sha256(payload.encode("utf-8")).hexdigest()[:16]
+        return short_hash(payload)
 
     def _gate_probe_cache_key(
         self,
@@ -1203,7 +1204,7 @@ class HypothesisSandbox:
             sort_keys=True,
             separators=(",", ":"),
         )
-        return sha256(payload.encode("utf-8")).hexdigest()[:16]
+        return short_hash(payload)
 
     def _train_only_policy_summary(
         self,
@@ -1794,10 +1795,7 @@ def _pearson_corr(left: pd.Series, right: pd.Series) -> float | None:
     return None if value is None or pd.isna(value) else float(value)
 
 
-def _clean_float(value: Any) -> float | None:
-    if value is None or pd.isna(value):
-        return None
-    return round(float(value), 6)
+from siglab.utils import safe_float as _safe_float
 
 
 def _sanitize_limit(raw: Any, *, default: int) -> int:
@@ -1808,37 +1806,7 @@ def _sanitize_limit(raw: Any, *, default: int) -> int:
     return max(1, min(50, value))
 
 
-def _pre_audit_trade_episodes(canonical_run: dict[str, Any]) -> list[dict[str, Any]]:
-    episodes = list(canonical_run.get("trade_episodes") or [])
-    if not episodes:
-        return []
-    visual_split = dict(canonical_run.get("visual_split") or {})
-    audit_start = None
-    for window in list(visual_split.get("ranges") or []):
-        if str(window.get("kind") or "") == "audit_holdout":
-            try:
-                audit_start = pd.Timestamp(window.get("start_timestamp"))
-            except Exception:  # noqa: BLE001
-                audit_start = None
-            break
-    if audit_start is None:
-        return [episode for episode in episodes if isinstance(episode, dict)]
-
-    filtered: list[dict[str, Any]] = []
-    for episode in episodes:
-        if not isinstance(episode, dict):
-            continue
-        end_timestamp = episode.get("end_timestamp") or episode.get("start_timestamp")
-        if not end_timestamp:
-            continue
-        try:
-            timestamp = pd.Timestamp(end_timestamp)
-        except Exception:  # noqa: BLE001
-            continue
-        if timestamp >= audit_start:
-            continue
-        filtered.append(episode)
-    return filtered
+from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_audit_trade_episodes
 
 
 def _episode_bucket(bars: Any) -> str | None:

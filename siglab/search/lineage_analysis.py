@@ -13,7 +13,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from siglab.strategy_semantics import inferred_trade_style
+from siglab.evaluation.strategy_semantics import inferred_trade_style
 
 from siglab.search.lineage_types import (
     _delta,
@@ -31,10 +31,10 @@ from siglab.search.lineage_types import (
 
 
 def spec_payload(raw_json: str) -> dict[str, Any]:
-    from siglab.track_registry import canonical_track_name
+    from siglab.track_registry import resolve_track
 
     payload = json.loads(raw_json)
-    payload["track"] = canonical_track_name(payload.get("track")) or payload.get("track")
+    payload["track"] = resolve_track(payload.get("track"))
     return payload
 
 
@@ -54,11 +54,7 @@ def experiment_row_payload(row: tuple[Any, ...]) -> dict[str, Any]:
     }
 
 
-def feature_hash(features: list[str]) -> str:
-    from hashlib import sha256
-
-    payload = "|".join(sorted(str(feature) for feature in features))
-    return sha256(payload.encode("utf-8")).hexdigest()[:16]
+from siglab.utils import feature_hash
 
 
 def is_deterministic_experiment(row: dict[str, Any]) -> bool:
@@ -148,32 +144,12 @@ def artifact_payload(row: dict[str, Any]) -> dict[str, Any] | None:
 def pre_audit_trade_episodes(
     artifact: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
+    """Filter episodes from an artifact dict (unwraps canonical_run)."""
     if not artifact:
         return []
     canonical_run = dict(artifact.get("canonical_run") or {})
-    episodes = list(canonical_run.get("trade_episodes") or [])
-    if not episodes:
-        return []
-    visual_split = dict(canonical_run.get("visual_split") or {})
-    audit_start = None
-    for window in list(visual_split.get("ranges") or []):
-        if str(window.get("kind") or "") == "audit_holdout":
-            audit_start = _parse_timestamp(window.get("start_timestamp"))
-            break
-    if audit_start is None:
-        return [episode for episode in episodes if isinstance(episode, dict)]
-
-    filtered: list[dict[str, Any]] = []
-    for episode in episodes:
-        if not isinstance(episode, dict):
-            continue
-        end_timestamp = _parse_timestamp(episode.get("end_timestamp"))
-        if end_timestamp is None:
-            end_timestamp = _parse_timestamp(episode.get("start_timestamp"))
-        if end_timestamp is None or end_timestamp >= audit_start:
-            continue
-        filtered.append(episode)
-    return filtered
+    from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _prep
+    return _prep(canonical_run)
 
 
 def behavior_pack(trade_episodes: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1254,7 +1230,7 @@ def assemble_memory_packet(
 
 
 def build_run_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from siglab.track_registry import canonical_track_name
+    from siglab.track_registry import resolve_track
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     run_meta: dict[str, dict[str, Any]] = {}
@@ -1268,7 +1244,7 @@ def build_run_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             benchmark_mode = bool(run_context.get("benchmark_mode"))
             run_meta[run_session_id] = {
                 "run_session_id": run_session_id,
-                "track": canonical_track_name(row.get("track")) or row.get("track"),
+                "track": resolve_track(row.get("track")),
                 "runner_label": str(
                     run_context.get("runner_label")
                     or ("external_agent" if benchmark_mode else "siglab_harness")

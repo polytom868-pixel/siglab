@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from typing import Any
+from siglab.utils import short_hash
 
 import pandas as pd
 
@@ -94,7 +95,7 @@ class SignalSpec:
             sort_keys=True,
             separators=(",", ":"),
         )
-        return sha256(canonical.encode("utf-8")).hexdigest()[:16]
+        return short_hash(canonical)
 
 
 @dataclass

@@ -38,7 +38,7 @@ from siglab.search import (
     SpecMutator,
     pick_parent as _pick_parent_lib,
 )
-from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name
+from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name, resolve_track
 from siglab.workspace import WorkspaceBuilder
 from siglab.io_utils import write_json
 from siglab.cli.helpers import (
@@ -195,7 +195,7 @@ async def run_command(args: argparse.Namespace) -> None:
     tracks = (
         list(settings.tracks)
         if args.track == "all"
-        else [canonical_track_name(args.track) or args.track]
+        else [resolve_track(args.track)]
     )
     for track in tracks:
         track_iterations = int(getattr(args, "iterations", 1) or 1)
@@ -853,7 +853,7 @@ async def inspect_command(args: argparse.Namespace) -> None:
     tracks = (
         list(settings.tracks)
         if args.track == "all"
-        else [canonical_track_name(args.track) or args.track]
+        else [resolve_track(args.track)]
     )
     try:
         for track in tracks:
