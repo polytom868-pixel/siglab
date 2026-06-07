@@ -33,3 +33,5 @@ benchmarks/*/observation.md
 sessions/
 .coverage
 reports/
+.mypy_cache/
+.ruff_cache/
