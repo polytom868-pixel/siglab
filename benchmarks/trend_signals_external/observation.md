@@ -1,22 +1,37 @@
 # Benchmark Observation: trend_signals_external
 
-This committed deck gives judges and external agents a concrete benchmark entrypoint without requiring `benchmark-init` before the demo.
+This is an external-agent benchmark deck modeled after `autoresearch`.
+Edit only `spec.yaml`. The evaluator and validator are fixed.
 
 ## Objective
+- Beat the current incumbent on `aggregate_score`.
+- A spec is `keep` only if it passes normal gating and improves the incumbent.
+- Tie-break with `validation_total_return`, then `pre_audit_canonical_total_return`.
 
-- Improve `benchmarks/trend_signals_external/spec.yaml`.
-- A spec is `keep` only if it passes normal SigLab gating and beats the incumbent.
-- Do not claim SoDEX signed execution. This deck is strategy research only.
+## Session
+- runner_label: `external_agent`
+- benchmark_run_id: `benchmark::trend_signals_external::external_agent::20260602T151655Z`
+- run_label: `benchmark::trend_signals_external::external_agent::20260602T151655Z`
 
 ## Current Incumbent
-
-- hash: `9d52d77fe7796118`
-- source: `committed_demo_fixture`
+- hash: `3f9921c692b9288d`
+- source: `historical_artifact`
 - family: `perp_multi_asset_carry`
-- score: not evaluated in this checkout
+- aggregate_score: `24.870038`
+- validation_total_return: `-0.0152%`
+- pre_audit_canonical_total_return: `0.5384%`
 
-## Allowed Direction
+## Allowed Families
+- perp_multi_asset_decision, perp_pair_trade_unlevered, perp_pair_trade_levered, perp_basket_neutral_unlevered, perp_basket_neutral_levered, perp_multi_asset_carry
 
-- Prefer evidence-linked changes using known trend/carry features.
-- Preserve market-neutral risk unless the family manifest explicitly supports a directional change.
-- Treat missing SoSoValue/SoDEX evidence as a blocker, not a reason to invent signal quality.
+## Current Strongest Anchor
+- default seed family: `perp_multi_asset_carry`
+- incumbent hypothesis: Rank perps with a carry-led but price-aware cross-sectional score, short the crowded expensive carry names, and buy the strongest cheap-carry names.
+
+## Best Existing Passed Spec In DB
+- `bad81f03a7487a5a` perp_multi_asset_decision aggregate_score=38.128087
+
+## Recent Failure Motifs
+- 3f9921c692b9288d perp_multi_asset_carry: score=24.870038, validation=-0.0152%, pre_audit=0.5384%, gate_reasons=non_positive_median_return, non_positive_median_sharpe, non_positive_validation_return
+- 3f9921c692b9288d perp_multi_asset_carry: score=24.870038, validation=-0.0152%, pre_audit=0.5384%, gate_reasons=non_positive_median_return, non_positive_median_sharpe, non_positive_validation_return
+- 3f9921c692b9288d perp_multi_asset_carry: score=24.870038, validation=-0.0152%, pre_audit=0.5384%, gate_reasons=non_positive_median_return, non_positive_median_sharpe, non_positive_validation_return
