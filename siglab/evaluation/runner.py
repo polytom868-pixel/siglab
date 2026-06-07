@@ -1710,19 +1710,7 @@ class ResearchEvaluator:
         }
 
 
-def _safe_float(
-    value: Any,
-    digits: int = 8,
-    *,
-    default: float | None = None,
-) -> float | None:
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return default
-    if not math.isfinite(numeric):
-        return default
-    return round(numeric, digits)
+from siglab.utils import safe_float as _safe_float
 
 
 def _unique_float_values(values: list[float], *, low: float, high: float) -> list[float]:
@@ -1934,21 +1922,7 @@ def _row_direction_label(row: pd.Series, *, epsilon: float = 1e-9) -> str:
     return "mixed"
 
 
-def _mean_pairwise_rolling_corr(
-    returns: pd.DataFrame,
-    *,
-    window: int,
-) -> pd.Series:
-    columns = list(returns.columns)
-    if not columns:
-        return pd.Series(dtype=float)
-    if len(columns) == 1:
-        return pd.Series(1.0, index=returns.index, dtype=float)
-    rows: list[pd.Series] = []
-    for left_idx in range(len(columns)):
-        for right_idx in range(left_idx + 1, len(columns)):
-            rows.append(returns.iloc[:, left_idx].rolling(window).corr(returns.iloc[:, right_idx]))
-    return pd.concat(rows, axis=1).mean(axis=1) if rows else pd.Series(dtype=float)
+from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
 
 
 def _pair_position_episodes(
@@ -2860,30 +2834,7 @@ def _series_from_payload(
     return series.sort_index()
 
 
-def _pre_audit_trade_episodes_from_canonical(canonical_run: dict[str, Any]) -> list[dict[str, Any]]:
-    episodes = list(canonical_run.get("trade_episodes") or [])
-    if not episodes:
-        return []
-    visual_split = dict(canonical_run.get("visual_split") or {})
-    audit_start = None
-    for window in list(visual_split.get("ranges") or []):
-        if str(window.get("kind") or "") == "audit_holdout":
-            audit_start = pd.Timestamp(window.get("start_timestamp"))
-            break
-    if audit_start is None:
-        return [episode for episode in episodes if isinstance(episode, dict)]
-
-    filtered: list[dict[str, Any]] = []
-    for episode in episodes:
-        if not isinstance(episode, dict):
-            continue
-        end_timestamp = episode.get("end_timestamp") or episode.get("start_timestamp")
-        if not end_timestamp:
-            continue
-        if pd.Timestamp(end_timestamp) >= audit_start:
-            continue
-        filtered.append(episode)
-    return filtered
+from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_audit_trade_episodes_from_canonical
 
 
 def _episode_direction_counts(trade_episodes: list[dict[str, Any]]) -> dict[str, int]:

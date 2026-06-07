@@ -11,6 +11,7 @@ import yaml
 from siglab.schemas import SignalSpec
 from siglab.path_utils import display_path
 from siglab.track_registry import canonical_track_name, storage_track_name
+from siglab.utils import safe_float as _safe_float
 
 
 DEFAULT_BENCHMARK_DECK = "trend_signals_external"
@@ -667,13 +668,6 @@ def _fmt_pct(value: Any) -> str:
     return f"{numeric:.4%}"
 
 
-def _safe_float(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _normalize_runner_label(runner_label: str | None) -> str:

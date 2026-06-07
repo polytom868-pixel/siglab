@@ -16,7 +16,6 @@ import json
 import logging
 import math
 import re
-from hashlib import sha256
 from datetime import UTC, datetime
 from typing import Any, TYPE_CHECKING
 
@@ -26,7 +25,9 @@ from siglab.data.store import ParquetLake
 from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
 from siglab.schemas import SignalSpec, AssetUniverse
 from siglab.config import SiglabConfig
-from siglab.track_registry import canonical_track_name
+from siglab.track_registry import canonical_track_name, resolve_track
+from siglab.utils import short_hash
+from siglab.utils import safe_float as _safe_float
 
 if TYPE_CHECKING:
     from siglab.data.sodex_feeds import SoDEXFeeds
@@ -99,19 +100,6 @@ def _dedupe_time_index(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.groupby(level=0).last().sort_index()
 
 
-def _safe_float(value: Any, digits: int = 8) -> float | None:
-    """Convert *value* to a finite float rounded to *digits* decimal places.
-
-    Returns ``None`` on ``TypeError``, ``ValueError``, or non-finite
-    results (NaN, ±Inf).
-    """
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(numeric):
-        return None
-    return round(numeric, digits)
 
 
 def _percentile_map(series: pd.Series, percentiles: list[float]) -> dict[str, float | None]:
@@ -339,11 +327,11 @@ class MarketDataProvider:
         """
         as_of = datetime.now(UTC).replace(microsecond=0)
         payload = jsonable_iteration_payload(
-            track=canonical_track_name(track) or track,
+            track=resolve_track(track),
             parent_hash=parent.strategy_hash(),
             as_of=as_of,
         )
-        bundle_id = sha256(payload.encode("utf-8")).hexdigest()[:16]
+        bundle_id = short_hash(payload)
         self._active_bundle_id = bundle_id
         self._active_as_of = as_of
         self._bundle_cache = {}
@@ -351,7 +339,7 @@ class MarketDataProvider:
         metadata = {
             "bundle_id": bundle_id,
             "as_of": as_of.isoformat(),
-            "track": canonical_track_name(track) or track,
+            "track": resolve_track(track),
             "parent_hash": parent.strategy_hash(),
             "components": [],
         }
@@ -396,7 +384,7 @@ class MarketDataProvider:
         ``fetch_perp_bundle``, ``discover_stable_pt_markets``,
         ``discover_pt_markets``, and ``discover_lending_markets``.
         """
-        track = canonical_track_name(track) or track
+        track = resolve_track(track)
         summary: dict[str, Any] = {
             "track": track,
             "parent_family": parent.family,
@@ -1141,12 +1129,12 @@ class MarketDataProvider:
 
         self.lake.write_frame(
             "sodex_perp",
-            f"prices_{sha256(str(as_of).encode()).hexdigest()[:16]}",
+            f"prices_{short_hash(str(as_of))}",
             prices,
         )
         self.lake.write_frame(
             "sodex_perp",
-            f"funding_{sha256(str(as_of).encode()).hexdigest()[:16]}",
+            f"funding_{short_hash(str(as_of))}",
             funding,
         )
 
@@ -1228,7 +1216,7 @@ class MarketDataProvider:
             base = {"kind": kind, **params}
         else:
             base = {"bundle_id": self._active_bundle_id, "kind": kind, **params}
-        return sha256(jsonable_dict(base).encode("utf-8")).hexdigest()[:20]
+        return short_hash(jsonable_dict(base), 20)
 
     def _warm_cache_key(self, kind: str, **params: Any) -> str:
         """Derive a deterministic cache key for the warm (cross-bundle) cache.
@@ -1237,7 +1225,7 @@ class MarketDataProvider:
         that warm-cache entries survive across bundles within a session.
         """
         base = {"kind": kind, **params}
-        return sha256(jsonable_dict(base).encode("utf-8")).hexdigest()[:20]
+        return short_hash(jsonable_dict(base), 20)
 
     def _bind_bundle_to_active_context(self, bundle: dict[str, Any]) -> dict[str, Any]:
         """Stamp the active ``bundle_id`` and ``bundle_as_of`` onto *bundle*.

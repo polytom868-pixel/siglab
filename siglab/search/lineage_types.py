@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from siglab.utils import safe_float as _safe_float
 from typing import Any
 
 from typing_extensions import TypedDict
@@ -212,14 +213,6 @@ class QueryCardRow(TypedDict, total=False):
 # Pure helper functions
 # ---------------------------------------------------------------------------
 
-def _safe_float(value: Any, *, default: float | None = 0.0) -> float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return default
-    if number != number:  # NaN
-        return default
-    return number
 
 
 def _median_value(values: list[float]) -> float | None:
