@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from siglab.live.sodex_client import SoDEXFormatError, SoDEXPublicPerpsClient, SoDEXRateLimitError
-from siglab.live.sodex_rate_limit import SoDEXWeightScheduler
+from siglab.data.sodex_rate_limit import SoDEXWeightScheduler
 
 
 class _Response:

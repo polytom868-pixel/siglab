@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from siglab.live.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SoDEXWeightLimitError, SoDEXWeightScheduler
+from siglab.data.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SoDEXWeightLimitError, SoDEXWeightScheduler
 
 
 class SoDEXWeightSchedulerTests(unittest.IsolatedAsyncioTestCase):
