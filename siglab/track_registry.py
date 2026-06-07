@@ -29,6 +29,9 @@ def canonical_track_name(track: str | None) -> str | None:
         return None
     return TRACK_ALIASES.get(track, track)
 
+def resolve_track(raw: str | None) -> str | None:
+    return canonical_track_name(raw) or raw
+
 
 def storage_track_name(track: str | None) -> str | None:
     canonical = canonical_track_name(track)
