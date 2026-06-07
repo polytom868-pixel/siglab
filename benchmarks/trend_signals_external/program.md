@@ -1,6 +1,6 @@
 # trend_signals_external
 
-This benchmark deck is modeled after `autoresearch`, but scoped to SigLab's `trend_signals` track.
+This benchmark deck is modeled after `autoresearch`.
 
 ## Setup
 
@@ -20,7 +20,6 @@ You are benchmarking an external-agent loop against the fixed `siglab` evaluator
 
 - Do not edit runtime code, evaluator code, mutator code, or the benchmark keep/discard logic.
 - Do not change the evaluation harness.
-- Do not weaken SoSoValue/SoDEX evidence or live-boundary requirements to make a candidate pass.
 
 ## Benchmark loop
 
