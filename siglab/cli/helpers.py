@@ -156,7 +156,7 @@ def deployment_ineligible_reasons(
 
 def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
     """Check SoDEX signed-path prerequisites and return a readiness report."""
-    from siglab.live.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SODEX_WEIGHT_BUDGET_PER_MINUTE
+    from siglab.data.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SODEX_WEIGHT_BUDGET_PER_MINUTE
     from siglab.live.sodex_signing import (
         SUPPORTED_SODEX_SIGNED_ACTIONS,
         UNSUPPORTED_SODEX_SIGNED_ACTIONS,

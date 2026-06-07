@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from siglab.feature_dsl import load_feature_spec
+from siglab.evaluation.feature_dsl import load_feature_spec
 from siglab.families import (
     family_execution_profile,
     load_family_spec,

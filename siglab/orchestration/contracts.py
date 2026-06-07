@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, TypedDict, cast
 
-from siglab.strategy_semantics import (
+from siglab.evaluation.strategy_semantics import (
     MOMENTUM_KEYWORDS,
     NON_REGIME_ROLES,
     spec_feature_roles,

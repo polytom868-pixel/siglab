@@ -8,7 +8,7 @@ from typing import Any, cast
 import yaml
 
 from siglab.orchestration.contracts import PlannerOutput
-from siglab.strategy_semantics import supports_explicit_trade_style
+from siglab.evaluation.strategy_semantics import supports_explicit_trade_style
 from siglab.workspace.builder import WorkspaceSession
 
 from .planner_types import dict_value, string_list, unique_strings

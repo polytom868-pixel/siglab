@@ -16,7 +16,7 @@ from siglab.orchestration.contracts import PlannerOutput, PreflightResult, Write
 from siglab.orchestration.trials import build_spec_patch, summarize_patch
 from siglab.research import HypothesisSandbox
 from siglab.search.mutate import SpecMutator
-from siglab.strategy_semantics import motif_signature
+from siglab.evaluation.strategy_semantics import motif_signature
 from siglab.workspace.cards import dump_yaml_block
 from siglab.workspace.builder import WorkspaceSession
 
