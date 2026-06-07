@@ -44,3 +44,11 @@ htmlcov/
 *.lprof
 *.pyo
 *.pyd
+mutable/
+challenges/
+tracks/
+docs/*gap*
+docs/*audit*.md
+docs/*validation*.md
+docs/refactor-correction-report.md
+docs/*surface*.yaml
