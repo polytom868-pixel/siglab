@@ -5,6 +5,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+from siglab.utils import percentile as _percentile
 
 
 @dataclass(frozen=True)
@@ -219,20 +220,6 @@ def _last_value(rows: list[dict[str, Any]], key: str) -> Any:
     return None
 
 
-def _percentile(values: list[float], percentile: int) -> float | None:
-    if not values:
-        return None
-    if len(values) == 1:
-        return values[0]
-    ordered = sorted(values)
-    n = len(ordered)
-    rank = (percentile / 100.0) * (n - 1)
-    lower_idx = max(0, min(n - 1, int(math.floor(rank))))
-    upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
-    if lower_idx == upper_idx:
-        return ordered[lower_idx]
-    frac = rank - math.floor(rank)
-    return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])
 
 
 def _count(values: Iterable[Any]) -> dict[str, int]:
