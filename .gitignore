@@ -39,3 +39,8 @@ reports/
 *.egg-info/
 *.so
 *.npy
+htmlcov/
+*.prof
+*.lprof
+*.pyo
+*.pyd
