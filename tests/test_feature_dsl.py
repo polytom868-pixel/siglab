@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from siglab.feature_dsl import (
+from siglab.evaluation.feature_dsl import (
     is_valid_feature_expression,
     load_feature_spec,
     resolve_feature_frames,
