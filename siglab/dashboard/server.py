@@ -23,7 +23,7 @@ from siglab.llm import ClaudeClient
 from siglab.path_utils import display_path, resolve_path_from_root
 from siglab.search.lineage import LineageStore
 from siglab.config import SiglabConfig
-from siglab.track_registry import canonical_track_name, track_label
+from siglab.track_registry import canonical_track_name, resolve_track, track_label
 
 
 def _is_finite_number(value: Any) -> bool:
@@ -254,7 +254,7 @@ class DashboardApp:
             run_session_id = str(payload.get("run_session_id") or state_path.parents[1].name)
             if not run_session_id or run_session_id in existing_run_ids:
                 continue
-            track_name = canonical_track_name(state_path.parents[3].name) or state_path.parents[3].name
+            track_name = resolve_track(state_path.parents[3].name)
             if track and canonical_track_name(track) != track_name:
                 continue
             families = sorted(
@@ -408,7 +408,7 @@ class DashboardApp:
         annotated_runs = []
         for row in runs:
             annotated = dict(row)
-            annotated["track"] = canonical_track_name(annotated.get("track")) or annotated.get("track")
+            annotated["track"] = resolve_track(annotated.get("track"))
             annotated["track_label"] = track_label(annotated.get("track"))
             run_session_id = str(annotated.get("run_session_id") or "")
             run_experiments = [exp for exp in experiments if str(exp.get("run_session_id") or "") == run_session_id]
@@ -608,7 +608,7 @@ class DashboardApp:
         detail = self.ancestry.experiment_detail(spec_hash)
         if detail is None:
             return None
-        track = canonical_track_name(detail.get("track")) or detail.get("track")
+        track = resolve_track(detail.get("track"))
         track_rows = self._attach_positions(
             [self._annotate_experiment(row) for row in self.ancestry.dashboard_rows(track=track)]
         )
@@ -780,7 +780,7 @@ class DashboardApp:
             tool_trace_stages[0] if tool_trace_stages else None,
         )
 
-        experiment["track"] = canonical_track_name(experiment.get("track")) or experiment.get("track")
+        experiment["track"] = resolve_track(experiment.get("track"))
         experiment["track_label"] = track_label(experiment.get("track"))
         experiment["spec"] = spec
         experiment["summary"] = summary

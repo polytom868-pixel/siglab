@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from siglab.track_registry import canonical_track_name
+from siglab.track_registry import canonical_track_name, resolve_track
 
 
 def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -23,7 +23,7 @@ def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]
     when all gates pass, and ``reasons`` lists the human-readable tags of
     any failing gates.
     """
-    track = canonical_track_name(track) or track
+    track = resolve_track(track)
     reasons: list[str] = []
 
     # ---- Liquidation gate ------------------------------------------------

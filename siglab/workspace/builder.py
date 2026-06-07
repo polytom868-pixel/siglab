@@ -12,7 +12,8 @@ from siglab.schemas import SignalSpec
 from siglab.orchestration.trials import summarize_generalization
 from siglab.search.lineage import LineageStore
 from siglab.search.mutate import SpecMutator
-from siglab.strategy_semantics import (
+from siglab.utils import short_hash
+from siglab.evaluation.strategy_semantics import (
     NON_REGIME_ROLES,
     spec_feature_roles,
     gate_dimensions,
@@ -1571,7 +1572,7 @@ class WorkspaceBuilder:
         bundle_id: str,
         open_question: str,
     ) -> Path:
-        open_question_hash = hashlib.sha256(open_question.encode("utf-8")).hexdigest()[:12]
+        open_question_hash = short_hash(open_question, 12)
         return session.cache_dir / "evidence" / f"{parent_hash}__{bundle_id or 'none'}__{open_question_hash}.json"
 
     def _open_question(

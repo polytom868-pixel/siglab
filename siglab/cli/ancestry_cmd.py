@@ -7,7 +7,7 @@ import argparse
 from siglab.cli.rich_utils import get_console, make_table, print_json, status_style
 from siglab.config import load_settings
 from siglab.search import LineageStore
-from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name
+from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name, resolve_track
 
 
 def add_subparser(subparsers) -> None:
@@ -34,7 +34,7 @@ def run_ancestry(args: argparse.Namespace) -> None:
     settings = load_settings()
     ancestry = LineageStore(settings.ancestry_db_path)
     rows = ancestry.list_rows(
-        track=canonical_track_name(args.track) or args.track,
+        track=resolve_track(args.track),
         limit=args.limit,
     )
     if args.json:
@@ -68,7 +68,7 @@ def run_clear_passed(args: argparse.Namespace) -> None:
     tracks = (
         list(settings.tracks)
         if args.track == "all"
-        else [canonical_track_name(args.track) or args.track]
+        else [resolve_track(args.track)]
     )
     removed = 0
     for track in tracks:

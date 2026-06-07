@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from siglab.schemas import SignalSpec
-from siglab.track_registry import canonical_track_name, matching_track_names
+from siglab.track_registry import canonical_track_name, matching_track_names, resolve_track
 
 from siglab.search.lineage_types import (
     _maturity_bucket,
@@ -206,13 +206,9 @@ class LineageStore:
         artifact_path: str,
     ) -> None:
         spec_payload_dict = dict(evaluation["spec"])
-        spec_payload_dict["track"] = (
-            canonical_track_name(spec_payload_dict.get("track")) or spec_payload_dict.get("track")
-        )
+        spec_payload_dict["track"] = resolve_track(spec_payload_dict.get("track"))
         research_payload = dict(research_summary)
-        research_payload["track"] = (
-            canonical_track_name(research_payload.get("track")) or research_payload.get("track")
-        )
+        research_payload["track"] = resolve_track(research_payload.get("track"))
         recorded_at = datetime.now(UTC).isoformat()
         with self._connect() as connection:
             connection.execute(
@@ -396,7 +392,7 @@ class LineageStore:
         if not reports:
             return []
 
-        canonical_track = canonical_track_name(track) or track
+        canonical_track = resolve_track(track)
         bundle_id = None
         as_of = None
         if market_bundle:
@@ -667,7 +663,7 @@ class LineageStore:
             summary = json.loads(row[7]) if row[7] else {}
             result.append({
                 "created_at": row[0],
-                "track": canonical_track_name(row[1]) or row[1],
+                "track": resolve_track(row[1]),
                 "family": row[2],
                 "spec_hash": row[3],
                 "aggregate_score": row[4],
@@ -730,7 +726,7 @@ class LineageStore:
                 {
                     "event_id": int(row[0]),
                     "created_at": row[1],
-                    "track": canonical_track_name(row[2]) or row[2],
+                    "track": resolve_track(row[2]),
                     "family": row[3],
                     "spec_hash": row[4],
                     "parent_hash": row[5],
@@ -787,7 +783,7 @@ class LineageStore:
         spec = spec_payload(row[8])
         return {
             "created_at": row[0],
-            "track": canonical_track_name(row[1]) or row[1],
+            "track": resolve_track(row[1]),
             "family": row[2],
             "spec_hash": row[3],
             "parent_hash": row[4],

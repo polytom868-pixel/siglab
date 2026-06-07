@@ -7,8 +7,8 @@ from siglab.data import MarketDataProvider
 from siglab.io_utils import read_json_if_exists
 from siglab.schemas import SignalSpec
 from siglab.search.mutate import SpecMutator
-from siglab.strategy_semantics import PAIR_TRADE_FAMILIES
-from siglab.track_registry import canonical_track_name
+from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
+from siglab.track_registry import canonical_track_name, resolve_track
 
 
 def resolve_memory_scope(*, explicit: str | None, default: str | None) -> str:
@@ -63,7 +63,7 @@ def resolve_resume_run(
             f"Run session `{run_session_id}` matched multiple workspaces; resume requires a unique run_session_id"
         )
     workspace_root = matches[0]
-    track = canonical_track_name(workspace_root.parents[1].name) or workspace_root.parents[1].name
+    track = resolve_track(workspace_root.parents[1].name)
     meta = read_json_if_exists(workspace_root / "meta" / "session.json")
     state = read_json_if_exists(workspace_root / "current" / "SESSION_STATE.json")
     families = [
