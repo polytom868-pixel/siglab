@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from siglab.utils import percentile as _percentile
 
 
 class SoSoValueApiError(RuntimeError):
@@ -530,8 +531,8 @@ class SoSoValueClient:
             totals["429_count"] += metrics.rate_limits
             totals["transport_failures"] += metrics.transport_failures
             endpoints[name] = {
-                "p50_ms": self._percentile(latencies, 50),
-                "p95_ms": self._percentile(latencies, 95),
+                "p50_ms": _percentile(latencies, 50),
+                "p95_ms": _percentile(latencies, 95),
                 "attempts": metrics.attempts,
                 "successes": metrics.successes,
                 "retry_count": metrics.retries,
@@ -542,8 +543,8 @@ class SoSoValueClient:
         all_latencies.sort()
         attempts = max(1, totals["attempts"])
         return {
-            "p50_ms": self._percentile(all_latencies, 50),
-            "p95_ms": self._percentile(all_latencies, 95),
+            "p50_ms": _percentile(all_latencies, 50),
+            "p95_ms": _percentile(all_latencies, 95),
             "retry_count": totals["retry_count"],
             "cache_hit_ratio": totals["cache_hits"] / attempts,
             "429_count": totals["429_count"],
@@ -698,18 +699,3 @@ class SoSoValueClient:
             pass
         return True
 
-    @staticmethod
-    def _percentile(values: list[float], percentile: int) -> float | None:
-        if not values:
-            return None
-        if len(values) == 1:
-            return values[0]
-        ordered = sorted(values)
-        n = len(ordered)
-        rank = (percentile / 100.0) * (n - 1)
-        lower_idx = max(0, min(n - 1, int(math.floor(rank))))
-        upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
-        if lower_idx == upper_idx:
-            return ordered[lower_idx]
-        frac = rank - math.floor(rank)
-        return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])

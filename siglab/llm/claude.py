@@ -20,6 +20,7 @@ from siglab.llm_metadata import (
 )
 from siglab.llm.policy import LLMRoutingPolicy
 from siglab.config import SiglabConfig
+from siglab.utils import percentile as _percentile
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -1034,18 +1035,4 @@ def _json_clone(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=True, default=str))
 
 
-def _percentile(values: list[float], percentile: int) -> float | None:
-    if not values:
-        return None
-    if len(values) == 1:
-        return values[0]
-    ordered = sorted(values)
-    n = len(ordered)
-    rank = (percentile / 100.0) * (n - 1)
-    lower_idx = max(0, min(n - 1, int(math.floor(rank))))
-    upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
-    if lower_idx == upper_idx:
-        return ordered[lower_idx]
-    frac = rank - math.floor(rank)
-    return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])
 

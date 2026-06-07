@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from siglab.data.sodex_rate_limit import SoDEXWeightScheduler
+from siglab.utils import percentile as _percentile
 
 
 class SoDEXError(RuntimeError):
@@ -402,20 +403,6 @@ def _validate_evm_address(value: str) -> str:
     return text
 
 
-def _percentile(values: list[float], percentile: int) -> float | None:
-    if not values:
-        return None
-    if len(values) == 1:
-        return values[0]
-    ordered = sorted(values)
-    n = len(ordered)
-    rank = (percentile / 100.0) * (n - 1)
-    lower_idx = max(0, min(n - 1, int(math.floor(rank))))
-    upper_idx = max(0, min(n - 1, int(math.ceil(rank))))
-    if lower_idx == upper_idx:
-        return ordered[lower_idx]
-    frac = rank - math.floor(rank)
-    return ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx])
 
 
 def _batch_order_weight(order_count: int) -> int:
