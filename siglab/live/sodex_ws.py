@@ -76,17 +76,17 @@ SODEX_WS_CHANNELS = {
     "l4Book",
     "candle",
     "trade",
-    "accountFrontendState",
+    "accountState",
     "accountUpdate",
-    "accountOrder",
+    "accountOrderUpdate",
     "accountTrade",
     "accountEvent",
 }
 
 SODEX_WS_ACCOUNT_CHANNELS = {
-    "accountFrontendState",
+    "accountState",
     "accountUpdate",
-    "accountOrder",
+    "accountOrderUpdate",
     "accountTrade",
     "accountEvent",
 }

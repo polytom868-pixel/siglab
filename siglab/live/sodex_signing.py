@@ -86,7 +86,7 @@ class SoDEXPrivateKeySigner:
         )
         signable = encode_typed_data(full_message=typed_data)
         signed = Account.sign_message(signable, private_key=self.private_key)
-        return prefixed_eip712_signature(signed.signature.hex())
+        return prefixed_eip712_signature("0x" + signed.signature.hex())
 
 
 class SoDEXNonceManager:

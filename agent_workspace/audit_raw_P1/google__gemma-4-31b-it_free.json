@@ -1,0 +1,71 @@
+{
+  "model": "google/gemma-4-31b-it:free",
+  "calls": {
+    "basic": {
+      "elapsed_ms": 1130.6,
+      "status": 429,
+      "summary": {
+        "raw": "{\"error\":{\"message\":\"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day\",\"code\":429,\"metadata\":{\"headers\":{\"X-RateLimit-Limit\":\"50\",\"X-RateLimit-Remaining\":\"0\",\"X-RateLimit-Reset\":\"1781481600000\"},\"provider_name\":null,\"previous_errors\":[{\"code\":429,\"message\":\"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day\"}]}},\"user_id\":\"user_31A5N4unqkbSzpQJxGA0m4XGTmD\"}",
+        "id": null,
+        "model_returned": null,
+        "usage": {},
+        "usage_cost": null,
+        "usage_prompt": null,
+        "usage_completion": null,
+        "usage_total": null,
+        "usage_native": null,
+        "usage_cost_details": null,
+        "choices_count": 0,
+        "finish_reason": null,
+        "content_type": null,
+        "content_preview": null,
+        "content_text": null,
+        "tool_calls": null
+      }
+    },
+    "system": {
+      "elapsed_ms": 1454.3,
+      "status": 429,
+      "summary": {
+        "raw": "{\"error\":{\"message\":\"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day\",\"code\":429,\"metadata\":{\"headers\":{\"X-RateLimit-Limit\":\"50\",\"X-RateLimit-Remaining\":\"0\",\"X-RateLimit-Reset\":\"1781481600000\"},\"provider_name\":null,\"previous_errors\":[{\"code\":429,\"message\":\"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day\"}]}},\"user_id\":\"user_31A5N4unqkbSzpQJxGA0m4XGTmD\"}",
+        "id": null,
+        "model_returned": null,
+        "usage": {},
+        "usage_cost": null,
+        "usage_prompt": null,
+        "usage_completion": null,
+        "usage_total": null,
+        "usage_native": null,
+        "usage_cost_details": null,
+        "choices_count": 0,
+        "finish_reason": null,
+        "content_type": null,
+        "content_preview": null,
+        "content_text": null,
+        "tool_calls": null
+      }
+    },
+    "tool": {
+      "elapsed_ms": 1349.9,
+      "status": 429,
+      "summary": {
+        "raw": "{\"error\":{\"message\":\"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day\",\"code\":429,\"metadata\":{\"headers\":{\"X-RateLimit-Limit\":\"50\",\"X-RateLimit-Remaining\":\"0\",\"X-RateLimit-Reset\":\"1781481600000\"},\"provider_name\":null,\"previous_errors\":[{\"code\":429,\"message\":\"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day\"}]}},\"user_id\":\"user_31A5N4unqkbSzpQJxGA0m4XGTmD\"}",
+        "id": null,
+        "model_returned": null,
+        "usage": {},
+        "usage_cost": null,
+        "usage_prompt": null,
+        "usage_completion": null,
+        "usage_total": null,
+        "usage_native": null,
+        "usage_cost_details": null,
+        "choices_count": 0,
+        "finish_reason": null,
+        "content_type": null,
+        "content_preview": null,
+        "content_text": null,
+        "tool_calls": null
+      }
+    }
+  }
+}

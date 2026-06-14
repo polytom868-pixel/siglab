@@ -1795,6 +1795,17 @@ def _pearson_corr(left: pd.Series, right: pd.Series) -> float | None:
     return None if value is None or pd.isna(value) else float(value)
 
 
+def _clean_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    if result != result:
+        return None
+    return result
+
 from siglab.utils import safe_float as _safe_float
 
 

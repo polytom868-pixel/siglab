@@ -6,6 +6,8 @@ import unittest
 import warnings
 from pathlib import Path
 
+import pytest
+
 import numpy as np
 import pandas as pd
 
@@ -62,10 +64,13 @@ class StubPerpProvider:
 
 
 class HypothesisSandboxTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory()
-        root = Path(self.temp_dir.name)
-        self.settings = SiglabConfig(
+    pytestmark = pytest.mark.asyncio(loop_scope='class')
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        root = Path(cls.temp_dir.name)
+        cls.settings = SiglabConfig(
             root_dir=REPO_ROOT,
             sosovalue_config_path=root / "config.json",
             generated_strategy_dir=root / "deployed_agents",
@@ -85,10 +90,10 @@ class HypothesisSandboxTests(unittest.IsolatedAsyncioTestCase):
             claude_max_tool_rounds=4,
             population_size=1,
         )
-        self.lake = ParquetLake(self.settings.data_lake_dir)
-        self.provider = StubPerpProvider()
-        self.sandbox = HypothesisSandbox(self.settings, self.lake, self.provider)
-        self.parent = SignalSpec.from_dict(
+        cls.lake = ParquetLake(cls.settings.data_lake_dir)
+        cls.provider = StubPerpProvider()
+        cls.sandbox = HypothesisSandbox(cls.settings, cls.lake, cls.provider)
+        cls.parent = SignalSpec.from_dict(
             {
                 "track": "trend_signals",
                 "family": "perp_pair_trade_unlevered",
@@ -106,8 +111,15 @@ class HypothesisSandboxTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
-    def tearDown(self) -> None:
-        self.temp_dir.cleanup()
+    def setUp(self) -> None:
+        db_path = self.settings.ancestry_db_path
+        if db_path.exists():
+            db_path.unlink()
+        self.sandbox._ancestry._init_db()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.temp_dir.cleanup()
 
     async def test_frame_pair_stats_constant_series_is_warning_free(self) -> None:
         index = pd.date_range("2024-01-01", periods=8, freq="h")

@@ -1034,8 +1034,8 @@ class TestVAL_TUI_004_Integration:
             if call_count == 1:
                 return start_result
             return status_result
-
-        with patch("siglab.tui.screens.paper.run_cli", side_effect=mock_run_cli):
+        with patch("siglab.tui.screens.paper.run_cli", side_effect=mock_run_cli), \
+             patch.object(PaperScreen, "_find_existing_session", AsyncMock(return_value=None)):
             await screen._init_session()
 
         assert screen.session_id == "sess-123"

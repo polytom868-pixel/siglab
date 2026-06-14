@@ -369,6 +369,8 @@ class JsonCloneTests(unittest.TestCase):
 
 
 class PercentileTests(unittest.TestCase):
+    _large_values: tuple[float, ...] = tuple(float(i) for i in range(1000))
+
     def test_empty_list_returns_none(self) -> None:
         self.assertIsNone(_percentile([], 50))
 
@@ -393,7 +395,7 @@ class PercentileTests(unittest.TestCase):
         self.assertEqual(_percentile([1.0, 5.0, 10.0], 100), 10.0)
 
     def test_large_list(self) -> None:
-        vals = [float(i) for i in range(1000)]
+        vals = self._large_values
         p50 = cast(float, _percentile(vals, 50))
         p95 = cast(float, _percentile(vals, 95))
         # R-7: rank = 0.5 * 999 = 499.5 -> interpolated between 499 and 500
@@ -633,10 +635,16 @@ class CompactToolPayloadTests(unittest.TestCase):
 
 
 class MetricsSnapshotTests(unittest.TestCase):
-    def __init__(self, methodName: str = "runTest") -> None:
-        super().__init__(methodName)
+    _latency_sample: tuple[float, ...] = (10.0, 20.0, 30.0, 40.0, 50.0)
+    _context_event: dict[str, str] = {"stage": "writer", "severity": "warning"}
+    _credit_event: dict[str, str] = {"stage": "planner", "severity": "ok"}
+
+    def setUp(self) -> None:
         self.config = _minimal_config()
         self.client = ClaudeClient(self.config)
+        self.client._latencies_ms = []
+        self.client._context_pressure_events = []
+        self.client._credit_pressure_events = []
 
     @patch("siglab.llm.claude.resolve_llm_provider")
     @patch("siglab.llm.claude.resolve_llm_model")
@@ -667,10 +675,9 @@ class MetricsSnapshotTests(unittest.TestCase):
     ) -> None:
         mock_provider.return_value = "bai"
         mock_model.return_value = "deepseek-v4-flash"
-        self.client._latencies_ms = [10.0, 20.0, 30.0, 40.0, 50.0]
+        self.client._latencies_ms = list(self._latency_sample)
         self.client._request_count = 5
         self.client._success_count = 5
-
         snap = self.client.metrics_snapshot()
         self.assertEqual(snap["p50_ms"], 30.0)
         self.assertEqual(snap["p95_ms"], 48.0)
@@ -743,9 +750,7 @@ class MetricsSnapshotTests(unittest.TestCase):
     ) -> None:
         mock_provider.return_value = "bai"
         mock_model.return_value = "deepseek-v4-flash"
-        self.client._context_pressure_events = [
-            {"stage": "writer", "severity": "warning"}
-        ]
+        self.client._context_pressure_events = [dict(self._context_event)]
 
         cp = self.client.metrics_snapshot()["context_pressure"]
         self.assertEqual(cp["event_count"], 1)
@@ -770,9 +775,7 @@ class MetricsSnapshotTests(unittest.TestCase):
     ) -> None:
         mock_provider.return_value = "bai"
         mock_model.return_value = "deepseek-v4-flash"
-        self.client._credit_pressure_events = [
-            {"stage": "planner", "severity": "ok"}
-        ]
+        self.client._credit_pressure_events = [dict(self._credit_event)]
 
         cp = self.client.metrics_snapshot()["credit_pressure"]
         self.assertEqual(cp["event_count"], 1)
@@ -807,8 +810,21 @@ class MetricsSnapshotTests(unittest.TestCase):
 
 
 class RecordUsageTests(unittest.TestCase):
-    def __init__(self, methodName: str = "runTest") -> None:
-        super().__init__(methodName)
+    _usage_prompt_completion: dict[str, int] = {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+    _usage_input_aliases: dict[str, int] = {"input_tokens": 200, "output_tokens": 75}
+    _usage_camel_case: dict[str, int] = {"promptTokens": 300, "completionTokens": 100, "totalTokens": 400}
+    _usage_no_total: dict[str, int] = {"prompt_tokens": 50, "completion_tokens": 30}
+    _usage_cache_tokens: dict[str, int] = {"prompt_tokens": 100, "completion_tokens": 50, "cache_creation_input_tokens": 20, "cache_read_input_tokens": 10}
+    _usage_cache_aliases: dict[str, int] = {"cache_write_tokens": 15, "cached_tokens": 5, "prompt_tokens": 100, "completion_tokens": 50}
+    _usage_prompt_details: dict[str, Any] = {"prompt_tokens": 100, "completion_tokens": 50, "prompt_tokens_details": {"cached_tokens": 30}}
+    _usage_negative: dict[str, int] = {"prompt_tokens": -10, "completion_tokens": 50, "total_tokens": -5}
+    _usage_credits_known: dict[str, int] = {"prompt_tokens": 1000, "completion_tokens": 500}
+    _usage_credits_unknown: dict[str, int] = {"prompt_tokens": 100, "completion_tokens": 50}
+    _usage_credits_claude: dict[str, int] = {"prompt_tokens": 100, "completion_tokens": 50}
+    _usage_cumulative_first: dict[str, int] = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+    _usage_cumulative_second: dict[str, int] = {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
+
+    def setUp(self) -> None:
         self.client = ClaudeClient(_minimal_config())
 
     @patch("siglab.llm.claude.resolve_llm_provider")
@@ -822,59 +838,40 @@ class RecordUsageTests(unittest.TestCase):
         self.assertEqual(self.client._total_tokens, 0)
 
     def test_record_usage_prompt_tokens(self) -> None:
-        self.client._record_usage({"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150})
+        self.client._record_usage(self._usage_prompt_completion)
         self.assertEqual(self.client._prompt_tokens, 100)
         self.assertEqual(self.client._completion_tokens, 50)
         self.assertEqual(self.client._total_tokens, 150)
 
     def test_record_usage_aliases_input_tokens(self) -> None:
-        self.client._record_usage({"input_tokens": 200, "output_tokens": 75})
+        self.client._record_usage(self._usage_input_aliases)
         self.assertEqual(self.client._prompt_tokens, 200)
         self.assertEqual(self.client._completion_tokens, 75)
 
     def test_record_usage_aliases_camel_case(self) -> None:
-        self.client._record_usage({"promptTokens": 300, "completionTokens": 100, "totalTokens": 400})
+        self.client._record_usage(self._usage_camel_case)
         self.assertEqual(self.client._prompt_tokens, 300)
 
     def test_record_usage_fills_total_when_missing(self) -> None:
-        self.client._record_usage({"prompt_tokens": 50, "completion_tokens": 30})
+        self.client._record_usage(self._usage_no_total)
         self.assertEqual(self.client._total_tokens, 80)
 
     def test_record_usage_cache_tokens(self) -> None:
-        self.client._record_usage({
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-            "cache_creation_input_tokens": 20,
-            "cache_read_input_tokens": 10,
-        })
+        self.client._record_usage(self._usage_cache_tokens)
         self.assertEqual(self.client._cache_write_tokens, 20)
         self.assertEqual(self.client._cache_read_tokens, 10)
 
     def test_record_usage_cache_aliases(self) -> None:
-        self.client._record_usage({
-            "cache_write_tokens": 15,
-            "cached_tokens": 5,
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-        })
+        self.client._record_usage(self._usage_cache_aliases)
         self.assertEqual(self.client._cache_write_tokens, 15)
         self.assertEqual(self.client._cache_read_tokens, 5)
 
     def test_record_usage_cache_read_from_prompt_details(self) -> None:
-        self.client._record_usage({
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-            "prompt_tokens_details": {"cached_tokens": 30},
-        })
+        self.client._record_usage(self._usage_prompt_details)
         self.assertEqual(self.client._cache_read_tokens, 30)
 
     def test_record_usage_negative_values_clamped(self) -> None:
-        self.client._record_usage({
-            "prompt_tokens": -10,
-            "completion_tokens": 50,
-            "total_tokens": -5,
-        })
-        # total_tokens(-5)->0; since 0 and prompt(0)+completion(50)>0, total=50
+        self.client._record_usage(self._usage_negative)
         self.assertEqual(self.client._prompt_tokens, 0)
         self.assertEqual(self.client._completion_tokens, 50)
         self.assertEqual(self.client._total_tokens, 50)
@@ -885,7 +882,7 @@ class RecordUsageTests(unittest.TestCase):
     ) -> None:
         mock_provider.return_value = "bai"
         self.client._record_usage(
-            {"prompt_tokens": 1000, "completion_tokens": 500},
+            self._usage_credits_known,
             model="deepseek-v4-flash",
         )
         # 1000 * 0.14 + 500 * 0.28 = 140 + 140 = 280
@@ -899,7 +896,7 @@ class RecordUsageTests(unittest.TestCase):
         mock_provider.return_value = "bai"
         # unknown model -> no rates -> credits not computed
         self.client._record_usage(
-            {"prompt_tokens": 100, "completion_tokens": 50},
+            self._usage_credits_unknown,
             model="unknown-model",
         )
         self.assertEqual(self.client._usage_credits, 0.0)
@@ -910,14 +907,14 @@ class RecordUsageTests(unittest.TestCase):
     ) -> None:
         mock_provider.return_value = "claude"
         self.client._record_usage(
-            {"prompt_tokens": 100, "completion_tokens": 50},
+            self._usage_credits_claude,
             model="claude-opus-4-5",
         )
         self.assertEqual(self.client._usage_credits, 0.0)
 
     def test_record_usage_cumulative(self) -> None:
-        self.client._record_usage({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
-        self.client._record_usage({"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30})
+        self.client._record_usage(self._usage_cumulative_first)
+        self.client._record_usage(self._usage_cumulative_second)
         self.assertEqual(self.client._prompt_tokens, 30)
         self.assertEqual(self.client._completion_tokens, 15)
         self.assertEqual(self.client._total_tokens, 45)

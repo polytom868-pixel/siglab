@@ -1,0 +1,1136 @@
+from __future__ import annotations
+
+import json
+import re
+import time
+import uuid
+import asyncio
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Sequence
+
+import httpx
+
+from siglab.llm_metadata import (
+    resolve_llm_api_key,
+    resolve_llm_base_url,
+    resolve_llm_model,  # noqa: F401 — re-exported for test mocking
+    resolve_llm_provider,
+    resolve_llm_thinking_mode,
+)
+from siglab.llm.policy import LLMRoutingPolicy
+from siglab.io_utils import json_clone
+from siglab.config import SiglabConfig
+from siglab.utils import percentile as _percentile
+
+_JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
+
+ToolHandler = Callable[[dict[str, Any]], Awaitable[Any] | Any]
+
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_DEFAULT_LIST_CACHE_TTL_S = 600.0
+
+
+@dataclass(frozen=True)
+class OpenRouterModelInfo:
+    model_id: str
+    name: str
+    prompt_usd_per_token: float
+    completion_usd_per_token: float
+
+
+def _openrouter_client(timeout_s: float) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(timeout=timeout_s, connect=min(10.0, timeout_s), read=timeout_s, write=30.0, pool=10.0),
+        limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
+    )
+
+
+async def _openrouter_list_models(
+    *,
+    cache_ttl: float = OPENROUTER_DEFAULT_LIST_CACHE_TTL_S,
+    api_key: str | None = None,
+    timeout_s: float = 30.0,
+) -> dict[str, OpenRouterModelInfo]:
+    now = time.monotonic()
+    cache = _openrouter_list_models.__dict__.setdefault("_cache", {})  # type: ignore[attr-defined]
+    cached_at: float | None = _openrouter_list_models.__dict__.get("_cached_at")  # type: ignore[attr-defined]
+    if isinstance(cached_at, float) and cache and (now - cached_at) < cache_ttl:
+        return cache  # type: ignore[return-value]
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    async with _openrouter_client(timeout_s) as client:
+        response = await client.get(OPENROUTER_MODELS_URL, headers=headers)
+        response.raise_for_status()
+        payload = response.json()
+    raw_models = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_models, list):
+        raw_models = []
+    out: dict[str, OpenRouterModelInfo] = {}
+    for entry in raw_models:
+        if not isinstance(entry, dict):
+            continue
+        model_id = str(entry.get("id") or "").strip()
+        if not model_id:
+            continue
+        pricing = entry.get("pricing") or {}
+        if not isinstance(pricing, dict):
+            pricing = {}
+        prompt_usd = _parse_usd_string(pricing.get("prompt"))
+        completion_usd = _parse_usd_string(pricing.get("completion"))
+        out[model_id] = OpenRouterModelInfo(
+            model_id=model_id,
+            name=str(entry.get("name") or model_id),
+            prompt_usd_per_token=prompt_usd,
+            completion_usd_per_token=completion_usd,
+        )
+    _openrouter_list_models.__dict__["_cache"] = out  # type: ignore[attr-defined]
+    _openrouter_list_models.__dict__["_cached_at"] = now  # type: ignore[attr-defined]
+    return out
+
+
+def _openrouter_estimate_cost(
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    *,
+    catalog: dict[str, OpenRouterModelInfo] | None = None,
+) -> float:
+    if catalog is None:
+        catalog = _openrouter_list_models.__dict__.get("_cache", {})  # type: ignore[attr-defined]
+    info = (catalog.get(model) or catalog.get(model.strip().lower())) if isinstance(catalog, dict) else None
+    if info is None:
+        return 0.0
+    return (max(0, int(prompt_tokens)) * info.prompt_usd_per_token) + (
+        max(0, int(completion_tokens)) * info.completion_usd_per_token
+    )
+
+
+def _openrouter_refuse_if_over_budget(
+    estimated_cost_usd: float,
+    *,
+    max_call_usd: float | None,
+) -> None:
+    if max_call_usd is None:
+        return
+    if float(estimated_cost_usd) > float(max_call_usd):
+        raise LLMQuotaError(
+            f"OpenRouter estimated call cost ${estimated_cost_usd:.6f} exceeds "
+            f"OPENROUTER_MAX_CALL_USD=${float(max_call_usd):.6f}",
+            provider="openrouter",
+        )
+
+
+def _parse_usd_string(value: Any) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return max(0.0, float(value))
+    try:
+        return max(0.0, float(str(value).strip()))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@dataclass
+class ClaudeTool:
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    handler: ToolHandler
+
+    def schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+
+class LLMProviderError(RuntimeError):
+    def __init__(self, message: str, *, provider: str | None = None, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.status_code = status_code
+
+
+class LLMConfigError(LLMProviderError):
+    """Missing or invalid provider configuration."""
+
+
+class LLMAuthError(LLMProviderError):
+    """Provider authentication failed."""
+
+
+class LLMRateLimitError(LLMProviderError):
+    """Provider rate limited the request."""
+
+
+class LLMQuotaError(LLMRateLimitError):
+    """Provider account has insufficient balance or quota for the request."""
+
+
+
+class LLMTransportError(LLMProviderError):
+    """Network, DNS, TLS, timeout, or socket transport failure."""
+
+
+class LLMUpstreamError(LLMProviderError):
+    """Provider returned an upstream HTTP failure."""
+
+
+class LLMFormatError(LLMProviderError):
+    """Provider returned a response shape the loop cannot use."""
+
+
+class ClaudeClient:
+    def __init__(self, settings: SiglabConfig) -> None:
+        self.settings = settings
+        self.last_trace: dict[str, Any] | None = None
+        self.last_exchange: dict[str, Any] | None = None
+        self._client: httpx.AsyncClient | None = None
+        self._latencies_ms: list[float] = []
+        self._retries = 0
+        self._rate_limits = 0
+        self._transport_failures = 0
+        self._request_count = 0
+        self._success_count = 0
+        self._prompt_tokens = 0
+        self._completion_tokens = 0
+        self._total_tokens = 0
+        self._cache_write_tokens = 0
+        self._cache_read_tokens = 0
+        self._usage_cost_usd = 0.0
+        self._priced_token_count = 0
+        self._context_pressure_events: list[dict[str, Any]] = []
+        self._credit_pressure_events: list[dict[str, Any]] = []
+        self.routing_policy = LLMRoutingPolicy(settings)
+        self._auth_key_cache: dict[str, Any] | None = None
+        self._auth_key_cached_at: float = 0.0
+
+    def _openrouter_auth_key(self) -> dict[str, Any] | None:
+        if (
+            self._auth_key_cache
+            and (time.time() - self._auth_key_cached_at) < 60.0
+        ):
+            return self._auth_key_cache
+        api_key = self._provider_api_key()
+        if not api_key:
+            return None
+        try:
+            req = httpx.Request(
+                "GET",
+                "https://openrouter.ai/api/v1/auth/key",
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            )
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.send(req)
+                resp.raise_for_status()
+                payload = resp.json()
+        except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        self._auth_key_cache = payload
+        self._auth_key_cached_at = time.time()
+        return payload
+
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self._provider_api_key())
+
+    @property
+    def provider_name(self) -> str:
+        return resolve_llm_provider(self.settings)
+
+    async def complete_json(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+        json_mode: bool = False,
+        thinking_override: str | None = None,
+        stage: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.complete_json_with_tools(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            tools=[],
+            max_tokens=max_tokens,
+            timeout_s=timeout_s,
+            json_mode=json_mode,
+            thinking_override=thinking_override,
+            stage=stage,
+        )
+
+    async def complete_json_messages(
+        self,
+        *,
+        system_prompt: str,
+        messages: Sequence[dict[str, Any]],
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+        json_mode: bool = False,
+        thinking_override: str | None = None,
+        stage: str | None = None,
+    ) -> dict[str, Any]:
+        if not self.is_configured:
+            raise LLMConfigError(f"{self._provider_label()} API key is not configured", provider=self.provider_name)
+
+        payload_messages = [{"role": "system", "content": system_prompt}, *list(messages)]
+        selected_model = self._provider_model(thinking_override=thinking_override, stage=stage)
+        thinking_type = self._resolve_thinking_mode(thinking_override)
+        payload = self._build_payload(
+            messages=payload_messages,
+            max_tokens=max_tokens,
+            tools=[],
+            json_mode=json_mode,
+            thinking_override=thinking_override,
+            stage=stage,
+        )
+        self.last_exchange = {
+            "system_prompt": system_prompt,
+            "messages": list(messages),
+            "tool_names": [],
+        }
+        body = await self._chat_completion(payload=payload, timeout_s=timeout_s, stage=stage)
+        selected_model = str(body.pop("_siglab_model_used", selected_model))
+        choice = self._extract_choice(body)
+        self.last_trace = {
+            "provider": self.provider_name,
+            "model": selected_model,
+            "thinking_mode": thinking_type or "default",
+            "tool_choice": "none",
+            "tool_count_available": 0,
+            "tool_rounds_used": 0,
+            "final_content_preview": None,
+            "response_finish_reason": choice.get("finish_reason"),
+        }
+        message = dict(choice.get("message") or {})
+        self._record_assistant_message(
+            message=message,
+            finish_reason=choice.get("finish_reason"),
+        )
+        content = self._extract_message_content(body)
+        self.last_trace["final_content_preview"] = _compact_scalar(content[:2200])
+        parsed = self._parse_json(content)
+        if self.last_exchange is not None:
+            self.last_exchange["final_content"] = content
+            self.last_exchange["parsed_output"] = parsed
+        return parsed
+
+    async def complete_text(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+        thinking_override: str | None = None,
+        stage: str | None = None,
+    ) -> str:
+        if not self.is_configured:
+            raise LLMConfigError(f"{self._provider_label()} API key is not configured", provider=self.provider_name)
+
+        selected_model = self._provider_model(thinking_override=thinking_override, stage=stage)
+        thinking_type = self._resolve_thinking_mode(thinking_override)
+        payload = self._build_payload(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            tools=[],
+            json_mode=False,
+            thinking_override=thinking_override,
+            stage=stage,
+        )
+        self.last_exchange = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "tool_names": [],
+        }
+        body = await self._chat_completion(payload=payload, timeout_s=timeout_s, stage=stage)
+        selected_model = str(body.pop("_siglab_model_used", selected_model))
+        choice = self._extract_choice(body)
+        self.last_trace = {
+            "provider": self.provider_name,
+            "model": selected_model,
+            "thinking_mode": thinking_type or "default",
+            "tool_choice": "none",
+            "tool_count_available": 0,
+            "tool_rounds_used": 0,
+            "final_content_preview": None,
+            "response_finish_reason": choice.get("finish_reason"),
+        }
+        message = dict(choice.get("message") or {})
+        self._record_assistant_message(
+            message=message,
+            finish_reason=choice.get("finish_reason"),
+        )
+        content = self._extract_message_content(body)
+        self.last_trace["final_content_preview"] = _compact_scalar(content[:2200])
+        if self.last_exchange is not None:
+            self.last_exchange["final_content"] = content
+        return content
+
+    async def complete_text_with_tools(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        tools: Sequence[ClaudeTool] | None = None,
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+        max_tool_rounds: int | None = None,
+        thinking_override: str | None = None,
+        stage: str | None = None,
+    ) -> str:
+        if not self.is_configured:
+            raise LLMConfigError(f"{self._provider_label()} API key is not configured", provider=self.provider_name)
+
+        tool_list = list(tools or [])
+        tool_map = {tool.name: tool for tool in tool_list}
+        thinking_type = self._resolve_thinking_mode(thinking_override)
+        selected_model = self._provider_model(thinking_override=thinking_override, stage=stage)
+        self.last_exchange = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "tool_names": [tool.name for tool in tool_list],
+        }
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        remaining_rounds = (
+            self.settings.claude_max_tool_rounds if max_tool_rounds is None else max_tool_rounds
+        )
+        force_final_without_tools = False
+        trace: dict[str, Any] = {
+            "provider": self.provider_name,
+            "model": selected_model,
+            "thinking_mode": thinking_type or "default",
+            "tool_choice": "auto" if tool_list else "none",
+            "tool_count_available": len(tool_list),
+            "max_tool_rounds": remaining_rounds,
+            "tool_rounds_used": 0,
+            "tool_calls": [],
+            "final_content_preview": None,
+        }
+        self.last_trace = trace
+
+        while True:
+            payload = self._build_payload(
+                messages=messages,
+                max_tokens=max_tokens,
+                tools=[] if force_final_without_tools else tool_list,
+                json_mode=False,
+                thinking_override=thinking_override,
+                stage=stage,
+            )
+            body = await self._chat_completion(
+                payload=payload,
+                timeout_s=timeout_s,
+                stage=stage,
+            )
+            selected_model = str(body.pop("_siglab_model_used", selected_model))
+            trace["model"] = selected_model
+            choice = self._extract_choice(body)
+            message = choice.get("message") or {}
+            self._record_assistant_message(
+                message=message,
+                finish_reason=choice.get("finish_reason"),
+            )
+            tool_calls = list(message.get("tool_calls") or [])
+
+            if tool_calls and tool_map:
+                if remaining_rounds <= 0:
+                    trace["error"] = "max_tool_rounds_exhausted_forced_final"
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Tool budget exhausted. Do not call more tools. "
+                                "Return the final answer now using only evidence already collected."
+                            ),
+                        }
+                    )
+                    tool_map = {}
+                    force_final_without_tools = True
+                    continue
+                remaining_rounds -= 1
+                trace["tool_rounds_used"] = int(trace["tool_rounds_used"]) + 1
+                messages.append(self._assistant_tool_call_message(message))
+                for tool_call in tool_calls:
+                    tool_message, trace_entry = await self._execute_tool_call(
+                        tool_call=tool_call,
+                        tool_map=tool_map,
+                    )
+                    trace["tool_calls"].append(trace_entry)
+                    messages.append(tool_message)
+                continue
+
+            content = self._extract_message_content(body)
+            trace["final_content_preview"] = _compact_scalar(content[:2200])
+            trace["response_finish_reason"] = choice.get("finish_reason")
+            if self.last_exchange is not None:
+                self.last_exchange["final_content"] = content
+            return content
+
+    async def complete_json_with_tools(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        tools: Sequence[ClaudeTool] | None = None,
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+        max_tool_rounds: int | None = None,
+        json_mode: bool = False,
+        thinking_override: str | None = None,
+        stage: str | None = None,
+    ) -> dict[str, Any]:
+        if not self.is_configured:
+            raise LLMConfigError(f"{self._provider_label()} API key is not configured", provider=self.provider_name)
+
+        tool_list = list(tools or [])
+        tool_map = {tool.name: tool for tool in tool_list}
+        thinking_type = self._resolve_thinking_mode(thinking_override)
+        selected_model = self._provider_model(thinking_override=thinking_override, stage=stage)
+        self.last_exchange = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "tool_names": [tool.name for tool in tool_list],
+        }
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        remaining_rounds = (
+            self.settings.claude_max_tool_rounds if max_tool_rounds is None else max_tool_rounds
+        )
+        force_final_without_tools = False
+        trace: dict[str, Any] = {
+            "provider": self.provider_name,
+            "model": selected_model,
+            "thinking_mode": thinking_type or "default",
+            "tool_choice": "auto" if tool_list else "none",
+            "tool_count_available": len(tool_list),
+            "max_tool_rounds": remaining_rounds,
+            "tool_rounds_used": 0,
+            "tool_calls": [],
+            "final_content_preview": None,
+        }
+        self.last_trace = trace
+
+        while True:
+            payload = self._build_payload(
+                messages=messages,
+                max_tokens=max_tokens,
+                tools=[] if force_final_without_tools else tool_list,
+                json_mode=json_mode,
+                thinking_override=thinking_override,
+                stage=stage,
+            )
+            body = await self._chat_completion(
+                payload=payload,
+                timeout_s=timeout_s,
+                stage=stage,
+            )
+            selected_model = str(body.pop("_siglab_model_used", selected_model))
+            trace["model"] = selected_model
+            choice = self._extract_choice(body)
+            message = choice.get("message") or {}
+            self._record_assistant_message(
+                message=message,
+                finish_reason=choice.get("finish_reason"),
+            )
+            tool_calls = list(message.get("tool_calls") or [])
+
+            if tool_calls and tool_map:
+                if remaining_rounds <= 0:
+                    trace["error"] = "max_tool_rounds_exhausted_forced_final"
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Tool budget exhausted. Do not call more tools. "
+                                "Return the final JSON now using only evidence already collected."
+                            ),
+                        }
+                    )
+                    tool_map = {}
+                    force_final_without_tools = True
+                    continue
+                remaining_rounds -= 1
+                trace["tool_rounds_used"] = int(trace["tool_rounds_used"]) + 1
+                messages.append(self._assistant_tool_call_message(message))
+                for tool_call in tool_calls:
+                    tool_message, trace_entry = await self._execute_tool_call(
+                        tool_call=tool_call,
+                        tool_map=tool_map,
+                    )
+                    trace["tool_calls"].append(trace_entry)
+                    messages.append(tool_message)
+                continue
+
+            content = self._extract_message_content(body)
+            trace["final_content_preview"] = _compact_scalar(content[:2200])
+            trace["response_finish_reason"] = choice.get("finish_reason")
+            parsed = self._parse_json(content)
+            if self.last_exchange is not None:
+                self.last_exchange["final_content"] = content
+                self.last_exchange["parsed_output"] = parsed
+            return parsed
+
+    def _build_payload(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        max_tokens: int | None,
+        tools: Sequence[ClaudeTool],
+        json_mode: bool,
+        thinking_override: str | None,
+        stage: str | None = None,
+    ) -> dict[str, Any]:
+        thinking_type = self._resolve_thinking_mode(thinking_override)
+        provider_name = self.provider_name
+        selected_model = self._provider_model(thinking_override=thinking_override, stage=stage)
+        temperature = self.settings.claude_temperature
+        if thinking_type == "disabled":
+            temperature = 0.6
+        requested_output_tokens = int(max_tokens or self.settings.claude_max_tokens)
+        if provider_name == "openrouter":
+            estimated_input_tokens = _estimate_message_tokens(messages)
+            context_limit = int(getattr(self.settings, "openrouter_context_tokens", 0) or 0)
+            if context_limit > 0:
+                projected_total = estimated_input_tokens + requested_output_tokens
+                pressure_ratio = projected_total / float(context_limit)
+                if pressure_ratio >= 0.85:
+                    event = {
+                        "stage": str(stage or "default"),
+                        "model": selected_model,
+                        "estimated_input_tokens": estimated_input_tokens,
+                        "requested_output_tokens": requested_output_tokens,
+                        "context_limit_tokens": context_limit,
+                        "projected_total_tokens": projected_total,
+                        "pressure_ratio": round(pressure_ratio, 4),
+                        "severity": "critical" if pressure_ratio >= 1.0 else "warning",
+                    }
+                    self._context_pressure_events.append(event)
+                    if pressure_ratio >= 1.0 and max_tokens is None:
+                        requested_output_tokens = max(512, context_limit - estimated_input_tokens - 256)
+                        event["requested_output_tokens_after_clamp"] = requested_output_tokens
+            max_call_usd = getattr(self.settings, "openrouter_max_call_usd", None)
+            estimated_cost = _openrouter_estimate_cost(
+                model=selected_model,
+                prompt_tokens=estimated_input_tokens,
+                completion_tokens=requested_output_tokens,
+            )
+            cost_event = {
+                "stage": str(stage or "default"),
+                "model": selected_model,
+                "estimated_input_tokens": estimated_input_tokens,
+                "requested_output_tokens": requested_output_tokens,
+                "estimated_cost_usd": round(estimated_cost, 8),
+                "max_call_usd": float(max_call_usd) if max_call_usd is not None else None,
+                "pricing_source": OPENROUTER_MODELS_URL,
+                "usd_priced": True,
+            }
+            _openrouter_refuse_if_over_budget(estimated_cost, max_call_usd=max_call_usd)
+            if max_call_usd is not None:
+                cost_event["severity"] = "ok" if estimated_cost <= float(max_call_usd) else "critical"
+            else:
+                cost_event["severity"] = "ok"
+            self._credit_pressure_events.append(cost_event)
+
+        payload: dict[str, Any] = {
+            "model": selected_model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": self.settings.claude_top_p,
+            "max_tokens": requested_output_tokens,
+            "stream": False,
+        }
+        if provider_name == "openrouter":
+            payload["usage"] = {"include": True}
+        if tools:
+            payload["tools"] = [tool.schema() for tool in tools]
+            payload["tool_choice"] = "auto"
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        if provider_name == "claude" and thinking_type in {"enabled", "disabled"}:
+            payload["thinking"] = {"type": thinking_type}
+        return payload
+
+    def _resolve_thinking_mode(self, override: str | None) -> str:
+        return resolve_llm_thinking_mode(
+            self.settings,
+            provider=self.provider_name,
+            override=override,
+        )
+
+    async def _chat_completion(
+        self,
+        *,
+        payload: dict[str, Any],
+        timeout_s: float | None,
+        stage: str | None = None,
+    ) -> dict[str, Any]:
+        last_error: LLMProviderError | None = None
+        base_payload = dict(payload)
+        primary_model = str(base_payload.get("model") or self._provider_model(thinking_override=None, stage=stage))
+        candidates = self.routing_policy.candidates(provider=self.provider_name, stage=stage, primary=primary_model)
+        if not candidates:
+            raise LLMQuotaError(f"{self._provider_label()} has no available routed models", provider=self.provider_name)
+        for model in candidates:
+            payload = dict(base_payload)
+            payload["model"] = model
+            for attempt in range(3):
+                request_id = uuid.uuid4().hex
+                started = time.perf_counter()
+                self._request_count += 1
+                try:
+                    response = await self._http(timeout_s=timeout_s).post(
+                        self._chat_url(),
+                        headers=self._request_headers(request_id=request_id),
+                        json=payload,
+                    )
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError, OSError, TimeoutError) as exc:
+                    self._transport_failures += 1
+                    last_error = LLMTransportError(
+                        f"{self._provider_label()} transport failure: {exc}",
+                        provider=self.provider_name,
+                    )
+                else:
+                    elapsed_ms = (time.perf_counter() - started) * 1000.0
+                    status = int(response.status_code)
+                    self._latencies_ms.append(elapsed_ms)
+                    if status in (401, 403):
+                        self.routing_policy.mark_auth_failure(model, "LLMAuthError")
+                        last_error = LLMAuthError(
+                            f"{self._provider_label()} auth failed with HTTP {status}",
+                            provider=self.provider_name,
+                            status_code=status,
+                        )
+                        break
+                    if status == 429:
+                        self._rate_limits += 1
+                        body_429 = (response.text or "")[:500].lower()
+                        if "free-models-per-day" in body_429 or "quota" in body_429:
+                            self.routing_policy.mark_quota_failure(model, "LLMQuotaError")
+                            last_error = LLMQuotaError(
+                                f"{self._provider_label()} quota exceeded with HTTP 429: {body_429[:200]}",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
+                        else:
+                            last_error = LLMRateLimitError(
+                                f"{self._provider_label()} rate limited with HTTP 429",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
+                    elif status in {408, 500, 502, 503, 504}:
+                        last_error = LLMUpstreamError(
+                            f"{self._provider_label()} upstream HTTP {status}",
+                            provider=self.provider_name,
+                            status_code=status,
+                        )
+                    elif status >= 400:
+                        detail = _compact_scalar(response.text[:500])
+                        lower_detail = str(detail).lower()
+                        if (
+                            "insufficient_user_quota" in lower_detail
+                            or "insufficient balance" in lower_detail
+                            or "quota" in lower_detail
+                            or "credit" in lower_detail
+                            or "balance" in lower_detail
+                        ):
+                            self.routing_policy.mark_quota_failure(model, "LLMQuotaError")
+                            last_error = LLMQuotaError(
+                                f"{self._provider_label()} quota failed with HTTP {status}: {detail}",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
+                            break
+                        if status in (400, 422) and (
+                            "is not a valid model ID" in str(detail)
+                            or "invalid model" in lower_detail
+                        ):
+                            raise LLMFormatError(
+                                f"OpenRouter invalid model: {str(detail)[:200]}",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
+                        if (
+                            "context" in lower_detail
+                            or "maximum context" in lower_detail
+                            or "token limit" in lower_detail
+                            or "max tokens" in lower_detail
+                            or "too many tokens" in lower_detail
+                        ):
+                            raise LLMFormatError(
+                                f"{self._provider_label()} context limit failed with HTTP {status}: {detail}",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
+                        raise LLMUpstreamError(
+                            f"{self._provider_label()} upstream HTTP {status}: {detail}",
+                            provider=self.provider_name,
+                            status_code=status,
+                        )
+                    else:
+                        try:
+                            body = response.json()
+                        except ValueError as exc:
+                            raise LLMFormatError(
+                                f"{self._provider_label()} returned malformed JSON",
+                                provider=self.provider_name,
+                                status_code=status,
+                            ) from exc
+                        if not isinstance(body, dict):
+                            raise LLMFormatError(
+                                f"{self._provider_label()} response was not an object",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
+                        self._success_count += 1
+                        self.routing_policy.record_latency(
+                            model=model,
+                            stage=stage,
+                            elapsed_ms=elapsed_ms,
+                        )
+                        self._record_usage(body.get("usage"), model=model)
+                        body["_siglab_model_used"] = model
+                        return body
+                    if attempt >= 2:
+                        break
+                    self._retries += 1
+                    await asyncio.sleep(0.25 * (2**attempt))
+        raise last_error or LLMTransportError(f"{self._provider_label()} request failed", provider=self.provider_name)
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    def metrics_snapshot(self) -> dict[str, Any]:
+        latencies = sorted(self._latencies_ms)
+        attempts = max(1, self._request_count)
+        cost_usd_value = round(self._usage_cost_usd, 8) if self._priced_token_count else None
+        return {
+            "provider": self.provider_name,
+            "model": self._provider_model(thinking_override=None),
+            "p50_ms": _percentile(latencies, 50),
+            "p95_ms": _percentile(latencies, 95),
+            "retry_count": self._retries,
+            "rate_limit_count": self._rate_limits,
+            "transport_failures": self._transport_failures,
+            "success_rate": self._success_count / attempts,
+            "usage": {
+                "prompt_tokens": self._prompt_tokens,
+                "completion_tokens": self._completion_tokens,
+                "total_tokens": self._total_tokens,
+                "cache_write_tokens": self._cache_write_tokens,
+                "cache_read_tokens": self._cache_read_tokens,
+                "cost_usd": cost_usd_value,
+                "cost_status": (
+                    "verified_openrouter_usd_priced"
+                    if self._priced_token_count
+                    else "unpriced_token_usage_only"
+                ),
+                "pricing_source": (
+                    OPENROUTER_MODELS_URL
+                    if self._priced_token_count
+                    else None
+                ),
+                "model_pricing_source": OPENROUTER_MODELS_URL,
+            },
+            "context_pressure": {
+                "event_count": len(self._context_pressure_events),
+                "latest": dict(self._context_pressure_events[-1]) if self._context_pressure_events else None,
+            },
+            "credit_pressure": {
+                "event_count": len(self._credit_pressure_events),
+                "latest": dict(self._credit_pressure_events[-1]) if self._credit_pressure_events else None,
+            },
+            "routing_policy": self.routing_policy.snapshot(),
+        }
+
+    def _record_usage(self, usage: Any, *, model: str | None = None) -> None:
+        if not isinstance(usage, dict):
+            return
+        prompt = _int_or_zero(
+            usage.get("prompt_tokens")
+            or usage.get("input_tokens")
+            or usage.get("promptTokens")
+            or usage.get("inputTokens")
+        )
+        completion = _int_or_zero(
+            usage.get("completion_tokens")
+            or usage.get("output_tokens")
+            or usage.get("completionTokens")
+            or usage.get("outputTokens")
+        )
+        total = _int_or_zero(usage.get("total_tokens") or usage.get("totalTokens"))
+        if total == 0 and (prompt or completion):
+            total = prompt + completion
+        cache_write = _int_or_zero(
+            usage.get("cache_creation_input_tokens")
+            or usage.get("cache_write_tokens")
+            or usage.get("cacheWriteTokens")
+        )
+        cache_read = _int_or_zero(
+            usage.get("cache_read_input_tokens")
+            or usage.get("cached_tokens")
+            or usage.get("cache_read_tokens")
+            or usage.get("cacheReadTokens")
+        )
+        prompt_details = usage.get("prompt_tokens_details")
+        if isinstance(prompt_details, dict):
+            cache_read = max(cache_read, _int_or_zero(prompt_details.get("cached_tokens")))
+        self._prompt_tokens += prompt
+        self._completion_tokens += completion
+        self._total_tokens += total
+        self._cache_write_tokens += cache_write
+        self._cache_read_tokens += cache_read
+        cost_value = usage.get("cost")
+        if cost_value is None and self.provider_name == "openrouter":
+            cost_value = _openrouter_estimate_cost(
+                model=str(model or ""),
+                prompt_tokens=prompt,
+                completion_tokens=completion,
+            )
+        try:
+            cost_float = float(cost_value)
+        except (TypeError, ValueError):
+            cost_float = 0.0
+        if cost_float is not None:
+            self._usage_cost_usd += cost_float
+            self._priced_token_count += prompt + completion
+
+    def _http(self, *, timeout_s: float | None) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    timeout=timeout_s or self.settings.claude_timeout_s,
+                    connect=min(10.0, timeout_s or self.settings.claude_timeout_s),
+                    read=timeout_s or self.settings.claude_timeout_s,
+                    write=30.0,
+                    pool=10.0,
+                ),
+                limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
+            )
+        return self._client
+
+    def _chat_url(self) -> str:
+        base_url = self._provider_base_url().rstrip("/")
+        return f"{base_url}/chat/completions"
+
+    def _provider_api_key(self) -> str | None:
+        return resolve_llm_api_key(self.settings, provider=self.provider_name)
+
+    def _provider_base_url(self) -> str:
+        return resolve_llm_base_url(self.settings, provider=self.provider_name)
+
+    def _provider_model(self, *, thinking_override: str | None, stage: str | None = None) -> str:
+        return self.routing_policy.model_for_stage(
+            provider=self.provider_name,
+            stage=stage,
+            thinking_override=thinking_override,
+        )
+
+    def _request_headers(self, *, request_id: str | None = None) -> dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self._provider_api_key()}",
+            "Content-Type": "application/json",
+        }
+        if request_id:
+            headers["X-Request-ID"] = request_id
+        if self.provider_name == "openrouter":
+            referer = str(getattr(self.settings, "openrouter_http_referer", "") or "").strip()
+            title = str(getattr(self.settings, "openrouter_title", "") or "").strip()
+            if referer:
+                headers["HTTP-Referer"] = referer
+            if title:
+                headers["X-Title"] = title
+        return headers
+
+    def _provider_label(self) -> str:
+        return {
+            "deepseek": "DeepSeek",
+            "openrouter": "OpenRouter",
+            "claude": "Claude",
+        }.get(self.provider_name, "LLM")
+
+    def _extract_choice(self, body: dict[str, Any]) -> dict[str, Any]:
+        choices = body.get("choices") or []
+        if not choices:
+            raise LLMFormatError(f"{self._provider_label()} response contained no choices", provider=self.provider_name)
+        return dict(choices[0] or {})
+
+    def _extract_message_content(self, body: dict[str, Any]) -> str:
+        message = self._extract_choice(body).get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            pieces: list[str] = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    pieces.append(str(item.get("text", "")))
+            if pieces:
+                return "\n".join(pieces)
+        raise LLMFormatError(f"{self._provider_label()} response content was not a string", provider=self.provider_name)
+
+    def _assistant_tool_call_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        assistant_message = {
+            "role": str(message.get("role") or "assistant"),
+            "content": message.get("content") or "",
+            "tool_calls": list(message.get("tool_calls") or []),
+        }
+        if "reasoning_content" in message and self.provider_name in {"claude", "deepseek"}:
+            assistant_message["reasoning_content"] = message.get("reasoning_content") or ""
+        return assistant_message
+
+    def _record_assistant_message(
+        self,
+        *,
+        message: dict[str, Any],
+        finish_reason: Any,
+    ) -> None:
+        if self.last_exchange is not None:
+            turns = list(self.last_exchange.get("assistant_messages") or [])
+            turns.append(
+                json_clone(
+                    {
+                        "finish_reason": finish_reason,
+                        "message": message,
+                    }
+                )
+            )
+            self.last_exchange["assistant_messages"] = turns
+        if self.last_trace is not None:
+            turns = list(self.last_trace.get("assistant_turns") or [])
+            turns.append(
+                {
+                    "finish_reason": finish_reason,
+                    "has_reasoning_content": "reasoning_content" in message,
+                    "reasoning_content_preview": (
+                        _compact_scalar(str(message.get("reasoning_content") or ""))
+                        if "reasoning_content" in message
+                        else None
+                    ),
+                    "has_tool_calls": bool(message.get("tool_calls")),
+                    "tool_call_count": len(list(message.get("tool_calls") or [])),
+                }
+            )
+            self.last_trace["assistant_turns"] = turns
+
+    async def _execute_tool_call(
+        self,
+        *,
+        tool_call: dict[str, Any],
+        tool_map: dict[str, ClaudeTool],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        function_payload = tool_call.get("function") or {}
+        tool_name = str(function_payload.get("name") or "")
+        arguments_raw = function_payload.get("arguments") or "{}"
+        latency_ms: float | None = None
+        try:
+            arguments = json.loads(arguments_raw)
+        except json.JSONDecodeError as exc:
+            result: Any = {"ok": False, "error": f"invalid_tool_arguments: {exc}"}
+        else:
+            tool = tool_map.get(tool_name)
+            if tool is None:
+                result = {"ok": False, "error": f"unknown_tool: {tool_name}"}
+            else:
+                started = time.perf_counter()
+                try:
+                    outcome = tool.handler(arguments)
+                    result = await outcome if hasattr(outcome, "__await__") else outcome
+                except Exception as exc:  # noqa: BLE001
+                    result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                else:
+                    latency_ms = (time.perf_counter() - started) * 1000.0
+
+        compact_result = self._compact_tool_payload(result)
+        tool_message = {
+            "role": "tool",
+            "tool_call_id": str(tool_call.get("id") or ""),
+            "name": tool_name,
+            "content": json.dumps(
+                compact_result,
+                ensure_ascii=True,
+                default=str,
+            ),
+        }
+        trace_entry = {
+            "id": str(tool_call.get("id") or ""),
+            "name": tool_name,
+            "arguments": arguments_raw,
+            "result": compact_result,
+        }
+        if latency_ms is not None:
+            trace_entry["latency_ms"] = round(float(latency_ms), 3)
+        return tool_message, trace_entry
+
+    def _compact_tool_payload(self, value: Any, *, depth: int = 0) -> Any:
+        if depth >= 4:
+            return _compact_scalar(value)
+        if isinstance(value, dict):
+            compacted: dict[str, Any] = {}
+            for index, (key, item) in enumerate(value.items()):
+                if index >= 12:
+                    compacted["truncated"] = True
+                    break
+                compacted[str(key)] = self._compact_tool_payload(item, depth=depth + 1)
+            return compacted
+        if isinstance(value, list):
+            limited = value[:8]
+            compacted_list = [
+                self._compact_tool_payload(item, depth=depth + 1) for item in limited
+            ]
+            if len(value) > len(limited):
+                compacted_list.append({"truncated": True, "remaining": len(value) - len(limited)})
+            return compacted_list
+        return _compact_scalar(value)
+
+    def _parse_json(self, text: str) -> dict[str, Any]:
+        spec = text.strip()
+        block_match = _JSON_BLOCK_RE.search(spec)
+        if block_match:
+            spec = block_match.group(1)
+        return json.loads(spec)
+
+
+def _compact_scalar(value: Any) -> Any:
+    if isinstance(value, str) and len(value) > 2200:
+        return value[:2199].rstrip() + "…"
+    return value
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, parsed)
+
+
+def _estimate_message_tokens(messages: Sequence[dict[str, Any]]) -> int:
+    chars = len(json.dumps(list(messages), ensure_ascii=True, default=str))
+    return max(1, (chars + 3) // 4)
+
+
+_openrouter_list_models.__dict__["_cache"] = {}
+_openrouter_list_models.__dict__["_cached_at"] = 0.0

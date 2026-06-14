@@ -27,8 +27,8 @@ def percentile(values: list[float], percentile: int) -> float | None:
         return float(ordered[0])
 
     rank = (percentile / 100.0) * (n - 1)
-    lower_idx = int(math.floor(rank))
-    upper_idx = int(math.ceil(rank))
+    lower_idx = min(max(int(math.floor(rank)), 0), n - 1)
+    upper_idx = min(max(int(math.ceil(rank)), 0), n - 1)
 
     if lower_idx == upper_idx:
         return float(ordered[lower_idx])

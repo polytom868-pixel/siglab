@@ -1681,7 +1681,7 @@ class ResearchEvaluator:
             f"{prefix}_window_count": 1,
             f"{prefix}_profitable_window_pct": (
                 1.0
-                if (_safe_float(stats.get("total_return")) is not None and float(stats["total_return"]) > 0.0)
+                if (stats.get("total_return") is not None and _safe_float(stats.get("total_return")) is not None and float(stats["total_return"]) > 0.0)
                 else 0.0
             ),
         }

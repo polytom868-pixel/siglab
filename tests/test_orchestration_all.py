@@ -71,6 +71,44 @@ from siglab.orchestration.trials import (
 from siglab.orchestration.writer_runner import SpecWriterRunner
 
 
+from tests._factories import make_runner
+
+
+def _make_planner_runner() -> ResearchPlannerRunner:
+    base = make_runner()
+    base.settings.claude_timeout_s = 120
+    base.settings.artifact_dir = Path("/fake/artifacts")
+    runner = object.__new__(ResearchPlannerRunner)
+    runner.settings = base.settings
+    runner.claude = base.claude
+    runner.hypothesis_sandbox = MagicMock()
+    runner.web_researcher = MagicMock()
+    runner.workspace_builder = MagicMock()
+    return runner
+
+
+def _make_writer_runner() -> SpecWriterRunner:
+    return make_runner()
+
+
+def _make_optimizer_runner() -> OptunaOptimizerRunner:
+    base = make_runner(optuna_trials=5)
+    runner = object.__new__(OptunaOptimizerRunner)
+    runner.settings = base.settings
+    runner.evaluator = MagicMock()
+    runner.mutator = base.mutator
+    runner.ancestry = MagicMock()
+    return runner
+
+
+def _make_reflection_runner() -> ReflectionRunner:
+    base = make_runner()
+    runner = object.__new__(ReflectionRunner)
+    runner.settings = base.settings
+    runner.claude = AsyncMock()
+    return runner
+
+
 # ============================================================
 # planner_runner.py — ResearchPlannerRunner
 # ============================================================
@@ -79,18 +117,7 @@ from siglab.orchestration.writer_runner import SpecWriterRunner
 class TestResearchPlannerRunner:
     def _make_runner(self):
         """Helper to build a bare ResearchPlannerRunner with mock deps."""
-        runner = object.__new__(ResearchPlannerRunner)
-        runner.settings = SimpleNamespace(
-            root_dir=Path("/fake/root"),
-            claude_timeout_s=120,
-            llm_provider="test",
-            artifact_dir=Path("/fake/artifacts"),
-        )
-        runner.claude = MagicMock()
-        runner.hypothesis_sandbox = MagicMock()
-        runner.web_researcher = MagicMock()
-        runner.workspace_builder = MagicMock()
-        return runner
+        return _make_planner_runner()
 
     def test_init_stores_all_deps(self):
         runner = self._make_runner()
@@ -394,16 +421,7 @@ class TestResearchPlannerRunner:
 
 class TestSpecWriterRunner:
     def _make_runner(self):
-        runner = object.__new__(SpecWriterRunner)
-        runner.settings = SimpleNamespace(
-            root_dir=Path("/fake/root"),
-            claude_timeout_s=90,
-            llm_provider="test",
-        )
-        runner.claude = MagicMock()
-        runner.mutator = MagicMock()
-        runner.hypothesis_sandbox = None
-        return runner
+        return _make_writer_runner()
 
     def test_init_stores_deps(self):
         runner = self._make_runner()
@@ -635,12 +653,7 @@ class TestContracts:
 
 class TestOptunaOptimizerRunner:
     def _make_runner(self):
-        runner = object.__new__(OptunaOptimizerRunner)
-        runner.settings = SimpleNamespace(optuna_trials=5)
-        runner.evaluator = MagicMock()
-        runner.mutator = MagicMock()
-        runner.ancestry = MagicMock()
-        return runner
+        return _make_optimizer_runner()
 
     def test_init_stores_deps(self):
         runner = self._make_runner()
@@ -755,10 +768,7 @@ class TestOptunaOptimizerRunner:
 
 class TestReflectionRunner:
     def _make_runner(self):
-        runner = object.__new__(ReflectionRunner)
-        runner.settings = SimpleNamespace(root_dir=Path("/fake/root"), claude_timeout_s=90)
-        runner.claude = AsyncMock()
-        return runner
+        return _make_reflection_runner()
 
     def test_init_stores_deps(self):
         runner = self._make_runner()
@@ -1172,18 +1182,7 @@ class TestContractsHelpers:
 
 class TestResearchPlannerRunnerAdvanced:
     def _make_runner(self):
-        runner = object.__new__(ResearchPlannerRunner)
-        runner.settings = SimpleNamespace(
-            root_dir=Path("/fake/root"),
-            claude_timeout_s=120,
-            llm_provider="test",
-            artifact_dir=Path("/fake/artifacts"),
-        )
-        runner.claude = MagicMock()
-        runner.hypothesis_sandbox = MagicMock()
-        runner.web_researcher = MagicMock()
-        runner.workspace_builder = MagicMock()
-        return runner
+        return _make_planner_runner()
 
     def test_policy_control_hint_returns_hint(self):
         runner = self._make_runner()
@@ -1385,12 +1384,7 @@ class TestResearchPlannerRunnerAdvanced:
 
 class TestSpecWriterRunnerDetailed:
     def _make_runner(self):
-        runner = object.__new__(SpecWriterRunner)
-        runner.settings = SimpleNamespace(root_dir=Path("/fake/root"), claude_timeout_s=90, llm_provider="test")
-        runner.claude = MagicMock()
-        runner.mutator = MagicMock()
-        runner.hypothesis_sandbox = None
-        return runner
+        return _make_writer_runner()
 
     def test_preflight_material_drift_property(self):
         p = PreflightResult(

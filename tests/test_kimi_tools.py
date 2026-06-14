@@ -9,6 +9,7 @@ import httpx
 from siglab.llm import ClaudeClient, ClaudeTool
 from siglab.llm.claude import LLMFormatError, LLMQuotaError
 from siglab.config import SiglabConfig
+from tests._factories import make_minimal_settings
 
 
 class ScriptedClaudeClient(ClaudeClient):
@@ -41,25 +42,11 @@ class MockHttpClaudeClient(ClaudeClient):
 
 class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
     async def test_complete_json_with_tools_runs_tool_loop(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key="sk-test",
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            claude_thinking="enabled",
+        settings = make_minimal_settings(
+            claude_api_key='sk-test',
+            claude_thinking='enabled',
             claude_max_tool_rounds=3,
-            population_size=1,
+            llm_provider='claude',
         )
         client = ScriptedClaudeClient(
             settings,
@@ -157,25 +144,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_tool_loop_forces_final_answer_when_budget_exhausted(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key="sk-test",
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            claude_max_tool_rounds=3,
-            population_size=1,
-        )
+        settings = make_minimal_settings(claude_api_key='sk-test', claude_max_tool_rounds=3, llm_provider='claude')
         client = ScriptedClaudeClient(
             settings,
             responses=[
@@ -228,28 +197,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Tool budget exhausted", client.payloads[1]["messages"][-1]["content"])
 
     def test_deepseek_provider_switches_chat_and_reasoner_from_thinking_override(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="deepseek",
-            deepseek_api_key="sk-test",
-            deepseek_base_url="https://api.deepseek.com",
-            deepseek_model="deepseek-reasoner",
-        )
+        settings = make_minimal_settings(llm_provider='deepseek', deepseek_api_key='sk-test')
         client = ClaudeClient(settings)
 
         enabled_payload = client._build_payload(
@@ -274,31 +222,13 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("thinking", disabled_payload)
 
     def test_openrouter_provider_switches_models_and_uses_headers(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="openrouter",
-            openrouter_api_key="sk-test",
-            openrouter_base_url="https://openrouter.ai/api/v1",
-            openrouter_model="openai/gpt-4.1-mini",
-            openrouter_reasoning_model="z-ai/glm-5",
-            openrouter_fast_model="openai/gpt-4.1",
-            openrouter_http_referer="https://strategies.sosovalue.ai/",
-            openrouter_title="SoSoValue SigLab",
+        settings = make_minimal_settings(
+            llm_provider='openrouter',
+            openrouter_api_key='sk-test',
+            openrouter_reasoning_model='z-ai/glm-5',
+            openrouter_fast_model='openai/gpt-4.1',
+            openrouter_http_referer='https://strategies.sosovalue.ai/',
+            openrouter_title='SoSoValue SigLab',
         )
         client = ClaudeClient(settings)
 
@@ -327,28 +257,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["X-Title"], "SoSoValue SigLab")
 
     def test_bai_tool_replay_preserves_reasoning_content(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="deepseek-v4-flash",
-        )
+        settings = make_minimal_settings()
         client = ClaudeClient(settings)
 
         replay = client._assistant_tool_call_message(
@@ -363,31 +272,12 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(replay["reasoning_content"], "tool rationale")
 
     def test_bai_latency_demotes_writer_and_reflector_candidates_only(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="slow-model",
-            bai_writer_model="slow-model",
-            bai_planner_model="slow-model",
-            bai_fallback_fast_model="fast-model",
-            bai_fallback_reasoning_model="reasoning-model",
+        settings = make_minimal_settings(
+            bai_model='slow-model',
+            bai_writer_model='slow-model',
+            bai_planner_model='slow-model',
+            bai_fallback_fast_model='fast-model',
+            bai_fallback_reasoning_model='reasoning-model',
         )
         client = ClaudeClient(settings)
         client.routing_policy.record_latency(
@@ -407,30 +297,11 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("slow-model", client.routing_policy.snapshot()["latency_demoted"])
 
     def test_bai_latency_demotion_does_not_remove_last_viable_writer_model(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="slow-model",
-            bai_writer_model="slow-model",
-            bai_fallback_fast_model="quota-model",
-            bai_fallback_reasoning_model="unavailable-model",
+        settings = make_minimal_settings(
+            bai_model='slow-model',
+            bai_writer_model='slow-model',
+            bai_fallback_fast_model='quota-model',
+            bai_fallback_reasoning_model='unavailable-model',
         )
         client = ClaudeClient(settings)
         client.routing_policy.record_latency(
@@ -447,30 +318,11 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_bai_entitlement_failure_blacklists_model_and_falls_back(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="claude-sonnet-4-6",
-            bai_planner_model="claude-sonnet-4-6",
-            bai_fallback_fast_model="deepseek-v4-flash",
-            bai_fallback_reasoning_model="kimi-k2.5",
+        settings = make_minimal_settings(
+            bai_model='claude-sonnet-4-6',
+            bai_planner_model='claude-sonnet-4-6',
+            bai_fallback_fast_model='deepseek-v4-flash',
+            bai_fallback_reasoning_model='kimi-k2.5',
         )
         seen_models: list[str] = []
 
@@ -501,30 +353,11 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("claude-sonnet-4-6", client.metrics_snapshot()["routing_policy"]["unavailable"])
 
     async def test_bai_quota_failure_blocks_model_and_uses_next_candidate(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="gpt-5.2",
-            bai_writer_model="gpt-5.2",
-            bai_fallback_fast_model="deepseek-v4-flash",
-            bai_fallback_reasoning_model="kimi-k2.5",
+        settings = make_minimal_settings(
+            bai_model='gpt-5.2',
+            bai_writer_model='gpt-5.2',
+            bai_fallback_fast_model='deepseek-v4-flash',
+            bai_fallback_reasoning_model='kimi-k2.5',
         )
         seen_models: list[str] = []
 
@@ -555,29 +388,10 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("gpt-5.2", client.metrics_snapshot()["routing_policy"]["quota_blocked"])
 
     async def test_bai_credit_wording_is_classified_as_quota_failure(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="expensive-model",
-            bai_writer_model="expensive-model",
-            bai_fallback_fast_model="deepseek-v4-flash",
+        settings = make_minimal_settings(
+            bai_model='expensive-model',
+            bai_writer_model='expensive-model',
+            bai_fallback_fast_model='deepseek-v4-flash',
         )
         seen_models: list[str] = []
 
@@ -605,29 +419,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("expensive-model", client.metrics_snapshot()["routing_policy"]["quota_blocked"])
 
     async def test_bai_context_limit_http_error_is_not_retried_as_upstream(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="deepseek-v4-flash",
-            bai_writer_model="deepseek-v4-flash",
-        )
+        settings = make_minimal_settings()
 
         def handler(_request: httpx.Request) -> httpx.Response:
             return httpx.Response(400, json={"error": {"message": "maximum context length exceeded"}})
@@ -646,28 +438,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
             await client.close()
 
     async def test_metrics_capture_provider_token_usage_without_pricing(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="deepseek-v4-flash",
-        )
+        settings = make_minimal_settings()
 
         def handler(_request: httpx.Request) -> httpx.Response:
             return httpx.Response(
@@ -709,29 +480,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(usage["pricing_source"], "https://docs.b.ai/llmservice/pricing-and-usage/")
 
     async def test_bai_context_pressure_is_reported_and_clamps_default_output(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=4096,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="deepseek-v4-flash",
-            bai_context_tokens=1200,
-        )
+        settings = make_minimal_settings(claude_max_tokens=4096, bai_context_tokens=1200)
         client = ScriptedClaudeClient(
             settings,
             responses=[
@@ -762,29 +511,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(client.payloads[0]["max_tokens"], 4096)
 
     async def test_bai_pre_call_credit_guard_refuses_oversized_call(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=4096,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="deepseek-v4-flash",
-            bai_max_call_credits=1.0,
-        )
+        settings = make_minimal_settings(claude_max_tokens=4096, bai_max_call_credits=1.0)
         client = ScriptedClaudeClient(settings, responses=[])
 
         with self.assertRaisesRegex(LLMQuotaError, "estimated call credits"):
@@ -802,29 +529,7 @@ class ClaudeToolCallingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.payloads, [])
 
     async def test_bai_credit_rates_match_current_official_kimi_table(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
-            sosovalue_config_path=Path("/tmp/config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
-            data_lake_dir=Path("/tmp"),
-            artifact_dir=Path("/tmp"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
-            llm_provider="bai",
-            bai_api_key="sk-test",
-            bai_base_url="https://api.b.ai",
-            bai_model="kimi-k2.5",
-            bai_writer_model="kimi-k2.5",
-        )
+        settings = make_minimal_settings(bai_model='kimi-k2.5', bai_writer_model='kimi-k2.5')
 
         def handler(_request: httpx.Request) -> httpx.Response:
             return httpx.Response(

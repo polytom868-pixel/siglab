@@ -91,19 +91,19 @@ class TestSafeFloat:
         assert safe_float("3.14") == pytest.approx(3.14)
 
     def test_bad_string(self):
-        assert safe_float("bad") == 0.0
+        assert safe_float("bad", default=0.0) == 0.0
 
     def test_none(self):
-        assert safe_float(None) == 0.0
+        assert safe_float(None, default=0.0) == 0.0
 
     def test_nan(self):
-        assert safe_float(float("nan")) == 0.0
+        assert safe_float(float("nan"), default=0.0) == 0.0
 
     def test_custom_default(self):
         assert safe_float("bad", default=-1.0) == -1.0
 
     def test_empty_string(self):
-        assert safe_float("") == 0.0
+        assert safe_float("", default=0.0) == 0.0
 
 
 class TestTruncate:

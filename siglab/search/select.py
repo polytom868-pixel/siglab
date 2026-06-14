@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 import random
 from collections import defaultdict
@@ -497,4 +498,57 @@ def rank_deterministic_specs(
             spec for spec in remaining if spec.strategy_hash() != choice_hash
         ]
     return selected
+
+
+def plurality_select(specs: list[SignalSpec], k: int = 1) -> SignalSpec:
+    """Composite spec: anchor on the highest-scored input, average numeric params,
+    concatenate + dedupe features, preserve order. The k parameter is accepted for
+    forward compatibility with multi-composite callers; this version always returns
+    a single composite."""
+    if not specs:
+        raise ValueError("plurality_select requires at least one spec")
+    if k < 1:
+        raise ValueError("plurality_select k must be >= 1")
+    scored: list[tuple[float, int, SignalSpec]] = []
+    for idx, spec in enumerate(specs):
+        score = float(getattr(spec, "_aggregate_score", 0.0) or 0.0)
+        scored.append((score, idx, spec))
+    anchor_score, _, anchor = max(scored, key=lambda t: (t[0], -t[1]))
+    seen: set[str] = set()
+    features: list[str] = []
+    for spec in specs:
+        for feat in (spec.features or []):
+            if feat not in seen:
+                seen.add(feat)
+                features.append(feat)
+    param_keys: set[str] = set()
+    for spec in specs:
+        for key in (spec.params or {}).keys():
+            param_keys.add(key)
+    merged_params: dict[str, Any] = {}
+    for key in param_keys:
+        values = [
+            float((spec.params or {}).get(key))
+            for spec in specs
+            if (spec.params or {}).get(key) is not None
+        ]
+        if values:
+            merged_params[key] = sum(values) / len(values)
+    universe_obj = getattr(anchor, "universe", None)
+    risk_obj = getattr(anchor, "risk", None)
+    universe_dict = {f.name: getattr(universe_obj, f.name) for f in (dataclasses.fields(universe_obj) if universe_obj else [])} if universe_obj else {}
+    risk_dict = {f.name: getattr(risk_obj, f.name) for f in (dataclasses.fields(risk_obj) if risk_obj else [])} if risk_obj else {}
+    return SignalSpec.from_dict(
+        {
+            "track": anchor.track,
+            "family": anchor.family,
+            "hypothesis": anchor.hypothesis,
+            "neutrality_basis": getattr(anchor, "neutrality_basis", "none"),
+            "features": features,
+            "universe": universe_dict,
+            "risk": risk_dict,
+            "regime_gates": dict(getattr(anchor, "regime_gates", {}) or {}),
+            "params": merged_params,
+        }
+    )
 

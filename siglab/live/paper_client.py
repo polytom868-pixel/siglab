@@ -1178,6 +1178,8 @@ class SoDEXPaperPerpsClient:
                     with os.fdopen(fd, "w") as f:
                         json.dump(data, f)
                     os.replace(tmp_path, str(path))
+                    npy_path = path.with_suffix(".npy")
+                    np.save(str(npy_path), np.array(data, dtype=object), allow_pickle=True)
                 except BaseException:
                     try:
                         os.unlink(tmp_path)

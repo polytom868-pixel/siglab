@@ -1,0 +1,73 @@
+[
+  {
+    "model": "meta-llama/llama-3.3-70b-instruct:free",
+    "calls": {
+      "basic": {
+        "elapsed_ms": 80242.0,
+        "status": 429,
+        "summary": {
+          "raw": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false,\"retry_after_seconds\":29,\"retry_after_seconds_raw\":28.501,\"headers\":{\"Retry-After\":\"29\"}}},\"user_id\":\"user_31A5N4unqkbSzpQJxGA0m4XGTmD\"}",
+          "id": null,
+          "model_returned": null,
+          "usage": {},
+          "usage_cost": null,
+          "usage_prompt": null,
+          "usage_completion": null,
+          "usage_total": null,
+          "usage_native": null,
+          "usage_cost_details": null,
+          "choices_count": 0,
+          "finish_reason": null,
+          "content_type": null,
+          "content_preview": null,
+          "content_text": null,
+          "tool_calls": null
+        }
+      },
+      "system": {
+        "elapsed_ms": 90021.5,
+        "status": 429,
+        "summary": {
+          "raw": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false,\"retry_after_seconds\":29,\"retry_after_seconds_raw\":28.555,\"headers\":{\"Retry-After\":\"29\"}}},\"user_id\":\"user_31A5N4unqkbSzpQJxGA0m4XGTmD\"}",
+          "id": null,
+          "model_returned": null,
+          "usage": {},
+          "usage_cost": null,
+          "usage_prompt": null,
+          "usage_completion": null,
+          "usage_total": null,
+          "usage_native": null,
+          "usage_cost_details": null,
+          "choices_count": 0,
+          "finish_reason": null,
+          "content_type": null,
+          "content_preview": null,
+          "content_text": null,
+          "tool_calls": null
+        }
+      },
+      "tool": {
+        "elapsed_ms": 90031.9,
+        "status": 429,
+        "summary": {
+          "raw": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Venice\",\"is_byok\":false,\"retry_after_seconds\":29,\"retry_after_seconds_raw\":28.605,\"headers\":{\"Retry-After\":\"29\"}}},\"user_id\":\"user_31A5N4unqkbSzpQJxGA0m4XGTmD\"}",
+          "id": null,
+          "model_returned": null,
+          "usage": {},
+          "usage_cost": null,
+          "usage_prompt": null,
+          "usage_completion": null,
+          "usage_total": null,
+          "usage_native": null,
+          "usage_cost_details": null,
+          "choices_count": 0,
+          "finish_reason": null,
+          "content_type": null,
+          "content_preview": null,
+          "content_text": null,
+          "tool_calls": null
+        }
+      }
+    }
+  }
+]

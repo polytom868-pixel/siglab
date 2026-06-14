@@ -1,0 +1,434 @@
+[
+  {
+    "model": "openai/gpt-oss-120b:free",
+    "is_configured": true,
+    "provider": "openrouter",
+    "probes": {
+      "complete_text_basic": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 3374.1,
+        "provider": "openrouter",
+        "result_type": "str",
+        "result_preview": "PONG",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-120b:free",
+          "thinking_mode": "default",
+          "tool_choice": "none",
+          "tool_count_available": 0,
+          "tool_rounds_used": 0,
+          "final_content_preview": "PONG",
+          "response_finish_reason": "stop",
+          "assistant_turns": [
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ]
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content"
+        ]
+      },
+      "complete_text_with_system": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 2424.0,
+        "provider": "openrouter",
+        "result_type": "str",
+        "result_preview": "Silver night lantern,  \ntides whisper her soft secret,  \ndreams drift on her glow.",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-120b:free",
+          "thinking_mode": "default",
+          "tool_choice": "none",
+          "tool_count_available": 0,
+          "tool_rounds_used": 0,
+          "final_content_preview": "Silver night lantern,  \ntides whisper her soft secret,  \ndreams drift on her glow.",
+          "response_finish_reason": "stop",
+          "assistant_turns": [
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ]
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content"
+        ]
+      },
+      "complete_text_with_tools": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 3690.1,
+        "provider": "openrouter",
+        "result_type": "str",
+        "result_preview": "The current temperature in Tokyo is **22 °C**.",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-120b:free",
+          "thinking_mode": "default",
+          "tool_choice": "auto",
+          "tool_count_available": 1,
+          "max_tool_rounds": 2,
+          "tool_rounds_used": 1,
+          "tool_calls": [
+            {
+              "id": "chatcmpl-tool-89ce96e1680e8881",
+              "name": "get_weather",
+              "arguments": "{\n  \"city\": \"Tokyo\"\n}",
+              "result": {
+                "ok": true,
+                "temp_c": 22.0,
+                "city": "Tokyo"
+              },
+              "latency_ms": 0.004
+            }
+          ],
+          "final_content_preview": "The current temperature in Tokyo is **22 °C**.",
+          "assistant_turns": [
+            {
+              "finish_reason": "tool_calls",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": true,
+              "tool_call_count": 1
+            },
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ],
+          "response_finish_reason": "stop"
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content"
+        ]
+      },
+      "complete_json_basic": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 4050.2,
+        "provider": "openrouter",
+        "result_type": "dict",
+        "result_preview": "{\"answer\": \"ping\"}",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-120b:free",
+          "thinking_mode": "default",
+          "tool_choice": "none",
+          "tool_count_available": 0,
+          "max_tool_rounds": 2,
+          "tool_rounds_used": 0,
+          "tool_calls": [],
+          "final_content_preview": "{\"answer\":\"ping\"}",
+          "assistant_turns": [
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ],
+          "response_finish_reason": "stop"
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content",
+          "parsed_output"
+        ]
+      }
+    },
+    "metrics_snapshot": {
+      "provider": "openrouter",
+      "model": "openai/gpt-oss-120b:free",
+      "p50_ms": 2423.6418420041446,
+      "p95_ms": 3914.6757491864264,
+      "retry_count": 0,
+      "rate_limit_count": 0,
+      "transport_failures": 0,
+      "success_rate": 1.0,
+      "usage": {
+        "prompt_tokens": 607,
+        "completion_tokens": 161,
+        "total_tokens": 768,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 384,
+        "cost_usd": null,
+        "cost_status": "unpriced_token_usage_only",
+        "pricing_source": null,
+        "model_pricing_source": "https://openrouter.ai/api/v1/models"
+      },
+      "context_pressure": {
+        "event_count": 0,
+        "latest": null
+      },
+      "credit_pressure": {
+        "event_count": 5,
+        "latest": {
+          "stage": "writer",
+          "model": "openai/gpt-oss-120b:free",
+          "estimated_input_tokens": 34,
+          "requested_output_tokens": 64,
+          "estimated_cost_usd": 0.0,
+          "max_call_usd": 0.0,
+          "pricing_source": "https://openrouter.ai/api/v1/models",
+          "usd_priced": true,
+          "severity": "ok"
+        }
+      },
+      "routing_policy": {
+        "unavailable": [],
+        "quota_blocked": [],
+        "latency_demoted": [],
+        "recent_errors": {}
+      }
+    }
+  },
+  {
+    "model": "openai/gpt-oss-20b:free",
+    "is_configured": true,
+    "provider": "openrouter",
+    "probes": {
+      "complete_text_basic": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 2068.7,
+        "provider": "openrouter",
+        "result_type": "str",
+        "result_preview": "PONG",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-20b:free",
+          "thinking_mode": "default",
+          "tool_choice": "none",
+          "tool_count_available": 0,
+          "tool_rounds_used": 0,
+          "final_content_preview": "PONG",
+          "response_finish_reason": "stop",
+          "assistant_turns": [
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ]
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content"
+        ]
+      },
+      "complete_text_with_system": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 1822.9,
+        "provider": "openrouter",
+        "result_type": "str",
+        "result_preview": "Silent silver orb,  \nWaves of night in quiet glow—  \nDreams drift, then return.",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-20b:free",
+          "thinking_mode": "default",
+          "tool_choice": "none",
+          "tool_count_available": 0,
+          "tool_rounds_used": 0,
+          "final_content_preview": "Silent silver orb,  \nWaves of night in quiet glow—  \nDreams drift, then return.",
+          "response_finish_reason": "stop",
+          "assistant_turns": [
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ]
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content"
+        ]
+      },
+      "complete_text_with_tools": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 2640.4,
+        "provider": "openrouter",
+        "result_type": "str",
+        "result_preview": "The current weather in Tokyo is **22 °C**.",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-20b:free",
+          "thinking_mode": "default",
+          "tool_choice": "auto",
+          "tool_count_available": 1,
+          "max_tool_rounds": 2,
+          "tool_rounds_used": 1,
+          "tool_calls": [
+            {
+              "id": "chatcmpl-tool-9de9d557de24bf0d",
+              "name": "get_weather",
+              "arguments": "{\"city\":\"Tokyo\"}",
+              "result": {
+                "ok": true,
+                "temp_c": 22.0,
+                "city": "Tokyo"
+              },
+              "latency_ms": 0.004
+            }
+          ],
+          "final_content_preview": "The current weather in Tokyo is **22 °C**.",
+          "assistant_turns": [
+            {
+              "finish_reason": "tool_calls",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": true,
+              "tool_call_count": 1
+            },
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ],
+          "response_finish_reason": "stop"
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content"
+        ]
+      },
+      "complete_json_basic": {
+        "ok": true,
+        "exception_class": null,
+        "exception_message": null,
+        "elapsed_ms": 1693.3,
+        "provider": "openrouter",
+        "result_type": "dict",
+        "result_preview": "{\"answer\": \"ping\"}",
+        "last_trace": {
+          "provider": "openrouter",
+          "model": "openai/gpt-oss-20b:free",
+          "thinking_mode": "default",
+          "tool_choice": "none",
+          "tool_count_available": 0,
+          "max_tool_rounds": 2,
+          "tool_rounds_used": 0,
+          "tool_calls": [],
+          "final_content_preview": "{\"answer\":\"ping\"}",
+          "assistant_turns": [
+            {
+              "finish_reason": "stop",
+              "has_reasoning_content": false,
+              "reasoning_content_preview": null,
+              "has_tool_calls": false,
+              "tool_call_count": 0
+            }
+          ],
+          "response_finish_reason": "stop"
+        },
+        "last_exchange_keys": [
+          "system_prompt",
+          "user_prompt",
+          "tool_names",
+          "assistant_messages",
+          "final_content",
+          "parsed_output"
+        ]
+      }
+    },
+    "metrics_snapshot": {
+      "provider": "openrouter",
+      "model": "openai/gpt-oss-20b:free",
+      "p50_ms": 1693.0290090094786,
+      "p95_ms": 2019.32591421064,
+      "retry_count": 0,
+      "rate_limit_count": 0,
+      "transport_failures": 0,
+      "success_rate": 1.0,
+      "usage": {
+        "prompt_tokens": 603,
+        "completion_tokens": 151,
+        "total_tokens": 754,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 384,
+        "cost_usd": null,
+        "cost_status": "unpriced_token_usage_only",
+        "pricing_source": null,
+        "model_pricing_source": "https://openrouter.ai/api/v1/models"
+      },
+      "context_pressure": {
+        "event_count": 0,
+        "latest": null
+      },
+      "credit_pressure": {
+        "event_count": 5,
+        "latest": {
+          "stage": "writer",
+          "model": "openai/gpt-oss-20b:free",
+          "estimated_input_tokens": 34,
+          "requested_output_tokens": 64,
+          "estimated_cost_usd": 0.0,
+          "max_call_usd": 0.0,
+          "pricing_source": "https://openrouter.ai/api/v1/models",
+          "usd_priced": true,
+          "severity": "ok"
+        }
+      },
+      "routing_policy": {
+        "unavailable": [],
+        "quota_blocked": [],
+        "latency_demoted": [],
+        "recent_errors": {}
+      }
+    }
+  }
+]

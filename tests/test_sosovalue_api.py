@@ -17,6 +17,7 @@ from siglab.data.sosovalue_client import (
 )
 from siglab.data.feeds import MarketDataProvider
 from siglab.data.sosovalue_capabilities import capability_matrix
+from tests._factories import make_sosovalue_envelope
 
 
 class _FakeResponse:
@@ -156,7 +157,7 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_client_parses_listed_currencies(self) -> None:
         http_client = SimpleNamespace(
             request=AsyncMock(
-                return_value=_FakeResponse({"code": 0, "data": [{"id": "1", "fullName": "Bitcoin", "name": "btc"}]})
+                return_value=_FakeResponse(make_sosovalue_envelope(rows=[{"id": "1", "fullName": "Bitcoin", "name": "btc"}]))
             )
         )
         client = SoSoValueClient(api_key="test-key", client=http_client)
@@ -428,7 +429,7 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_currency_market_snapshot_rejects_non_object_data(self) -> None:
         http_client = SimpleNamespace(
-            request=AsyncMock(return_value=_FakeResponse({"code": 0, "data": []}))
+            request=AsyncMock(return_value=_FakeResponse(make_sosovalue_envelope()))
         )
         client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)
 
@@ -439,9 +440,8 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
         http_client = SimpleNamespace(
             request=AsyncMock(
                 return_value=_FakeResponse(
-                    {
-                        "code": 0,
-                        "data": [
+                    make_sosovalue_envelope(
+                        rows=[
                             {
                                 "timestamp": 1710000000000,
                                 "open": 123,
@@ -450,8 +450,8 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
                                 "close": 125,
                                 "volume": 100000,
                             }
-                        ],
-                    }
+                        ]
+                    )
                 )
             )
         )
@@ -477,12 +477,9 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
         http_client = SimpleNamespace(
             request=AsyncMock(
                 return_value=_FakeResponse(
-                    {
-                        "code": 0,
-                        "data": [
-                            {"ticker": "IBIT", "name": "iShares Bitcoin Trust", "exchange": "NYSE"}
-                        ],
-                    }
+                    make_sosovalue_envelope(
+                        rows=[{"ticker": "IBIT", "name": "iShares Bitcoin Trust", "exchange": "NYSE"}]
+                    )
                 )
             )
         )
@@ -502,9 +499,8 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
         http_client = SimpleNamespace(
             request=AsyncMock(
                 return_value=_FakeResponse(
-                    {
-                        "code": 0,
-                        "data": [
+                    make_sosovalue_envelope(
+                        rows=[
                             {
                                 "date": "2024-04-12",
                                 "total_net_inflow": -55066297.0,
@@ -512,8 +508,8 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
                                 "total_net_assets": 56216535367.0,
                                 "cum_net_inflow": 13534833596.095,
                             }
-                        ],
-                    }
+                        ]
+                    )
                 )
             )
         )
@@ -530,7 +526,7 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_etf_summary_history_validates_required_fields(self) -> None:
         http_client = SimpleNamespace(
             request=AsyncMock(
-                return_value=_FakeResponse({"code": 0, "data": [{"date": "2024-04-12"}]})
+                return_value=_FakeResponse(make_sosovalue_envelope(rows=[{"date": "2024-04-12"}]))
             )
         )
         client = SoSoValueClient(api_key="test-key", client=http_client, retries=0)

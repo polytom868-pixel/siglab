@@ -1,0 +1,168 @@
+{
+  "model": "openai/gpt-oss-120b:free",
+  "calls": {
+    "basic": {
+      "elapsed_ms": 2398.9,
+      "status": 200,
+      "summary": {
+        "raw": "\n         \n\n         \n\n         \n\n         \n{\"id\":\"gen-1781451394-7SYVHo2Sv30z3Ke2uwT5\",\"object\":\"chat.completion\",\"created\":1781451394,\"model\":\"openai/gpt-oss-120b:free\",\"provider\":\"OpenInference\",\"system_fingerprint\":null,\"service_tier\":null,\"choices\":[{\"index\":0,\"logprobs\":null,\"finish_reason\":\"stop\",\"native_finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"PONG\",\"refusal\":null,\"reasoning\":\"The user wants exactly \\\"PONG\\\". No extra characters.\",\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"The user wants exactly \\\"PONG\\\". No extra characters.\",\"format\":\"unknown\",\"index\":0}]}}],\"usage\":{\"prompt_tokens\":78,\"completion_tokens\":24,\"total_tokens\":102,\"cost\":0,\"is_byok\":false,\"prompt_tokens_details\":{\"cached_tokens\":64,\"cache_write_tokens\":0,\"audio_tokens\":0,\"video_tokens\":0},\"cost_details\":{\"upstream_inference_cost\":0,\"upstream_inference_prompt_cost\":0,\"upstream_inference_completions_cost\":0},\"completion_tokens_details\":{\"reasoning_tokens\":13,\"image_tokens\":0,\"audio_tokens\":0}}}",
+        "id": "gen-1781451394-7SYVHo2Sv30z3Ke2uwT5",
+        "model_returned": "openai/gpt-oss-120b:free",
+        "usage": {
+          "prompt_tokens": 78,
+          "completion_tokens": 24,
+          "total_tokens": 102,
+          "cost": 0,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 64,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0,
+            "upstream_inference_prompt_cost": 0,
+            "upstream_inference_completions_cost": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 13,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        },
+        "usage_cost": 0,
+        "usage_prompt": 78,
+        "usage_completion": 24,
+        "usage_total": 102,
+        "usage_native": null,
+        "usage_cost_details": {
+          "upstream_inference_cost": 0,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        },
+        "choices_count": 1,
+        "finish_reason": "stop",
+        "content_type": "str",
+        "content_text": "PONG",
+        "content_preview": "PONG",
+        "tool_calls": [],
+        "tool_call_count": 0,
+        "reasoning_field_present": true,
+        "reasoning_field_preview": "The user wants exactly \"PONG\". No extra characters."
+      }
+    },
+    "system": {
+      "elapsed_ms": 5002.0,
+      "status": 200,
+      "summary": {
+        "raw": "\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n{\"id\":\"gen-1781451396-GH1xQEKaudmuZgKEYfRE\",\"object\":\"chat.completion\",\"created\":1781451396,\"model\":\"openai/gpt-oss-120b:free\",\"provider\":\"OpenInference\",\"system_fingerprint\":null,\"service_tier\":null,\"choices\":[{\"index\":0,\"logprobs\":null,\"finish_reason\":\"stop\",\"native_finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"Silver orb ascends,  \\ntides whisper her soft secret,  \\nnight's lone lullaby.\",\"refusal\":null,\"reasoning\":\"Need haiku about moon.\",\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"Need haiku about moon.\",\"format\":\"unknown\",\"index\":0}]}}],\"usage\":{\"prompt_tokens\":97,\"completion_tokens\":36,\"total_tokens\":133,\"cost\":0,\"is_byok\":false,\"prompt_tokens_details\":{\"cached_tokens\":64,\"cache_write_tokens\":0,\"audio_tokens\":0,\"video_tokens\":0},\"cost_details\":{\"upstream_inference_cost\":0,\"upstream_inference_prompt_cost\":0,\"upstream_inference_completions_cost\":0},\"completion_tokens_details\":{\"reasoning_tokens\":6,\"image_tokens\":0,\"audio_tokens\":0}}}",
+        "id": "gen-1781451396-GH1xQEKaudmuZgKEYfRE",
+        "model_returned": "openai/gpt-oss-120b:free",
+        "usage": {
+          "prompt_tokens": 97,
+          "completion_tokens": 36,
+          "total_tokens": 133,
+          "cost": 0,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 64,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0,
+            "upstream_inference_prompt_cost": 0,
+            "upstream_inference_completions_cost": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 6,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        },
+        "usage_cost": 0,
+        "usage_prompt": 97,
+        "usage_completion": 36,
+        "usage_total": 133,
+        "usage_native": null,
+        "usage_cost_details": {
+          "upstream_inference_cost": 0,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        },
+        "choices_count": 1,
+        "finish_reason": "stop",
+        "content_type": "str",
+        "content_text": "Silver orb ascends,  \ntides whisper her soft secret,  \nnight's lone lullaby.",
+        "content_preview": "Silver orb ascends,  \ntides whisper her soft secret,  \nnight's lone lullaby.",
+        "tool_calls": [],
+        "tool_call_count": 0,
+        "reasoning_field_present": true,
+        "reasoning_field_preview": "Need haiku about moon."
+      }
+    },
+    "tool": {
+      "elapsed_ms": 3119.1,
+      "status": 200,
+      "summary": {
+        "raw": "\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n{\"id\":\"gen-1781451401-vWcOye2Yi5jgICxbKnGI\",\"object\":\"chat.completion\",\"created\":1781451401,\"model\":\"openai/gpt-oss-120b:free\",\"provider\":\"OpenInference\",\"system_fingerprint\":null,\"service_tier\":null,\"choices\":[{\"index\":0,\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"native_finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":null,\"refusal\":null,\"reasoning\":\"We need to call function.\",\"tool_calls\":[{\"type\":\"function\",\"index\":0,\"id\":\"chatcmpl-tool-a3a1a70810364102\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\n  \\\"city\\\": \\\"Tokyo\\\"\\n}\"}}],\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"We need to call function.\",\"format\":\"unknown\",\"index\":0}]}}],\"usage\":{\"prompt_tokens\":130,\"completion_tokens\":34,\"total_tokens\":164,\"cost\":0,\"is_byok\":false,\"prompt_tokens_details\":{\"cached_tokens\":64,\"cache_write_tokens\":0,\"audio_tokens\":0,\"video_tokens\":0},\"cost_details\":{\"upstream_inference_cost\":0,\"upstream_inference_prompt_cost\":0,\"upstream_inference_completions_cost\":0},\"completion_tokens_details\":{\"reasoning_tokens\":7,\"image_tokens\":0,\"audio_tokens\":0}}}",
+        "id": "gen-1781451401-vWcOye2Yi5jgICxbKnGI",
+        "model_returned": "openai/gpt-oss-120b:free",
+        "usage": {
+          "prompt_tokens": 130,
+          "completion_tokens": 34,
+          "total_tokens": 164,
+          "cost": 0,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 64,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0,
+            "upstream_inference_prompt_cost": 0,
+            "upstream_inference_completions_cost": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 7,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        },
+        "usage_cost": 0,
+        "usage_prompt": 130,
+        "usage_completion": 34,
+        "usage_total": 164,
+        "usage_native": null,
+        "usage_cost_details": {
+          "upstream_inference_cost": 0,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        },
+        "choices_count": 1,
+        "finish_reason": "tool_calls",
+        "content_type": "None",
+        "content_text": null,
+        "content_preview": null,
+        "tool_calls": [
+          {
+            "id": "chatcmpl-tool-a3a1a70810364102",
+            "type": "function",
+            "function_name": "get_weather",
+            "function_arguments": "{\n  \"city\": \"Tokyo\"\n}",
+            "function_arguments_parsed": {
+              "city": "Tokyo"
+            }
+          }
+        ],
+        "tool_call_count": 1,
+        "reasoning_field_present": true,
+        "reasoning_field_preview": "We need to call function."
+      }
+    }
+  }
+}

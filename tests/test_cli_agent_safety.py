@@ -38,9 +38,9 @@ from siglab.cli import (
     profile_command,
     run_command,
 )
-from siglab.config import SiglabConfig
 from siglab.schemas import SignalSpec
 from siglab.search.lineage import LineageStore
+from tests._factories import make_minimal_settings
 
 
 class CliAgentSafetyTests(unittest.TestCase):
@@ -566,23 +566,10 @@ class CliAgentSafetyTests(unittest.TestCase):
             self.assertEqual(info["next_iteration"], 4)
 
     def test_require_sosovalue_config_points_to_example_config(self) -> None:
-        settings = SiglabConfig(
-            root_dir=Path("/tmp"),
+        settings = make_minimal_settings(
             sosovalue_config_path=Path("/tmp/missing-config.json"),
-            generated_strategy_dir=Path("/tmp/deployed_agents"),
             data_lake_dir=Path("/tmp/lake"),
             artifact_dir=Path("/tmp/runs"),
-            live_dir=Path("/tmp/live"),
-            ancestry_db_path=Path("/tmp/siglab_test.db"),
-            sosovalue_api_key_override=None,
-            claude_api_key=None,
-            claude_model="claude-k2.5",
-            claude_base_url="https://api.moonshot.ai/v1",
-            claude_max_tokens=1024,
-            claude_temperature=1.0,
-            claude_top_p=0.95,
-            claude_timeout_s=30.0,
-            population_size=1,
         )
 
         with self.assertRaises(SystemExit) as ctx, self._capture_stderr() as err:
