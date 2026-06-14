@@ -67,3 +67,30 @@ def feature_hash(features: list[str], length: int = 16) -> str:
 def short_hash(payload: str, length: int = 16) -> str:
     """Truncated SHA-256 hex digest."""
     return h(payload.encode("utf-8")).hexdigest()[:length]
+
+
+async def _get_url(url, **kw) -> dict:
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, **kw) as resp:
+            return await resp.json()
+
+
+async def _post_url(url, payload, **kw) -> dict:
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, **kw) as resp:
+            return await resp.json()
+
+
+async def run_with_backoff(coro_factory, *, max_retries=3, backoff_s=1.0) -> Any:
+    import asyncio
+    attempt = 0
+    while True:
+        try:
+            return await coro_factory()
+        except Exception:
+            attempt += 1
+            if attempt >= max_retries:
+                raise
+            await asyncio.sleep(backoff_s * (2 ** (attempt - 1)))

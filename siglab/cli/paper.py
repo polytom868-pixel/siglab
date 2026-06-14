@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 
 from siglab.cli.rich_utils import print_error, print_json
 from siglab.config import load_settings
@@ -67,13 +68,15 @@ async def run_paper_status(args: argparse.Namespace) -> None:
             settings = load_settings()
             lake = ParquetLake(settings.root_dir / "data" / "cache")
             feeds = SoDEXFeeds(lake=lake)
-            for sym in open_symbols:
-                try:
-                    klines = await feeds.fetch_klines(sym, "1m", limit=5)
-                    if not klines.empty:
+            results = await asyncio.gather(*(feeds.fetch_klines(sym, "1m", limit=5) for sym in open_symbols), return_exceptions=True)
+            for klines in results:
+                if isinstance(klines, BaseException):
+                    continue
+                if not klines.empty:
+                    try:
                         await client.process_klines(args.session, klines)
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
         except Exception:
             pass
 

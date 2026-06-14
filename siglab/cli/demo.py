@@ -279,6 +279,7 @@ def _build_demo_manifest(settings: Any) -> dict[str, Any]:
         "sodex_live_write_allowed": bool(preflight.get("live_write_allowed")),
         "provider_metrics_present": bool(provider_metric_paths),
         "telemetry_provider_metrics_status": telemetry.get("provider_metrics_status"),
+        "llm_cost_status": dict(telemetry.get("provider_metrics") or {}).get("usage", {}).get("cost_status"),
         "causality_claimed": False,
         "usd_cost_claimed": False,
     }

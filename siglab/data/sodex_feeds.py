@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
+import httpx
 
 from siglab.data.store import ParquetLake
 from siglab.data.sodex_client import (
@@ -139,11 +140,15 @@ class SoDEXFeeds:
         weight_scheduler: SoDEXWeightScheduler | None = None,
     ) -> None:
         self.lake = lake
+        self._http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=8, max_keepalive_connections=4)
+        )
         self._client = SoDEXPublicPerpsClient(
             base_url=base_url,
             timeout_s=timeout_s,
             retries=retries,
             weight_scheduler=weight_scheduler,
+            client=self._http_client,
         )
         self._klines_cache_ttl_hours = klines_cache_ttl_hours
         self._symbols_cache_ttl_hours = symbols_cache_ttl_hours
@@ -155,7 +160,7 @@ class SoDEXFeeds:
 
     async def close(self) -> None:
         """Release the underlying HTTP client resources."""
-        await self._client.close()
+        await self._http_client.aclose()
 
     # ------------------------------------------------------------------
     # Klines

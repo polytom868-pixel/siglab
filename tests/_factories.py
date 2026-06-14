@@ -75,3 +75,6 @@ class FakeClaude:
 
 def make_sosovalue_envelope(rows: list[dict] | None = None) -> dict:
     return {"code": 0, "message": "success", "data": rows or []}
+
+def make_soxdex_envelope(rows: list[dict] | None = None) -> dict:
+    return {"data": rows or []}

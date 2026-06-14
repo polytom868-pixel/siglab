@@ -468,11 +468,8 @@ class ClaudeClient:
                 remaining_rounds -= 1
                 trace["tool_rounds_used"] = int(trace["tool_rounds_used"]) + 1
                 messages.append(self._assistant_tool_call_message(message))
-                for tool_call in tool_calls:
-                    tool_message, trace_entry = await self._execute_tool_call(
-                        tool_call=tool_call,
-                        tool_map=tool_map,
-                    )
+                results = await asyncio.gather(*(self._execute_tool_call(tool_call=tc, tool_map=tool_map) for tc in tool_calls))
+                for tool_message, trace_entry in results:
                     trace["tool_calls"].append(trace_entry)
                     messages.append(tool_message)
                 continue

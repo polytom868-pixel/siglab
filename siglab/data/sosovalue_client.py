@@ -325,13 +325,18 @@ class SoSoValueClient:
         page_size: int = 10,
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for page_num in range(1, max(1, int(max_pages)) + 1):
-            page_rows = await self.featured_news(
-                page_num=page_num,
-                page_size=page_size,
-                category_list=category_list,
+        pages = await asyncio.gather(
+            *(
+                self.featured_news(
+                    page_num=page_num,
+                    page_size=page_size,
+                    category_list=category_list,
+                )
+                for page_num in range(1, max(1, int(max_pages)) + 1)
             )
+        )
+        rows: list[dict[str, Any]] = []
+        for page_rows in pages:
             if not page_rows:
                 break
             rows.extend(page_rows)
@@ -373,14 +378,19 @@ class SoSoValueClient:
         currency_id: int | None = None,
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for page_num in range(1, max(1, int(max_pages)) + 1):
-            page_rows = await self.featured_news_by_currency(
-                page_num=page_num,
-                page_size=page_size,
-                currency_id=currency_id,
-                category_list=category_list,
+        pages = await asyncio.gather(
+            *(
+                self.featured_news_by_currency(
+                    page_num=page_num,
+                    page_size=page_size,
+                    currency_id=currency_id,
+                    category_list=category_list,
+                )
+                for page_num in range(1, max(1, int(max_pages)) + 1)
             )
+        )
+        rows: list[dict[str, Any]] = []
+        for page_rows in pages:
             if not page_rows:
                 break
             rows.extend(page_rows)

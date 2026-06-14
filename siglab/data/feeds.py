@@ -461,13 +461,32 @@ class MarketDataProvider:
                     max_days_to_expiry=180,
                 )
 
-            stable_markets = await self.discover_stable_pt_markets(
-                stable_universe,
-                limit=min(stable_universe.max_symbols, 5),
-            )
-            rotation_markets = await self.discover_pt_markets(
-                rotation_universe,
-                limit=min(rotation_universe.max_symbols, 5),
+            lending_universe = parent.universe
+            if parent.family != "lending_carry_rotation":
+                lending_universe = AssetUniverse(
+                    basis_groups=["ETH", "BTC", "SOL"],
+                    chains=["arbitrum", "base", "unichain"],
+                    max_symbols=5,
+                    lookback_days=90,
+                    interval="1h",
+                    min_liquidity_usd=250_000.0,
+                    min_volume_usd_24h=25_000.0,
+                    min_days_to_expiry=7,
+                    max_days_to_expiry=180,
+                )
+            stable_markets, rotation_markets, lending_markets = await asyncio.gather(
+                self.discover_stable_pt_markets(
+                    stable_universe,
+                    limit=min(stable_universe.max_symbols, 5),
+                ),
+                self.discover_pt_markets(
+                    rotation_universe,
+                    limit=min(rotation_universe.max_symbols, 5),
+                ),
+                self.discover_lending_markets(
+                    lending_universe,
+                    limit=min(parent.universe.max_symbols, 5),
+                ),
             )
             summary["stable_pt_markets"] = [
                 {
@@ -490,23 +509,6 @@ class MarketDataProvider:
                 }
                 for market in rotation_markets[:5]
             ]
-            lending_universe = parent.universe
-            if parent.family != "lending_carry_rotation":
-                lending_universe = AssetUniverse(
-                    basis_groups=["ETH", "BTC", "SOL"],
-                    chains=["arbitrum", "base", "unichain"],
-                    max_symbols=5,
-                    lookback_days=90,
-                    interval="1h",
-                    min_liquidity_usd=250_000.0,
-                    min_volume_usd_24h=25_000.0,
-                    min_days_to_expiry=7,
-                    max_days_to_expiry=180,
-                )
-            lending_markets = await self.discover_lending_markets(
-                lending_universe,
-                limit=min(parent.universe.max_symbols, 5),
-            )
             summary["lending_markets"] = [
                 {
                     "market": market["marketLabel"],
