@@ -25,7 +25,7 @@ from textual.reactive import reactive
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
-from siglab.tui.cli_bridge import parse_rows_from_json, run_cli
+from siglab.tui.cli_bridge import MAX_COMPARE, parse_rows_from_json, run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
     BORDER_DIM,
@@ -55,7 +55,6 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
 
-MAX_COMPARE = 4
 
 # Date range filter presets
 DATE_RANGE_FILTERS: list[str] = ["ALL", "7d", "30d", "TODAY"]

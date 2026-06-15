@@ -23,6 +23,8 @@ def parse_rows_from_json(stdout: str) -> list[dict[str, Any]]:
     rows = data.get("rows", data.get("experiments", []))
     return [r for r in cast(list[dict[str, Any]], rows) if isinstance(r, dict)]
 
+MAX_COMPARE: int = 4
+
 class CliResult(NamedTuple):
     """Result of a CLI command execution.
 
