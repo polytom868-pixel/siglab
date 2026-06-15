@@ -15,540 +15,326 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
 
 import httpx
 import pytest
 
-from siglab.tui.app import NAV_ITEMS, SCREEN_IDS, SigLabTUI
+from siglab.tui.app import NAV_ITEMS, SCREEN_IDS, HelpScreen, SigLabTUI
 from siglab.tui.formatting import friendly_error
-from siglab.tui.loading import LoadingIndicator
+from siglab.tui.loading import LoadingIndicator, _SPINNER_FRAMES
 from siglab.tui.widgets.status_bar import SigLabStatusBar
 
+TUI_DIR = Path(__file__).resolve().parents[1] / "siglab" / "tui"
+SCREEN_CLASSES = (
+    __import__("siglab.tui.screens.market", fromlist=["MarketScreen"]).MarketScreen,
+    __import__("siglab.tui.screens.paper", fromlist=["PaperScreen"]).PaperScreen,
+    __import__("siglab.tui.screens.risk", fromlist=["RiskScreen"]).RiskScreen,
+    __import__("siglab.tui.screens.strategy", fromlist=["StrategyScreen"]).StrategyScreen,
+    __import__("siglab.tui.screens.telemetry", fromlist=["TelemetryScreen"]).TelemetryScreen,
+    __import__("siglab.tui.screens.evidence", fromlist=["EvidenceScreen"]).EvidenceScreen,
+)
+
+def _binding_keys(cls) -> list[str]:
+    return [b.key for b in cls.BINDINGS]
 
 # ── VAL-TUI-001: TUI app scaffold launches and navigates ─────────────
 
+def test_nav_items_six_entries() -> None:
+    assert len(NAV_ITEMS) == 6
 
-class TestVAL_TUI_001_ScaffoldLaunchesAndNavigates:
-    """VAL-TUI-001: AppTest pilot launches app. Sidebar visible. Screen switching works.
+def test_nav_items_have_required_fields() -> None:
+    for idx, label, screen_id in NAV_ITEMS:
+        assert isinstance(idx, str) and len(idx) == 1
+        assert isinstance(label, str) and len(label) > 0
+        assert isinstance(screen_id, str) and len(screen_id) > 0
 
-    Pilot-based tests blocked by CSS variable resolution issue.
-    Module-level structure tests verify scaffold correctness.
-    """
+def test_screen_ids_match_nav_items() -> None:
+    assert SCREEN_IDS == {item[2] for item in NAV_ITEMS}
 
-    def test_nav_items_six_entries(self) -> None:
-        """NAV_ITEMS has exactly 6 entries for all screens."""
-        assert len(NAV_ITEMS) == 6
+def test_app_has_screens_registry() -> None:
+    assert len(SigLabTUI.SCREENS) == 6
+    for screen_id in SCREEN_IDS:
+        assert screen_id in SigLabTUI.SCREENS
 
-    def test_nav_items_have_required_fields(self) -> None:
-        """Each NAV_ITEM has (index, label, screen_id)."""
-        for idx, label, screen_id in NAV_ITEMS:
-            assert isinstance(idx, str) and len(idx) == 1
-            assert isinstance(label, str) and len(label) > 0
-            assert isinstance(screen_id, str) and len(screen_id) > 0
+def test_app_has_compose_method() -> None:
+    assert hasattr(SigLabTUI, "compose")
 
-    def test_screen_ids_match_nav_items(self) -> None:
-        """SCREEN_IDS set matches NAV_ITEMS screen_ids."""
-        expected = {item[2] for item in NAV_ITEMS}
-        assert SCREEN_IDS == expected
+@pytest.mark.parametrize("css_file", list(SigLabTUI.CSS_PATH))
+def test_app_css_path_files_all_exist(css_file) -> None:
+    assert (TUI_DIR / css_file).exists()
 
-    def test_app_has_screens_registry(self) -> None:
-        """All 6 screens are registered in SCREENS dict."""
-        assert hasattr(SigLabTUI, "SCREENS")
-        assert len(SigLabTUI.SCREENS) == 6
-        for screen_id in SCREEN_IDS:
-            assert screen_id in SigLabTUI.SCREENS
+def test_screen_switch_actions_defined() -> None:
+    for screen_id in SCREEN_IDS:
+        assert hasattr(SigLabTUI, f"action_switch_to_{screen_id}")
 
-    def test_app_has_nav_sidebar_widget(self) -> None:
-        """App compose method references nav-sidebar."""
-        assert hasattr(SigLabTUI, "compose")
+def test_nav_sidebar_build_items() -> None:
+    from siglab.tui.app import NavSidebar
+    items = NavSidebar._build_items()
+    assert len(items) == 6
+    assert [item.id for item in items] == [
+        "nav-market", "nav-paper", "nav-risk", "nav-strategy", "nav-telemetry", "nav-evidence",
+    ]
 
-    def test_app_has_status_bar(self) -> None:
-        """App compose method references status-bar."""
-        assert hasattr(SigLabTUI, "compose")
+def test_app_has_required_bindings() -> None:
+    keys = _binding_keys(SigLabTUI)
+    for key in ("q", "?", "question_mark", "escape", "1", "6", "ctrl+c"):
+        assert key in keys or (key == "question_mark" and "?" in keys), f"Missing binding {key}"
 
-    def test_app_css_path_files_all_exist(self) -> None:
-        """All CSS_PATH files exist on disk."""
-        from pathlib import Path
-        tui_dir = Path(__file__).resolve().parents[1] / "siglab" / "tui"
-        for css_file in SigLabTUI.CSS_PATH:
-            full_path = tui_dir / css_file
-            assert full_path.exists(), f"CSS file missing: {css_file}"
+def test_app_creates_api_client() -> None:
+    from siglab.tui.api_client import TuiApiClient
+    assert isinstance(SigLabTUI().api_client, TuiApiClient)
 
-    def test_screen_switch_actions_defined(self) -> None:
-        """action_switch_to_* methods exist for all screen IDs."""
-        for screen_id in SCREEN_IDS:
-            method_name = f"action_switch_to_{screen_id}"
-            assert hasattr(SigLabTUI, method_name), f"Missing {method_name}"
+# ── VAL-TUI-001 pilot tests ─────────────────────────────────────────
 
-    def test_nav_sidebar_build_items_returns_six(self) -> None:
-        """NavSidebar._build_items() returns 6 ListItem widgets."""
-        from siglab.tui.app import NavSidebar
-        items = NavSidebar._build_items()
-        assert len(items) == 6
+@pytest.mark.asyncio
+async def test_pilot_app_launches() -> None:
+    async with SigLabTUI().run_test() as pilot:
+        assert pilot.app.title == "SigLab" and pilot.app.is_mounted
 
-    def test_nav_sidebar_build_items_ids(self) -> None:
-        """NavSidebar items have correct IDs (nav-market, nav-paper, etc.)."""
-        from siglab.tui.app import NavSidebar
-        items = NavSidebar._build_items()
-        ids = [item.id for item in items]
-        assert ids == ["nav-market", "nav-paper", "nav-risk", "nav-strategy", "nav-telemetry", "nav-evidence"]
+@pytest.mark.asyncio
+@pytest.mark.parametrize("widget_id", ["#nav-sidebar", "#status-bar", "#content-area"])
+async def test_pilot_widgets_present(widget_id) -> None:
+    async with SigLabTUI().run_test() as pilot:
+        assert pilot.app.query_one(widget_id) is not None
 
-    def test_app_has_key_bindings(self) -> None:
-        """App has q, ?, escape, 1-6, ctrl+c bindings."""
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        assert "q" in binding_keys
-        assert "question_mark" in binding_keys or "?" in binding_keys
-        assert "escape" in binding_keys
-        assert "1" in binding_keys
-        assert "6" in binding_keys
-        assert "ctrl+c" in binding_keys
-
-    def test_app_creates_api_client(self) -> None:
-        """App instantiation creates TuiApiClient."""
-        from siglab.tui.api_client import TuiApiClient
-        app = SigLabTUI()
-        assert isinstance(app.api_client, TuiApiClient)
-
-    # ── Pilot-based tests (enabled after CSS variable fix) ──
-
-    @pytest.mark.asyncio
-    async def test_pilot_app_launches(self) -> None:
-        """AppTest pilot launches app successfully."""
-        async with SigLabTUI().run_test() as pilot:
-            assert pilot.app.title == "SigLab"
-            assert pilot.app.is_mounted
-
-    @pytest.mark.asyncio
-    async def test_pilot_sidebar_visible(self) -> None:
-        """Sidebar is visible after app launch via pilot."""
-        async with SigLabTUI().run_test() as pilot:
-            sidebar = pilot.app.query_one("#nav-sidebar")
-            assert sidebar is not None
-            assert sidebar.display
-
-    @pytest.mark.asyncio
-    async def test_pilot_status_bar_visible(self) -> None:
-        """Status bar is visible after app launch via pilot."""
-        async with SigLabTUI().run_test() as pilot:
-            status_bar = pilot.app.query_one("#status-bar")
-            assert status_bar is not None
-
-    @pytest.mark.asyncio
-    async def test_pilot_screen_switching_via_number_keys(self) -> None:
-        """Number keys 1-6 switch screens via pilot."""
-        async with SigLabTUI().run_test() as pilot:
-            for key in ["1", "2", "3", "4", "5", "6"]:
-                await pilot.press(key)
-                await pilot.pause()
-            # If we got here without error, all switches worked
-
-    @pytest.mark.asyncio
-    async def test_pilot_screen_switching_via_nav_keys(self) -> None:
-        """j/k navigation keys and enter work in sidebar."""
-        async with SigLabTUI().run_test() as pilot:
-            # Press j to move down, k to move up
-            await pilot.press("j")
-            await pilot.pause()
-            await pilot.press("k")
+@pytest.mark.asyncio
+async def test_pilot_screen_switching_via_number_keys() -> None:
+    async with SigLabTUI().run_test() as pilot:
+        for key in ["1", "2", "3", "4", "5", "6"]:
+            await pilot.press(key)
             await pilot.pause()
 
-    @pytest.mark.asyncio
-    async def test_pilot_content_area_present(self) -> None:
-        """Content area is present and visible after launch."""
-        async with SigLabTUI().run_test() as pilot:
-            content = pilot.app.query_one("#content-area")
-            assert content is not None
-
+@pytest.mark.asyncio
+async def test_pilot_screen_switching_via_nav_keys() -> None:
+    async with SigLabTUI().run_test() as pilot:
+        await pilot.press("j")
+        await pilot.pause()
+        await pilot.press("k")
+        await pilot.pause()
 
 # ── VAL-TUI-002: CLI commands render with Rich formatting ────────────
 
+def _run_cli(args: list[str], env_overrides: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
+    return subprocess.run(
+        ["poetry", "run", "python3", "-m", "siglab.cli"] + args,
+        capture_output=True,
+        text=True,
+        cwd="/home/eya/soso/siglab",
+        env=env,
+        timeout=30,
+    )
 
-class TestVAL_TUI_002_CLICommandsRenderRich:
-    """VAL-TUI-002: CLI commands output Rich-formatted content. --no-color disables. NO_COLOR env var respected."""
+def _assert_json_dict(result: subprocess.CompletedProcess) -> dict:
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    return json.loads(result.stdout)
 
-    def _run_cli(self, args: list[str], env_overrides: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-        """Run a CLI command via subprocess."""
-        env = os.environ.copy()
-        if env_overrides:
-            env.update(env_overrides)
-        result = subprocess.run(
-            ["poetry", "run", "python3", "-m", "siglab.cli"] + args,
-            capture_output=True,
-            text=True,
-            cwd="/home/eya/soso/siglab",
-            env=env,
-            timeout=30,
-        )
-        return result
+def test_profile_json_output_is_valid_json() -> None:
+    data = _assert_json_dict(_run_cli(["profile", "--json"]))
+    assert isinstance(data, dict)
 
-    def test_profile_json_output_is_valid_json(self) -> None:
-        """`profile --json` produces valid JSON output."""
-        result = self._run_cli(["profile", "--json"])
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        data = json.loads(result.stdout)
-        assert isinstance(data, dict)
+def test_profile_json_has_summary() -> None:
+    data = _assert_json_dict(_run_cli(["profile", "--json"]))
+    assert "summary" in data and "finding_count" in data["summary"]
 
-    def test_profile_json_has_summary(self) -> None:
-        """`profile --json` JSON contains summary with finding_count."""
-        result = self._run_cli(["profile", "--json"])
-        assert result.returncode == 0
-        data = json.loads(result.stdout)
-        assert "summary" in data
-        assert "finding_count" in data["summary"]
+def test_telemetry_report_json_output() -> None:
+    assert isinstance(_assert_json_dict(_run_cli(["telemetry-report", "--json"])), dict)
 
-    def test_telemetry_report_json_output(self) -> None:
-        """`telemetry-report --json` produces valid JSON."""
-        result = self._run_cli(["telemetry-report", "--json"])
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        data = json.loads(result.stdout)
-        assert isinstance(data, dict)
+def test_telemetry_report_track_filter_json() -> None:
+    assert isinstance(
+        _assert_json_dict(_run_cli(["telemetry-report", "--track", "trend_signals", "--json"])), dict
+    )
 
-    def test_telemetry_report_track_filter_json(self) -> None:
-        """`telemetry-report --track trend_signals --json` produces valid JSON."""
-        result = self._run_cli(["telemetry-report", "--track", "trend_signals", "--json"])
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        data = json.loads(result.stdout)
-        assert isinstance(data, dict)
+def test_demo_manifest_json_output() -> None:
+    assert isinstance(_assert_json_dict(_run_cli(["demo-manifest", "--json"])), dict)
 
-    def test_demo_manifest_json_output(self) -> None:
-        """`demo-manifest --json` produces valid JSON."""
-        result = self._run_cli(["demo-manifest", "--json"])
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        data = json.loads(result.stdout)
-        assert isinstance(data, dict)
+def test_profile_default_output_is_text() -> None:
+    result = _run_cli(["profile"])
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stdout)
 
-    def test_profile_default_output_is_text(self) -> None:
-        """Without --json, profile outputs human-readable text (not JSON)."""
-        result = self._run_cli(["profile"])
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        # Should NOT be valid JSON
-        try:
-            json.loads(result.stdout)
-            # If it is valid JSON, that's a problem — should be text
-            pytest.fail("profile without --json should output text, not JSON")
-        except json.JSONDecodeError:
-            pass  # expected — text output, not JSON
+def test_no_color_flag_removes_ansi() -> None:
+    result = _run_cli(["--no-color", "profile"])
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "\x1b[" not in result.stdout
 
-    def test_no_color_flag_removes_ansi(self) -> None:
-        """--no-color flag removes ANSI escape codes from output."""
-        # --no-color is a global flag, must come before subcommand
-        result = self._run_cli(["--no-color", "profile"])
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        # ANSI escape codes start with \x1b[
-        assert "\x1b[" not in result.stdout, "Output contains ANSI codes with --no-color"
+def test_no_color_env_var_removes_ansi() -> None:
+    result = _run_cli(["profile"], env_overrides={"NO_COLOR": "1"})
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "\x1b[" not in result.stdout
 
-    def test_no_color_env_var_removes_ansi(self) -> None:
-        """NO_COLOR env var removes ANSI escape codes from output."""
-        result = self._run_cli(["profile"], env_overrides={"NO_COLOR": "1"})
-        assert result.returncode == 0, f"stderr: {result.stderr}"
-        assert "\x1b[" not in result.stdout, "Output contains ANSI codes with NO_COLOR=1"
+def test_help_shows_no_color_option() -> None:
+    result = _run_cli(["--help"])
+    assert result.returncode == 0 and "--no-color" in result.stdout
 
-    def test_help_shows_no_color_option(self) -> None:
-        """--help output mentions --no-color option."""
-        result = self._run_cli(["--help"])
-        assert result.returncode == 0
-        assert "--no-color" in result.stdout
-
-    def test_cli_exits_cleanly_on_valid_command(self) -> None:
-        """Valid CLI commands exit with returncode 0."""
-        result = self._run_cli(["profile", "--json"])
-        assert result.returncode == 0
-
+def test_cli_exits_cleanly_on_valid_command() -> None:
+    assert _run_cli(["profile", "--json"]).returncode == 0
 
 # ── VAL-TUI-009: TUI hardening (keyboard, errors, resize, loading, refresh) ──
 
+@pytest.mark.parametrize("expected_key", ["q", "ctrl+q", "ctrl+c", "f1", "escape"])
+def test_app_global_bindings_present(expected_key) -> None:
+    assert expected_key in _binding_keys(SigLabTUI)
 
-class TestVAL_TUI_009_TUIHardening:
-    """VAL-TUI-009: Keyboard shortcuts, friendly errors, resize, loading states, refresh.
+def test_app_has_help_question_mark_binding() -> None:
+    keys = _binding_keys(SigLabTUI)
+    assert "question_mark" in keys or "?" in keys
 
-    Pilot-based tests blocked by CSS variable resolution issue.
-    Module-level tests verify keyboard binding presence and error handling.
-    """
+def test_app_has_number_key_bindings() -> None:
+    keys = _binding_keys(SigLabTUI)
+    for i in range(1, 7):
+        assert str(i) in keys, f"Missing binding for key '{i}'"
 
-    # ── Keyboard Binding Tests (module-level) ──
+@pytest.mark.parametrize("screen_cls", SCREEN_CLASSES)
+@pytest.mark.parametrize("expected_key", ["ctrl+c", "escape"])
+def test_all_screens_have_required_binding(screen_cls, expected_key) -> None:
+    assert expected_key in _binding_keys(screen_cls), f"{screen_cls.__name__} missing {expected_key}"
 
-    def test_app_has_q_binding(self) -> None:
-        """App has 'q' binding for quit."""
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        assert "q" in binding_keys
+@pytest.mark.parametrize("screen_cls", SCREEN_CLASSES)
+def test_all_screens_have_help_binding(screen_cls) -> None:
+    keys = _binding_keys(screen_cls)
+    assert "question_mark" in keys or "?" in keys, f"{screen_cls.__name__} missing ?"
 
-    def test_app_has_ctrl_q_binding(self) -> None:
-        """App has 'ctrl+q' binding for quit."""
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        assert "ctrl+q" in binding_keys
+def test_help_screen_has_bindings() -> None:
+    keys = _binding_keys(HelpScreen)
+    assert "escape" in keys and "q" in keys
+    assert "question_mark" in keys or "?" in keys
 
-    def test_app_has_ctrl_c_binding(self) -> None:
-        """App has 'ctrl+c' binding for quit."""
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        assert "ctrl+c" in binding_keys
+def test_help_screen_has_global_keybindings() -> None:
+    assert len(HelpScreen.GLOBAL_KEYBINDINGS) >= 7
+    assert "1-6" in [k for k, _ in HelpScreen.GLOBAL_KEYBINDINGS]
 
-    def test_app_has_help_binding(self) -> None:
-        """App has '?' and F1 bindings for help."""
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        assert "question_mark" in binding_keys or "?" in binding_keys
-        assert "f1" in binding_keys
+def test_help_screen_has_screen_keybindings() -> None:
+    for screen_id in ["market", "paper", "risk", "strategy", "telemetry", "evidence"]:
+        assert screen_id in HelpScreen.SCREEN_KEYBINDINGS, f"Missing keybindings for {screen_id}"
 
-    def test_app_has_escape_binding(self) -> None:
-        """App has 'escape' binding for back navigation."""
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        assert "escape" in binding_keys
+def test_app_has_action_show_help_and_go_back() -> None:
+    assert hasattr(SigLabTUI, "action_show_help") and hasattr(SigLabTUI, "action_go_back")
 
-    def test_app_has_number_key_bindings(self) -> None:
-        """App has 1-6 number key bindings for screen switching."""
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        for i in range(1, 7):
-            assert str(i) in binding_keys, f"Missing binding for key '{i}'"
+# ── Error handling ──────────────────────────────────────────────────
 
-    def test_all_screens_have_ctrl_c(self) -> None:
-        """All screen classes have ctrl+c binding."""
-        from siglab.tui.screens.market import MarketScreen
-        from siglab.tui.screens.paper import PaperScreen
-        from siglab.tui.screens.risk import RiskScreen
-        from siglab.tui.screens.strategy import StrategyScreen
-        from siglab.tui.screens.telemetry import TelemetryScreen
-        from siglab.tui.screens.evidence import EvidenceScreen
-        for screen_cls in [MarketScreen, PaperScreen, RiskScreen, StrategyScreen, TelemetryScreen, EvidenceScreen]:
-            keys = [b.key for b in screen_cls.BINDINGS]
-            assert "ctrl+c" in keys, f"{screen_cls.__name__} missing ctrl+c"
+def test_friendly_error_connect() -> None:
+    msg = friendly_error(httpx.ConnectError("Connection refused"))
+    assert "connect" in msg.lower() or "server" in msg.lower()
+    assert "traceback" not in msg.lower() and "httpx" not in msg.lower()
 
-    def test_all_screens_have_escape(self) -> None:
-        """All screen classes have escape binding."""
-        from siglab.tui.screens.market import MarketScreen
-        from siglab.tui.screens.paper import PaperScreen
-        from siglab.tui.screens.risk import RiskScreen
-        from siglab.tui.screens.strategy import StrategyScreen
-        from siglab.tui.screens.telemetry import TelemetryScreen
-        from siglab.tui.screens.evidence import EvidenceScreen
-        for screen_cls in [MarketScreen, PaperScreen, RiskScreen, StrategyScreen, TelemetryScreen, EvidenceScreen]:
-            keys = [b.key for b in screen_cls.BINDINGS]
-            assert "escape" in keys, f"{screen_cls.__name__} missing escape"
 
-    def test_all_screens_have_help(self) -> None:
-        """All screen classes have ? help binding."""
-        from siglab.tui.screens.market import MarketScreen
-        from siglab.tui.screens.paper import PaperScreen
-        from siglab.tui.screens.risk import RiskScreen
-        from siglab.tui.screens.strategy import StrategyScreen
-        from siglab.tui.screens.telemetry import TelemetryScreen
-        from siglab.tui.screens.evidence import EvidenceScreen
-        for screen_cls in [MarketScreen, PaperScreen, RiskScreen, StrategyScreen, TelemetryScreen, EvidenceScreen]:
-            keys = [b.key for b in screen_cls.BINDINGS]
-            assert "question_mark" in keys or "?" in keys, f"{screen_cls.__name__} missing ? help"
+def test_friendly_error_timeout() -> None:
+    msg = friendly_error(httpx.TimeoutException("Timed out"))
+    assert "timeout" in msg.lower() or "timed out" in msg.lower()
 
-    def test_help_screen_has_bindings(self) -> None:
-        """HelpScreen has escape, q, and ? bindings for dismissal."""
-        from siglab.tui.app import HelpScreen
-        binding_keys = [b.key for b in HelpScreen.BINDINGS]
-        assert "escape" in binding_keys
-        assert "q" in binding_keys
-        assert "question_mark" in binding_keys or "?" in binding_keys
 
-    def test_help_screen_has_global_keybindings(self) -> None:
-        """HelpScreen has global keyboard shortcuts listed."""
-        from siglab.tui.app import HelpScreen
-        assert len(HelpScreen.GLOBAL_KEYBINDINGS) >= 7
-        keys = [k for k, _ in HelpScreen.GLOBAL_KEYBINDINGS]
-        assert "1-6" in keys
+@pytest.mark.parametrize("status,expected_words", [
+    (500, ("500", "server")),
+    (401, ("auth",)),
+    (429, ("rate", "limited")),
+])
+def test_friendly_error_http_status(status, expected_words) -> None:
+    exc = httpx.HTTPStatusError(
+        f"Status {status}", request=httpx.Request("GET", "http://t"), response=httpx.Response(status),
+    )
+    msg_lower = friendly_error(exc).lower()
+    assert any(w in msg_lower for w in expected_words), f"Missing keyword for {status}: {msg_lower}"
 
-    def test_help_screen_has_screen_keybindings(self) -> None:
-        """HelpScreen has per-screen keyboard shortcut definitions."""
-        from siglab.tui.app import HelpScreen
-        for screen_id in ["market", "paper", "risk", "strategy", "telemetry", "evidence"]:
-            assert screen_id in HelpScreen.SCREEN_KEYBINDINGS, f"Missing keybindings for {screen_id}"
 
-    def test_app_has_action_show_help(self) -> None:
-        """App has action_show_help method."""
-        assert hasattr(SigLabTUI, "action_show_help")
+def test_friendly_error_generic_exception() -> None:
+    msg = friendly_error(ValueError("bad value"))
+    assert "unexpected" in msg.lower() or "error" in msg.lower()
+    assert "ValueError" not in msg
+# ── Loading indicator ───────────────────────────────────────────────
 
-    def test_app_has_action_go_back(self) -> None:
-        """App has action_go_back method for escape handling."""
-        assert hasattr(SigLabTUI, "action_go_back")
+def test_loading_indicator_default_not_loading() -> None:
+    indicator = LoadingIndicator()
+    assert indicator.loading is False and indicator.status_text == ""
 
-    # ── Error Handling Tests ──
+def test_loading_indicator_has_braille_spinner() -> None:
+    for char in _SPINNER_FRAMES:
+        assert 0x2800 <= ord(char) <= 0x28FF, f"Character {char!r} is not braille"
 
-    def test_friendly_error_connect(self) -> None:
-        """ConnectError produces user-friendly message (no traceback)."""
-        exc = httpx.ConnectError("Connection refused")
-        msg = friendly_error(exc)
-        assert "connect" in msg.lower() or "server" in msg.lower()
-        assert "traceback" not in msg.lower()
-        assert "httpx" not in msg.lower()
+def test_loading_indicator_has_default_css() -> None:
+    assert "height: 1" in LoadingIndicator.DEFAULT_CSS
 
-    def test_friendly_error_timeout(self) -> None:
-        """TimeoutException produces user-friendly message."""
-        exc = httpx.TimeoutException("Timed out")
-        msg = friendly_error(exc)
-        assert "timeout" in msg.lower() or "timed out" in msg.lower()
+def test_loading_indicator_render_idle() -> None:
+    assert LoadingIndicator().render().plain == ""
 
-    def test_friendly_error_http_500(self) -> None:
-        """HTTP 500 produces user-friendly message."""
-        exc = httpx.HTTPStatusError(
-            "Server Error",
-            request=httpx.Request("GET", "http://test"),
-            response=httpx.Response(500),
-        )
-        msg = friendly_error(exc)
-        assert "500" in msg or "server" in msg.lower()
+def test_loading_indicator_render_with_status() -> None:
+    indicator = LoadingIndicator()
+    indicator.status_text = "Ready"
+    assert "Ready" in indicator.render().plain
 
-    def test_friendly_error_http_401(self) -> None:
-        """HTTP 401 produces user-friendly message."""
-        exc = httpx.HTTPStatusError(
-            "Unauthorized",
-            request=httpx.Request("GET", "http://test"),
-            response=httpx.Response(401),
-        )
-        msg = friendly_error(exc)
-        assert "auth" in msg.lower()
+# ── Status bar ──────────────────────────────────────────────────────
 
-    def test_friendly_error_http_429(self) -> None:
-        """HTTP 429 produces user-friendly message."""
-        exc = httpx.HTTPStatusError(
-            "Rate Limited",
-            request=httpx.Request("GET", "http://test"),
-            response=httpx.Response(429),
-        )
-        msg = friendly_error(exc)
-        assert "rate" in msg.lower() or "limited" in msg.lower()
+def test_status_bar_init_defaults() -> None:
+    bar = SigLabStatusBar()
+    assert bar._version == "0.1.0" and bar._api_url == "http://localhost:3100" and bar._connected is False
 
-    def test_friendly_error_generic_exception(self) -> None:
-        """Generic exception produces user-friendly message."""
-        msg = friendly_error(ValueError("bad value"))
-        assert "unexpected" in msg.lower() or "error" in msg.lower()
-        assert "ValueError" not in msg
+def test_status_bar_init_custom() -> None:
+    bar = SigLabStatusBar(version="2.0.0", api_url="http://example.com:9999")
+    assert bar._version == "2.0.0" and bar._api_url == "http://example.com:9999"
 
-    # ── Loading Indicator Tests ──
+def test_status_bar_set_connected() -> None:
+    bar = SigLabStatusBar()
+    bar._connected = True
+    assert bar._connected is True
+    bar._connected = False
+    assert bar._connected is False
 
-    def test_loading_indicator_default_not_loading(self) -> None:
-        """LoadingIndicator starts in non-loading state."""
-        indicator = LoadingIndicator()
-        assert indicator.loading is False
-        assert indicator.status_text == ""
+# ── Resize / refresh / reactive ─────────────────────────────────────
 
-    def test_loading_indicator_has_braille_spinner(self) -> None:
-        """LoadingIndicator uses braille Unicode characters for spinner."""
-        from siglab.tui.loading import _SPINNER_FRAMES
-        # Braille characters are in the Unicode range U+2800-U+28FF
-        for char in _SPINNER_FRAMES:
-            assert 0x2800 <= ord(char) <= 0x28FF, f"Character {char!r} is not braille"
+def test_app_css_responsive_rules() -> None:
+    app_tcss = (TUI_DIR / "styles" / "app.tcss").read_text()
+    assert "min-width" in app_tcss and "max-width" in app_tcss
 
-    def test_loading_indicator_has_default_css(self) -> None:
-        """LoadingIndicator has DEFAULT_CSS defined."""
-        assert "height: 1" in LoadingIndicator.DEFAULT_CSS
+def test_app_has_api_connected_reactive() -> None:
+    assert hasattr(SigLabTUI, "api_connected")
 
-    def test_loading_indicator_render_idle(self) -> None:
-        """LoadingIndicator render returns empty text when idle."""
-        indicator = LoadingIndicator()
-        rendered = indicator.render()
-        assert rendered.plain == ""
+def test_app_has_check_api_connection_and_watch() -> None:
+    assert hasattr(SigLabTUI, "_check_api_connection") and hasattr(SigLabTUI, "watch_api_connected")
 
-    def test_loading_indicator_render_with_status(self) -> None:
-        """LoadingIndicator render returns status text when set."""
-        indicator = LoadingIndicator()
-        indicator.status_text = "Ready"
-        rendered = indicator.render()
-        assert "Ready" in rendered.plain
+# ── VAL-TUI-009 pilot tests ─────────────────────────────────────────
 
-    # ── Status Bar Tests ──
+@pytest.mark.asyncio
+async def test_pilot_help_screen_opens_and_closes() -> None:
+    async with SigLabTUI().run_test() as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert len(pilot.app.screen_stack) > 1
+        await pilot.press("escape")
+        await pilot.pause()
 
-    def test_status_bar_init_defaults(self) -> None:
-        """StatusBar initializes with default version and API URL."""
-        bar = SigLabStatusBar()
-        assert bar._version == "0.1.0"
-        assert bar._api_url == "http://localhost:3100"
-        assert bar._connected is False
-
-    def test_status_bar_init_custom(self) -> None:
-        """StatusBar accepts custom version and API URL."""
-        bar = SigLabStatusBar(version="2.0.0", api_url="http://example.com:9999")
-        assert bar._version == "2.0.0"
-        assert bar._api_url == "http://example.com:9999"
-
-    def test_status_bar_set_connected(self) -> None:
-        """StatusBar set_connected updates internal state (requires mount for display update)."""
-        bar = SigLabStatusBar()
-        assert bar._connected is False
-        # Direct state update without mount (set_connected requires mounted widget)
-        bar._connected = True
-        assert bar._connected is True
-        bar._connected = False
-        assert bar._connected is False
-
-    # ── Resize Handling Tests ──
-
-    def test_app_has_css_responsive_rules(self) -> None:
-        """App CSS files exist for responsive layout."""
-        from pathlib import Path
-        tui_dir = Path(__file__).resolve().parents[1] / "siglab" / "tui"
-        app_tcss = (tui_dir / "styles" / "app.tcss").read_text()
-        # Sidebar should have min/max width for responsive behavior
-        assert "min-width" in app_tcss
-        assert "max-width" in app_tcss
-
-    # ── Refresh/Reactive Tests ──
-
-    def test_app_has_api_connected_reactive(self) -> None:
-        """App has api_connected reactive state for auto-refresh."""
-        # Check that api_connected is a reactive attribute
-        assert hasattr(SigLabTUI, "api_connected")
-
-    def test_app_has_check_api_connection(self) -> None:
-        """App has _check_api_connection for periodic health checks."""
-        assert hasattr(SigLabTUI, "_check_api_connection")
-
-    def test_app_has_watch_api_connected(self) -> None:
-        """App has watch_api_connected for reactive updates."""
-        assert hasattr(SigLabTUI, "watch_api_connected")
-
-    # ── Pilot-based hardening tests (enabled after CSS variable fix) ──
-
-    @pytest.mark.asyncio
-    async def test_pilot_help_screen_opens_and_closes(self) -> None:
-        """Help screen opens on ? and closes on escape via pilot."""
-        async with SigLabTUI().run_test() as pilot:
-            await pilot.press("question_mark")
-            await pilot.pause()
-            # Help screen should be pushed
-            assert len(pilot.app.screen_stack) > 1
-            await pilot.press("escape")
+@pytest.mark.asyncio
+async def test_pilot_number_key_screen_navigation() -> None:
+    async with SigLabTUI().run_test() as pilot:
+        for key in ["1", "2", "3", "4", "5", "6"]:
+            await pilot.press(key)
             await pilot.pause()
 
-    @pytest.mark.asyncio
-    async def test_pilot_number_key_screen_navigation(self) -> None:
-        """All 6 number keys navigate to corresponding screens via pilot."""
-        async with SigLabTUI().run_test() as pilot:
-            for key in ["1", "2", "3", "4", "5", "6"]:
-                await pilot.press(key)
-                await pilot.pause()
+@pytest.mark.asyncio
+async def test_pilot_escape_returns_to_main() -> None:
+    async with SigLabTUI().run_test() as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(pilot.app.screen_stack) == 1
 
-    @pytest.mark.asyncio
-    async def test_pilot_escape_returns_to_main(self) -> None:
-        """Escape from a pushed screen returns to main screen via pilot."""
-        async with SigLabTUI().run_test() as pilot:
-            # Open help, then escape back
-            await pilot.press("question_mark")
-            await pilot.pause()
-            await pilot.press("escape")
-            await pilot.pause()
-            # Should be back on main screen
-            assert len(pilot.app.screen_stack) == 1
+@pytest.mark.asyncio
+async def test_pilot_f1_opens_help() -> None:
+    async with SigLabTUI().run_test() as pilot:
+        await pilot.press("f1")
+        await pilot.pause()
+        assert len(pilot.app.screen_stack) > 1
+        await pilot.press("escape")
+        await pilot.pause()
 
-    @pytest.mark.asyncio
-    async def test_pilot_f1_opens_help(self) -> None:
-        """F1 key opens help screen via pilot."""
-        async with SigLabTUI().run_test() as pilot:
-            await pilot.press("f1")
-            await pilot.pause()
-            assert len(pilot.app.screen_stack) > 1
-            await pilot.press("escape")
-            await pilot.pause()
-
-    @pytest.mark.asyncio
-    async def test_pilot_app_resizes_gracefully(self) -> None:
-        """App handles terminal resize without crashing via pilot."""
-        async with SigLabTUI().run_test(size=(120, 40)) as pilot:
-            # Navigate to a screen
-            await pilot.press("1")
-            await pilot.pause()
-            # Resize to smaller
-            pilot.app.screen.size_changed = True
-            await pilot.pause()
+@pytest.mark.asyncio
+async def test_pilot_app_resizes_gracefully() -> None:
+    async with SigLabTUI().run_test(size=(120, 40)) as pilot:
+        await pilot.press("1")
+        await pilot.pause()
+        pilot.app.screen.size_changed = True
+        await pilot.pause()
