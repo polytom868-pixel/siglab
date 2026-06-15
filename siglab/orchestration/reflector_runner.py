@@ -35,22 +35,6 @@ class ReflectionRunner:
         "tracking_tags",
         "status",
     }
-    _STRING_FIELD_DEFAULTS: tuple[tuple[str, str], ...] = (
-        ("family", ""),
-        ("verdict", "informative_failure"),
-        ("failure_mode", "needs_follow_up"),
-        ("why_parent_change_failed", ""),
-        ("failed_motif_signature", ""),
-        ("one_reusable_lesson", ""),
-        ("one_next_test", ""),
-        ("next_move", ""),
-        ("status", "active"),
-    )
-    _STRING_LIST_FIELDS: tuple[str, ...] = (
-        "do_not_repeat",
-        "evidence_paths",
-        "tracking_tags",
-    )
 
     def __init__(
         self,
