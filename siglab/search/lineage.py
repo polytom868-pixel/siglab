@@ -521,25 +521,7 @@ class LineageStore:
             ).fetchone()
         if row is None:
             return None
-        return {
-            "spec_hash": row[0],
-            "created_at": row[1],
-            "strategy_name": row[2],
-            "strategy_dir": row[3],
-            "spec_path": row[4],
-            "manifest_path": row[5],
-            "readme_path": row[6],
-            "job_name": row[7],
-            "interval_seconds": row[8],
-            "wallet_label": row[9],
-            "config_path": row[10],
-            "scheduled": bool(row[11]),
-            "dry_run": bool(row[12]),
-            "llm_finalized": bool(row[13]),
-            "support_status": row[14],
-            "support_reason": row[15],
-            "metadata": json.loads(row[16]) if row[16] else {},
-        }
+        return _deployment_from_row(row)
 
     def list_deployments(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
@@ -567,30 +549,7 @@ class LineageStore:
                 ORDER BY created_at DESC
                 """,
             ).fetchall()
-        result: list[dict[str, Any]] = []
-        for row in rows:
-            result.append(
-                {
-                    "spec_hash": row[0],
-                    "created_at": row[1],
-                    "strategy_name": row[2],
-                    "strategy_dir": row[3],
-                    "spec_path": row[4],
-                    "manifest_path": row[5],
-                    "readme_path": row[6],
-                    "job_name": row[7],
-                    "interval_seconds": row[8],
-                    "wallet_label": row[9],
-                    "config_path": row[10],
-                    "scheduled": bool(row[11]),
-                    "dry_run": bool(row[12]),
-                    "llm_finalized": bool(row[13]),
-                    "support_status": row[14],
-                    "support_reason": row[15],
-                    "metadata": json.loads(row[16]) if row[16] else {},
-                }
-            )
-        return result
+        return [_deployment_from_row(row) for row in rows]
 
     # ── Queries ──────────────────────────────────────────────────────────────
 
@@ -1202,3 +1161,25 @@ class LineageStore:
             reverse=True,
         )
         return [item[1] for item in ranked[:limit] if item[0] > 0.0]
+
+
+def _deployment_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
+    return {
+        "spec_hash": row[0],
+        "created_at": row[1],
+        "strategy_name": row[2],
+        "strategy_dir": row[3],
+        "spec_path": row[4],
+        "manifest_path": row[5],
+        "readme_path": row[6],
+        "job_name": row[7],
+        "interval_seconds": row[8],
+        "wallet_label": row[9],
+        "config_path": row[10],
+        "scheduled": bool(row[11]),
+        "dry_run": bool(row[12]),
+        "llm_finalized": bool(row[13]),
+        "support_status": row[14],
+        "support_reason": row[15],
+        "metadata": json.loads(row[16]) if row[16] else {},
+    }
