@@ -518,66 +518,45 @@ class TestStrategyScreen:
 # ══════════════════════════════════════════════════════════════════════
 
 
+def _make_mock_client(payload: dict) -> TuiApiClient:
+    """Build a TuiApiClient whose _client is a stub returning ``payload`` JSON."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = payload
+    mock_response.raise_for_status = MagicMock()
+    client = TuiApiClient()
+    mock_http = AsyncMock()
+    mock_http.get.return_value = mock_response
+    client._client = mock_http
+    return client
+
+
 class TestTuiApiClientStrategies:
     """Test API client strategy methods."""
 
     @pytest.mark.asyncio
     async def test_get_strategies(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"strategies": [], "count": 0}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http = AsyncMock()
-        mock_http.get.return_value = mock_response
-        client._client = mock_http
-
+        client = _make_mock_client({"strategies": [], "count": 0})
         result = await client.get_strategies()
-        assert isinstance(result, dict)
         assert result["count"] == 0
         await client.close()
 
     @pytest.mark.asyncio
     async def test_get_strategy_detail(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"spec_hash": "abc123", "summary": {}}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http = AsyncMock()
-        mock_http.get.return_value = mock_response
-        client._client = mock_http
-
+        client = _make_mock_client({"spec_hash": "abc123", "summary": {}})
         result = await client.get_strategy_detail("abc123")
         assert result["spec_hash"] == "abc123"
         await client.close()
 
     @pytest.mark.asyncio
     async def test_get_benchmark_status(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"state": {}, "recent_results": []}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http = AsyncMock()
-        mock_http.get.return_value = mock_response
-        client._client = mock_http
-
+        client = _make_mock_client({"state": {}, "recent_results": []})
         result = await client.get_benchmark_status("trend_signals_external")
         assert isinstance(result, dict)
         await client.close()
 
     @pytest.mark.asyncio
     async def test_get_benchmark_results(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"results": []}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http = AsyncMock()
-        mock_http.get.return_value = mock_response
-        client._client = mock_http
-
+        client = _make_mock_client({"results": []})
         result = await client.get_benchmark_results()
         assert isinstance(result, dict)
         await client.close()
