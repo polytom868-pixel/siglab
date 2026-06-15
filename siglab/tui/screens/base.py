@@ -239,6 +239,8 @@ class BaseScreen(Screen[None]):
 
         If ``_search_list_id`` is set, delegates to the list widget's
         ``action_move_up``.  Otherwise falls back to focus traversal.
+        After moving, calls ``_on_selection_changed`` so subclasses can
+        update detail panels.
         """
         if self._search_list_id:
             from siglab.tui.widgets.base import FilterableListWidget
@@ -246,14 +248,18 @@ class BaseScreen(Screen[None]):
             lw = safe_query(self, f"#{self._search_list_id}", FilterableListWidget)
             if lw:
                 lw.action_move_up()
+                self._on_selection_changed()
                 return
         self.screen.focus_previous()
+        self._on_selection_changed()
 
     def action_move_down(self) -> None:
         """Move selection down in the primary list widget.
 
         If ``_search_list_id`` is set, delegates to the list widget's
         ``action_move_down``.  Otherwise falls back to focus traversal.
+        After moving, calls ``_on_selection_changed`` so subclasses can
+        update detail panels.
         """
         if self._search_list_id:
             from siglab.tui.widgets.base import FilterableListWidget
@@ -261,5 +267,15 @@ class BaseScreen(Screen[None]):
             lw = safe_query(self, f"#{self._search_list_id}", FilterableListWidget)
             if lw:
                 lw.action_move_down()
+                self._on_selection_changed()
                 return
         self.screen.focus_next()
+        self._on_selection_changed()
+
+    def _on_selection_changed(self) -> None:
+        """Hook called after ``action_move_up``/``action_move_down``.
+
+        Subclasses override this to update detail panels when the
+        primary list selection changes.  Default is a no-op so
+        screens without a detail panel don't need to override.
+        """

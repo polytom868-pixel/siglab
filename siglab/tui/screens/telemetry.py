@@ -661,15 +661,6 @@ class TelemetryScreen(BaseScreen):
 
     # ── Actions ──────────────────────────────────────────────────────
 
-    def action_move_up(self) -> None:
-        """Move selection up and update detail panel."""
-        super().action_move_up()
-        self._on_selection_changed()
-
-    def action_move_down(self) -> None:
-        """Move selection down and update detail panel."""
-        super().action_move_down()
-        self._on_selection_changed()
 
     def action_toggle_select(self) -> None:
         """Toggle multi-select on current run for comparison."""

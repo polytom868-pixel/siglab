@@ -476,15 +476,6 @@ class StrategyScreen(BaseScreen):
         self._results_cache.clear()
         self.call_after_refresh(self._refresh_all)
 
-    def action_move_up(self) -> None:
-        """Move up and update detail panel."""
-        super().action_move_up()
-        self._on_selection_changed()
-
-    def action_move_down(self) -> None:
-        """Move down and update detail panel."""
-        super().action_move_down()
-        self._on_selection_changed()
 
     def action_toggle_select(self) -> None:
         """Toggle multi-select on current strategy for comparison."""
