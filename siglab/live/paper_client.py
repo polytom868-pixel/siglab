@@ -509,7 +509,6 @@ class SoDEXPaperPerpsClient:
         # Load session
         session = self.get_session(session_id)
 
-        # Create order
         now = _now_timestamp()
         order_id = _generate_order_id()
 
@@ -869,7 +868,6 @@ class SoDEXPaperPerpsClient:
                         original_qty = order.quantity
                         order.quantity = fill_qty
                         self._fill_order(session, order, fill_price)
-                        # Create remainder order
                         remainder = PaperOrder(
                             order_id=str(uuid.uuid4()),
                             symbol=order.symbol,

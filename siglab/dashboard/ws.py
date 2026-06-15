@@ -173,12 +173,10 @@ async def _handle_message(
         return
 
     if action == "get_positions":
-        # Return current paper trading positions if available
         await _stream_positions(websocket)
         return
 
     if action == "get_risk":
-        # Return current risk metrics snapshot
         await _stream_risk_scores(websocket)
         return
 
@@ -195,7 +193,6 @@ async def _stream_initial_data(
 ) -> None:
     """Stream a snapshot of initial data for a subscribed symbol."""
     if sub_type == "klines":
-        # Return a placeholder kline snapshot
         # In production, this would be fetched from SoDEXFeeds
         now = datetime.now(UTC)
         timestamp = int(now.timestamp() * 1000)
