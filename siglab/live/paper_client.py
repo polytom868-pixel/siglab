@@ -28,7 +28,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -40,10 +40,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+E = TypeVar("E", bound=Enum)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
 FUNDING_INTERVAL_HOURS = 8  # Standard perp funding interval
 DEFAULT_TIME_IN_FORCE_HOURS = 72  # Default TIF for paper orders
 
@@ -268,27 +269,23 @@ def _validate_price(price: float | None, order_type: PaperOrderType) -> float | 
     return p
 
 
-def _validate_side(side: str) -> PaperOrderSide:
+def _coerce_enum(value: str, enum_cls: type[E], expected: str) -> E:
     try:
-        return PaperOrderSide(side.upper())
-    except ValueError:
-        raise PaperClientError(f"invalid side: {side!r}; expected BUY or SELL")
+        return enum_cls(value.upper())
+    except ValueError as exc:
+        raise PaperClientError(f"invalid {expected}: {value!r}") from exc
+
+
+def _validate_side(side: str) -> PaperOrderSide:
+    return _coerce_enum(side, PaperOrderSide, "side; expected BUY or SELL")
 
 
 def _validate_order_type(order_type: str) -> PaperOrderType:
-    try:
-        return PaperOrderType(order_type.upper())
-    except ValueError:
-        raise PaperClientError(f"invalid order_type: {order_type!r}; expected LIMIT or MARKET")
+    return _coerce_enum(order_type, PaperOrderType, "order_type; expected LIMIT or MARKET")
 
 
 def _validate_time_in_force(tif: str) -> PaperTimeInForce:
-    try:
-        return PaperTimeInForce(tif.upper())
-    except ValueError:
-        raise PaperClientError(
-            f"invalid time_in_force: {tif!r}; expected GTC, IOC, FOK, or GTX"
-        )
+    return _coerce_enum(tif, PaperTimeInForce, "time_in_force; expected GTC, IOC, FOK, or GTX")
 
 
 def _compute_fill_price(

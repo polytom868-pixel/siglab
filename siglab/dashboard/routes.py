@@ -237,29 +237,22 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
     edges: list[dict[str, Any]] = []
     seen_edges: set[tuple[str, str, str]] = set()  # (source, target, label)
 
-    for source, count in source_counts.items():
-        node_id = f"source:{source}"
-        nodes[node_id] = {
+    def _node(node_id: str, label: str, kind: str, count: int) -> dict[str, Any]:
+        return {
             "id": node_id,
-            "label": str(source),
-            "kind": "source",
-            "count": int(count),
+            "label": label,
+            "kind": kind,
+            "count": count,
             "spec_hash": None,
             "family": None,
             "score": None,
         }
 
+    for source, count in source_counts.items():
+        nodes[f"source:{source}"] = _node(f"source:{source}", str(source), "source", int(count))
+
     for entity, count in entity_counts.items():
-        node_id = f"entity:{entity}"
-        nodes[node_id] = {
-            "id": node_id,
-            "label": str(entity),
-            "kind": "entity",
-            "count": int(count),
-            "spec_hash": None,
-            "family": None,
-            "score": None,
-        }
+        nodes[f"entity:{entity}"] = _node(f"entity:{entity}", str(entity), "entity", int(count))
 
     for link in links:
         if not isinstance(link, dict):
@@ -279,30 +272,8 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
         for entity in entities:
             entity_id = f"entity:{entity}"
             source_id = f"source:{source_name}"
-            nodes.setdefault(
-                entity_id,
-                {
-                    "id": entity_id,
-                    "label": entity,
-                    "kind": "entity",
-                    "count": 0,
-                    "spec_hash": None,
-                    "family": None,
-                    "score": None,
-                },
-            )
-            nodes.setdefault(
-                source_id,
-                {
-                    "id": source_id,
-                    "label": source_name,
-                    "kind": "source",
-                    "count": 0,
-                    "spec_hash": None,
-                    "family": None,
-                    "score": None,
-                },
-            )
+            nodes.setdefault(entity_id, _node(entity_id, entity, "entity", 0))
+            nodes.setdefault(source_id, _node(source_id, source_name, "source", 0))
             edge_key = (source_id, entity_id, relation)
             if edge_key in seen_edges:
                 continue
@@ -315,7 +286,6 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
                 "warning": link.get("warning"),
                 "day_gap": link.get("day_gap"),
             })
-
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
