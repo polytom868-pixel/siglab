@@ -294,6 +294,9 @@ class LiveDeploymentManager:
         compiled = dict(artifact.get("compiled_metadata") or {})
         spec = dict(detail.get("spec") or {})
         summary = dict(detail.get("summary") or {})
+        sosovalue_config_path = str(
+            resolve_path_from_root(config_path, root_dir=self.settings.root_dir)
+        )
         return {
             "schema_version": "0.1",
             "spec_hash": detail["spec_hash"],
@@ -312,16 +315,12 @@ class LiveDeploymentManager:
             "deployment": {
                 "created_at": datetime.now(UTC).isoformat(),
                 "wallet_label": wallet_label,
-                "sosovalue_config_path": str(
-                    resolve_path_from_root(config_path, root_dir=self.settings.root_dir)
-                ),
+                "sosovalue_config_path": sosovalue_config_path,
                 "operator_notes": llm_notes.get("operator_notes"),
                 "risk_notes": llm_notes.get("risk_notes"),
             },
             "runtime": {
-                "sosovalue_config_path": str(
-                    resolve_path_from_root(config_path, root_dir=self.settings.root_dir)
-                ),
+                "sosovalue_config_path": sosovalue_config_path,
                 "dry_run": bool(dry_run),
                 "slippage": 0.0035,
                 "min_trade_usd": 25.0,
