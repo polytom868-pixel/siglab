@@ -127,6 +127,18 @@ def _normalize_drawdown_score(drawdown: float) -> float:
     return 1.0 - abs(clipped) / abs(DRAWDOWN_TARGET)
 
 
+def _score_below_target(clipped: float, target: float) -> float:
+    """Map a clipped value to [0, 1] where 0 = at/over target, 1 = at/below 0.
+
+    Used by *concentration* and *correlation*: higher values are riskier.
+    """
+    if clipped <= 0.0:
+        return 1.0
+    if clipped >= target:
+        return 0.0
+    return 1.0 - clipped / target
+
+
 def _normalize_concentration_score(deviation: float) -> float:
     """Normalise concentration deviation to [0, 1] risk score contribution.
 
@@ -135,11 +147,7 @@ def _normalize_concentration_score(deviation: float) -> float:
     Clipped to [CONCENTRATION_MIN, CONCENTRATION_MAX].
     """
     clipped = max(CONCENTRATION_MIN, min(CONCENTRATION_MAX, deviation))
-    if clipped <= 0.0:
-        return 1.0
-    if clipped >= CONCENTRATION_TARGET:
-        return 0.0
-    return 1.0 - clipped / CONCENTRATION_TARGET
+    return _score_below_target(clipped, CONCENTRATION_TARGET)
 
 
 def _normalize_correlation_score(avg_correlation: float) -> float:
@@ -149,11 +157,7 @@ def _normalize_correlation_score(avg_correlation: float) -> float:
     Clipped to [CORRELATION_MIN, CORRELATION_MAX].
     """
     clipped = max(CORRELATION_MIN, min(CORRELATION_MAX, avg_correlation))
-    if clipped <= 0.0:
-        return 1.0
-    if clipped >= CORRELATION_TARGET:
-        return 0.0
-    return 1.0 - clipped / CORRELATION_TARGET
+    return _score_below_target(clipped, CORRELATION_TARGET)
 
 
 def compute_composite_score(
