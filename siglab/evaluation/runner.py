@@ -1168,20 +1168,8 @@ class ResearchEvaluator:
             "trial_count": int(trial_count),
             "best_train_summary": dict(best_summary or {}),
             "intent_locks": dict(intent_locks),
-            "proposed_policy": {
-                "entry_abs_score": float(base_policy["entry_abs_score"]),
-                "exit_abs_score": float(base_policy["exit_abs_score"]),
-                "flip_abs_score": float(base_policy["flip_abs_score"]),
-                "max_holding_bars": int(base_policy["max_holding_bars"]),
-                "cooldown_bars": int(base_policy["cooldown_bars"]),
-            },
-            "frozen_policy": {
-                "entry_abs_score": float(best_policy["entry_abs_score"]),
-                "exit_abs_score": float(best_policy["exit_abs_score"]),
-                "flip_abs_score": float(best_policy["flip_abs_score"]),
-                "max_holding_bars": int(best_policy["max_holding_bars"]),
-                "cooldown_bars": int(best_policy["cooldown_bars"]),
-            },
+            "proposed_policy": _policy_summary_spec(base_policy),
+            "frozen_policy": _policy_summary_spec(best_policy),
         }
         changed_keys: list[str] = []
         for key in (
@@ -1217,21 +1205,8 @@ class ResearchEvaluator:
             "policy_sweep_best_train_score": policy_sweep_best_train_score,
             "policy_sweep_activity_penalty": float((best_summary or {}).get("activity_penalty") or 0.0),
             "policy_sweep_material_change": bool(changed_keys),
-            "policy_sweep_changed_keys": changed_keys,
-            "policy_sweep_proposed_policy": {
-                "entry_abs_score": float(base_policy["entry_abs_score"]),
-                "exit_abs_score": float(base_policy["exit_abs_score"]),
-                "flip_abs_score": float(base_policy["flip_abs_score"]),
-                "max_holding_bars": int(base_policy["max_holding_bars"]),
-                "cooldown_bars": int(base_policy["cooldown_bars"]),
-            },
-            "policy_sweep_frozen_policy": {
-                "entry_abs_score": float(best_policy["entry_abs_score"]),
-                "exit_abs_score": float(best_policy["exit_abs_score"]),
-                "flip_abs_score": float(best_policy["flip_abs_score"]),
-                "max_holding_bars": int(best_policy["max_holding_bars"]),
-                "cooldown_bars": int(best_policy["cooldown_bars"]),
-            },
+            "policy_sweep_proposed_policy": _policy_summary_spec(base_policy),
+            "policy_sweep_frozen_policy": _policy_summary_spec(best_policy),
             "policy_active_bar_fraction": activity_summary.get("active_bar_fraction"),
             "policy_regime_gate_open_fraction": activity_summary.get("regime_gate_open_fraction"),
             "policy_entry_abs_score": float(best_policy["entry_abs_score"]),
@@ -1717,6 +1692,15 @@ class ResearchEvaluator:
             f"{prefix}_profitable_window_pct": aggregate.get("profitable_window_pct"),
         }
 
+
+def _policy_summary_spec(policy: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "entry_abs_score": float(policy["entry_abs_score"]),
+        "exit_abs_score": float(policy["exit_abs_score"]),
+        "flip_abs_score": float(policy["flip_abs_score"]),
+        "max_holding_bars": int(policy["max_holding_bars"]),
+        "cooldown_bars": int(policy["cooldown_bars"]),
+    }
 
 def _unique_float_values(values: list[float], *, low: float, high: float) -> list[float]:
     cleaned: list[float] = []

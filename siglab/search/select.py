@@ -550,4 +550,3 @@ def plurality_select(specs: list[SignalSpec], k: int = 1) -> SignalSpec:
             "params": merged_params,
         }
     )
-
