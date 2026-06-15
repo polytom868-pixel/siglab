@@ -3,7 +3,6 @@
 Covers: symbol list, klines chart, ticker table, order book,
 search/filter, auto-refresh, loading states, empty data handling.
 """
-
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +11,7 @@ import httpx
 import pytest
 
 from siglab.tui.api_client import TuiApiClient
+from siglab.tui.data_views import SymbolEntry
 from siglab.tui.formatting import format_change, format_price, format_volume
 from siglab.tui.screens.market import (
     KlinesChartWidget,
@@ -72,9 +72,8 @@ def _make_orderbook(n: int = 5) -> dict:
     return {"bids": bids, "asks": asks, "symbol": "BTC-USD"}
 
 
-def _make_symbols(n: int = 5) -> list:
+def _make_symbols(n: int = 5) -> list[SymbolEntry]:
     """Generate fake SymbolEntry views for testing."""
-    from siglab.tui.data_views import SymbolEntry
     syms = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD", "LINK-USD"]
     return [
         SymbolEntry(
@@ -86,7 +85,6 @@ def _make_symbols(n: int = 5) -> list:
         )
         for i in range(min(n, len(syms)))
     ]
-
 
 # ── Formatter Tests ─────────────────────────────────────────────────
 
