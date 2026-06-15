@@ -26,26 +26,23 @@ def family_capabilities(spec: dict[str, Any] | None) -> dict[str, Any]:
     return dict((spec or {}).get("capabilities") or {})
 
 
-def family_execution_profile(spec: dict[str, Any] | None) -> str | None:
-    capabilities = family_capabilities(spec)
-    value = capabilities.get("execution_profile")
+def _family_capability(spec: dict[str, Any] | None, key: str) -> str | None:
+    value = family_capabilities(spec).get(key)
     return str(value) if value is not None else None
+
+
+def family_execution_profile(spec: dict[str, Any] | None) -> str | None:
+    return _family_capability(spec, "execution_profile")
 
 
 def family_diagnostic_adapter(spec: dict[str, Any] | None) -> str | None:
-    capabilities = family_capabilities(spec)
-    value = capabilities.get("diagnostic_adapter")
-    return str(value) if value is not None else None
+    return _family_capability(spec, "diagnostic_adapter")
 
 
 def family_policy_schema(spec: dict[str, Any] | None) -> str | None:
-    capabilities = family_capabilities(spec)
-    value = capabilities.get("policy_schema")
-    return str(value) if value is not None else None
+    return _family_capability(spec, "policy_schema")
 
 
 def family_prompt_module(spec: dict[str, Any] | None) -> str | None:
-    capabilities = family_capabilities(spec)
-    value = capabilities.get("prompt_module")
-    return str(value) if value is not None else None
+    return _family_capability(spec, "prompt_module")
 
