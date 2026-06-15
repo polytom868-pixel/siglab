@@ -463,65 +463,33 @@ def check_risk_thresholds(
         config = thresholds[metric_name]
         direction = config.get("direction", "above")
 
-        # Check info threshold first (lowest severity)
-        info_threshold = config.get("info")
-        if info_threshold is not None:
+        # Iterate severity tiers from lowest to highest (info, warning, critical)
+        # so that triggered events are returned in ascending order of severity.
+        for severity_key, severity_enum, verb in (
+            ("info", AlertSeverity.INFO, "passed"),
+            ("warning", AlertSeverity.WARNING, "exceeded"),
+            ("critical", AlertSeverity.CRITICAL, "exceeded"),
+        ):
+            tier_threshold = config.get(severity_key)
+            if tier_threshold is None:
+                continue
             triggered = (
-                (value > info_threshold) if direction == "above"
-                else (value < info_threshold)
+                (value > tier_threshold) if direction == "above"
+                else (value < tier_threshold)
             )
-            if triggered:
-                events.append(AlertEvent(
-                    timestamp=now,
-                    metric=metric_name,
-                    severity=AlertSeverity.INFO,
-                    value=float(value),
-                    threshold=float(info_threshold),
-                    message=(
-                        f"{metric_name} = {value} passed info threshold "
-                        f"{info_threshold} (direction: {direction})"
-                    ),
-                ))
-
-        # Warning threshold
-        warning_threshold = config.get("warning")
-        if warning_threshold is not None:
-            triggered = (
-                (value > warning_threshold) if direction == "above"
-                else (value < warning_threshold)
-            )
-            if triggered:
-                events.append(AlertEvent(
-                    timestamp=now,
-                    metric=metric_name,
-                    severity=AlertSeverity.WARNING,
-                    value=float(value),
-                    threshold=float(warning_threshold),
-                    message=(
-                        f"{metric_name} = {value} exceeded warning threshold "
-                        f"{warning_threshold} (direction: {direction})"
-                    ),
-                ))
-
-        # Critical threshold
-        critical_threshold = config.get("critical")
-        if critical_threshold is not None:
-            triggered = (
-                (value > critical_threshold) if direction == "above"
-                else (value < critical_threshold)
-            )
-            if triggered:
-                events.append(AlertEvent(
-                    timestamp=now,
-                    metric=metric_name,
-                    severity=AlertSeverity.CRITICAL,
-                    value=float(value),
-                    threshold=float(critical_threshold),
-                    message=(
-                        f"{metric_name} = {value} exceeded critical threshold "
-                        f"{critical_threshold} (direction: {direction})"
-                    ),
-                ))
+            if not triggered:
+                continue
+            events.append(AlertEvent(
+                timestamp=now,
+                metric=metric_name,
+                severity=severity_enum,
+                value=float(value),
+                threshold=float(tier_threshold),
+                message=(
+                    f"{metric_name} = {value} {verb} {severity_key} threshold "
+                    f"{tier_threshold} (direction: {direction})"
+                ),
+            ))
 
     return events
 

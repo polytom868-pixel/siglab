@@ -198,6 +198,21 @@ def _resolve_gate_mask(
     return pd.Series(True, index=score_index, dtype=bool)
 
 
+def _resolve_gate_mask(
+    score_index: pd.Index,
+    regime_gate_mask: pd.Series | None,
+) -> pd.Series:
+    if regime_gate_mask is not None:
+        return (
+            pd.Series(regime_gate_mask, index=regime_gate_mask.index)
+            .reindex(score_index)
+            .ffill()
+            .fillna(False)
+            .astype(bool)
+        )
+    return pd.Series(True, index=score_index, dtype=bool)
+
+
 def _build_ranked_positions(
     score: pd.DataFrame,
     *,
@@ -211,16 +226,7 @@ def _build_ranked_positions(
     regime_gate_mask: pd.Series | None = None,
 ) -> pd.DataFrame:
     target = pd.DataFrame(0.0, index=score.index, columns=score.columns)
-    if regime_gate_mask is not None:
-        gate_mask = (
-            pd.Series(regime_gate_mask, index=regime_gate_mask.index)
-            .reindex(score.index)
-            .ffill()
-            .fillna(False)
-            .astype(bool)
-        )
-    else:
-        gate_mask = pd.Series(True, index=score.index, dtype=bool)
+    gate_mask = _resolve_gate_mask(score.index, regime_gate_mask)
 
     for ts, row in score.iterrows():
         ts_key = cast(pd.Timestamp, ts)

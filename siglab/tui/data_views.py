@@ -14,7 +14,7 @@ Design principles:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Self, Sequence, cast
+from typing import Any, Sequence, cast
 
 
 

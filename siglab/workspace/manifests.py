@@ -27,6 +27,10 @@ from siglab.search.mutate import (
 )
 
 
+def _join_block(lines: list[str]) -> str:
+    return _join_block(lines)
+
+
 def _feature_kind(name: str, formula: str) -> tuple[str, str]:
     roles = feature_roles_for_formula(name) | feature_roles_for_formula(formula)
     if "orthogonal_regime" in roles:
@@ -216,7 +220,7 @@ def render_feature_surface(*, catalog: list[dict[str, Any]]) -> str:
         for name in sorted(names)[:8]:
             lines.append(f"- `{name}`")
         lines.append("")
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def render_feature_catalog_md(*, catalog: list[dict[str, Any]]) -> str:
@@ -234,7 +238,7 @@ def render_feature_catalog_md(*, catalog: list[dict[str, Any]]) -> str:
                 "",
             ]
         )
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def render_family_feature_manifest(
@@ -261,7 +265,7 @@ def render_family_feature_manifest(
                 "",
             ]
         )
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def compute_spec_fingerprint(root_dir: Path) -> dict[str, Any]:
@@ -374,34 +378,33 @@ def render_constraints(
                 ]
             )
         lines.append("")
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def render_regime_catalog() -> str:
-    return "\n".join(
-        [
-            "# Regime Catalog",
-            "",
-            "These are the regime labels used downstream in diagnostics and reflections. Prefer these exact labels over fuzzy prose.",
-            "",
-            "## Market",
-            "- `market_uptrend` / `market_downtrend`",
-            "- `high_volatility` / `low_volatility`",
-            "- `high_funding` / `low_funding`",
-            "- `funding_dispersed` / `funding_compressed`",
-            "- `broad_participation` / `weak_participation`",
-            "- `high_co_movement` / `low_co_movement`",
-            "- `concentrated` / `diversified`",
-            "",
-            "## Pair and Basket Enrichments",
-            "- `high_correlation` / `low_correlation`",
-            "- `high_volatility` / `low_volatility` for pair spread volatility",
-            "- `asset_1_leading` / `asset_2_leading`",
-            "- `market_neutral`, `long_asset_1_short_asset_2`, `short_asset_1_long_asset_2` in direction summaries",
-            "",
-            "Use these labels when naming failure modes, proposing suppressions, and reading lesson cards.",
-        ]
-    ).strip() + "\n"
+    lines = [
+        "# Regime Catalog",
+        "",
+        "These are the regime labels used downstream in diagnostics and reflections. Prefer these exact labels over fuzzy prose.",
+        "",
+        "## Market",
+        "- `market_uptrend` / `market_downtrend`",
+        "- `high_volatility` / `low_volatility`",
+        "- `high_funding` / `low_funding`",
+        "- `funding_dispersed` / `funding_compressed`",
+        "- `broad_participation` / `weak_participation`",
+        "- `high_co_movement` / `low_co_movement`",
+        "- `concentrated` / `diversified`",
+        "",
+        "## Pair and Basket Enrichments",
+        "- `high_correlation` / `low_correlation`",
+        "- `high_volatility` / `low_volatility` for pair spread volatility",
+        "- `asset_1_leading` / `asset_2_leading`",
+        "- `market_neutral`, `long_asset_1_short_asset_2`, `short_asset_1_long_asset_2` in direction summaries",
+        "",
+        "Use these labels when naming failure modes, proposing suppressions, and reading lesson cards.",
+    ]
+    return _join_block(lines)
 
 
 def render_policy_surface(*, families: list[str]) -> str:
@@ -453,7 +456,7 @@ def render_policy_surface(*, families: list[str]) -> str:
                 ]
             )
         lines.append("")
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def render_family_manifest(
@@ -555,7 +558,7 @@ def render_family_manifest(
         "- Invalid gate shapes include `op`, `condition`, `threshold`, `active`, or dicts without `expression`.",
         ]
     )
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def render_family_contract(
@@ -659,7 +662,7 @@ def render_families_index(
                 "",
             ]
         )
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def render_cookbook_pages(track: str) -> dict[str, str]:
@@ -692,68 +695,66 @@ def _render_pair_cookbook() -> str:
                 "",
             ]
         )
-    return "\n".join(lines).strip() + "\n"
+    return _join_block(lines)
 
 
 def _render_carry_cookbook() -> str:
-    return "\n".join(
-        [
-            "# Carry Patterns",
-            "",
-            "Use these when `perp_multi_asset_carry` should stay carry in spirit but the ranking engine may need price, momentum, or volatility context to realize the edge.",
-            "",
-            "## CoreCarryRanking",
-            "- `funding_72h_mean`",
-            "- `funding_168h_mean`",
-            "- `funding_carry_to_vol`",
-            "",
-            "## Carry Plus Relative Momentum",
-            "- `relative_momentum_24h`",
-            "- `relative_momentum_72h`",
-            "- `breadth_adjusted_relative_momentum_24h`",
-            "",
-            "## Carry Plus Trend Quality",
-            "- `trend_strength_72h`",
-            "- `ema_gap_12_26`",
-            "- `price_return_vol_adj_24h`",
-            "",
-            "## RelativeCarry",
-            "- `relative_carry_z_72h`",
-            "- `relative_carry_168h`",
-            "",
-            "## CarryTermStructure",
-            "- `carry_term_structure_24_168`",
-            "- `carry_decay_ratio_24_168`",
-            "",
-            "## Carry Plus Light Price Context",
-            "- `price_return_24h`",
-            "- `price_return_72h`",
-        ]
-    ).strip() + "\n"
+    lines = [
+        "# Carry Patterns",
+        "",
+        "Use these when `perp_multi_asset_carry` should stay carry in spirit but the ranking engine may need price, momentum, or volatility context to realize the edge.",
+        "",
+        "## CoreCarryRanking",
+        "- `funding_72h_mean`",
+        "- `funding_168h_mean`",
+        "- `funding_carry_to_vol`",
+        "",
+        "## Carry Plus Relative Momentum",
+        "- `relative_momentum_24h`",
+        "- `relative_momentum_72h`",
+        "- `breadth_adjusted_relative_momentum_24h`",
+        "",
+        "## Carry Plus Trend Quality",
+        "- `trend_strength_72h`",
+        "- `ema_gap_12_26`",
+        "- `price_return_vol_adj_24h`",
+        "",
+        "## RelativeCarry",
+        "- `relative_carry_z_72h`",
+        "- `relative_carry_168h`",
+        "",
+        "## CarryTermStructure",
+        "- `carry_term_structure_24_168`",
+        "- `carry_decay_ratio_24_168`",
+        "",
+        "## Carry Plus Light Price Context",
+        "- `price_return_24h`",
+        "- `price_return_72h`",
+    ]
+    return _join_block(lines)
 
 
 def _render_directional_cookbook() -> str:
-    return "\n".join(
-        [
-            "# Directional Patterns",
-            "",
-            "Directional families should favor relative strength and market-state overlays instead of broad beta.",
-            "",
-            "## RelativeStrength",
-            "- `relative_momentum_24h`",
-            "- `breadth_adjusted_relative_momentum_24h`",
-            "",
-            "## TrendQuality",
-            "- `ema_gap_12_26`",
-            "- `macd_hist_12_26_9`",
-            "- `trend_strength_72h`",
-            "",
-            "## CarryOverlay",
-            "- `relative_carry_z_72h`",
-            "- `funding_carry_to_vol`",
-            "- `carry_term_structure_24_168`",
-        ]
-    ).strip() + "\n"
+    lines = [
+        "# Directional Patterns",
+        "",
+        "Directional families should favor relative strength and market-state overlays instead of broad beta.",
+        "",
+        "## RelativeStrength",
+        "- `relative_momentum_24h`",
+        "- `breadth_adjusted_relative_momentum_24h`",
+        "",
+        "## TrendQuality",
+        "- `ema_gap_12_26`",
+        "- `macd_hist_12_26_9`",
+        "- `trend_strength_72h`",
+        "",
+        "## CarryOverlay",
+        "- `relative_carry_z_72h`",
+        "- `funding_carry_to_vol`",
+        "- `carry_term_structure_24_168`",
+    ]
+    return _join_block(lines)
 
 
 def _render_basket_cookbook() -> str:

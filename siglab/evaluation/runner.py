@@ -155,64 +155,28 @@ class ResearchEvaluator:
                 "validation",
                 leverage_one_selector_rows or selector_results,
             )
-        elif validation_window is not None:
-            validation_prices = prices_all.iloc[
-                int(validation_window["start_idx"]): int(validation_window["end_idx"])
-            ]
-            if len(validation_prices) >= min_rows:
-                validation_target = target_all.reindex(validation_prices.index).ffill().fillna(0.0)
-                validation_funding = (
-                    funding_all.reindex(validation_prices.index).ffill().fillna(0.0)
-                    if funding_all is not None
-                    else None
-                )
-                validation_config = BacktestConfig(
-                    leverage=1.0,
-                    funding_rates=validation_funding,
-                    rebalance_threshold=spec.risk.rebalance_threshold,
-                    enable_liquidation=True,
-                )
-                validation_result = _lazy_run_backtest(
-                    validation_prices,
-                    validation_target,
-                    validation_config,
-                )
-                validation_row = self._window_result_row(
-                    result=validation_result,
-                    window_spec=validation_window,
-                    leverage=1.0,
-                    prices=validation_prices,
-                    used_for_selector=False,
-                )
-                window_results.append(validation_row)
-                validation_summary = self._window_summary("validation", validation_row)
-
-        audit_summary = self._empty_window_summary("audit")
-        if audit_window is not None:
-            audit_prices = prices_all.iloc[int(audit_window["start_idx"]): int(audit_window["end_idx"])]
-            if len(audit_prices) >= min_rows:
-                audit_target = target_all.reindex(audit_prices.index).ffill().fillna(0.0)
-                audit_funding = (
-                    funding_all.reindex(audit_prices.index).ffill().fillna(0.0)
-                    if funding_all is not None
-                    else None
-                )
-                audit_config = BacktestConfig(
-                    leverage=1.0,
-                    funding_rates=audit_funding,
-                    rebalance_threshold=spec.risk.rebalance_threshold,
-                    enable_liquidation=True,
-                )
-                audit_result = _lazy_run_backtest(audit_prices, audit_target, audit_config)
-                audit_row = self._window_result_row(
-                    result=audit_result,
-                    window_spec=audit_window,
-                    leverage=1.0,
-                    prices=audit_prices,
-                    used_for_selector=False,
-                )
-                window_results.append(audit_row)
-                audit_summary = self._window_summary("audit", audit_row)
+    if validation_window is not None:
+        validation_summary = self._run_summary_window(
+            window_spec=validation_window,
+            prices_all=prices_all,
+            target_all=target_all,
+            funding_all=funding_all,
+            spec=spec,
+            min_rows=min_rows,
+            window_results=window_results,
+            summary_prefix="validation",
+        )
+    if audit_window is not None:
+        audit_summary = self._run_summary_window(
+            window_spec=audit_window,
+            prices_all=prices_all,
+            target_all=target_all,
+            funding_all=funding_all,
+            spec=spec,
+            min_rows=min_rows,
+            window_results=window_results,
+            summary_prefix="audit",
+        )
 
         if not selector_results:
             raise ValueError("Evaluator could not build any valid walk-forward windows")
@@ -383,6 +347,46 @@ class ResearchEvaluator:
             "compiled_metadata": compiled.metadata,
             "canonical_run": canonical_run,
         }
+
+    def _run_summary_window(
+        self,
+        *,
+        window_spec: dict[str, Any],
+        prices_all: pd.DataFrame,
+        target_all: pd.DataFrame,
+        funding_all: pd.Series | None,
+        spec: SignalSpec,
+        min_rows: int,
+        window_results: list[dict[str, Any]],
+        summary_prefix: str,
+    ) -> dict[str, Any]:
+        prices = prices_all.iloc[
+            int(window_spec["start_idx"]): int(window_spec["end_idx"])
+        ]
+        if len(prices) < min_rows:
+            return self._empty_window_summary(summary_prefix)
+        target = target_all.reindex(prices.index).ffill().fillna(0.0)
+        funding = (
+            funding_all.reindex(prices.index).ffill().fillna(0.0)
+            if funding_all is not None
+            else None
+        )
+        config = BacktestConfig(
+            leverage=1.0,
+            funding_rates=funding,
+            rebalance_threshold=spec.risk.rebalance_threshold,
+            enable_liquidation=True,
+        )
+        result = _lazy_run_backtest(prices, target, config)
+        row = self._window_result_row(
+            result=result,
+            window_spec=window_spec,
+            leverage=1.0,
+            prices=prices,
+            used_for_selector=False,
+        )
+        window_results.append(row)
+        return self._window_summary(summary_prefix, row)
 
     def _walkforward_windows(self, size: int) -> list[dict[str, Any]]:
         if size < 60:

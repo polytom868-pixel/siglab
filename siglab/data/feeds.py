@@ -137,26 +137,25 @@ def _pair_calibration_snapshot(
 
     asset_1_price = pd.to_numeric(prices[asset_1_symbol], errors="coerce")
     asset_2_price = pd.to_numeric(prices[asset_2_symbol], errors="coerce")
-    asset_1_funding = (
-        pd.to_numeric(
-            funding[asset_1_symbol]
-            if asset_1_symbol in funding.columns
-            else pd.Series(0.0, index=prices.index, dtype=float),
-            errors="coerce",
-        )
-        .reindex(prices.index)
-        .fillna(0.0)
+    asset_1_funding = _aligned_funding_series(prices, funding, asset_1_symbol)
+    asset_2_funding = _aligned_funding_series(prices, funding, asset_2_symbol)
+def _aligned_funding_series(
+    prices: pd.DataFrame,
+    funding: pd.DataFrame,
+    symbol: str,
+) -> pd.Series:
+    """Return *funding*[*symbol*] coerced to numeric, reindexed to *prices* with NaN→0.
+
+    Falls back to a zero-valued series aligned to *prices.index* when the
+    column is missing from *funding*.
+    """
+    raw = (
+        funding[symbol]
+        if symbol in funding.columns
+        else pd.Series(0.0, index=prices.index, dtype=float)
     )
-    asset_2_funding = (
-        pd.to_numeric(
-            funding[asset_2_symbol]
-            if asset_2_symbol in funding.columns
-            else pd.Series(0.0, index=prices.index, dtype=float),
-            errors="coerce",
-        )
-        .reindex(prices.index)
-        .fillna(0.0)
-    )
+    return pd.to_numeric(raw, errors="coerce").reindex(prices.index).fillna(0.0)
+
     pair_ratio = asset_1_price.div(asset_2_price.replace(0.0, pd.NA))
     funding_spread = asset_1_funding.sub(asset_2_funding, fill_value=0.0)
     pair_volatility_72h = pair_ratio.pct_change().rolling(72).std()
