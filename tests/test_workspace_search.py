@@ -8,7 +8,7 @@ import json
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, PropertyMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -1024,7 +1024,7 @@ class TestSpecMutator:
 class TestLineageStore:
     def test_init_creates_table(self, tmp_path):
         db_path = tmp_path / "ancestry.db"
-        store = LineageStore(db_path)
+        LineageStore(db_path)
         assert db_path.exists()
         with sqlite3.connect(db_path) as conn:
             tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()

@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 
 from siglab.track_registry import (
-    CANONICAL_TRACKS,
     TRACK_ALIASES,
-    TRACK_LABELS,
     canonical_track_name,
     matching_track_names,
     track_label,

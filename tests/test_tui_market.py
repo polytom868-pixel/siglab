@@ -50,13 +50,13 @@ def _make_klines(n: int = 20) -> list[dict]:
     for i in range(n):
         o = base + i * 50
         h = o + 200
-        l = o - 150
+        low_val = o - 150
         c = o + (100 if i % 3 == 0 else -80)
         klines.append({
             "timestamp": f"2026-06-04T{10 + i // 6}:{(i % 6) * 10:02d}:00+00:00",
             "open": o,
             "high": h,
-            "low": l,
+            "low": low_val,
             "close": c,
             "volume": 1000 + i * 100,
             "quote_volume": 67_000_000 + i * 1_000_000,
@@ -351,8 +351,7 @@ class TestTickerTableWidget:
         # Even with more tickers, only 20 shown
         tickers = _make_tickers(5) * 10  # 50 tickers
         widget.tickers = tickers
-        text = widget.render()
-        # Should not crash
+        widget.render()  # Should not crash
 
 
 # ── Order Book Widget Tests ──────────────────────────────────────────

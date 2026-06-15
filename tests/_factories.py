@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import contextlib
+import tempfile
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from siglab.config import SiglabConfig
+from siglab.data.evidence import EvidenceRecord
+from siglab.data.store import ParquetLake as _ParquetLake
 from siglab.orchestration.writer_runner import SpecWriterRunner
 from siglab.search.lineage import LineageStore
 from siglab.search.mutate import SpecMutator
@@ -69,6 +74,7 @@ class FakeClaude:
         # Canned response values (set by make_fake_claude)
         self._text_return: str = ""
         self._json_return: dict[str, object] = {}
+        self._json_response_fn: Callable[..., dict[str, object]] | None = None
         self._metrics: dict[str, object] = {}
 
     async def complete_text_with_tools(self, **_kwargs: object) -> str:
@@ -80,6 +86,8 @@ class FakeClaude:
     async def complete_json_messages(self, **kwargs: object) -> dict[str, object]:
         messages = list(kwargs["messages"])
         self.calls.append(messages)
+        if self._json_response_fn is not None:
+            return self._json_response_fn(messages)
         return self._json_return
 
     def metrics_snapshot(self) -> dict[str, object]:
@@ -154,6 +162,7 @@ Use the embedded spec, not the generic one.
 def make_fake_claude(
     text_return: str = _REFINE_CARRY_YAML,
     json_return: dict[str, object] | None = None,
+    json_response_fn: Callable[..., dict[str, object]] | None = None,
     metrics: dict[str, object] | None = None,
 ) -> FakeClaude:
     """Build a FakeClaude that records calls and returns canned responses.
@@ -179,8 +188,9 @@ def make_fake_claude(
         }
     fake = FakeClaude()
     fake._text_return = text_return
-    fake._json_return = json_return if json_return is not None else {}
-    fake._metrics = metrics if metrics is not None else FakeClaude()._metrics
+    fake._json_return = json_return
+    fake._json_response_fn = json_response_fn
+    fake._metrics = metrics
     return fake
 
 
@@ -196,6 +206,53 @@ def make_lineage_store() -> LineageStore:
 
         ancestry = make_lineage_store()
     """
-    import tempfile as _tempfile
-    with _tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp:
         return LineageStore(Path(tmp) / "ancestry.db")
+
+
+@contextlib.contextmanager
+def make_parquet_lake() -> Iterator[tuple[_ParquetLake, Path]]:
+    """Yield a fresh ``ParquetLake`` rooted at a tempdir and the root ``Path``.
+
+    Used by tests that need a fully isolated Parquet data store. The tempdir
+    is cleaned up automatically when the context manager exits.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        lake = _ParquetLake(root)
+        yield lake, root
+
+
+def make_evidence_record(**overrides) -> EvidenceRecord:
+    """Build an EvidenceRecord with sensible ETF defaults.
+
+    Default is a us-btc-spot ETF total_net_inflow row. Tests can override
+    any field via kwargs, e.g. ``make_evidence_record(entity="BTC-USD",
+    module="SoDEX", relation="ticker", value="50000", source="sodex.websocket")``.
+    """
+    base = dict(
+        source="sosovalue.etf_historical_inflow",
+        observed_at="2026-05-13T20:00:00+01:00",
+        timestamp="2026-05-12",
+        entity="us-btc-spot",
+        module="ETF",
+        relation="total_net_inflow",
+        value="100",
+        confidence=0.95,
+        evidence_path="sosovalue/etf/us-btc-spot.json",
+    )
+    base.update(overrides)
+    return EvidenceRecord(**base)
+
+
+@contextlib.contextmanager
+def make_lineage_store_ctx() -> Iterator[tuple[LineageStore, Path]]:
+    """Yield a fresh ``LineageStore`` rooted at a tempdir and the tempdir ``Path``.
+
+    Mirrors the ``make_parquet_lake()`` pattern: tests that don't need the
+    tempdir path can name the second element ``_tmp``; tests that need to
+    drop artifact files inside the tempdir can use it as ``tmp``.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "ancestry.db"
+        yield LineageStore(db_path), Path(tmp)

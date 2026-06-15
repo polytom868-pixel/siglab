@@ -8,10 +8,8 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from siglab.dashboard.risk_utils import (
-    STALE_THRESHOLD_SECONDS,
     compute_risk_metrics,
     empty_risk_response,
     load_equity_curves,

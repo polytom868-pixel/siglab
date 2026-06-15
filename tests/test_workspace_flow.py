@@ -1065,13 +1065,8 @@ class WorkspaceFlowTests(unittest.TestCase):
             settings.claude_max_tool_rounds = 5
             ancestry, mutator, builder = make_workspace_triple(settings=settings)
 
-            class FakeClaude:
-                def __init__(self) -> None:
-                    self.last_trace = {"ok": True}
-                    self.last_exchange = {"ok": True}
-
-                async def complete_text_with_tools(self, **_kwargs: object) -> str:
-                    return """## Diagnosis
+            claude = make_fake_claude(
+                text_return="""## Diagnosis
 Carry works on BTC/ETH/SOL/HYPE, but the recent carry_term_structure stack did not.
 
 ## Proposed next experiment
@@ -1089,13 +1084,11 @@ regime_gates:
 ## Must Answer
 Does a funding_dispersion_72h gate improve pre-audit return without making validation negative?
 """
+            )
 
             class FakeHypothesisSandbox:
                 def claude_tools(self, **_kwargs: object) -> list[object]:
                     return []
-
-            claude = FakeClaude()
-            mutator = SpecMutator(settings, claude=claude)  # type: ignore[arg-type]
             builder = WorkspaceBuilder(
                 settings=settings,
                 ancestry=ancestry,
@@ -2049,46 +2042,40 @@ trade_style: continuation
             settings = self._settings(tmp)
             ancestry, mutator, builder = make_workspace_triple(settings=settings)
 
-            class FakeClaude:
-                def __init__(self) -> None:
-                    self.last_trace = {"ok": True}
-                    self.last_exchange = {"ok": True}
-
-                async def complete_json_messages(self, **_kwargs: object) -> dict[str, object]:
-                    return {
-                        "track": "trend_signals",
-                        "family": "perp_multi_asset_carry",
-                        "hypothesis": "Test asymmetric book construction without regime gates.",
-                        "neutrality_basis": "none",
-                        "features": [
-                            "funding_168h_mean",
-                            "funding_72h_mean",
-                            "funding_accel_24h",
-                            "funding_carry_to_vol",
-                            "funding_z_168h",
-                            "realized_vol_168h",
-                        ],
-                        "universe": {
-                            "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
-                            "max_symbols": 4,
-                            "lookback_days": 365,
-                            "interval": "1h",
-                        },
-                        "risk": {
-                            "max_asset_weight": 0.35,
-                            "rebalance_threshold": 0.03,
-                            "max_leverage": 1.0,
-                        },
-                        "regime_gates": {"entry": [], "exit_on_break": True},
-                        "params": {
-                            "gross_target": 1.0,
-                            "long_count": 3,
-                            "short_count": 1,
-                            "min_abs_score": 0.12,
-                        },
-                    }
-
-            claude = FakeClaude()
+            claude = make_fake_claude(
+                json_return={
+                    "track": "trend_signals",
+                    "family": "perp_multi_asset_carry",
+                    "hypothesis": "Test asymmetric book construction without regime gates.",
+                    "neutrality_basis": "none",
+                    "features": [
+                        "funding_168h_mean",
+                        "funding_72h_mean",
+                        "funding_accel_24h",
+                        "funding_carry_to_vol",
+                        "funding_z_168h",
+                        "realized_vol_168h",
+                    ],
+                    "universe": {
+                        "basis_groups": ["BTC", "ETH", "SOL", "HYPE"],
+                        "max_symbols": 4,
+                        "lookback_days": 365,
+                        "interval": "1h",
+                    },
+                    "risk": {
+                        "max_asset_weight": 0.35,
+                        "rebalance_threshold": 0.03,
+                        "max_leverage": 1.0,
+                    },
+                    "regime_gates": {"entry": [], "exit_on_break": True},
+                    "params": {
+                        "gross_target": 1.0,
+                        "long_count": 3,
+                        "short_count": 1,
+                        "min_abs_score": 0.12,
+                    },
+                }
+            )
             mutator = SpecMutator(settings, claude=claude)  # type: ignore[arg-type]
             builder = WorkspaceBuilder(
                 settings=settings,

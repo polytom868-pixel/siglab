@@ -14,7 +14,6 @@ resolve correctly.  theme.tcss is kept as a reference document.
 
 from __future__ import annotations
 
-import colorsys
 import re
 from unittest.mock import AsyncMock, MagicMock
 
@@ -46,7 +45,6 @@ from siglab.tui.screens.risk import (
     RiskGaugeWidget,
     RiskScreen,
     _correlation_block,
-    _correlation_color,
     MAX_ALERTS_DISPLAY,
 )
 from siglab.tui.formatting import gauge_color, severity_color
@@ -55,8 +53,6 @@ from siglab.tui.screens.strategy import (
     ResultsTableWidget,
     StrategyListWidget,
     StrategyScreen,
-    MAX_COMPARE,
-    DEFAULT_DECK,
 )
 from siglab.tui.screens.telemetry import (
     ProviderMetricsWidget,
@@ -67,7 +63,6 @@ from siglab.tui.screens.telemetry import (
     TelemetryScreen,
     ToolUsageWidget,
     DATE_RANGE_FILTERS,
-    MAX_COMPARE as TEL_MAX_COMPARE,
 )
 from siglab.tui.screens.evidence import (
     DEMO_STEPS,

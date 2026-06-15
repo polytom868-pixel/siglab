@@ -9,15 +9,11 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
 
 import pytest
 
 from siglab.live.promotion import (
-    DEFAULT_CONSECUTIVE_DAYS,
     DEFAULT_MIN_TRADING_DAYS,
-    DEFAULT_PROMOTION_THRESHOLD,
-    DEFAULT_WEIGHTS,
     compute_composite_score,
     compute_sub_scores,
     promotion_eligible,

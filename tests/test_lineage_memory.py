@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
 
 from siglab.schemas import SignalSpec
-from siglab.search.lineage import LineageStore
+from tests._factories import make_lineage_store_ctx
 
 
 def _spec_payload(
@@ -52,9 +51,7 @@ def _spec_payload(
 
 class LineageMemoryTests(unittest.TestCase):
     def test_novelty_pressure_allows_family_concentration_when_family_has_positive_anchor(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "ancestry.db"
-            ancestry = LineageStore(db_path)
+        with make_lineage_store_ctx() as (ancestry, _tmp):
 
             rows = [
                 {
@@ -81,9 +78,7 @@ class LineageMemoryTests(unittest.TestCase):
             self.assertEqual(novelty["dominant_family"]["family"], "perp_multi_asset_carry")
 
     def test_recent_rows_include_parent_hash_and_parse_cleanly(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "ancestry.db"
-            ancestry = LineageStore(db_path)
+        with make_lineage_store_ctx() as (ancestry, _tmp):
 
             parent = SignalSpec.from_dict(
                 _spec_payload(
@@ -126,10 +121,7 @@ class LineageMemoryTests(unittest.TestCase):
             self.assertEqual(rows[0]["parent_hash"], parent.strategy_hash())
 
     def test_recent_can_exclude_deterministic_rows(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "ancestry.db"
-            ancestry = LineageStore(db_path)
-
+        with make_lineage_store_ctx() as (ancestry, _tmp):
             deterministic = SignalSpec.from_dict(
                 _spec_payload(
                     track="trend_signals",
@@ -193,9 +185,7 @@ class LineageMemoryTests(unittest.TestCase):
             self.assertEqual(rows[0]["spec_hash"], llm_child.strategy_hash())
 
     def test_session_local_scope_filters_recent_dashboard_and_best(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "ancestry.db"
-            ancestry = LineageStore(db_path)
+        with make_lineage_store_ctx() as (ancestry, _tmp):
 
             first = SignalSpec.from_dict(
                 _spec_payload(
@@ -262,10 +252,7 @@ class LineageMemoryTests(unittest.TestCase):
             )
 
     def test_dashboard_rows_keep_repeat_evaluations_while_recent_stays_unique(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "ancestry.db"
-            ancestry = LineageStore(db_path)
-
+        with make_lineage_store_ctx() as (ancestry, tmp):
             spec = SignalSpec.from_dict(
                 _spec_payload(
                     track="trend_signals",
@@ -314,10 +301,7 @@ class LineageMemoryTests(unittest.TestCase):
             )
 
     def test_memory_packet_surfaces_similar_runs_and_query_cards(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "ancestry.db"
-            ancestry = LineageStore(db_path)
-
+        with make_lineage_store_ctx() as (ancestry, tmp):
             winner = _spec_payload(
                 track="trend_signals",
                 family="perp_pair_trade_unlevered",
@@ -627,9 +611,7 @@ class LineageMemoryTests(unittest.TestCase):
             self.assertIn("reversion", archetypes)
 
     def test_memory_packet_handles_generic_cross_sectional_regime_labels(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "ancestry.db"
-            ancestry = LineageStore(db_path)
+        with make_lineage_store_ctx() as (ancestry, tmp):
 
             spec = SignalSpec.from_dict(
                 _spec_payload(

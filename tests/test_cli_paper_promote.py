@@ -13,7 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 
@@ -72,7 +71,6 @@ def _create_session_with_fills(
         # Unprofitable trades: buy high, sell low
         prices = [(100.0, 98.0), (102.0, 99.0), (101.0, 97.0)]
 
-    import time
     from datetime import UTC, datetime, timedelta
 
     for i, (buy_price, sell_price) in enumerate(prices):

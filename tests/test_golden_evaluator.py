@@ -10,8 +10,6 @@ Assertions fulfilled:
 
 from __future__ import annotations
 
-import hashlib
-import json
 from pathlib import Path
 
 import pytest
@@ -19,7 +17,7 @@ import pytest
 from siglab.evaluator.core import ResearchEvaluator
 from siglab.schemas import SignalSpec
 
-from conftest import REPO_ROOT, DeterministicMockProvider, compute_evaluation_hash
+from conftest import DeterministicMockProvider, compute_evaluation_hash
 
 # ---------------------------------------------------------------------------
 # Helpers

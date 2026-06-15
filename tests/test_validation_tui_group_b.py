@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from siglab.tui.api_client import TuiApiClient
 from siglab.tui.screens.market import (
     KlinesChartWidget,
     MarketScreen,

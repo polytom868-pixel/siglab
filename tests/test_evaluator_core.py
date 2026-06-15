@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import math
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import numpy as np
 import pandas as pd
 
 from siglab.evaluator.core import (
@@ -14,6 +12,17 @@ from siglab.evaluator.core import (
     _unique_int_values,
 )
 from tests._factories import make_mock_settings
+
+# Default base_policy used by PairPolicySpecsTests; mirrors the previous
+# inline dict in every test method.
+_BASE_POLICY: dict = {
+    "entry_abs_score": 0.3,
+    "exit_abs_score": 0.15,
+    "flip_abs_score": 0.3,
+    "max_holding_bars": 48,
+    "cooldown_bars": 4,
+}
+
 
 def _make_mock_provider() -> MagicMock:
     """Build a mock MarketDataProvider."""

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import math
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 

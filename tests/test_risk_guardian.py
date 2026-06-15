@@ -21,7 +21,6 @@ import pytest
 
 from siglab.risk.guardian import (
     AlertSeverity,
-    DrawdownEvent,
     check_concentration,
     check_risk_thresholds,
     compute_composite_score,
@@ -247,8 +246,8 @@ class TestRecoveryTime:
 
     def test_double_dip_recovery_first_trough(self) -> None:
         """Multiple drawdowns — recovery time of the first significant one."""
-        equity = np.array([1.0, 0.9, 0.8, 0.95, 0.85, 0.75, 1.0, 1.1])
-        # Global peak = 1.0 (idx 0), biggest drawdown: trough at... 
+        # equity_arr = np.array([1.0, 0.9, 0.8, 0.95, 0.85, 0.75, 1.0, 1.1])  # placeholder — use simpler example below
+        # Global peak = 1.0 (idx 0), biggest drawdown: trough at...
         # Actually the global max drawdown trough is at idx 6 (0.75)
         # Pre-peak at 1.0 (idx 0), recovery at idx 7 (1.1 >= 1.0)
         # But there's also a higher peak... let me check carefully

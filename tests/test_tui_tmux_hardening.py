@@ -20,7 +20,6 @@ These tests run in CI without X/display server (headless tmux).
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 import time

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from siglab.orchestration.trials import clone_payload, get_path_value, apply_path_value
 from siglab.orchestration.optimizer_runner import infer_optuna_space

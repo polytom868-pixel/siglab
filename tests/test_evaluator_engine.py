@@ -23,13 +23,7 @@ _BASE_TREND_SIGNALS: dict[str, Any] = {
     "canonical_series_valid": True,
 }
 
-_BASE_YIELD_FLOWS: dict[str, Any] = {
-    "median_total_return": 0.05,
-    "median_sharpe": 1.0,
-    "worst_max_drawdown": -0.10,
-    "asset_breadth": 3,
-    "canonical_series_valid": True,
-}
+_BASE_YIELD_FLOWS: dict[str, Any] = _BASE_TREND_SIGNALS.copy()
 
 
 # ---------------------------------------------------------------------------

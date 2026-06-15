@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from siglab.data.store import ParquetLake
+from tests._factories import make_parquet_lake
 
 
 class ParquetLakeInitTests(unittest.TestCase):
@@ -21,9 +22,7 @@ class ParquetLakeInitTests(unittest.TestCase):
             self.assertTrue(root.is_dir())
 
     def test_uses_existing_root_directory(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             self.assertEqual(lake.root, root)
             self.assertTrue(root.is_dir())
 
@@ -36,9 +35,8 @@ class ParquetLakeInitTests(unittest.TestCase):
 
 class ParquetLakeSanitizeTests(unittest.TestCase):
     def setUp(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            self.lake = ParquetLake(Path(tmp))
-
+        with make_parquet_lake() as (self.lake, _tmp_root):
+            pass
     def test_keeps_alphanumeric_chars(self) -> None:
         result = self.lake._sanitize("hello123")
         self.assertEqual(result, "hello123")
@@ -74,9 +72,8 @@ class ParquetLakeSanitizeTests(unittest.TestCase):
 
 class ParquetLakeTimestampTests(unittest.TestCase):
     def setUp(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            self.lake = ParquetLake(Path(tmp))
-
+        with make_parquet_lake() as (self.lake, _tmp_root):
+            pass
     def test_timestamp_matches_expected_format(self) -> None:
         ts = self.lake._timestamp()
         self.assertEqual(len(ts), 16)
@@ -96,17 +93,13 @@ class ParquetLakeTimestampTests(unittest.TestCase):
 
 class ParquetLakeTargetDirTests(unittest.TestCase):
     def test_joins_sanitized_namespace_and_key(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target = lake._target_dir("my namespace", "my-key")
             expected = root / "my_namespace" / "my-key"
             self.assertEqual(target, expected)
 
     def test_sanitizes_both_parts(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target = lake._target_dir("ns/1", "key/2")
             expected = root / "ns_1" / "key_2"
             self.assertEqual(target, expected)
@@ -114,15 +107,12 @@ class ParquetLakeTargetDirTests(unittest.TestCase):
 
 class ParquetLakeLatestPathTests(unittest.TestCase):
     def test_returns_none_when_directory_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             result = lake._latest_path("nonexistent", "key", ".json")
             self.assertIsNone(result)
 
     def test_returns_none_when_no_matching_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             (target_dir / "data.txt").write_text("hello")
@@ -130,9 +120,7 @@ class ParquetLakeLatestPathTests(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_returns_latest_file_by_sort_order(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             older = target_dir / "20260501T000000Z.json"
@@ -143,9 +131,7 @@ class ParquetLakeLatestPathTests(unittest.TestCase):
             self.assertEqual(result, newer)
 
     def test_returns_file_when_within_max_age(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             recent = target_dir / "data.json"
@@ -154,9 +140,7 @@ class ParquetLakeLatestPathTests(unittest.TestCase):
             self.assertEqual(result, recent)
 
     def test_returns_none_when_file_exceeds_max_age(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             old_file = target_dir / "data.json"
@@ -167,9 +151,7 @@ class ParquetLakeLatestPathTests(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_prefers_newer_file_over_older_one_respecting_age(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             old_file = target_dir / "20260501T000000Z.json"
@@ -187,8 +169,7 @@ class ParquetLakeWriteFrameTests(unittest.TestCase):
     def test_write_frame_returns_path_with_parquet_suffix(
         self, mock_to_parquet: MagicMock
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             df = pd.DataFrame({"col": [1, 2, 3]})
             result = lake.write_frame("ns", "key", df)
             self.assertIsInstance(result, Path)
@@ -198,9 +179,7 @@ class ParquetLakeWriteFrameTests(unittest.TestCase):
     def test_write_frame_creates_target_directory(
         self, mock_to_parquet: MagicMock
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             df = pd.DataFrame({"x": [42]})
             lake.write_frame("my-ns", "my-key", df)
             expected_dir = root / "my-ns" / "my-key"
@@ -210,8 +189,7 @@ class ParquetLakeWriteFrameTests(unittest.TestCase):
     def test_write_frame_passes_frame_to_parquet(
         self, mock_to_parquet: MagicMock
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             df = pd.DataFrame({"val": [10, 20]})
             lake.write_frame("ns", "key", df)
             mock_to_parquet.assert_called_once()
@@ -220,9 +198,7 @@ class ParquetLakeWriteFrameTests(unittest.TestCase):
     def test_write_frame_path_includes_namespace_and_key(
         self, mock_to_parquet: MagicMock
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             df = pd.DataFrame({"a": [1]})
             result = lake.write_frame("alpha", "beta", df)
             self.assertIn("alpha", str(result))
@@ -236,9 +212,7 @@ class ParquetLakeLatestFrameTests(unittest.TestCase):
     ) -> None:
         expected_df = pd.DataFrame({"a": [1, 2]})
         mock_read_parquet.return_value = expected_df
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             (target_dir / "data.parquet").write_text("")
@@ -247,14 +221,12 @@ class ParquetLakeLatestFrameTests(unittest.TestCase):
             pd.testing.assert_frame_equal(result, expected_df)
 
     def test_latest_frame_returns_none_when_no_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             result = lake.latest_frame("ns", "key")
             self.assertIsNone(result)
 
     def test_latest_frame_returns_none_when_directory_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             result = lake.latest_frame("nonexistent", "key")
             self.assertIsNone(result)
 
@@ -262,9 +234,7 @@ class ParquetLakeLatestFrameTests(unittest.TestCase):
     def test_latest_frame_respects_max_age_and_returns_none(
         self, mock_read_parquet: MagicMock
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             f = target_dir / "data.parquet"
@@ -280,9 +250,7 @@ class ParquetLakeLatestFrameTests(unittest.TestCase):
         self, mock_read_parquet: MagicMock
     ) -> None:
         mock_read_parquet.return_value = pd.DataFrame({"x": [1]})
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             f = target_dir / "data.parquet"
@@ -293,24 +261,19 @@ class ParquetLakeLatestFrameTests(unittest.TestCase):
 
 class ParquetLakeWriteJsonTests(unittest.TestCase):
     def test_write_json_returns_path_with_json_suffix(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             result = lake.write_json("ns", "key", {"msg": "hello"})
             self.assertIsInstance(result, Path)
             self.assertEqual(result.suffix, ".json")
 
     def test_write_json_creates_target_directory(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             lake.write_json("my-ns", "my-key", {"data": 1})
             expected_dir = root / "my-ns" / "my-key"
             self.assertTrue(expected_dir.is_dir())
 
     def test_write_json_writes_serializable_content(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             payload = {"name": "test", "value": 42, "tags": ["a", "b"]}
             result = lake.write_json("ns", "key", payload)
             self.assertTrue(result.exists())
@@ -319,30 +282,25 @@ class ParquetLakeWriteJsonTests(unittest.TestCase):
             self.assertIn("42", content)
 
     def test_write_json_path_includes_namespace_and_key(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             result = lake.write_json("alpha", "beta", {"k": "v"})
             self.assertIn("alpha", str(result))
             self.assertIn("beta", str(result))
 
     def test_write_json_handles_list_payload(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             payload = [1, 2, 3]
             result = lake.write_json("ns", "key", payload)
             self.assertTrue(result.exists())
 
     def test_write_json_handles_none_payload(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             result = lake.write_json("ns", "key", None)
             self.assertTrue(result.exists())
             self.assertEqual(result.read_text().strip(), "null")
 
     def test_write_json_handles_nested_structure(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             payload = {"outer": {"inner": [1, {"deep": True}]}}
             result = lake.write_json("ns", "key", payload)
             self.assertTrue(result.exists())
@@ -353,9 +311,7 @@ class ParquetLakeWriteJsonTests(unittest.TestCase):
 
 class ParquetLakeLatestJsonTests(unittest.TestCase):
     def test_latest_json_returns_data_when_file_exists(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             (target_dir / "data.json").write_text('{"msg": "hello"}')
@@ -363,21 +319,17 @@ class ParquetLakeLatestJsonTests(unittest.TestCase):
             self.assertEqual(result, {"msg": "hello"})
 
     def test_latest_json_returns_none_when_no_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             result = lake.latest_json("ns", "key")
             self.assertIsNone(result)
 
     def test_latest_json_returns_none_when_directory_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             result = lake.latest_json("nonexistent", "key")
             self.assertIsNone(result)
 
     def test_latest_json_returns_latest_file_content(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             (target_dir / "20260501T000000Z.json").write_text('"old"')
@@ -386,9 +338,7 @@ class ParquetLakeLatestJsonTests(unittest.TestCase):
             self.assertEqual(result, "new")
 
     def test_latest_json_respects_max_age_and_returns_data(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             f = target_dir / "data.json"
@@ -397,9 +347,7 @@ class ParquetLakeLatestJsonTests(unittest.TestCase):
             self.assertEqual(result, {"recent": True})
 
     def test_latest_json_respects_max_age_and_returns_none(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             f = target_dir / "data.json"
@@ -410,9 +358,7 @@ class ParquetLakeLatestJsonTests(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_latest_json_handles_empty_object(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             (target_dir / "data.json").write_text("{}")
@@ -420,9 +366,7 @@ class ParquetLakeLatestJsonTests(unittest.TestCase):
             self.assertEqual(result, {})
 
     def test_latest_json_handles_array(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             (target_dir / "data.json").write_text("[1, 2, 3]")
@@ -430,9 +374,7 @@ class ParquetLakeLatestJsonTests(unittest.TestCase):
             self.assertEqual(result, [1, 2, 3])
 
     def test_latest_json_handles_primitive_values(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             (target_dir / "data.json").write_text('"just a string"')
@@ -448,9 +390,7 @@ class ParquetLakeRoundTripTests(unittest.TestCase):
     ) -> None:
         original_df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
         mock_read_parquet.return_value = original_df
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             lake.write_frame("ns", "key", original_df)
             target_dir = root / "ns" / "key"
             dummy = target_dir / "20260530T120000Z.parquet"
@@ -459,17 +399,14 @@ class ParquetLakeRoundTripTests(unittest.TestCase):
             pd.testing.assert_frame_equal(result, original_df)
 
     def test_write_then_read_json_roundtrip(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             original = {"key": "value", "nested": {"num": 42}}
             lake.write_json("ns", "key", original)
             result = lake.latest_json("ns", "key")
             self.assertEqual(result, original)
 
     def test_multiple_writes_in_same_namespace(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             lake.write_json("shared", "a", {"id": 1})
             lake.write_json("shared", "b", {"id": 2})
             self.assertTrue((root / "shared" / "a").is_dir())
@@ -480,8 +417,7 @@ class ParquetLakeRoundTripTests(unittest.TestCase):
 
 class ParquetLakeCrossNamespaceTests(unittest.TestCase):
     def test_different_namespaces_are_isolated(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             lake.write_json("ns1", "key", {"from": "ns1"})
             lake.write_json("ns2", "key", {"from": "ns2"})
             self.assertEqual(lake.latest_json("ns1", "key"), {"from": "ns1"})
@@ -490,8 +426,7 @@ class ParquetLakeCrossNamespaceTests(unittest.TestCase):
 
 class ParquetLakePruneTests(unittest.TestCase):
     def test_prune_removes_old_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             lake.write_json("ns", "key", {"data": 1})
             target_dir = lake._target_dir("ns", "key")
             files_before = list(target_dir.glob("*"))
@@ -504,8 +439,7 @@ class ParquetLakePruneTests(unittest.TestCase):
             self.assertEqual(len(files_after), 0)
 
     def test_prune_keeps_recent_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             lake.write_json("ns", "key", {"data": 1})
             target_dir = lake._target_dir("ns", "key")
             removed = lake.prune("ns", "key", max_age_hours=24)
@@ -514,15 +448,12 @@ class ParquetLakePruneTests(unittest.TestCase):
             self.assertEqual(len(files_after), 1)
 
     def test_prune_returns_zero_when_directory_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             removed = lake.prune("nonexistent", "key", max_age_hours=24)
             self.assertEqual(removed, 0)
 
     def test_prune_only_removes_cache_file_types(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             target_dir = root / "ns" / "key"
             target_dir.mkdir(parents=True)
             keep_file = target_dir / "some_other.txt"
@@ -537,8 +468,7 @@ class ParquetLakePruneTests(unittest.TestCase):
             self.assertFalse(old_file.exists())
 
     def test_prune_removes_multiple_old_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             for i in range(5):
                 f = lake._target_dir("ns", "key") / f"20260501T{i:06d}Z.json"
                 f.parent.mkdir(parents=True, exist_ok=True)
@@ -550,8 +480,7 @@ class ParquetLakePruneTests(unittest.TestCase):
             self.assertEqual(removed, 5)
 
     def test_prune_mixed_age_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             target_dir = lake._target_dir("ns", "key")
             target_dir.mkdir(parents=True, exist_ok=True)
             recent = target_dir / "recent.json"
@@ -566,8 +495,7 @@ class ParquetLakePruneTests(unittest.TestCase):
             self.assertFalse(old.exists())
 
     def test_prune_all_removes_old_files_in_all_namespaces(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             lake.write_json("ns1", "k1", {"a": 1})
             lake.write_json("ns2", "k2", {"b": 2})
             target1 = lake._target_dir("ns1", "k1")
@@ -581,8 +509,7 @@ class ParquetLakePruneTests(unittest.TestCase):
             self.assertEqual(len(list(target2.glob("*"))), 0)
 
     def test_prune_all_skips_namespaces_younger_than_ttl(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             lake.write_json("ns_old", "k", {"old": True})
             lake.write_json("ns_fresh", "k", {"fresh": True})
             target_old = lake._target_dir("ns_old", "k")
@@ -599,22 +526,18 @@ class ParquetLakePruneTests(unittest.TestCase):
             )
 
     def test_prune_all_with_empty_lake(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             total = lake.prune_all(default_max_age_hours=24)
             self.assertEqual(total, 0)
 
     def test_prune_all_with_no_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            lake = ParquetLake(root)
+        with make_parquet_lake() as (lake, root):
             (root / "ns" / "key").mkdir(parents=True)
             total = lake.prune_all(default_max_age_hours=24)
             self.assertEqual(total, 0)
 
     def test_prune_respects_namespace_isolation(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             lake.write_json("alice", "portfolio", {"balance": 100})
             lake.write_json("bob", "portfolio", {"balance": 200})
             target_alice = lake._target_dir("alice", "portfolio")
@@ -627,8 +550,7 @@ class ParquetLakePruneTests(unittest.TestCase):
             self.assertEqual(lake.latest_json("bob", "portfolio"), {"balance": 200})
 
     def test_prune_works_with_parquet_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            lake = ParquetLake(Path(tmp))
+        with make_parquet_lake() as (lake, _root):
             target_dir = lake._target_dir("ns", "key")
             target_dir.mkdir(parents=True, exist_ok=True)
             pf = target_dir / "data.parquet"

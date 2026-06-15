@@ -1,7 +1,6 @@
 """Tests for siglab.schemas — dataclass construction, fingerprinting."""
 from __future__ import annotations
 
-import json
 
 from siglab.schemas import AssetUniverse, RiskBounds, SignalSpec
 

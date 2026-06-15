@@ -12,12 +12,9 @@ after CSS variable resolution fix (f34-fix-css-variables).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import subprocess
-import sys
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -491,7 +488,6 @@ class TestVAL_TUI_009_TUIHardening:
 
     def test_app_has_api_connected_reactive(self) -> None:
         """App has api_connected reactive state for auto-refresh."""
-        from textual.reactive import reactive
         # Check that api_connected is a reactive attribute
         assert hasattr(SigLabTUI, "api_connected")
 

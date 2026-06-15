@@ -15,17 +15,16 @@ verifies concrete assertions about the system behavior.
 
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import json
 import logging
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 import unittest
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pandas as pd
@@ -36,33 +35,22 @@ from siglab.config import SiglabConfig
 from siglab.dashboard.app import DashboardState, WebSocketManager, create_app
 from siglab.dashboard.routes import _compute_risk_metrics
 from siglab.data.sodex_feeds import SoDEXFeeds
-from siglab.data.store import ParquetLake
 from siglab.evaluation.runner import ResearchEvaluator
 from siglab.live.paper_client import (
-    PaperClientError,
     PaperOrderSide,
-    PaperOrderStatus,
     PaperOrderType,
     SoDEXPaperPerpsClient,
 )
 from siglab.live.reconciliation import ReconciliationEngine
 from siglab.live.promotion import (
-    DEFAULT_CONSECUTIVE_DAYS,
-    DEFAULT_MIN_TRADING_DAYS,
-    DEFAULT_PROMOTION_THRESHOLD,
     compute_composite_score,
     compute_sub_scores,
-    extract_daily_metrics,
-    extract_session_metrics,
     promotion_eligible,
 )
-from siglab.schemas import AssetUniverse, RiskBounds, SignalSpec
+from siglab.schemas import SignalSpec
 
 from conftest import (
-    REPO_ROOT,
     DeterministicMockProvider,
-    mock_settings,
-    sample_spec,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,7 +84,6 @@ def _make_equity_npy(path: Path, values: list[float]) -> None:
     data = np.array(values, dtype=np.float64)
     np.save(str(path), data)
 
-
 def _create_minimal_config(tmp_dir: Path) -> SiglabConfig:
     """Create a SiglabConfig pointing to a temporary directory."""
     return SiglabConfig(
@@ -109,6 +96,19 @@ def _create_minimal_config(tmp_dir: Path) -> SiglabConfig:
         ancestry_db_path=tmp_dir / "siglab.db",
         sosovalue_api_key_override=None,
     )
+
+
+@contextlib.contextmanager
+def _tmp_config_ctx():
+    """Yield ``(tmp_dir, config)`` from a tempdir, with config rooted there.
+
+    Replaces the 12+ inline ``with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        config = _create_minimal_config(tmp_dir)`` patterns in this file.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        yield tmp_dir, _create_minimal_config(tmp_dir)
 
 
 def _create_dashboard_app_with_config(
@@ -134,7 +134,7 @@ def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Comple
         capture_output=True,
         text=True,
         timeout=60,
-        env={**dict(env or {}), **{k: v for k, v in dict(env or {}).items()}},
+        env=env or None,
     )
     return result
 
@@ -467,9 +467,7 @@ class TestCross002SoSoValueToDashboard:
         evaluation outputs. The /evidence-graph and /risk endpoints
         are key places where evaluation-derived data appears.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client_util = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -574,9 +572,7 @@ class TestCross003CliToDashboard:
         After CLI creates a paper session, dashboard /risk endpoint
         can display data derived from paper sessions.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             # Create paper sessions directory with equity curve data
             sessions_dir = config.live_dir / "paper_sessions"
@@ -606,9 +602,7 @@ class TestCross003CliToDashboard:
         CLI-created paper session is visible through the dashboard WebSocket
         get_positions action.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             sessions_dir = config.live_dir / "paper_sessions"
             sessions_dir.mkdir(parents=True)
@@ -648,9 +642,7 @@ class TestCross006PaperToRiskDashboard:
         With paper trading sessions containing equity curves,
         /risk returns computed risk metrics.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             sessions_dir = config.live_dir / "paper_sessions"
             sessions_dir.mkdir(parents=True)
@@ -692,9 +684,7 @@ class TestCross006PaperToRiskDashboard:
         """
         Without any paper sessions, risk endpoint returns None for metrics.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -711,9 +701,7 @@ class TestCross006PaperToRiskDashboard:
         """
         Multiple paper strategies produce correlation matrix with diagonal 1.0.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             sessions_dir = config.live_dir / "paper_sessions"
             sessions_dir.mkdir(parents=True)
@@ -746,9 +734,7 @@ class TestCross006PaperToRiskDashboard:
         """
         The _compute_risk_metrics function works correctly in isolation.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             sessions_dir = config.live_dir / "paper_sessions"
             sessions_dir.mkdir(parents=True)
@@ -777,9 +763,7 @@ class TestCross006PaperToRiskDashboard:
         Even with live_dir existing but empty of session files,
         risk endpoint should return None values without error.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             # Create live_dir but no .npy files
             config.live_dir.mkdir(parents=True)
@@ -795,9 +779,7 @@ class TestCross006PaperToRiskDashboard:
         """
         WebSocket risk_score subscription returns risk data.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             sessions_dir = config.live_dir / "paper_sessions"
             sessions_dir.mkdir(parents=True)
@@ -826,9 +808,7 @@ class TestCross006PaperToRiskDashboard:
         """
         WebSocket get_risk action returns risk snapshot.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -975,9 +955,7 @@ class TestCross007ResearchEvaluatePaper:
         Paper sessions created from evaluation results appear
         in the dashboard risk endpoint.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             # Create paper sessions directory (simulating what CLI would create)
             sessions_dir = config.live_dir / "paper_sessions"
@@ -1124,9 +1102,7 @@ class TestCross008GracefulDegradation:
         external APIs are not configured. The dashboard should
         not depend on SoDEX or SoSoValue availability.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -1155,9 +1131,7 @@ class TestCross008GracefulDegradation:
         """
         Unknown routes return 404, not crashes.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -1184,9 +1158,7 @@ class TestCross008GracefulDegradation:
         Risk endpoint returns None values instead of crashing when
         numpy or session data is unavailable.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -1237,9 +1209,7 @@ class TestCrossAllCommon:
         VAL-CROSS-005: Dashboard starts, WebSocket connects,
         receives connection acknowledgment.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -1265,9 +1235,7 @@ class TestCrossAllCommon:
         VAL-DASH-008: Dashboard and CLI can work concurrently.
         CLI commands don't interfere with dashboard operations.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            config = _create_minimal_config(tmp_dir)
+        with _tmp_config_ctx() as (tmp_dir, config):
 
             client = _create_dashboard_app_with_config(tmp_dir, config)
 
@@ -1302,7 +1270,6 @@ class TestCrossAllCommon:
 
             # Create a session with minimal trading data
             from siglab.data.sodex_feeds import SoDEXFeeds
-            from siglab.data.store import ParquetLake
 
             feeds = MagicMock(spec=SoDEXFeeds)
             klines = _make_kline_data(base_price=50000.0, n=200, seed=42)

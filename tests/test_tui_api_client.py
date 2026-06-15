@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -37,8 +36,7 @@ class TestRequestWithRetry:
         mock_resp = _mock_response(200, {"data": "ok"})
 
         call_count = 0
-        original_get = httpx.AsyncClient.get
-
+        _original_get = httpx.AsyncClient.get
         async def counting_get(self_client, path, **kwargs):
             nonlocal call_count
             call_count += 1

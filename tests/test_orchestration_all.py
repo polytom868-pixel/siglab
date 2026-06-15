@@ -6,9 +6,8 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
-import pytest
 
 from siglab.orchestration.contracts import (
     PreflightResult,
@@ -57,7 +56,7 @@ from siglab.orchestration.planner_validation import (
     trace_tool_names,
     planner_probe_claim_issues,
 )
-from siglab.orchestration.reflector_runner import ReflectionResult, ReflectionRunner
+from siglab.orchestration.reflector_runner import ReflectionRunner
 from siglab.orchestration.trials import (
     apply_path_value,
     build_spec_patch,
@@ -171,7 +170,6 @@ class TestResearchPlannerRunner:
         path = tmp_path / "evidence/some.summary.json"
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps({"record_count": 5, "link_count": 2}))
-        from pathlib import PosixPath
         # Mock relative_to to work
         with patch.object(Path, "relative_to", return_value=path):
             result = runner._compact_evidence_summary(
@@ -212,7 +210,7 @@ class TestResearchPlannerRunner:
         assert body == "no frontmatter here"
 
     def test_extract_planner_contract_fills_fallback_fields(self):
-        runner = self._make_runner()
+        self._make_runner()
         parent = SimpleNamespace(
             family="perp_multi_asset_carry",
             universe=SimpleNamespace(basis_groups=["BTC"]),
@@ -238,21 +236,21 @@ class TestResearchPlannerRunner:
         assert contract["forbidden_motifs"] == ["second pure trend overlay"]
 
     def test_merge_hint_fragment_merges_list_keys(self):
-        runner = self._make_runner()
+        self._make_runner()
         base = {"target_family": "fam_a", "target_universe": ["BTC"]}
         fragment = {"target_universe": ["ETH"], "target_family": "fam_b"}
         merged = merge_hint_fragment(base, fragment)
         assert "ETH" in str(merged["target_universe"])
 
     def test_merge_hint_fragment_merges_nested_keys(self):
-        runner = self._make_runner()
+        self._make_runner()
         base = {"target_family": "fam_a"}
         fragment = {"gate_intent": {"type": "suppress", "target_dimension": "policy_persistence"}}
         merged = merge_hint_fragment(base, fragment)
         assert merged["gate_intent"]["type"] == "suppress"
 
     def test_semantic_note_issues_catches_short_notes(self):
-        runner = self._make_runner()
+        self._make_runner()
         issues = semantic_note_issues(
             note_text="short",
             planner_contract={"target_family": "test", "must_answer": "q?", "informative_test": "t"},
@@ -260,7 +258,7 @@ class TestResearchPlannerRunner:
         assert "research_note_too_short" in issues
 
     def test_semantic_note_issues_catches_empty_missing_fields(self):
-        runner = self._make_runner()
+        self._make_runner()
         issues = semantic_note_issues(
             note_text="A note with test keyword and switch keyword and enough length to pass the 80 char threshold really",
             planner_contract={},
@@ -293,7 +291,7 @@ class TestResearchPlannerRunner:
         assert issues == []
 
     def test_planner_finish_issues_catches_truncation(self):
-        runner = self._make_runner()
+        self._make_runner()
         issues = planner_finish_issues(
             trace={"response_finish_reason": "length"},
             note_text="some note here",
@@ -301,7 +299,7 @@ class TestResearchPlannerRunner:
         assert any("planner_response_truncated" in i for i in issues)
 
     def test_planner_finish_issues_catches_mid_list_endings(self):
-        runner = self._make_runner()
+        self._make_runner()
         issues = planner_finish_issues(
             trace={},
             note_text="some items\n-",
@@ -309,12 +307,12 @@ class TestResearchPlannerRunner:
         assert "planner_note_ends_mid_list" in issues
 
     def test_repair_should_disable_tools_returns_true(self):
-        runner = self._make_runner()
+        self._make_runner()
         feedback = {"semantic_issues": ["planner_trace_error:timeout"]}
         assert should_disable_tools_for_repair(feedback) is True
 
     def test_repair_should_disable_tools_returns_false(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert should_disable_tools_for_repair(None) is False
         assert should_disable_tools_for_repair({}) is False
         assert should_disable_tools_for_repair({"semantic_issues": ["note_too_short"]}) is False
@@ -335,24 +333,24 @@ class TestResearchPlannerRunner:
         assert len(matching) <= 1
 
     def test_body_family_override_matches_family_patterns(self):
-        runner = self._make_runner()
+        self._make_runner()
         families = ["perp_multi_asset_carry", "perp_basket_neutral_unlevered"]
         text = "switch to `perp_basket_neutral_unlevered` and test"
         result = body_family_override(text, families)
         assert result == "perp_basket_neutral_unlevered"
 
     def test_body_trade_style_matches_assignment(self):
-        runner = self._make_runner()
+        self._make_runner()
         text = "some note with trade_style = dynamic_vol_target"
         result = body_trade_style(text)
         assert result == "dynamic_vol_target"
 
     def test_body_trade_style_returns_none_when_missing(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert body_trade_style("no trade style here") is None
 
     def test_planner_probe_budget_issues(self):
-        runner = self._make_runner()
+        self._make_runner()
         trace = {
             "tool_calls": [
                 {
@@ -365,14 +363,14 @@ class TestResearchPlannerRunner:
         assert any("planner_probe_budget_exhausted" in i for i in issues)
 
     def test_planner_total_tool_budget_issues(self):
-        runner = self._make_runner()
+        self._make_runner()
         # Create many fake tool calls
         trace = {"tool_calls": [{"name": f"tool_{i}"} for i in range(MAX_PLANNER_TOOL_CALLS + 1)]}
         issues = planner_total_tool_budget_issues(trace=trace)
         assert any("planner_tool_call_budget_exceeded" in i for i in issues)
 
     def test_fallback_contract_has_expected_keys(self):
-        runner = self._make_runner()
+        self._make_runner()
         parent = SimpleNamespace(
             family="perp_multi_asset_carry",
             universe=SimpleNamespace(basis_groups=["BTC"]),
@@ -394,18 +392,18 @@ class TestResearchPlannerRunner:
         assert "test_family" in note
 
     def test_string_list_returns_clean_list(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert string_list(["a", "b", ""]) == ["a", "b"]
         assert string_list("not a list") == []
         assert string_list(None) == []
 
     def test_unique_strings_deduplicates(self):
-        runner = self._make_runner()
+        self._make_runner()
         result = unique_strings(["a", "b", "a", "c"])
         assert result == ["a", "b", "c"]
 
     def test_explicit_contract_keys_collects_keys(self):
-        runner = self._make_runner()
+        self._make_runner()
         keys = explicit_contract_keys(
             {"target_family": "fam", "extra": 1},
             [{"another_key": "val"}],
@@ -472,7 +470,7 @@ class TestSpecWriterRunner:
         assert not preflight.acceptable
 
     def test_preflight_before_write_rejects_invalid(self):
-        runner = self._make_runner()
+        self._make_runner()
         # Build a preflight result manually that is not acceptable
         preflight = PreflightResult(
             parse_error="error",
@@ -839,7 +837,7 @@ class TestReflectionRunner:
         assert "What changed" in body
 
     def test_string_list_handles_various(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert string_list(["a", "b"]) == ["a", "b"]
         assert string_list(None) == []
         assert string_list("single") == []
@@ -1185,36 +1183,36 @@ class TestResearchPlannerRunnerAdvanced:
         return _make_planner_runner()
 
     def test_policy_control_hint_returns_hint(self):
-        runner = self._make_runner()
+        self._make_runner()
         hint = policy_control_hint("reduce churn and position flip rate")
         assert hint["type"] == "suppress_policy_churn"
         assert hint["target_dimension"] == "policy_persistence"
 
     def test_policy_control_hint_no_match(self):
-        runner = self._make_runner()
+        self._make_runner()
         hint = policy_control_hint("just a normal note")
         assert hint == {}
 
     def test_section_or_fallback_finds_section(self):
-        runner = self._make_runner()
+        self._make_runner()
         text = "## Diagnosis\nsome info\n## What to test\nthis is the test"
         result = section_or_fallback(text, headings=("What to test",), fallback="fallback")
         assert "this is the test" in result
 
     def test_section_or_fallback_uses_fallback(self):
-        runner = self._make_runner()
+        self._make_runner()
         text = "no matching section"
         result = section_or_fallback(text, headings=("What to test",), fallback="fallback")
         assert result == "fallback"
 
     def test_last_question_finds_question(self):
-        runner = self._make_runner()
+        self._make_runner()
         text = "First line?\nSome statement.\nWill this concrete change improve pre-audit return?"
         result = last_question(text)
         assert "Will this concrete change" in result
 
     def test_last_question_no_question(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert last_question("No questions here") == ""
 
     def test_mentioned_allowed_features(self):
@@ -1238,36 +1236,36 @@ class TestResearchPlannerRunnerAdvanced:
         assert runner._requires_planner_tool_use() is False
 
     def test_default_forbidden_motifs(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert default_forbidden_motifs("perp_multi_asset_carry") == ["second pure trend overlay"]
         assert default_forbidden_motifs("other") == []
 
     def test_default_writer_inputs(self):
-        runner = self._make_runner()
+        self._make_runner()
         inputs = default_writer_inputs("test_family")
         assert len(inputs) == 7
         assert any("test_family" in inp for inp in inputs)
 
     def test_concretize_must_answer_with_question(self):
-        runner = self._make_runner()
+        self._make_runner()
         contract = {"must_answer": "Does this improve pre-audit return?"}
         result = concretize_must_answer(contract)
         assert result == contract["must_answer"]
 
     def test_concretize_must_answer_with_feature_refs(self):
-        runner = self._make_runner()
+        self._make_runner()
         contract = {"must_answer": "", "required_features": ["rsi_14"], "target_family": "fam_a"}
         result = concretize_must_answer(contract)
         assert "rsi_14" in result
 
     def test_normalize_regime_gates_with_string(self):
-        runner = self._make_runner()
+        self._make_runner()
         result = normalize_regime_gates({"entry": ["ge(something, 0.5)"]})
         assert "entry" in result
         assert len(result["entry"]) == 1
 
     def test_normalize_regime_gates_with_dicts(self):
-        runner = self._make_runner()
+        self._make_runner()
         result = normalize_regime_gates({
             "entry": [{"expression": "funding_dispersion_72h", "min": 0.000001, "max": 0.01}],
             "exit_on_break": True,
@@ -1276,31 +1274,31 @@ class TestResearchPlannerRunnerAdvanced:
         assert result["exit_on_break"] is True
 
     def test_normalize_regime_gates_empty(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert normalize_regime_gates(None) == {}
         assert normalize_regime_gates({}) == {}
 
     def test_dict_value(self):
-        runner = self._make_runner()
+        self._make_runner()
         assert dict_value({"a": 1}) == {"a": 1}
         assert dict_value(None) == {}
         assert dict_value("not dict") == {}
 
     def test_merge_trace_tool_usage(self):
-        runner = self._make_runner()
+        self._make_runner()
         contract: dict = {}
         trace = {"tool_calls": [{"name": "search_workspace"}, {"name": "think"}]}
         merge_trace_tool_usage(contract, trace=trace)
         assert "tools_used" in contract
 
     def test_trace_tool_names(self):
-        runner = self._make_runner()
+        self._make_runner()
         names = trace_tool_names({"tool_calls": [{"name": "search_workspace"}, {"name": "open_file"}]})
         assert "search_workspace" in names
         assert "open_file" in names
 
     def test_fallback_contract_fills_evidence(self):
-        runner = self._make_runner()
+        self._make_runner()
         parent = SimpleNamespace(
             family="fam_a",
             universe=SimpleNamespace(basis_groups=["BTC"]),

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 
 import pytest
 from rich.text import Text
@@ -11,17 +10,12 @@ from siglab.tui.formatting import (
     format_change,
     format_count,
     format_date,
-    format_drawdown,
-    format_latency,
     format_pnl,
     format_price,
     format_return,
     format_score,
-    format_sharpe,
-    format_status,
     format_volume,
     safe_float,
-    truncate,
     gauge_color,
     side_style,
     severity_color,
