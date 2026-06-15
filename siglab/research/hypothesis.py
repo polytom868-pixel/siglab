@@ -575,7 +575,7 @@ class HypothesisSandbox:
                     "spec_hash": str(row.get("spec_hash") or ""),
                     "family": str(row.get("family") or "unknown"),
                     "parent_hash": row.get("parent_hash"),
-                    "aggregate_score": _coerce_float(row.get("aggregate_score")),
+                    "aggregate_score": safe_float(row.get("aggregate_score")),
                     "passed": bool(row.get("passed")),
                     "deployd": bool(row.get("deployd")),
                     "deterministic": self._ancestry._is_deterministic_experiment(row),
@@ -583,16 +583,16 @@ class HypothesisSandbox:
                     "features": [str(feature) for feature in list(spec.get("features") or [])[:10]],
                     "basis_groups": list((spec.get("universe") or {}).get("basis_groups") or []),
                     "summary": {
-                        "median_total_return": _coerce_float(summary.get("median_total_return")),
-                        "validation_total_return": _coerce_float(summary.get("validation_total_return")),
-                        "pre_audit_canonical_total_return": _coerce_float(
+                        "median_total_return": safe_float(summary.get("median_total_return")),
+                        "validation_total_return": safe_float(summary.get("validation_total_return")),
+                        "pre_audit_canonical_total_return": safe_float(
                             summary.get("pre_audit_canonical_total_return")
                         ),
-                        "pre_audit_canonical_max_drawdown": _coerce_float(
+                        "pre_audit_canonical_max_drawdown": safe_float(
                             summary.get("pre_audit_canonical_max_drawdown")
                         ),
                     },
-                    "active_bar_fraction": _coerce_float(gate_diagnostics.get("active_bar_fraction")),
+                    "active_bar_fraction": safe_float(gate_diagnostics.get("active_bar_fraction")),
                     "gate_bottlenecks": list(gate_diagnostics.get("bottleneck_tags") or [])[:4],
                 }
             )
@@ -746,7 +746,7 @@ class HypothesisSandbox:
             horizons=horizons,
         )
         gate_metadata = dict(gated.metadata.get("regime_gates") or {})
-        active_fraction = _clean_float(float(gated_mask.mean())) if len(gated_mask.index) else 0.0
+        active_fraction = safe_float(float(gated_mask.mean())) if len(gated_mask.index) else 0.0
         warnings = self._gate_probe_warnings(
             gate_metadata=gate_metadata,
             active_fraction=active_fraction,
@@ -854,7 +854,7 @@ class HypothesisSandbox:
             },
             "intent_alignment": {
                 "family_match": str(proposed_spec.get("family") or "") == evaluated_spec.family,
-                "feature_overlap_fraction": _clean_float(
+                "feature_overlap_fraction": safe_float(
                     feature_overlap / feature_union if feature_union else 1.0
                 ),
                 "proposed_gate_count": len(proposed_gates),
@@ -1153,12 +1153,12 @@ class HypothesisSandbox:
         return {
             "available": True,
             "sample_count": int(stacked.shape[0]),
-            "mean": _clean_float(stacked.mean()),
-            "std": _clean_float(stacked.std()),
-            "median_abs_value": _clean_float(stacked.abs().median()),
-            "positive_fraction": _clean_float((stacked > 0.0).mean()),
-            "negative_fraction": _clean_float((stacked < 0.0).mean()),
-            "zero_fraction": _clean_float((stacked == 0.0).mean()),
+            "mean": safe_float(stacked.mean()),
+            "std": safe_float(stacked.std()),
+            "median_abs_value": safe_float(stacked.abs().median()),
+            "positive_fraction": safe_float((stacked > 0.0).mean()),
+            "negative_fraction": safe_float((stacked < 0.0).mean()),
+            "zero_fraction": safe_float((stacked == 0.0).mean()),
         }
 
     def _cache_key(
@@ -1336,15 +1336,15 @@ class HypothesisSandbox:
         ungated_summary: dict[str, Any],
     ) -> list[str]:
         warnings: list[str] = []
-        combined = _coerce_float(gate_metadata.get("combined_active_fraction"))
+        combined = safe_float(gate_metadata.get("combined_active_fraction"))
         if combined is not None and combined >= 0.98:
             warnings.append("regime_gates_are_effectively_always_open")
         elif combined is not None and combined <= 0.02:
             warnings.append("regime_gates_are_extremely_restrictive")
         if active_fraction is not None and active_fraction <= 0.02:
             warnings.append("gated_spec_is_near_flat")
-        gated_return = _coerce_float(gated_summary.get("median_total_return"))
-        ungated_return = _coerce_float(ungated_summary.get("median_total_return"))
+        gated_return = safe_float(gated_summary.get("median_total_return"))
+        ungated_return = safe_float(ungated_summary.get("median_total_return"))
         if (
             gated_return is not None
             and ungated_return is not None
@@ -1387,11 +1387,11 @@ def _gate_probe_delta(
     ]
     delta: dict[str, Any] = {}
     for key in keys:
-        gated_value = _coerce_float(gated_summary.get(key))
-        ungated_value = _coerce_float(ungated_summary.get(key))
+        gated_value = safe_float(gated_summary.get(key))
+        ungated_value = safe_float(ungated_summary.get(key))
         if gated_value is None or ungated_value is None:
             continue
-        delta[key] = _clean_float(gated_value - ungated_value)
+        delta[key] = safe_float(gated_value - ungated_value)
     return delta
 
 
@@ -1438,7 +1438,7 @@ def _intent_vs_frozen_warnings(
         warnings.append("some_proposed_regime_gates_were_dropped_before_evaluation")
     if bool(summary.get("policy_sweep_material_change")):
         warnings.append("policy_sweep_materially_changed_spec")
-    active_fraction = _coerce_float(compiled_regime_gates.get("combined_active_fraction"))
+    active_fraction = safe_float(compiled_regime_gates.get("combined_active_fraction"))
     if active_fraction is not None and active_fraction >= 0.98:
         warnings.append("compiled_regime_gates_were_effectively_always_open")
     elif active_fraction is not None and active_fraction <= 0.02:
@@ -1538,13 +1538,13 @@ def _frontier_family_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "passed_total": sum(1 for row in family_rows if row.get("passed")),
                 "positive_pre_audit_total": len(positive_rows),
                 "deterministic_total": sum(1 for row in family_rows if row.get("deterministic")),
-                "mean_pre_audit_canonical_total_return": _clean_float(pd.Series(pre_values, dtype=float).mean())
+                "mean_pre_audit_canonical_total_return": safe_float(pd.Series(pre_values, dtype=float).mean())
                 if pre_values
                 else None,
-                "mean_validation_total_return": _clean_float(pd.Series(validation_values, dtype=float).mean())
+                "mean_validation_total_return": safe_float(pd.Series(validation_values, dtype=float).mean())
                 if validation_values
                 else None,
-                "mean_active_bar_fraction": _clean_float(pd.Series(active_values, dtype=float).mean())
+                "mean_active_bar_fraction": safe_float(pd.Series(active_values, dtype=float).mean())
                 if active_values
                 else None,
                 "best_spec_hash": best_row.get("spec_hash"),
@@ -1623,7 +1623,7 @@ def _active_fraction_from_target(target: pd.DataFrame) -> float | None:
     if target.empty:
         return None
     active = target.abs().sum(axis=1).gt(0.0)
-    return _clean_float(active.mean())
+    return safe_float(active.mean())
 
 
 def _position_flip_rate_from_target(target: pd.DataFrame) -> float | None:
@@ -1631,7 +1631,7 @@ def _position_flip_rate_from_target(target: pd.DataFrame) -> float | None:
         return None
     signature = target.round(8).astype(str).agg("|".join, axis=1)
     flips = signature.iloc[1:].ne(signature.shift(1).iloc[1:])
-    return _clean_float(flips.mean())
+    return safe_float(flips.mean())
 
 
 def _stack_frame(frame: pd.DataFrame | pd.Series) -> pd.Series:
@@ -1641,9 +1641,6 @@ def _stack_frame(frame: pd.DataFrame | pd.Series) -> pd.Series:
         return cast(pd.Series, frame.apply(pd.to_numeric, errors="coerce").stack(future_stack=True).dropna())
     return pd.Series(dtype=float)
 
-
-def _coerce_float(value: Any) -> float | None:
-    return safe_float(value)
 
 
 def _frame_pair_stats(feature_frame: pd.DataFrame, target_frame: pd.DataFrame) -> dict[str, Any]:
@@ -1674,8 +1671,8 @@ def _frame_pair_stats(feature_frame: pd.DataFrame, target_frame: pd.DataFrame) -
         if quantiles.nunique() >= 2:
             bucket_means = aligned.groupby(quantiles)["target"].mean().sort_index()
             if len(bucket_means) >= 2:
-                top_bottom_spread = _clean_float(bucket_means.iloc[-1] - bucket_means.iloc[0])
-                bucket_monotonicity = _clean_float(
+                top_bottom_spread = safe_float(bucket_means.iloc[-1] - bucket_means.iloc[0])
+                bucket_monotonicity = safe_float(
                     _spearman_corr(
                         pd.Series(bucket_means.values, dtype=float),
                         pd.Series(range(len(bucket_means)), dtype=float),
@@ -1684,8 +1681,8 @@ def _frame_pair_stats(feature_frame: pd.DataFrame, target_frame: pd.DataFrame) -
 
     return {
         "rows": int(aligned.shape[0]),
-        "spearman": _clean_float(_spearman_corr(aligned["feature"], aligned["target"])),
-        "pearson": _clean_float(_pearson_corr(aligned["feature"], aligned["target"])),
+        "spearman": safe_float(_spearman_corr(aligned["feature"], aligned["target"])),
+        "pearson": safe_float(_pearson_corr(aligned["feature"], aligned["target"])),
         "top_bottom_spread": top_bottom_spread,
         "bucket_monotonicity": bucket_monotonicity,
     }
@@ -1711,7 +1708,7 @@ def _aggregate_predictive_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "total_rows": int(sum(int(row.get("rows") or 0) for row in rows)),
         "median_spearman": _median_value(row.get("spearman") for row in rows),
         "median_pearson": _median_value(row.get("pearson") for row in rows),
-        "positive_spearman_window_fraction": _clean_float(
+        "positive_spearman_window_fraction": safe_float(
             sum(1 for value in spearman_values if value > 0.0) / len(spearman_values)
         )
         if spearman_values
@@ -1750,7 +1747,7 @@ def _median_value(values: Any) -> float | None:
     series = pd.Series([value for value in values if value is not None], dtype=float)
     if series.empty:
         return None
-    return _clean_float(series.median())
+    return safe_float(series.median())
 
 
 def _redundancy_band(value: float | None) -> str:
@@ -1787,9 +1784,6 @@ def _pearson_corr(left: pd.Series, right: pd.Series) -> float | None:
     value = aligned["left"].corr(aligned["right"], method="pearson")
     return None if value is None or pd.isna(value) else float(value)
 
-
-def _clean_float(value: Any) -> float | None:
-    return safe_float(value)
 
 
 
@@ -1891,10 +1885,10 @@ def _episode_summary(trade_episodes: list[dict[str, Any]]) -> dict[str, Any]:
                 regime_counts[dimension][label] += 1
     return {
         "trade_count": len(trade_episodes),
-        "win_rate": _clean_float((returns > 0.0).mean()) if not returns.empty else None,
-        "avg_return": _clean_float(returns.mean()) if not returns.empty else None,
-        "median_return": _clean_float(returns.median()) if not returns.empty else None,
-        "median_hold_bars": _clean_float(bars.median()) if not bars.empty else None,
+        "win_rate": safe_float((returns > 0.0).mean()) if not returns.empty else None,
+        "avg_return": safe_float(returns.mean()) if not returns.empty else None,
+        "median_return": safe_float(returns.median()) if not returns.empty else None,
+        "median_hold_bars": safe_float(bars.median()) if not bars.empty else None,
         "direction_counts": dict(direction_counts),
         "entry_regime_counts": {
             dimension: [
@@ -1912,9 +1906,9 @@ def _compact_trade_episode(episode: dict[str, Any]) -> dict[str, Any]:
         "start_timestamp": episode.get("start_timestamp"),
         "end_timestamp": episode.get("end_timestamp"),
         "direction": episode.get("direction"),
-        "bars": _clean_float(episode.get("bars")),
+        "bars": safe_float(episode.get("bars")),
         "holding_bucket": _episode_bucket(episode.get("bars")),
-        "total_return": _clean_float(episode.get("total_return")),
+        "total_return": safe_float(episode.get("total_return")),
         "entry_regime": dict(episode.get("entry_regime") or {}),
         "exit_regime": dict(episode.get("exit_regime") or {}),
     }
