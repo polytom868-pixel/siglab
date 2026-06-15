@@ -29,6 +29,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------------------
 # Sample spec fixture
 # ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _seed_global_random() -> None:
+    import random
+    random.seed(0)
+
 @pytest.fixture
 def sample_spec() -> SignalSpec:
     """A minimal, deterministic SignalSpec for use in golden-file tests."""

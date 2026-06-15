@@ -38,6 +38,7 @@ markers = [
     "tmux: marks tmux-based TUI tests that spawn terminal sessions (run with -m tmux)",
 ]
 asyncio_mode = "auto"
+addopts = "-n auto --dist=loadscope"
 
 [dependency-groups]
 dev = [
@@ -45,5 +46,6 @@ dev = [
     "pytest (>=9.0.3,<10.0.0)",
     "pytest-timeout (>=2.4.0,<3.0.0)",
     "pytest-asyncio (>=1.4.0,<2.0.0)",
+    "pytest-xdist (>=3.6.0,<4.0.0)",
     "textual-dev (>=1.8.0,<2.0.0)"
 ]

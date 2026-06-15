@@ -94,3 +94,10 @@ async def run_with_backoff(coro_factory, *, max_retries=3, backoff_s=1.0) -> Any
             if attempt >= max_retries:
                 raise
             await asyncio.sleep(backoff_s * (2 ** (attempt - 1)))
+
+
+async def async_limiter_call(callable, *, rate_limit: int = 20) -> Any:
+    import asyncio
+    sem = asyncio.Semaphore(rate_limit)
+    async with sem:
+        return await callable()

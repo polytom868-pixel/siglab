@@ -299,6 +299,32 @@ class SoDEXFeeds:
 
         return frame
 
+    async def _fetch_and_cache_json_list(
+        self,
+        endpoint: str,
+        *,
+        params: dict[str, Any] | None = None,
+        cache_path: tuple[str, str],
+        ttl_hours: float | None = None,
+        skip_cache: bool = False,
+    ) -> list[dict[str, Any]]:
+        namespace, cache_key = cache_path
+        if not skip_cache:
+            cached = self.lake.latest_json(
+                namespace,
+                cache_key,
+                max_age_hours=ttl_hours,
+            )
+            if cached is not None:
+                return list(cached)
+        try:
+            method = getattr(self._client, endpoint)
+            rows = await method(**(params or {}))
+        except SoDEXUpstreamError:
+            return []
+        self.lake.write_json(namespace, cache_key, rows)
+        return rows
+
     # ------------------------------------------------------------------
     # Symbols
     # ------------------------------------------------------------------
@@ -316,20 +342,12 @@ class SoDEXFeeds:
         ``minNotional``, ``maxLeverage``, ``marginTiers``, ``status``,
         etc.
         """
-        cache_key = "all_symbols"
-
-        if not skip_cache:
-            cached = self.lake.latest_json(
-                "sodex_symbols",
-                cache_key,
-                max_age_hours=self._symbols_cache_ttl_hours,
-            )
-            if cached is not None:
-                return list(cached)
-
-        rows = await self._client.symbols()
-        self.lake.write_json("sodex_symbols", cache_key, rows)
-        return rows
+        return await self._fetch_and_cache_json_list(
+            "symbols",
+            cache_path=("sodex_symbols", "all_symbols"),
+            ttl_hours=self._symbols_cache_ttl_hours,
+            skip_cache=skip_cache,
+        )
 
     # ------------------------------------------------------------------
     # Tickers
@@ -348,23 +366,13 @@ class SoDEXFeeds:
         Otherwise, all symbols are returned.
         """
         cache_key = f"tickers_{symbol}" if symbol else "tickers_all"
-
-        if not skip_cache:
-            cached = self.lake.latest_json(
-                "sodex_tickers",
-                cache_key,
-                max_age_hours=self._tickers_cache_ttl_hours,
-            )
-            if cached is not None:
-                return list(cached)
-
-        try:
-            rows = await self._client.tickers(symbol=symbol)
-        except SoDEXUpstreamError:
-            return []
-
-        self.lake.write_json("sodex_tickers", cache_key, rows)
-        return rows
+        return await self._fetch_and_cache_json_list(
+            "tickers",
+            params={"symbol": symbol},
+            cache_path=("sodex_tickers", cache_key),
+            ttl_hours=self._tickers_cache_ttl_hours,
+            skip_cache=skip_cache,
+        )
 
     # ------------------------------------------------------------------
     # Mark prices
@@ -382,23 +390,13 @@ class SoDEXFeeds:
         If *symbol* is provided, only data for that symbol is returned.
         """
         cache_key = f"mark_prices_{symbol}" if symbol else "mark_prices_all"
-
-        if not skip_cache:
-            cached = self.lake.latest_json(
-                "sodex_mark_prices",
-                cache_key,
-                max_age_hours=self._mark_prices_cache_ttl_hours,
-            )
-            if cached is not None:
-                return list(cached)
-
-        try:
-            rows = await self._client.mark_prices(symbol=symbol)
-        except SoDEXUpstreamError:
-            return []
-
-        self.lake.write_json("sodex_mark_prices", cache_key, rows)
-        return rows
+        return await self._fetch_and_cache_json_list(
+            "mark_prices",
+            params={"symbol": symbol},
+            cache_path=("sodex_mark_prices", cache_key),
+            ttl_hours=self._mark_prices_cache_ttl_hours,
+            skip_cache=skip_cache,
+        )
 
     # ------------------------------------------------------------------
     # Book tickers (best bid / ask)
@@ -417,23 +415,13 @@ class SoDEXFeeds:
         (as a single-element list).
         """
         cache_key = f"book_tickers_{symbol}" if symbol else "book_tickers_all"
-
-        if not skip_cache:
-            cached = self.lake.latest_json(
-                "sodex_book_tickers",
-                cache_key,
-                max_age_hours=self._book_tickers_cache_ttl_hours,
-            )
-            if cached is not None:
-                return list(cached)
-
-        try:
-            rows = await self._client.book_tickers(symbol=symbol)
-        except SoDEXUpstreamError:
-            return []
-
-        self.lake.write_json("sodex_book_tickers", cache_key, rows)
-        return rows
+        return await self._fetch_and_cache_json_list(
+            "book_tickers",
+            params={"symbol": symbol},
+            cache_path=("sodex_book_tickers", cache_key),
+            ttl_hours=self._book_tickers_cache_ttl_hours,
+            skip_cache=skip_cache,
+        )
 
     # ------------------------------------------------------------------
     # Order book (depth)
@@ -499,24 +487,13 @@ class SoDEXFeeds:
         if not symbol or not symbol.strip():
             return []
 
-        cache_key = f"trades_{symbol}_{limit}"
-
-        if not skip_cache:
-            cached = self.lake.latest_json(
-                "sodex_trades",
-                cache_key,
-                max_age_hours=self._trades_cache_ttl_hours,
-            )
-            if cached is not None:
-                return list(cached)
-
-        try:
-            rows = await self._client.trades(symbol=symbol.strip(), limit=limit)
-        except SoDEXUpstreamError:
-            return []
-
-        self.lake.write_json("sodex_trades", cache_key, rows)
-        return rows
+        return await self._fetch_and_cache_json_list(
+            "trades",
+            params={"symbol": symbol.strip(), "limit": limit},
+            cache_path=("sodex_trades", f"trades_{symbol}_{limit}"),
+            ttl_hours=self._trades_cache_ttl_hours,
+            skip_cache=skip_cache,
+        )
 
     # ------------------------------------------------------------------
     # Metrics
