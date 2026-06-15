@@ -84,7 +84,6 @@ def test_app_has_required_bindings() -> None:
         assert key in keys or (key == "question_mark" and "?" in keys), f"Missing binding {key}"
 
 def test_app_creates_api_client() -> None:
-    from siglab.tui.api_client import TuiApiClient
     assert isinstance(SigLabTUI().api_client, TuiApiClient)
 
 # ── VAL-TUI-001 pilot tests ─────────────────────────────────────────
