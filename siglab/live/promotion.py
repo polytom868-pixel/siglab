@@ -370,26 +370,9 @@ def extract_session_metrics(
         tp = _compute_trade_pnl(order, prior_qty, prior_entry)
         trade_pnls.append(tp)
 
-        from siglab.live.paper_client import PaperOrderSide
-
-        if order.side == PaperOrderSide.BUY:
-            new_qty = prior_qty + order.quantity
-        else:
-            new_qty = prior_qty - order.quantity
-
-        if prior_qty == 0:
-            new_entry = order.fill_price if order.fill_price is not None else order.price
-        elif prior_qty * new_qty > 0:
-            new_entry = (
-                (abs(prior_qty) * prior_entry + order.quantity * (order.fill_price or order.price))
-                / abs(new_qty)
-            )
-        else:
-            new_entry = order.fill_price if order.fill_price is not None else order.price if new_qty != 0 else 0.0
-
+        new_qty, new_entry = _update_position(order, prior_qty, prior_entry)
         pos_qty_wr[sym] = new_qty
-        pos_entry_wr[sym] = new_entry if new_qty != 0 else 0.0
-        pos_entry_wr[sym] = new_entry if new_qty != 0 else 0.0
+        pos_entry_wr[sym] = new_entry
 
     profitable = sum(1 for p in trade_pnls if p > 0)
     total_trades = len(trade_pnls)
@@ -475,25 +458,9 @@ def extract_daily_metrics(
             trade_pnls_day.append(tp)
             day_pnl += tp
 
-            from siglab.live.paper_client import PaperOrderSide
-
-            if order.side == PaperOrderSide.BUY:
-                new_qty = prior_qty + order.quantity
-            else:
-                new_qty = prior_qty - order.quantity
-
-            if prior_qty == 0:
-                new_entry = order.fill_price if order.fill_price is not None else order.price
-            elif prior_qty * new_qty > 0:
-                new_entry = (
-                    (abs(prior_qty) * prior_entry + order.quantity * (order.fill_price or order.price))
-                    / abs(new_qty)
-                )
-            else:
-                new_entry = order.fill_price if order.fill_price is not None else order.price if new_qty != 0 else 0.0
-
+            new_qty, new_entry = _update_position(order, prior_qty, prior_entry)
             running_pos_qty[sym] = new_qty
-            running_pos_entry[sym] = new_entry if new_qty != 0 else 0.0
+            running_pos_entry[sym] = new_entry
 
         cumulative_equity += day_pnl
 
