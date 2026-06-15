@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -327,7 +327,7 @@ def _apply_operator(
         phi = 1.0 + beta
         valid_phi = phi.where((phi > 0.0) & (phi < 1.0))
         halflife = (-np.log(2.0) / np.log(valid_phi)).replace([np.inf, -np.inf], np.nan)
-        return halflife
+        return cast(pd.DataFrame, halflife)
     if function_name in {"kalman_beta", "kalman_residual"}:
         left, right, process_noise, observation_noise = _expect_kalman_args(args)
         if validate_only:
@@ -361,8 +361,8 @@ def _apply_operator(
         frame, window = _expect_frame_and_int(args)
         if validate_only:
             return pd.DataFrame()
-        flip = np.sign(frame).diff().ne(0).astype(float)
-        return flip.rolling(window).mean()
+        sign_change = frame.apply(np.sign).diff()
+        return sign_change.ne(0).astype(float).rolling(window).mean()
     if function_name == "neg":
         frame = _expect_frame(args, expected=1)
         if validate_only:
@@ -377,7 +377,7 @@ def _apply_operator(
         frame = _expect_frame(args, expected=1)
         if validate_only:
             return pd.DataFrame()
-        return np.log(frame.where(frame > 0.0))
+        return cast(pd.DataFrame, np.log(frame.where(frame > 0.0)))
     if function_name == "clip":
         frame = _expect_frame(args[:1], expected=1)
         if len(args) != 3 or not isinstance(args[1], float) or not isinstance(args[2], float):
@@ -390,23 +390,21 @@ def _apply_operator(
             raise ValueError(f"{function_name} expects 2 arguments")
         if validate_only:
             return pd.DataFrame()
-        left, right = args
         if function_name == "gt":
-            return _comparison(left, right, lambda a, b: a > b)
+            return _comparison(args[0], args[1], lambda a, b: a > b)
         if function_name == "ge":
-            return _comparison(left, right, lambda a, b: a >= b)
+            return _comparison(args[0], args[1], lambda a, b: a >= b)
         if function_name == "lt":
-            return _comparison(left, right, lambda a, b: a < b)
-        return _comparison(left, right, lambda a, b: a <= b)
+            return _comparison(args[0], args[1], lambda a, b: a < b)
+        return _comparison(args[0], args[1], lambda a, b: a <= b)
     if function_name in {"and", "or"}:
         if len(args) != 2:
             raise ValueError(f"{function_name} expects 2 arguments")
         if validate_only:
             return pd.DataFrame()
-        left, right = args
         if function_name == "and":
-            return _logical(left, right, lambda a, b: a & b)
-        return _logical(left, right, lambda a, b: a | b)
+            return _logical(args[0], args[1], lambda a, b: a & b)
+        return _logical(args[0], args[1], lambda a, b: a | b)
     if function_name == "not":
         if len(args) != 1:
             raise ValueError("not expects 1 argument")
@@ -431,15 +429,13 @@ def _apply_operator(
             raise ValueError(f"{function_name} expects 2 arguments")
         if validate_only:
             return pd.DataFrame()
-        left, right = args
         if function_name == "add":
-            return _binary(left, right, lambda a, b: a.add(b, fill_value=0.0))
+            return _binary(args[0], args[1], lambda a, b: a.add(b, fill_value=0.0))
         if function_name == "sub":
-            return _binary(left, right, lambda a, b: a.sub(b, fill_value=0.0))
+            return _binary(args[0], args[1], lambda a, b: a.sub(b, fill_value=0.0))
         if function_name == "mul":
-            return _binary(left, right, lambda a, b: a * b)
-        if function_name == "div":
-            return _binary(left, right, _safe_div)
+            return _binary(args[0], args[1], lambda a, b: a * b)
+        return _binary(args[0], args[1], _safe_div)
     raise ValueError(f"Unsupported feature operator: {function_name}")
 
 
@@ -504,13 +500,13 @@ def _binary(
 ) -> pd.DataFrame:
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         left_frame, right_frame = _aligned_pair(left, right)
-        return operation(left_frame, right_frame)
+        return cast(pd.DataFrame, operation(left_frame, right_frame))
     if isinstance(left, pd.DataFrame):
-        return operation(left, right)
+        return cast(pd.DataFrame, operation(left, right))
     if isinstance(right, pd.DataFrame):
         if operation is _safe_div:
-            return _safe_div(pd.DataFrame(left, index=right.index, columns=right.columns), right)
-        return operation(pd.DataFrame(left, index=right.index, columns=right.columns), right)
+            return cast(pd.DataFrame, _safe_div(pd.DataFrame(float(left), index=right.index, columns=right.columns), right))
+        return cast(pd.DataFrame, operation(pd.DataFrame(float(left), index=right.index, columns=right.columns), right))
     raise ValueError("At least one argument must be a dataframe")
 
 
@@ -521,9 +517,9 @@ def _aligned_pair(
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         return _aligned_frame_pair(left, right)
     if isinstance(left, pd.DataFrame):
-        return left, pd.DataFrame(float(right), index=left.index, columns=left.columns)
+        return left, pd.DataFrame(cast(float, right), index=left.index, columns=left.columns)
     if isinstance(right, pd.DataFrame):
-        return pd.DataFrame(float(left), index=right.index, columns=right.columns), right
+        return pd.DataFrame(left, index=right.index, columns=right.columns), right
     raise ValueError("At least one argument must be a dataframe")
 
 
@@ -583,7 +579,7 @@ def _comparison(
     comparator: Any,
 ) -> pd.DataFrame:
     left_frame, right_frame = _aligned_pair(left, right)
-    return comparator(left_frame, right_frame).fillna(False).astype(float)
+    return cast(pd.DataFrame, comparator(left_frame, right_frame).fillna(False).astype(float))
 
 
 def _logical(
@@ -592,14 +588,14 @@ def _logical(
     operator: Any,
 ) -> pd.DataFrame:
     left_frame, right_frame = _aligned_pair(left, right)
-    return operator(left_frame.fillna(0.0) != 0.0, right_frame.fillna(0.0) != 0.0).astype(float)
+    return cast(pd.DataFrame, operator(left_frame.fillna(0.0) != 0.0, right_frame.fillna(0.0) != 0.0).astype(float))
 
 
 def _safe_div(left: pd.DataFrame | float, right: pd.DataFrame | float) -> pd.DataFrame:
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         out = left.div(right.replace(0.0, np.nan))
     elif isinstance(left, pd.DataFrame):
-        out = left / float(right)
+        out = left / cast(float, right)
     elif isinstance(right, pd.DataFrame):
         out = pd.DataFrame(float(left), index=right.index, columns=right.columns).div(
             right.replace(0.0, np.nan)
@@ -658,7 +654,7 @@ def _kalman_beta_frame(
             if not np.isfinite(yy) or not np.isfinite(xx):
                 continue
             if idx == 0 and abs(xx) > 1e-12:
-                state = yy / xx
+                state = float(yy) / float(xx)
 
             predicted_covariance = covariance + q
             innovation_variance = (xx * xx * predicted_covariance) + r
@@ -667,8 +663,8 @@ def _kalman_beta_frame(
 
             kalman_gain = predicted_covariance * xx / innovation_variance
             innovation = yy - (xx * state)
-            state = state + kalman_gain * innovation
-            covariance = max((1.0 - (kalman_gain * xx)) * predicted_covariance, 1e-10)
+            state = float(state + kalman_gain * innovation)
+            covariance = max(float((1.0 - (kalman_gain * xx)) * predicted_covariance), 1e-10)
             beta_series[idx] = state
 
         out[column] = beta_series

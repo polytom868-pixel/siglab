@@ -687,7 +687,7 @@ class SoSoValueClient:
 
     def _backoff_s(self, attempt: int) -> float:
         base = min(2.0, 0.25 * (2**attempt))
-        return base + random.uniform(0.0, base * 0.25)
+        return float(base + random.uniform(0.0, base * 0.25))
 
     def _verify_config(self) -> ssl.SSLContext | bool:
         if self.verify is not None:

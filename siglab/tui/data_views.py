@@ -14,7 +14,7 @@ Design principles:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Sequence, cast
 
 
 # ── Market Data Views ────────────────────────────────────────────────
@@ -123,8 +123,8 @@ class KlineView:
 class OrderBookView:
     """Read-only view of order book depth data."""
 
-    bids: tuple[list, ...]
-    asks: tuple[list, ...]
+    bids: tuple[list[Any], ...]
+    asks: tuple[list[Any], ...]
     symbol: str
 
     @classmethod
@@ -403,7 +403,7 @@ class StrategyEntry:
 
     @property
     def equity_curve(self) -> list[float]:
-        return self._raw.get("equity_curve", [])
+        return cast(list[float], self._raw.get("equity_curve", []))
 
     @property
     def created_at(self) -> str:

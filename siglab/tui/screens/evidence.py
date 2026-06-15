@@ -161,7 +161,7 @@ class EvidenceGraphWidget(Static):
 
     def _filtered_nodes(self) -> list[dict[str, Any]]:
         """Return nodes matching current filters."""
-        result = self._graph_nodes
+        result: list[dict[str, Any]] = list(self._graph_nodes)
         if self._filter_kind:
             result = [n for n in result if n.get("kind") == self._filter_kind]
         if self._filter_text:
@@ -449,11 +449,12 @@ class DemoFlowWidget(Static):
         else:
             lines.append(Text("  Enter: run step  •  n/p: next/prev  •  a: run all", style=TEXT_MUTED))
 
-        result = Text("\n")
+        rendered = Text("\n")
         for line in lines:
-            result.append_text(line)
-            result.append("\n")
-        return result
+            if line is not None:
+                rendered.append_text(line)
+            rendered.append("\n")
+        return rendered
 
 
 # ── Main Screen ──────────────────────────────────────────────────────

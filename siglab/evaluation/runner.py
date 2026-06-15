@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -1780,12 +1780,16 @@ def _serialize_weight_changes(
 ) -> dict[str, Any]:
     changes: list[dict[str, Any]] = []
     previous: dict[str, float] | None = None
-    for timestamp, row in frame.iterrows():
-        current = {
-            column: round(float(value), digits)
-            for column, value in row.items()
-            if pd.notna(value) and abs(float(value)) > epsilon
-        }
+    for timestamp_raw, row in frame.iterrows():
+        timestamp = cast(pd.Timestamp, timestamp_raw)
+        current = cast(
+            dict[str, float],
+            {
+                column: round(float(value), digits)
+                for column, value in row.items()
+                if pd.notna(value) and abs(float(value)) > epsilon
+            },
+        )
         if current == previous:
             continue
         changes.append(
@@ -1864,7 +1868,7 @@ def _slice_performance_stats(
             "sample_bars": 0,
             "active_bars": 0,
         }
-    total_return = float((1.0 + subset).prod() - 1.0)
+    total_return = float(cast(Any, (1.0 + subset).prod()) - 1.0)
     active_bars = int((exposure_subset > 1e-9).sum())
     return {
         "label": label,
@@ -1970,7 +1974,7 @@ def _pair_position_episodes(
                 "end_timestamp": episode_end.isoformat(),
                 "bars": int(episode_returns.shape[0]),
                 "total_return": _safe_float(
-                    (1.0 + episode_returns).prod() - 1.0
+                    cast(Any, (1.0 + episode_returns).prod()) - 1.0
                     if not episode_returns.empty
                     else 0.0
                 ),
@@ -1983,7 +1987,8 @@ def _pair_position_episodes(
             }
         )
 
-    for timestamp, signature in signatures.items():
+    for timestamp_raw, signature in signatures.items():
+        timestamp: pd.Timestamp | None = cast(pd.Timestamp | None, timestamp_raw)
         if not current_signature and signature:
             current_signature = signature
             start_timestamp = timestamp
@@ -2830,7 +2835,7 @@ def _series_from_payload(
     index = pd.to_datetime(index_values[:limit], errors="coerce")
     values = pd.to_numeric(pd.Series(raw_values[:limit], dtype="float64"), errors="coerce")
     series = pd.Series(values.to_numpy(), index=index)
-    series = series[~series.index.isna()]
+    series = series[~pd.isna(series.index)]
     return series.sort_index()
 
 
@@ -3179,7 +3184,7 @@ def _pre_audit_time_bin_pack(
         worst_end = rolling.idxmin()
 
         def _summary(end_timestamp: pd.Timestamp, label: str) -> dict[str, Any]:
-            end_loc = int(daily_returns.index.get_loc(end_timestamp))
+            end_loc = int(cast(int, daily_returns.index.get_loc(end_timestamp)))
             start_loc = max(0, end_loc - window_days + 1)
             start_timestamp = pd.Timestamp(daily_returns.index[start_loc])
             trade_stats = _equity_window_trade_stats(
@@ -3197,14 +3202,14 @@ def _pre_audit_time_bin_pack(
                 "start_timestamp": start_timestamp.isoformat(),
                 "end_timestamp": end_timestamp.isoformat(),
                 "window_days": window_days,
-                "total_return": _safe_float(float(rolling.loc[end_timestamp])),
+                "total_return": _safe_float(float(cast(Any, rolling.loc[end_timestamp]))),
                 **trade_stats,
             }
 
         return {
             "window_days": window_days,
-            "best_window": _summary(best_end, "best"),
-            "worst_window": _summary(worst_end, "worst"),
+            "best_window": _summary(pd.Timestamp(cast(Any, best_end)), "best"),
+            "worst_window": _summary(pd.Timestamp(cast(Any, worst_end)), "worst"),
         }
 
     windows = [payload for payload in (_window_payload(14), _window_payload(30)) if payload]

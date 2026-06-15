@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar, cast
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -262,10 +262,11 @@ class ResultsTableWidget(Static):
         result.append("  " + "─" * (col_total - 2) + "\n", style=BORDER_DIM)
 
         # Build column renderers
-        col_renderers = {
+        col_renderers: dict[str, Callable[..., Any]] = {
             "name": lambda item, row: (
                 row.append(f"{str(item.get('spec_hash', '?'))[:12]:<14}", style=TEXT_SECONDARY)
             ),
+
             "family": lambda item, row: (
                 row.append(f"{str(item.get('family', ''))[:8]:<10}", style=INFO_BLUE)
             ),
@@ -462,11 +463,13 @@ class StrategyScreen(BaseScreen):
             result = await run_cli("ancestry", "--json", timeout=15.0)
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout)
-                rows = data if isinstance(data, list) else data.get("rows", data.get("experiments", []))
+                rows_raw = data if isinstance(data, list) else data.get("rows", data.get("experiments", []))
+                rows: list[dict[str, Any]] = [r for r in rows_raw if isinstance(r, dict)]
                 for row in rows:
                     if str(row.get("spec_hash", "")) == spec_hash:
-                        self._results_cache[spec_hash] = row
-                        return row
+                        cached: dict[str, Any] = cast(dict[str, Any], row)
+                        self._results_cache[spec_hash] = cached
+                        return cached
         except Exception as exc:
             logger.debug("Failed to load results for %s: %s", spec_hash, exc)
         return None

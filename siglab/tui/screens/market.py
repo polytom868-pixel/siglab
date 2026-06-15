@@ -91,7 +91,7 @@ class SymbolListWidget(FilterableListWidget):
                 change_pct=float(item.get("change_pct", 0) or 0),
                 volume=float(item.get("volume", 0) or 0),
             )
-        return item  # type: ignore[return-value]
+        raise TypeError(f"Cannot convert {type(item).__name__} to SymbolEntry")
 
     def set_symbols(self, entries: Sequence[Any]) -> None:
         """Update the full symbol list."""
@@ -130,7 +130,7 @@ class KlinesChartWidget(Static):
 
     __slots__ = ("_closes_cache",)
 
-    candles: reactive[list[dict]] = reactive(list, layout=True)
+    candles: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     symbol: reactive[str] = reactive(DEFAULT_SYMBOL)
 
     DEFAULT_CSS = """
@@ -142,11 +142,11 @@ class KlinesChartWidget(Static):
     }
     """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._closes_cache: tuple[float, ...] = ()
 
-    def set_candles(self, klines: list[dict]) -> None:
+    def set_candles(self, klines: list[dict[str, Any]]) -> None:
         """Store a reference to klines and pre-compute close tuple.
 
         The klines list itself is stored by reference (no copy).
@@ -165,7 +165,7 @@ class KlinesChartWidget(Static):
         if self.candles:
             last = self.candles[-1]
             price = safe_float(last.get("close", 0))
-            result.append(f"  {format_price(price)}  ", style=f"bold {TEXT_PRIMARY}")
+            result.append(f"  {format_price(price or 0.0)}  ", style=f"bold {TEXT_PRIMARY}")
         result.append("\n\n")
 
         if not self.candles:
@@ -225,9 +225,9 @@ class TickerTableWidget(Static):
             volume = safe_float(t.get("volume", t.get("volume_24h", 0)))
 
             lines.append(f"  {sym:<15}", style=TEXT_SECONDARY)
-            lines.append(f"{format_price(price, sym):>14}  ", style=TEXT_PRIMARY)
-            lines.append_text(format_change(change_pct))
-            lines.append(f"   {format_volume(volume):>10}", style="info_blue")
+            lines.append(f"{format_price(price or 0.0, sym):>14}  ", style=TEXT_PRIMARY)
+            lines.append_text(format_change(change_pct or 0.0))
+            lines.append(f"   {format_volume(volume or 0.0):>10}", style="info_blue")
             lines.append("\n")
 
         return lines
@@ -242,9 +242,8 @@ class OrderBookWidget(Static):
     Zero-copy: bids and asks are stored as tuples (immutable sequences)
     shared from the API response — no per-refresh list copies.
     """
-
-    bids: reactive[tuple[list, ...]] = reactive(tuple, layout=True)
-    asks: reactive[tuple[list, ...]] = reactive(tuple, layout=True)
+    bids: reactive[tuple[list[Any], ...]] = reactive(tuple, layout=True)
+    asks: reactive[tuple[list[Any], ...]] = reactive(tuple, layout=True)
     symbol: reactive[str] = reactive(DEFAULT_SYMBOL)
 
     DEFAULT_CSS = """
@@ -415,7 +414,7 @@ class MarketScreen(BaseScreen):
             self.current_symbol, DEFAULT_INTERVAL, KLINES_LIMIT
         )
         klines = data.get("klines", [])
-        def _update_chart(w):
+        def _update_chart(w: KlinesChartWidget) -> None:
             w.symbol = self.current_symbol
             w.set_candles(klines)
         safe_query(self, "#klines-chart", KlinesChartWidget, _update_chart)
@@ -425,7 +424,7 @@ class MarketScreen(BaseScreen):
         data = await self._api.get_market_orderbook(
             self.current_symbol, ORDERBOOK_LIMIT
         )
-        def _update_book(w):
+        def _update_book(w: OrderBookWidget) -> None:
             w.symbol = self.current_symbol
             w.bids = tuple(data.get("bids", []))
             w.asks = tuple(data.get("asks", []))

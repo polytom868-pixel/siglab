@@ -6,6 +6,8 @@ to give visual feedback during data fetches and long operations.
 
 from __future__ import annotations
 
+from typing import Any
+
 from rich.text import Text
 from textual.reactive import reactive
 from textual.widgets import Static
@@ -44,7 +46,7 @@ class LoadingIndicator(Static):
     }
     """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._spinner_idx = 0
         self._timer = None

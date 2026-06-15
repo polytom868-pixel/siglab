@@ -6,7 +6,7 @@ Displays version info, connection status, and current time.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -58,7 +58,7 @@ class SigLabStatusBar(Widget):
         self,
         version: str = "0.1.0",
         api_url: str = "http://localhost:3100",
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._version = version

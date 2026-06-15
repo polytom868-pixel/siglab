@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import httpx
@@ -295,7 +295,8 @@ class SoDEXFeeds:
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], unit="ms", utc=True)
             frame = frame.set_index("timestamp").sort_index()
             if not frame.empty:
-                frame.index = frame.index.round("1h")
+                rounded = cast(pd.DatetimeIndex, frame.index).round("1h")
+                frame.index = rounded
 
         return frame
 
@@ -322,8 +323,8 @@ class SoDEXFeeds:
             rows = await method(**(params or {}))
         except SoDEXUpstreamError:
             return []
-        self.lake.write_json(namespace, cache_key, rows)
-        return rows
+        self.lake.write_json(namespace, cache_key, cast(list[dict[str, Any]], rows))
+        return cast(list[dict[str, Any]], rows)
 
     # ------------------------------------------------------------------
     # Symbols

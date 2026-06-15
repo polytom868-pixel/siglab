@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Awaitable
+from typing import Any, Callable, Awaitable, cast
 
 import httpx
 
@@ -68,7 +68,7 @@ class TuiApiClient:
         try:
             response = await getattr(client, method)(path, **kwargs)
             response.raise_for_status()
-            return response.json()
+            return cast(dict[str, Any], response.json())
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
             if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500:
                 raise  # Don't retry 4xx
@@ -77,7 +77,7 @@ class TuiApiClient:
             client = await self._ensure_client()
             response = await getattr(client, method)(path, **kwargs)
             response.raise_for_status()
-            return response.json()
+            return cast(dict[str, Any], response.json())
 
     async def _get(self, path: str, **kwargs: Any) -> dict[str, Any]:
         """GET request with retry. Thin wrapper around _request_with_retry."""

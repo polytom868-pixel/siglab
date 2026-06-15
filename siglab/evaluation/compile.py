@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -141,7 +141,7 @@ def _align_cross_sectional_frame(
     aligned = clean.reindex(columns=symbol_columns)
     aligned = aligned.reindex(columns=tradable_symbols)
     aligned = aligned.fillna(0.0).add(broadcast, fill_value=0.0)
-    return aligned.reindex(columns=tradable_symbols).fillna(0.0)
+    return cast(pd.DataFrame, aligned.reindex(columns=tradable_symbols).fillna(0.0))
 
 
 def _align_cross_sectional_components(
@@ -208,7 +208,8 @@ def _build_ranked_positions(
         gate_mask = pd.Series(True, index=score.index, dtype=bool)
 
     for ts, row in score.iterrows():
-        if not bool(gate_mask.loc[ts]):
+        ts_key = cast(pd.Timestamp, ts)
+        if not bool(gate_mask.loc[ts_key]):
             continue
         clean = row.dropna()
         if clean.empty:
@@ -289,7 +290,8 @@ def _build_pair_positions(
         gate_mask = pd.Series(True, index=score.index, dtype=bool)
 
     for ts, row in score.iterrows():
-        if not bool(gate_mask.loc[ts]):
+        ts_key = cast(pd.Timestamp, ts)
+        if not bool(gate_mask.loc[ts_key]):
             continue
         clean = row.dropna()
         if clean.empty:
@@ -339,9 +341,10 @@ def _build_pair_trade_positions(
         gate_mask = pd.Series(True, index=score.index, dtype=bool)
 
     for ts, value in score[pair_column].items():
+        ts_key = cast(pd.Timestamp, ts)
         signal_value = 0.0 if pd.isna(value) else float(value)
         exit_now = False
-        regime_ok = bool(gate_mask.loc[ts])
+        regime_ok = bool(gate_mask.loc[ts_key])
 
         if position_state == 0:
             holding_bars = 0
@@ -483,7 +486,7 @@ def _gate_mask_from_frame(
 ) -> pd.Series:
     numeric = frame.apply(pd.to_numeric, errors="coerce")
     if minimum is None and maximum is None:
-        return numeric.fillna(0.0).gt(0.0).all(axis=1)
+        return cast(pd.Series, numeric.fillna(0.0).gt(0.0).all(axis=1))
     mask = pd.Series(True, index=numeric.index, dtype=bool)
     if minimum is not None:
         mask &= numeric.ge(float(minimum)).all(axis=1)

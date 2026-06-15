@@ -6,7 +6,7 @@ visualisations suitable for terminal UIs.
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Any, Sequence
 
 from rich.text import Text
 from textual.reactive import reactive
@@ -101,7 +101,7 @@ def sparkline_text(
     return Text("".join(chars), style=colour)
 
 
-def ohlc_summary(candles: Sequence[dict]) -> str:
+def ohlc_summary(candles: Sequence[dict[str, Any]]) -> str:
     """Render a compact OHLC summary line from candle dicts.
 
     Parameters
@@ -139,7 +139,7 @@ class SparklineWidget(Static):
     }
     """
 
-    def __init__(self, width: int = 50, **kwargs) -> None:
+    def __init__(self, width: int = 50, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._chart_width = width
 

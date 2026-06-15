@@ -718,11 +718,12 @@ class PaperScreen(BaseScreen):
 
         except Exception as exc:
             err_msg = str(exc)[:80]
-            safe_query(self, "#order-form", OrderFormWidget,
-                       lambda w, m=err_msg: w.show_error(m))
+            def _show_err(w: OrderFormWidget, m: str = err_msg) -> None:
+                w.show_error(m)
+            safe_query(self, "#order-form", OrderFormWidget, _show_err)
             logger.warning("Order placement error: %s", exc)
 
-    # ── Input Handling ────────────────────────────────────────────────
+
 
     def action_focus_symbol(self) -> None:
         """Focus symbol input for editing."""

@@ -377,7 +377,7 @@ def _matched_currency_symbol(value: Any, *, preferred: str | None = None) -> str
     return fallback
 
 
-def _record_day(value: Any) -> datetime.date | None:
+def _record_day(value: Any) -> "datetime.date | None":
     if value is None:
         return None
     raw = str(value)

@@ -4,26 +4,26 @@ Centralises access to SoSoValue market data, SoDEX perp klines/funding,
 Pendle PT markets, and Delta Lab lending markets.  All live HTTP/WS calls
 are made through the ``SoSoValueClient`` and ``SoDEXFeeds`` adapters;
 ``MarketDataProvider`` adds caching (warm + per-bundle), bundle manifests,
-and a ``metrics_snapshot`` / ``close`` lifecycle for observability.
+and Parquet-lake persistence.
 """
 
 from __future__ import annotations
 
-import asyncio
 import atexit
+import asyncio
 import copy
 import json
 import logging
 import re
 from datetime import UTC, datetime
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
-from siglab.data.store import ParquetLake
-from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
-from siglab.schemas import SignalSpec, AssetUniverse
 from siglab.config import SiglabConfig
+from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
+from siglab.data.store import ParquetLake
+from siglab.schemas import SignalSpec, AssetUniverse
 from siglab.track_registry import resolve_track
 from siglab.utils import short_hash
 from siglab.utils import safe_float as _safe_float
@@ -325,8 +325,9 @@ class MarketDataProvider:
         HTTP: none (local state only)
         """
         as_of = datetime.now(UTC).replace(microsecond=0)
+        resolved_track = cast(str, resolve_track(track))
         payload = jsonable_iteration_payload(
-            track=resolve_track(track),
+            track=resolved_track,
             parent_hash=parent.strategy_hash(),
             as_of=as_of,
         )
@@ -335,10 +336,10 @@ class MarketDataProvider:
         self._active_as_of = as_of
         self._bundle_cache = {}
         self._bundle_components = []
-        metadata = {
+        metadata: dict[str, Any] = {
             "bundle_id": bundle_id,
             "as_of": as_of.isoformat(),
-            "track": resolve_track(track),
+            "track": resolved_track,
             "parent_hash": parent.strategy_hash(),
             "components": [],
         }
@@ -380,10 +381,9 @@ class MarketDataProvider:
         discovers stable-PT, rotation-PT, and lending markets.
 
         HTTP: multiple calls via ``discover_perp_symbols``,
-        ``fetch_perp_bundle``, ``discover_stable_pt_markets``,
-        ``discover_pt_markets``, and ``discover_lending_markets``.
+        ``discover_lending_markets``.
         """
-        track = resolve_track(track)
+        track = cast(str, resolve_track(track) if track is not None else "default")
         summary: dict[str, Any] = {
             "track": track,
             "parent_family": parent.family,
@@ -760,6 +760,8 @@ class MarketDataProvider:
         }
         discovered: dict[str, dict[str, Any]] = {}
         for basis in basis_groups:
+            if not hasattr(self, "delta_lab"):
+                continue
             try:
                 payload = await self.delta_lab.screen_lending(
                     basis=None if basis.upper() == "ALL" else basis.upper(),
@@ -969,7 +971,7 @@ class MarketDataProvider:
             "bundle_id": self._active_bundle_id,
         }
         self._bundle_cache[bundle_cache_key] = copy.deepcopy(bundle)
-        self._persist_bundle_frames(f"{bundle_cache_key}__prices", prices=bundle["prices"])
+        self._persist_bundle_frames(f"{bundle_cache_key}__prices", prices=cast(pd.DataFrame, bundle["prices"]))
         return bundle
 
     def market_label(self, row: dict[str, Any]) -> str:
