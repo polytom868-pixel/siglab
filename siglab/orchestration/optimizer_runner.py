@@ -267,14 +267,12 @@ class OptunaOptimizerRunner:
         tuned_params: dict[str, Any] | None = None,
         stability_pack: dict[str, Any] | None = None,
     ) -> float:
-        details = self._objective_details(
-            summary,
-            evaluation=evaluation,
-            optuna_space=optuna_space,
-            tuned_params=tuned_params,
-            stability_pack=stability_pack,
+        return float(
+            self._objective_details(
+                summary, evaluation=evaluation, optuna_space=optuna_space,
+                tuned_params=tuned_params, stability_pack=stability_pack,
+            ).get("objective") or -1e18
         )
-        return float(details.get("objective") or -1e18)
 
     def _objective_details(
         self,
