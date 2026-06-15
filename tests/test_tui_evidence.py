@@ -70,20 +70,16 @@ class TestHelpers:
         assert _kind_style("entity") == "#4ade80"
 
     def test_format_confidence_high(self) -> None:
-        result = format_confidence(0.95)
-        assert "95%" in str(result.plain)
+        assert "95%" in format_confidence(0.95).plain
 
     def test_format_confidence_medium(self) -> None:
-        result = format_confidence(0.6)
-        assert "60%" in str(result.plain)
+        assert "60%" in format_confidence(0.6).plain
 
     def test_format_confidence_low(self) -> None:
-        result = format_confidence(0.3)
-        assert "30%" in str(result.plain)
+        assert "30%" in format_confidence(0.3).plain
 
     def test_format_confidence_none(self) -> None:
-        result = format_confidence(None)
-        assert "\u2500" in str(result.plain)
+        assert "\u2500" in format_confidence(None).plain
 
 
 # ── Evidence Graph Widget Tests ──────────────────────────────────────
@@ -141,7 +137,7 @@ class TestEvidenceGraphWidget:
     def test_widget_render_empty(self) -> None:
         widget = EvidenceGraphWidget()
         result = widget.render()
-        assert "No evidence data" in str(result.plain)
+        assert "No evidence data" in result.plain
 
     def test_widget_render_filter_no_match(self) -> None:
         widget = EvidenceGraphWidget()
@@ -149,7 +145,7 @@ class TestEvidenceGraphWidget:
         widget.update_graph(nodes, [])
         widget.set_filter(text="nonexistent")
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "No matches" in text
         assert "nonexistent" in text
 
@@ -162,7 +158,7 @@ class TestEvidenceGraphWidget:
         edges = [{"source": "source:a", "target": "entity:b", "label": "linked"}]
         widget.update_graph(nodes, edges)
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "Evidence Graph" in text
         assert "test-source" in text
         assert "BTC-USD" in text
@@ -176,7 +172,7 @@ class TestEvidenceGraphWidget:
         ]
         widget.update_graph(nodes, [])
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "SOURCE" in text
         assert "ENTITY" in text
 
@@ -204,7 +200,7 @@ class TestEdgeDetailWidget:
     def test_widget_render_empty(self) -> None:
         widget = EdgeDetailWidget()
         result = widget.render()
-        assert "No connections" in str(result.plain)
+        assert "No connections" in result.plain
 
     def test_widget_render_with_edges(self) -> None:
         widget = EdgeDetailWidget()
@@ -219,7 +215,7 @@ class TestEdgeDetailWidget:
         ]
         widget.update_edges(edges)
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "Connections" in text
         assert "BTC-USD" in text
 
@@ -236,7 +232,7 @@ class TestEdgeDetailWidget:
         ]
         widget.update_edges(edges)
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "temporal link" in text
 
 
@@ -298,14 +294,14 @@ class TestDemoFlowWidget:
     def test_widget_render_shows_all_steps(self) -> None:
         widget = DemoFlowWidget()
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         for step in DEMO_STEPS:
             assert step["title"] in text
 
     def test_widget_render_current_step_highlighted(self) -> None:
         widget = DemoFlowWidget()
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         # First step should be the current one
         assert "▶" in text
 
@@ -313,21 +309,21 @@ class TestDemoFlowWidget:
         widget = DemoFlowWidget()
         widget.set_step_result(1, {"returncode": 0, "stdout": "{}", "stderr": ""})
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "✓" in text
 
     def test_widget_render_failed_step(self) -> None:
         widget = DemoFlowWidget()
         widget.set_step_result(1, {"returncode": 1, "stdout": "", "stderr": "error"})
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "✗" in text
 
     def test_widget_render_running_state(self) -> None:
         widget = DemoFlowWidget()
         widget.set_running(True)
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "Running" in text or "⟳" in text
 
     def test_widget_render_shows_result_summary(self) -> None:
@@ -338,7 +334,7 @@ class TestDemoFlowWidget:
             "stderr": "",
         })
         result = widget.render()
-        text = str(result.plain)
+        text = result.plain
         assert "records: 620" in text
 
 
