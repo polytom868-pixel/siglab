@@ -155,13 +155,7 @@ class EvaluateGatesValidationTests(unittest.TestCase):
         self.assertIn("non_positive_validation_sharpe", reasons)
 
     def test_validation_not_available_skipped(self) -> None:
-        summary: dict[str, Any] = {
-            "validation_available": False,
-            "median_total_return": 0.05,
-            "median_sharpe": 1.0,
-            "asset_breadth": 3,
-            "canonical_series_valid": True,
-        }
+        summary: dict[str, Any] = {**_BASE_TREND_SIGNALS, "validation_available": False}
         ok, reasons = evaluate_gates("trend_signals", summary)
         self.assertTrue(ok)
         self.assertNotIn("non_positive_validation_return", reasons)
@@ -290,12 +284,7 @@ class EvaluateGatesUnknownTrackTests(unittest.TestCase):
         self.assertNotIn("insufficient_breadth", reasons)
 
     def test_unknown_track_low_drawdown_passes(self) -> None:
-        summary: dict[str, Any] = {
-            "median_total_return": 0.05,
-            "median_sharpe": 1.0,
-            "worst_max_drawdown": -0.20,
-            "asset_breadth": 1,
-        }
+        summary: dict[str, Any] = {**_BASE_TREND_SIGNALS, "asset_breadth": 1}
         ok, reasons = evaluate_gates("unknown_track", summary)
         self.assertTrue(ok)
 
