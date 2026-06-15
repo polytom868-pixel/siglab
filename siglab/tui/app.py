@@ -266,29 +266,18 @@ class NavSidebar(Static):
 # Build the SCREENS dict at class definition time.
 # Textual expects SCREENS values to be Screen subclasses or callables,
 # not instances — it instantiates them lazily on first push_screen().
-_BUILTIN_SCREENS: dict[str, Callable[[], Screen[Any]]] = {}
-
-# Market screen — real implementation
-_BUILTIN_SCREENS["market"] = MarketScreen
-
-# Paper trading screen — real implementation
-_BUILTIN_SCREENS["paper"] = PaperScreen
-
-# Risk monitoring screen — real implementation
-_BUILTIN_SCREENS["risk"] = RiskScreen
-
-# Strategy research screen — real implementation
-_BUILTIN_SCREENS["strategy"] = StrategyScreen
-
-# Telemetry screen — real implementation
-_BUILTIN_SCREENS["telemetry"] = TelemetryScreen
-
-# Evidence screen — real implementation
-_BUILTIN_SCREENS["evidence"] = EvidenceScreen
+_BUILTIN_SCREENS: dict[str, Callable[[], Screen[Any]]] = {
+    "market": MarketScreen,
+    "paper": PaperScreen,
+    "risk": RiskScreen,
+    "strategy": StrategyScreen,
+    "telemetry": TelemetryScreen,
+    "evidence": EvidenceScreen,
+}
 
 # Remaining screens — placeholders for now
 for _idx, _label, _screen_id in NAV_ITEMS:
-    if _screen_id in ("market", "paper", "risk", "strategy", "telemetry", "evidence"):
+    if _screen_id in _BUILTIN_SCREENS:
         continue  # already registered above
     def _make_placeholder(_lbl: str = _label, _sid: str = _screen_id) -> Screen[Any]:
         return cast(Screen[Any], PlaceholderScreen(_lbl, screen_id=_sid))
@@ -397,9 +386,27 @@ class SigLabTUI(App[None]):
 
     # ── Keyboard navigation shortcuts ──
 
-    def action_go_to_screen(self, screen_id: str) -> None:
-        """Switch to a screen by id (keys 1-6)."""
+
+    def _switch(self, screen_id: str) -> None:
         self.switch_screen(screen_id)
+
+    def action_switch_to_market(self) -> None:
+        self._switch("market")
+
+    def action_switch_to_paper(self) -> None:
+        self._switch("paper")
+
+    def action_switch_to_risk(self) -> None:
+        self._switch("risk")
+
+    def action_switch_to_strategy(self) -> None:
+        self._switch("strategy")
+
+    def action_switch_to_telemetry(self) -> None:
+        self._switch("telemetry")
+
+    def action_switch_to_evidence(self) -> None:
+        self._switch("evidence")
 
 
 if __name__ == "__main__":

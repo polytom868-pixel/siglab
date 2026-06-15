@@ -373,7 +373,7 @@ class ResearchEvaluator:
         )
         config = BacktestConfig(
             leverage=1.0,
-            funding_rates=funding,
+            funding_rates=funding.to_frame() if funding is not None else None,
             rebalance_threshold=spec.risk.rebalance_threshold,
             enable_liquidation=True,
         )
