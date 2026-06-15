@@ -53,6 +53,15 @@ class LoadingIndicator(Static):
         """Start the spinner timer."""
         self._timer = self.set_interval(0.1, self._tick_spinner)
 
+    def watch_loading(self, loading: bool) -> None:
+        """Pause the spinner interval while idle to avoid needless repaints."""
+        if self._timer is None:
+            return
+        if loading:
+            self._timer.resume()
+        else:
+            self._timer.pause()
+
     def _tick_spinner(self) -> None:
         """Advance the spinner frame when loading."""
         if self.loading:

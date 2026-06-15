@@ -51,6 +51,7 @@ from siglab.tui.formatting import (
 )
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
+from siglab.tui.api_client import TuiApiClient
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
@@ -517,8 +518,8 @@ class PaperScreen(BaseScreen):
     session_name: reactive[str] = reactive("")
 
     _loading_widget_id: ClassVar[str] = "#paper-loading"
-    _status_widget_id: ClassVar[str] = "#paper-status"
     _refresh_interval: ClassVar[float] = 15.0
+    _api_client_class: ClassVar[type] = TuiApiClient
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -555,31 +556,13 @@ class PaperScreen(BaseScreen):
     async def _find_existing_session(self, name: str) -> dict[str, Any] | None:
         """Check for an existing session with the given name.
 
-        Uses a subprocess to list sessions — kept as a separate method
-        so tests can mock it independently of the CLI bridge.
+        Kept as a separate method so tests can mock it independently.
         """
-        import asyncio as _asyncio
-        import sys
-
-        list_code = (
-            "import json; "
-            "from siglab.config import load_settings; "
-            "from siglab.live.paper_client import SoDEXPaperPerpsClient; "
-            "s = load_settings(); "
-            "c = SoDEXPaperPerpsClient(sessions_dir=str(s.root_dir / 'sessions')); "
-            "print(json.dumps(c.list_sessions()))"
-        )
-        proc = await _asyncio.create_subprocess_exec(
-            sys.executable, "-c", list_code,
-            stdout=_asyncio.subprocess.PIPE,
-            stderr=_asyncio.subprocess.PIPE,
-        )
-        list_out, _ = await _asyncio.wait_for(proc.communicate(), timeout=10.0)
-        if proc.returncode == 0 and list_out:
-            all_sessions = json.loads(list_out.decode("utf-8").strip())
-            matches = [s for s in all_sessions if s.get("name") == name]
-            if matches:
-                return sorted(matches, key=lambda s: s.get("created_at", 0))[-1]
+        data = await self._api.list_paper_sessions()
+        all_sessions = data.get("sessions", [])
+        matches = [s for s in all_sessions if s.get("name") == name]
+        if matches:
+            return sorted(matches, key=lambda s: s.get("created_at", 0))[-1]
         return None
 
     async def _init_session(self) -> None:
@@ -709,65 +692,29 @@ class PaperScreen(BaseScreen):
     # ── Order Placement ───────────────────────────────────────────────
 
     async def _place_order(self, params: dict[str, str]) -> None:
-        """Place a paper order via Python subprocess calling paper_client directly."""
+        """Place a paper order via the FastAPI HTTP client."""
         if not self.session_id:
             safe_query(self, "#order-form", OrderFormWidget,
                        lambda w: w.show_error("No active session"))
             return
 
         try:
-            import asyncio as _asyncio
-            import sys
-
-            # Serialize parameters as JSON to avoid injection risk
-            order_json = json.dumps({
-                "session_id": self.session_id,
-                "symbol": params["symbol"],
-                "side": params["side"],
-                "quantity": float(params["quantity"]),
-                "order_type": params["order_type"],
-                "price": float(params["price"]) if "price" in params else None,
-            })
-            # Use JSON stdin pattern to safely pass parameters
-            code = (
-                "import json, sys; "
-                "from siglab.config import load_settings; "
-                "from siglab.live.paper_client import SoDEXPaperPerpsClient; "
-                "p = json.loads(sys.stdin.read()); "
-                "s = load_settings(); "
-                "c = SoDEXPaperPerpsClient(sessions_dir=str(s.root_dir / 'sessions')); "
-                "kwargs = {k: v for k, v in p.items() if k != 'session_id' and v is not None}; "
-                "r = c.place_order(session_id=p['session_id'], **kwargs); "
-                "print(json.dumps(r))"
+            order_data = await self._api.place_paper_order(
+                self.session_id,
+                symbol=params["symbol"],
+                side=params["side"],
+                quantity=float(params["quantity"]),
+                order_type=params["order_type"],
+                price=float(params["price"]) if "price" in params else None,
             )
-            proc = await _asyncio.create_subprocess_exec(
-                sys.executable, "-c", code,
-                stdin=_asyncio.subprocess.PIPE,
-                stdout=_asyncio.subprocess.PIPE,
-                stderr=_asyncio.subprocess.PIPE,
+            order_id = order_data.get("order_id", "?")[:8]
+            safe_query(self, "#order-form", OrderFormWidget,
+                       lambda w: w.show_success(f"Order {order_id}… {params['side']} {params['quantity']} {params['symbol']}"))
+            self.notify(
+                f"Order placed: {params['side']} {params['quantity']} {params['symbol']}",
+                severity="information", timeout=3,
             )
-            stdout_bytes, stderr_bytes = await _asyncio.wait_for(
-                proc.communicate(input=order_json.encode("utf-8")),
-                timeout=15.0,
-            )
-            stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
-            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-
-            if proc.returncode == 0 and stdout:
-                order_data = json.loads(stdout.split("\n")[-1])
-                order_id = order_data.get("order_id", "?")[:8]
-                safe_query(self, "#order-form", OrderFormWidget,
-                           lambda w: w.show_success(f"Order {order_id}… {params['side']} {params['quantity']} {params['symbol']}"))
-                self.notify(
-                    f"Order placed: {params['side']} {params['quantity']} {params['symbol']}",
-                    severity="information", timeout=3,
-                )
-                await self._refresh_all()
-            else:
-                error_msg = stderr or "Order placement failed"
-                safe_query(self, "#order-form", OrderFormWidget,
-                           lambda w: w.show_error(error_msg[:80]))
-                logger.warning("Order placement failed: %s", stderr)
+            await self._refresh_all()
 
         except Exception as exc:
             err_msg = str(exc)[:80]
@@ -837,47 +784,15 @@ class PaperScreen(BaseScreen):
             self.call_after_refresh(self._do_cancel_order, order_id)
 
     async def _do_cancel_order(self, order_id: str) -> None:
-        """Execute order cancellation via subprocess."""
-        import asyncio as _asyncio
-        import sys
-
+        """Cancel an open paper order via the FastAPI HTTP client."""
         try:
-            cancel_json = json.dumps({
-                "session_id": self.session_id,
-                "order_id": order_id,
-            })
-            code = (
-                "import json, sys; "
-                "from siglab.config import load_settings; "
-                "from siglab.live.paper_client import SoDEXPaperPerpsClient; "
-                "p = json.loads(sys.stdin.read()); "
-                "s = load_settings(); "
-                "c = SoDEXPaperPerpsClient(sessions_dir=str(s.root_dir / 'sessions')); "
-                "r = c.cancel_order(p['session_id'], p['order_id']); "
-                "print(json.dumps(r))"
+            data = await self._api.cancel_paper_order(
+                self.session_id, order_id
             )
-            proc = await _asyncio.create_subprocess_exec(
-                sys.executable, "-c", code,
-                stdin=_asyncio.subprocess.PIPE,
-                stdout=_asyncio.subprocess.PIPE,
-                stderr=_asyncio.subprocess.PIPE,
-            )
-            stdout_bytes, stderr_bytes = await _asyncio.wait_for(
-                proc.communicate(input=cancel_json.encode("utf-8")),
-                timeout=15.0,
-            )
-            stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
-            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-
-            if proc.returncode == 0 and stdout:
-                data = json.loads(stdout.split("\n")[-1])
-                sym = data.get("symbol", "?")
-                self.status_text = f"Cancelled order for {sym}"
-                self.notify(f"Order cancelled: {sym}", severity="information", timeout=3)
-                await self._refresh_all()
-            else:
-                self.status_text = f"Cancel failed: {sanitize_status_text(stderr, 60)}"
-                logger.warning("Cancel order failed: %s", stderr)
+            sym = data.get("symbol", "?")
+            self.status_text = f"Cancelled order for {sym}"
+            self.notify(f"Order cancelled: {sym}", severity="information", timeout=3)
+            await self._refresh_all()
         except Exception as exc:
             self.status_text = f"Cancel error: {exc}"
             logger.warning("Cancel order error: %s", exc)

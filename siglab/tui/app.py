@@ -320,10 +320,10 @@ class SigLabTUI(App):
         Binding("?", "show_help", "Help", show=True),
         Binding("f1", "show_help", "Help", show=False),
         Binding("escape", "go_back", "Back", show=False),
-        Binding("1", "switch_to_market", "Market", show=False),
-        Binding("2", "switch_to_paper", "Paper", show=False),
-        Binding("3", "switch_to_risk", "Risk", show=False),
-        Binding("4", "switch_to_strategy", "Strategy", show=False),
+        Binding("1", "switch_to_market", "Market", show=True),
+        Binding("2", "switch_to_paper", "Paper", show=True),
+        Binding("3", "switch_to_risk", "Risk", show=True),
+        Binding("4", "switch_to_strategy", "Strategy", show=True),
         Binding("5", "switch_to_telemetry", "Telemetry", show=False),
         Binding("6", "switch_to_evidence", "Evidence", show=False),
     ]
@@ -399,27 +399,27 @@ class SigLabTUI(App):
 
     def action_switch_to_market(self) -> None:
         """Switch to the market screen (key 1)."""
-        self.push_screen("market")
+        self.switch_screen("market")
 
     def action_switch_to_paper(self) -> None:
         """Switch to the paper trading screen (key 2)."""
-        self.push_screen("paper")
+        self.switch_screen("paper")
 
     def action_switch_to_risk(self) -> None:
         """Switch to the risk screen (key 3)."""
-        self.push_screen("risk")
+        self.switch_screen("risk")
 
     def action_switch_to_strategy(self) -> None:
         """Switch to the strategy screen (key 4)."""
-        self.push_screen("strategy")
+        self.switch_screen("strategy")
 
     def action_switch_to_telemetry(self) -> None:
         """Switch to the telemetry screen (key 5)."""
-        self.push_screen("telemetry")
+        self.switch_screen("telemetry")
 
     def action_switch_to_evidence(self) -> None:
         """Switch to the evidence screen (key 6)."""
-        self.push_screen("evidence")
+        self.switch_screen("evidence")
 
 
 if __name__ == "__main__":

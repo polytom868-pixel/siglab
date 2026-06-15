@@ -6,9 +6,11 @@ Displays version info, connection status, and current time.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Optional
 
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.reactive import reactive
 from textual.widgets import Static
 from textual.widget import Widget
 
@@ -20,6 +22,7 @@ class SigLabStatusBar(Widget):
 
     Composed of several ``Static`` widgets arranged in a horizontal bar.
     """
+    last_error: reactive[Optional[str]] = reactive(None)
 
     DEFAULT_CSS = """
     SigLabStatusBar {

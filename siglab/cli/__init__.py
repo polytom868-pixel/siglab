@@ -135,6 +135,8 @@ def main() -> None:
     _paper_mod.add_subparser(subparsers)
     _ancestry_mod.add_subparser(subparsers)
     _run_mod.add_subparser(subparsers)
+    tui_p = subparsers.add_parser("tui", help="Launch the SigLab Terminal UI.")
+    tui_p.set_defaults(_handler="tui")
 
     args = parser.parse_args()
 
@@ -233,7 +235,10 @@ def main() -> None:
     if args.command == "paper-promote":
         asyncio.run(_paper_mod.run_paper_promote(args))
         return
-
+    if args.command == "tui":
+        from siglab.tui.__main__ import main as _tui_main
+        _tui_main()
+        return
 
 if __name__ == "__main__":
     main()
