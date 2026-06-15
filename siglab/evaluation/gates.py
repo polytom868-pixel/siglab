@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from siglab.track_registry import canonical_track_name, resolve_track
+from siglab.track_registry import resolve_track
 
 
 def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]]:

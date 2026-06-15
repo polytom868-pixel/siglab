@@ -7,7 +7,6 @@ across screen modules and ensure theme consistency.
 from __future__ import annotations
 
 from rich.text import Text
-from siglab.utils import safe_float
 
 
 # ── Color Constants ──────────────────────────────────────────────────
@@ -524,4 +523,3 @@ EXPANDABLE_CSS = "height: 1fr; min-height: 6; {scroll}".format(scroll=SCROLLABLE
 
 
 # Re-export Any for callers that import safe_float
-from typing import Any  # noqa: E402

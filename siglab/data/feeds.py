@@ -14,7 +14,6 @@ import atexit
 import copy
 import json
 import logging
-import math
 import re
 from datetime import UTC, datetime
 from typing import Any, TYPE_CHECKING
@@ -25,7 +24,7 @@ from siglab.data.store import ParquetLake
 from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
 from siglab.schemas import SignalSpec, AssetUniverse
 from siglab.config import SiglabConfig
-from siglab.track_registry import canonical_track_name, resolve_track
+from siglab.track_registry import resolve_track
 from siglab.utils import short_hash
 from siglab.utils import safe_float as _safe_float
 

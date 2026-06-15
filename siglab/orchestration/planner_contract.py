@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any, cast
 
-import yaml
 
 from siglab.orchestration.contracts import PlannerOutput
 from siglab.evaluation.strategy_semantics import supports_explicit_trade_style

@@ -8,7 +8,7 @@ from siglab.cli.rich_utils import get_console, make_table, print_json, status_st
 from siglab.cli.helpers import add_json_flag, maybe_print_json
 from siglab.config import load_settings
 from siglab.search import LineageStore
-from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name, resolve_track
+from siglab.track_registry import TRACK_CLI_CHOICES, resolve_track
 
 
 def add_subparser(subparsers) -> None:

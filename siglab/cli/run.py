@@ -39,7 +39,7 @@ from siglab.search import (
     SpecMutator,
     pick_parent as _pick_parent_lib,
 )
-from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name, resolve_track
+from siglab.track_registry import TRACK_CLI_CHOICES, resolve_track
 from siglab.workspace import WorkspaceBuilder
 from siglab.io_utils import write_json
 from siglab.cli.helpers import (

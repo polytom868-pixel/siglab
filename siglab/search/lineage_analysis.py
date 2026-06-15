@@ -54,7 +54,6 @@ def experiment_row_payload(row: tuple[Any, ...]) -> dict[str, Any]:
     }
 
 
-from siglab.utils import feature_hash
 
 
 def is_deterministic_experiment(row: dict[str, Any]) -> bool:
