@@ -1117,11 +1117,8 @@ def _compact_scalar(value: Any) -> Any:
 
 
 def _int_or_zero(value: Any) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return 0
-    return max(0, parsed)
+    from siglab.utils import int_or_zero as _int_or_zero_util
+    return _int_or_zero_util(value)
 
 
 def _estimate_message_tokens(messages: Sequence[dict[str, Any]]) -> int:

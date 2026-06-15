@@ -188,12 +188,8 @@ def _confidence(sample_count: int) -> str:
 
 
 def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from siglab.utils import safe_float
+    return safe_float(value)
 
 
 def _mean(values: Iterable[float | None]) -> float | None:

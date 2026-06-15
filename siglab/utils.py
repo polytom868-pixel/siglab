@@ -55,6 +55,14 @@ def safe_float(
     return round(numeric, digits)
 
 
+def int_or_zero(value: Any) -> int:
+    """Convert value to non-negative int. Returns 0 on failure or negative."""
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 h = hashlib.sha256
 
 

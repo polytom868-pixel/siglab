@@ -472,12 +472,8 @@ def _format_patch_value(value: Any) -> str:
 
 
 def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from siglab.utils import safe_float
+    return safe_float(value)
 
 
 def _component_brief(component: dict[str, Any] | None) -> dict[str, Any] | None:

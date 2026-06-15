@@ -751,11 +751,7 @@ def _threshold_bounds(value: Any) -> tuple[float, float, bool]:
 
 
 def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from siglab.utils import safe_float
+    return safe_float(value)
 
 
