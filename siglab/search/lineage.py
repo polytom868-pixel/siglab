@@ -19,13 +19,8 @@ from siglab.schemas import SignalSpec
 from siglab.track_registry import matching_track_names, resolve_track
 
 from siglab.search.lineage_types import (
-    _delta,
     _maturity_bucket,
-    _median_value,
-    _parse_timestamp,
-    _safe_float,
     _spec_assets,
-    _tokens,
 )
 from siglab.search.lineage_analysis import (
     assemble_memory_packet,
