@@ -727,63 +727,50 @@ class TestTelemetryScreen:
 # ══════════════════════════════════════════════════════════════════════
 
 
+def _make_mock_client(payload: dict) -> TuiApiClient:
+    """Build a TuiApiClient whose _client is a stub returning ``payload`` JSON."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = payload
+    mock_response.raise_for_status = MagicMock()
+    client = TuiApiClient()
+    mock_http = AsyncMock()
+    mock_http.get.return_value = mock_response
+    client._client = mock_http
+    return client
+
+
 class TestTuiApiClientTelemetry:
     """Test API client telemetry methods."""
 
     @pytest.mark.asyncio
     async def test_get_ops_board(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
+        client = _make_mock_client({
             "artifact_status": {},
             "summary": {},
             "service_health": {},
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http = AsyncMock()
-        mock_http.get.return_value = mock_response
-        client._client = mock_http
-
+        })
         result = await client.get_ops_board()
         assert isinstance(result, dict)
         await client.close()
 
     @pytest.mark.asyncio
     async def test_get_skill_report(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
+        client = _make_mock_client({
             "skills": [],
             "total_skills": 0,
             "total_invocations": 0,
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http = AsyncMock()
-        mock_http.get.return_value = mock_response
-        client._client = mock_http
-
+        })
         result = await client.get_skill_report()
-        assert isinstance(result, dict)
         assert result["total_skills"] == 0
         await client.close()
 
     @pytest.mark.asyncio
     async def test_get_telemetry_report(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
+        client = _make_mock_client({
             "artifact_status": {},
             "summary": {},
             "service_health": {},
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http = AsyncMock()
-        mock_http.get.return_value = mock_response
-        client._client = mock_http
-
+        })
         result = await client.get_telemetry_report()
         assert isinstance(result, dict)
         await client.close()
