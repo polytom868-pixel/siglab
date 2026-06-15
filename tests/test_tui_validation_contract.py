@@ -20,10 +20,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from siglab.tui.app import NAV_ITEMS, SCREEN_IDS, HelpScreen, SigLabTUI
+from siglab.tui.api_client import TuiApiClient
+from siglab.tui.app import NAV_ITEMS, SCREEN_IDS, HelpScreen, NavSidebar, SigLabTUI
 from siglab.tui.formatting import friendly_error
 from siglab.tui.loading import LoadingIndicator, _SPINNER_FRAMES
 from siglab.tui.widgets.status_bar import SigLabStatusBar
+
 
 TUI_DIR = Path(__file__).resolve().parents[1] / "siglab" / "tui"
 SCREEN_CLASSES = (
@@ -69,8 +71,8 @@ def test_screen_switch_actions_defined() -> None:
         assert hasattr(SigLabTUI, f"action_switch_to_{screen_id}")
 
 def test_nav_sidebar_build_items() -> None:
-    from siglab.tui.app import NavSidebar
     items = NavSidebar._build_items()
+
     assert len(items) == 6
     assert [item.id for item in items] == [
         "nav-market", "nav-paper", "nav-risk", "nav-strategy", "nav-telemetry", "nav-evidence",

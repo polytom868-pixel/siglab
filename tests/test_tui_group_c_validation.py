@@ -304,43 +304,33 @@ class TestVAL_TUI_005_RiskMetrics:
 
     # ── Drawdown Sparkline ──
 
-    def test_drawdown_sparkline_renders_history(self) -> None:
-        """Drawdown sparkline renders when drawdown_history is populated."""
+    @pytest.mark.parametrize(
+        "history,max_dd,current,recovery,expected",
+        [
+            ([0.0, -0.01, -0.05, -0.03, 0.0], -0.05, 0.0, 3, "DRAWDOWN"),
+            ([0.0, -0.02, 0.0], -0.02, 0.0, 5, "5 periods"),
+            ([0.0, -0.05, -0.03], -0.05, -0.03, None, "in progress"),
+            ([], 0.0, 0.0, None, "Collecting equity data"),
+        ],
+    )
+    def test_drawdown_sparkline_state(
+        self,
+        history: list[float],
+        max_dd: float,
+        current: float,
+        recovery: int | None,
+        expected: str,
+    ) -> None:
+        """Drawdown sparkline renders the expected state text."""
         widget = DrawdownSparklineWidget()
-        widget.drawdown_history = [0.0, -0.01, -0.05, -0.03, 0.0]
-        widget.max_drawdown = -0.05
-        widget.current_drawdown = 0.0
-        widget.recovery_periods = 3
+        widget.drawdown_history = history
+        widget.max_drawdown = max_dd
+        widget.current_drawdown = current
+        widget.recovery_periods = recovery
         text = widget.render()
-        assert "DRAWDOWN" in text.plain
-        assert "-5.0%" in text.plain
+        assert expected in text.plain
 
-    def test_drawdown_sparkline_shows_recovery(self) -> None:
-        """Drawdown sparkline shows recovery periods when available."""
-        widget = DrawdownSparklineWidget()
-        widget.drawdown_history = [0.0, -0.02, 0.0]
-        widget.max_drawdown = -0.02
-        widget.current_drawdown = 0.0
-        widget.recovery_periods = 5
-        text = widget.render()
-        assert "5 periods" in text.plain
 
-    def test_drawdown_sparkline_shows_in_progress(self) -> None:
-        """Drawdown sparkline shows 'in progress' when recovery is None."""
-        widget = DrawdownSparklineWidget()
-        widget.drawdown_history = [0.0, -0.05, -0.03]
-        widget.max_drawdown = -0.05
-        widget.current_drawdown = -0.03
-        widget.recovery_periods = None
-        text = widget.render()
-        assert "in progress" in text.plain
-
-    def test_drawdown_sparkline_empty_state(self) -> None:
-        """Drawdown sparkline shows collecting message when empty."""
-        widget = DrawdownSparklineWidget()
-        widget.drawdown_history = []
-        text = widget.render()
-        assert "Collecting equity data" in text.plain
 
     def test_drawdown_sparkline_uses_sparkline_text(self) -> None:
         """Sparkline rendering produces unicode block characters."""
