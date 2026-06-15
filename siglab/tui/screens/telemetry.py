@@ -751,40 +751,41 @@ class TelemetryScreen(BaseScreen):
         lw.set_runs(runs)
         self.notify(f"Sorted by: {next_sort}", severity="information", timeout=1)
 
+    def _advance_filter(
+        self, attr: str, cycle: list[str], setter: str, label: str
+    ) -> None:
+        """Advance ``attr`` to the next value in ``cycle`` and apply it."""
+        current = getattr(self, attr)
+        idx = cycle.index(current) if current in cycle else 0
+        value = cycle[(idx + 1) % len(cycle)]
+        setattr(self, attr, value)
+        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
+        if not lw:
+            return
+        getattr(lw, setter)(value)
+        self.run_count = len(lw.runs)
+        self._update_filters_bar()
+        self.notify(f"{label}: {value}", severity="information", timeout=1)
+
     def action_cycle_date_range(self) -> None:
         """Cycle date range filter: ALL → 7d → 30d → TODAY → ALL."""
-        idx = DATE_RANGE_FILTERS.index(self._date_range) if self._date_range in DATE_RANGE_FILTERS else 0
-        self._date_range = DATE_RANGE_FILTERS[(idx + 1) % len(DATE_RANGE_FILTERS)]
-        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
-        if lw:
-            lw.set_date_range(self._date_range)
-            self.run_count = len(lw.runs)
-            self._update_filters_bar()
-            self.notify(f"Date range: {self._date_range}", severity="information", timeout=1)
+        self._advance_filter(
+            "_date_range", DATE_RANGE_FILTERS, "set_date_range", "Date range"
+        )
 
     def action_cycle_status_filter(self) -> None:
         """Cycle status filter: ALL → PASSED → FAILED → RUNNING → PENDING → ALL."""
-        idx = STATUS_FILTERS.index(self._status_filter) if self._status_filter in STATUS_FILTERS else 0
-        self._status_filter = STATUS_FILTERS[(idx + 1) % len(STATUS_FILTERS)]
-        lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
-        if lw:
-            lw.set_status_filter(self._status_filter)
-            self.run_count = len(lw.runs)
-            self._update_filters_bar()
-            self.notify(f"Status: {self._status_filter}", severity="information", timeout=1)
+        self._advance_filter(
+            "_status_filter", STATUS_FILTERS, "set_status_filter", "Status"
+        )
 
     def action_cycle_track_filter(self) -> None:
         """Cycle track filter through available tracks."""
         lw = safe_query(self, "#telemetry-run-list", TelemetryRunListWidget)
         if not lw:
             return
-        tracks = ["ALL"] + lw.get_tracks()
-        idx = tracks.index(self._track_filter) if self._track_filter in tracks else 0
-        self._track_filter = tracks[(idx + 1) % len(tracks)]
-        lw.set_track_filter(self._track_filter)
-        self.run_count = len(lw.runs)
-        self._update_filters_bar()
-        self.notify(f"Track: {self._track_filter}", severity="information", timeout=1)
+        tracks: list[str] = ["ALL"] + lw.get_tracks()
+        self._advance_filter("_track_filter", tracks, "set_track_filter", "Track")
 
     # ── Event Handlers ───────────────────────────────────────────────
 
