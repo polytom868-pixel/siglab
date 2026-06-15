@@ -181,6 +181,21 @@ def _ensure_single_eligible_scores(
             1.0,
         )
     return adjusted
+    return adjusted
+
+def _resolve_gate_mask(
+    score_index: pd.Index,
+    regime_gate_mask: pd.Series | None,
+) -> pd.Series:
+    if regime_gate_mask is not None:
+        return (
+            pd.Series(regime_gate_mask, index=regime_gate_mask.index)
+            .reindex(score_index)
+            .ffill()
+            .fillna(False)
+            .astype(bool)
+        )
+    return pd.Series(True, index=score_index, dtype=bool)
 
 
 def _build_ranked_positions(

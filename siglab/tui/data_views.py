@@ -17,29 +17,6 @@ from dataclasses import dataclass
 from typing import Any, Self, Sequence, cast
 
 
-# ── Raw Dict View Base ────────────────────────────────────────────────
-
-
-@dataclass(frozen=True, slots=True)
-class _RawDictView:
-    """Base class for frozen dataclasses that wrap a raw API response dict.
-
-    Provides the ``_raw`` field, ``from_dict`` factory, and ``raw``
-    accessor shared by all read-only typed views in this module.
-    Subclasses add domain-specific properties on top of ``_raw``.
-    """
-
-    _raw: dict[str, Any]
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> Self:
-        return cls(_raw=d)
-
-    @property
-    def raw(self) -> dict[str, Any]:
-        """Access the underlying dict for legacy code paths."""
-        return self._raw
-
 
 # ── Market Data Views ────────────────────────────────────────────────
 

@@ -1,0 +1,18 @@
+{
+  "bundle_id": "89363f4bd4cfdc4f",
+  "as_of": "2026-05-13T04:40:59+00:00",
+  "track": "trend_signals",
+  "parent_hash": "2da563b7063ee0a4",
+  "components": [
+    {
+      "namespace": "market_bundle_prices",
+      "cache_key": "480aa7a4685229505aa4",
+      "kind": "frame"
+    },
+    {
+      "namespace": "market_bundle_funding",
+      "cache_key": "480aa7a4685229505aa4",
+      "kind": "frame"
+    }
+  ]
+}

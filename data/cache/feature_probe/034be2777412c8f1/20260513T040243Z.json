@@ -1,0 +1,170 @@
+{
+  "ok": true,
+  "feature": "price_return_vol_adj_24h",
+  "family": "perp_multi_asset_decision",
+  "basis_groups": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "HYPE"
+  ],
+  "interval": "1h",
+  "lookback_days": 365,
+  "data_source": "sosovalue_etf_proxy",
+  "analysis_scope": {
+    "mode": "train_only",
+    "selector_scope": "rolling_validation_chunks",
+    "validation_excluded": true,
+    "audit_excluded": true,
+    "train_window_count": 4,
+    "train_windows": [
+      {
+        "label": "chunk_1_train",
+        "start_timestamp": "2025-03-03T00:00:00",
+        "end_timestamp": "2025-07-09T00:00:00"
+      },
+      {
+        "label": "chunk_2_train",
+        "start_timestamp": "2025-05-05T00:00:00",
+        "end_timestamp": "2025-09-10T00:00:00"
+      },
+      {
+        "label": "chunk_3_train",
+        "start_timestamp": "2025-07-09T00:00:00",
+        "end_timestamp": "2025-11-11T00:00:00"
+      },
+      {
+        "label": "chunk_4_train",
+        "start_timestamp": "2025-09-10T00:00:00",
+        "end_timestamp": "2026-01-15T00:00:00"
+      }
+    ],
+    "visual_split_note": "SigLab now scores specs on rolling train-validation chunks across the pre-audit history and preserves the final audit slice as the untouched out-of-sample check."
+  },
+  "feature_profile": {
+    "available": true,
+    "sample_count": 248,
+    "mean": -3.48629,
+    "std": 3.568756,
+    "median_abs_value": 4.794813,
+    "positive_fraction": 0.129032,
+    "negative_fraction": 0.870968,
+    "zero_fraction": 0.0
+  },
+  "forward_return_predictiveness": [
+    {
+      "available": true,
+      "window_count": 1,
+      "total_rows": 188,
+      "median_spearman": -0.593143,
+      "median_pearson": -0.534393,
+      "positive_spearman_window_fraction": 0.0,
+      "median_top_bottom_spread": -0.164608,
+      "median_bucket_monotonicity": -1.0,
+      "median_abs_feature_abs_return_spearman": -0.216322,
+      "horizon_bars": 6,
+      "interval": "1h"
+    },
+    {
+      "available": true,
+      "window_count": 1,
+      "total_rows": 116,
+      "median_spearman": -0.230735,
+      "median_pearson": -0.18057,
+      "positive_spearman_window_fraction": 0.0,
+      "median_top_bottom_spread": -0.081983,
+      "median_bucket_monotonicity": 0.0,
+      "median_abs_feature_abs_return_spearman": -0.074579,
+      "horizon_bars": 24,
+      "interval": "1h"
+    },
+    {
+      "available": false,
+      "window_count": 0,
+      "total_rows": 0,
+      "median_spearman": null,
+      "median_pearson": null,
+      "positive_spearman_window_fraction": null,
+      "median_top_bottom_spread": null,
+      "median_bucket_monotonicity": null,
+      "median_abs_feature_abs_return_spearman": null,
+      "horizon_bars": 72,
+      "interval": "1h"
+    },
+    {
+      "available": false,
+      "window_count": 0,
+      "total_rows": 0,
+      "median_spearman": null,
+      "median_pearson": null,
+      "positive_spearman_window_fraction": null,
+      "median_top_bottom_spread": null,
+      "median_bucket_monotonicity": null,
+      "median_abs_feature_abs_return_spearman": null,
+      "horizon_bars": 168,
+      "interval": "1h"
+    }
+  ],
+  "best_directional_horizon": {
+    "horizon_bars": 6,
+    "median_spearman": -0.593143,
+    "median_top_bottom_spread": -0.164608
+  },
+  "predictor_correlations": [
+    {
+      "available": true,
+      "window_count": 2,
+      "total_rows": 248,
+      "median_spearman": 0.826776,
+      "median_pearson": 0.888955,
+      "feature": "ema_gap_12_26",
+      "redundancy": "moderate"
+    },
+    {
+      "available": true,
+      "window_count": 2,
+      "total_rows": 248,
+      "median_spearman": 0.54443,
+      "median_pearson": 0.685261,
+      "feature": "price_return_72h",
+      "redundancy": "low"
+    },
+    {
+      "available": true,
+      "window_count": 2,
+      "total_rows": 248,
+      "median_spearman": 0.53551,
+      "median_pearson": 0.706055,
+      "feature": "rsi_centered_14",
+      "redundancy": "low"
+    },
+    {
+      "available": true,
+      "window_count": 2,
+      "total_rows": 248,
+      "median_spearman": 0.403896,
+      "median_pearson": 0.511176,
+      "feature": "macd_hist_12_26_9",
+      "redundancy": "low"
+    },
+    {
+      "available": true,
+      "window_count": 2,
+      "total_rows": 248,
+      "median_spearman": 0.161244,
+      "median_pearson": 0.351175,
+      "feature": "donchian_position_20",
+      "redundancy": "low"
+    },
+    {
+      "available": true,
+      "window_count": 2,
+      "total_rows": 248,
+      "median_spearman": 0.088964,
+      "median_pearson": -0.026675,
+      "feature": "realized_vol_168h",
+      "redundancy": "low"
+    }
+  ],
+  "invalid_compare_features": []
+}
