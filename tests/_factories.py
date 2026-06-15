@@ -66,11 +66,24 @@ class FakeClaude:
         self.calls: list[list[dict[str, str]]] = []
         self.last_trace = {"ok": True}
         self.last_exchange = {"ok": True}
+        # Canned response values (set by make_fake_claude)
+        self._text_return: str = ""
+        self._json_return: dict[str, object] = {}
+        self._metrics: dict[str, object] = {}
+
+    async def complete_text_with_tools(self, **_kwargs: object) -> str:
+        return self._text_return
+
+    async def complete_text(self, **_kwargs: object) -> str:
+        return self._text_return
 
     async def complete_json_messages(self, **kwargs: object) -> dict[str, object]:
         messages = list(kwargs["messages"])
         self.calls.append(messages)
-        return {}
+        return self._json_return
+
+    def metrics_snapshot(self) -> dict[str, object]:
+        return self._metrics
 
 
 def make_sosovalue_envelope(rows: list[dict] | None = None) -> dict:
@@ -166,6 +179,6 @@ def make_fake_claude(
         }
     fake = FakeClaude()
     fake._text_return = text_return
-    fake._json_return = json_return
-    fake._metrics = metrics
+    fake._json_return = json_return if json_return is not None else {}
+    fake._metrics = metrics if metrics is not None else FakeClaude()._metrics
     return fake
