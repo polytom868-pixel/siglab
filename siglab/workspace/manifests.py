@@ -758,24 +758,23 @@ def _render_directional_cookbook() -> str:
 
 
 def _render_basket_cookbook() -> str:
-    return "\n".join(
-        [
-            "# Basket Neutral Patterns",
-            "",
-            "Use these when the edge should come from long-basket versus short-basket ranking rather than outright market direction.",
-            "",
-            "## RelativeCarryImbalance",
-            "- `relative_carry_z_72h`",
-            "- `funding_carry_to_vol`",
-            "- `carry_term_structure_24_168`",
-            "",
-            "## RelativeMomentum",
-            "- `relative_momentum_24h`",
-            "- `breadth_adjusted_relative_momentum_24h`",
-            "",
-            "## CrossSectionalHybrid",
-            "- mix one carry signal with one relative-momentum signal and one market-state suppressor",
-        ]
-    ).strip() + "\n"
+    lines = [
+        "# Basket Neutral Patterns",
+        "",
+        "Use these when the edge should come from long-basket versus short-basket ranking rather than outright market direction.",
+        "",
+        "## RelativeCarryImbalance",
+        "- `relative_carry_z_72h`",
+        "- `funding_carry_to_vol`",
+        "- `carry_term_structure_24_168`",
+        "",
+        "## RelativeMomentum",
+        "- `relative_momentum_24h`",
+        "- `breadth_adjusted_relative_momentum_24h`",
+        "",
+        "## CrossSectionalHybrid",
+        "- mix one carry signal with one relative-momentum signal and one market-state suppressor",
+    ]
+    return _join_block(lines)
 
 

@@ -100,6 +100,18 @@ class SoDEXExecutionAdapter:
             raise RuntimeError("A real SoDEX client must be provided in runtime config before live execution")
         return self.client
 
+    def _resolve_client_method(self, name: str, *, fallback: str | None = None) -> Any:
+        client = self._require_client()
+        method = getattr(client, name, None)
+        if method is None and fallback is not None:
+            method = getattr(client, fallback, None)
+            missing = f"{name}() or {fallback}()"
+        else:
+            missing = f"{name}()"
+        if method is None:
+            raise RuntimeError(f"Configured SoDEX client does not provide {missing}")
+        return method
+
     def dependency_report(self) -> dict[str, Any]:
         client = self.client
         signing = dict(self.config.get("sodex_signing") or {})
@@ -162,20 +174,19 @@ class SoDEXExecutionAdapter:
         }
 
 
-def _finite_float(value: Any, default: float = 0.0) -> float:
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return default
-    return numeric if math.isfinite(numeric) else default
-
-
 def _compact_weights(payload: dict[str, float], *, epsilon: float = 1e-9) -> dict[str, float]:
     return {
         str(symbol): round(float(weight), 6)
         for symbol, weight in payload.items()
         if abs(float(weight)) > epsilon
     }
+
+
+async def _await_if_needed(result: Any) -> Any:
+    """Await a value if it is awaitable; pass through otherwise."""
+    if hasattr(result, "__await__"):
+        return await result
+    return result
 
 
 class DirectionalPerpsSigLabStrategy(Strategy):

@@ -17,7 +17,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from siglab.live.paper_client import SoDEXPaperPerpsClient
+from siglab.live.paper_client import PaperOrderSide, SoDEXPaperPerpsClient
 
 logger = logging.getLogger(__name__)
 
@@ -262,9 +262,30 @@ def _compute_trade_pnl(order: Any, prior_position: float, prior_entry: float) ->
     elif prior_position < 0 and order.side == PaperOrderSide.BUY:
         # Reducing short
         close_qty = min(qty, abs(prior_position))
-        return cast(float, close_qty * (prior_entry - fill_price))
-
     return 0.0
+
+
+def _update_position(
+    order: Any,
+    prior_qty: float,
+    prior_entry: float,
+) -> tuple[float, float]:
+    """Return ``(new_qty, new_entry)`` after applying *order*'s fill."""
+    if order.side == PaperOrderSide.BUY:
+        new_qty = prior_qty + order.quantity
+    else:
+        new_qty = prior_qty - order.quantity
+    fill_price = order.fill_price if order.fill_price is not None else order.price
+    if prior_qty == 0:
+        new_entry = fill_price
+    elif prior_qty * new_qty > 0:
+        new_entry = (
+            (abs(prior_qty) * prior_entry + order.quantity * fill_price) / abs(new_qty)
+        )
+    else:
+        new_entry = fill_price if new_qty != 0 else 0.0
+    return new_qty, new_entry if new_qty != 0 else 0.0
+
 
 
 def extract_session_metrics(
@@ -319,27 +340,9 @@ def extract_session_metrics(
         daily_pnl[day] = daily_pnl.get(day, 0.0) + trade_pnl
 
         # Update simulated position after this fill
-        from siglab.live.paper_client import PaperOrderSide
-
-        if order.side == PaperOrderSide.BUY:
-            new_qty = prior_qty + order.quantity
-        else:
-            new_qty = prior_qty - order.quantity
-
-        if prior_qty == 0:
-            new_entry = order.fill_price if order.fill_price is not None else order.price
-        elif prior_qty * new_qty > 0:
-            # Same direction — average entry
-            new_entry = (
-                (abs(prior_qty) * prior_entry + order.quantity * (order.fill_price or order.price))
-                / abs(new_qty)
-            )
-        else:
-            # Flattening or flipping
-            new_entry = order.fill_price if order.fill_price is not None else order.price if new_qty != 0 else 0.0
-
+        new_qty, new_entry = _update_position(order, prior_qty, prior_entry)
         pos_qty[sym] = new_qty
-        pos_entry[sym] = new_entry if new_qty != 0 else 0.0
+        pos_entry[sym] = new_entry
 
     # Build equity curve (starting equity = 1.0)
     days_sorted = sorted(daily_pnl.keys())
@@ -385,6 +388,7 @@ def extract_session_metrics(
             new_entry = order.fill_price if order.fill_price is not None else order.price if new_qty != 0 else 0.0
 
         pos_qty_wr[sym] = new_qty
+        pos_entry_wr[sym] = new_entry if new_qty != 0 else 0.0
         pos_entry_wr[sym] = new_entry if new_qty != 0 else 0.0
 
     profitable = sum(1 for p in trade_pnls if p > 0)

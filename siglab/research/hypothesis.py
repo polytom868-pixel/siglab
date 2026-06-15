@@ -1743,11 +1743,15 @@ def _aggregate_correlation_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _median_value(values: Any) -> float | None:
-    series = pd.Series([value for value in values if value is not None], dtype=float)
+def _series_value(series: pd.Series, *, agg: str) -> float | None:
     if series.empty:
         return None
-    return safe_float(series.median())
+    return safe_float(getattr(series, agg)())
+
+
+def _median_value(values: Any) -> float | None:
+    series = pd.Series([value for value in values if value is not None], dtype=float)
+    return _series_value(series, agg="median")
 
 
 def _redundancy_band(value: float | None) -> str:
@@ -1885,10 +1889,10 @@ def _episode_summary(trade_episodes: list[dict[str, Any]]) -> dict[str, Any]:
                 regime_counts[dimension][label] += 1
     return {
         "trade_count": len(trade_episodes),
-        "win_rate": safe_float((returns > 0.0).mean()) if not returns.empty else None,
-        "avg_return": safe_float(returns.mean()) if not returns.empty else None,
-        "median_return": safe_float(returns.median()) if not returns.empty else None,
-        "median_hold_bars": safe_float(bars.median()) if not bars.empty else None,
+        "win_rate": _series_value(returns > 0.0, agg="mean"),
+        "avg_return": _series_value(returns, agg="mean"),
+        "median_return": _series_value(returns, agg="median"),
+        "median_hold_bars": _series_value(bars, agg="median"),
         "direction_counts": dict(direction_counts),
         "entry_regime_counts": {
             dimension: [

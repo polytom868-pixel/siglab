@@ -1,0 +1,337 @@
+common_perp_cross_sectional_raw_series: &perp_cross_sectional_raw_series
+  [
+    price,
+    funding,
+    market_price_mean,
+    market_funding_mean,
+    market_funding_dispersion,
+    market_breadth_24h,
+    market_co_movement_72h,
+    market_realized_vol_168h,
+  ]
+
+common_perp_cross_sectional_aliases: &perp_cross_sectional_aliases
+  price_return_24h: pct_change(price,24)
+  price_return_72h: pct_change(price,72)
+  price_return_168h: pct_change(price,168)
+  trend_strength_72h: div(pct_change(price,72),rolling_std(pct_change(price,1),168))
+  realized_vol_168h: rolling_std(pct_change(price,1),168)
+  ema_gap_12_26: div(sub(ema(price,12),ema(price,26)),ema(price,26))
+  macd_line_12_26: sub(ema(price,12),ema(price,26))
+  macd_hist_12_26_9: sub(sub(ema(price,12),ema(price,26)),ema(sub(ema(price,12),ema(price,26)),9))
+  bollinger_z_20: div(sub(price,rolling_mean(price,20)),rolling_std(price,20))
+  bollinger_width_20: div(mul(2.0,rolling_std(price,20)),rolling_mean(price,20))
+  rsi_14: rsi(price,14)
+  rsi_centered_14: div(sub(rsi(price,14),50.0),50.0)
+  donchian_width_20: div(sub(rolling_max(price,20),rolling_min(price,20)),price)
+  donchian_position_20: sub(mul(2.0,div(sub(price,rolling_min(price,20)),sub(rolling_max(price,20),rolling_min(price,20)))),1.0)
+  funding_24h_mean: rolling_mean(funding,24)
+  funding_72h_mean: rolling_mean(funding,72)
+  funding_168h_mean: rolling_mean(funding,168)
+  funding_accel_24h: diff(rolling_mean(funding,24),24)
+  funding_flip_prob_14d: sign_flip_prob(funding,336)
+  funding_carry_to_vol: div(rolling_mean(funding,72),rolling_std(pct_change(price,1),168))
+
+  price_return_vol_adj_24h: div(price_return_24h,clip(realized_vol_168h,0.01,10.0))
+  market_trend_24h: pct_change(market_price_mean,24)
+  market_trend_72h: pct_change(market_price_mean,72)
+  market_volatility_168h: market_realized_vol_168h
+  funding_level_72h: rolling_mean(market_funding_mean,72)
+  funding_level_168h: rolling_mean(market_funding_mean,168)
+  funding_dispersion_72h: rolling_mean(market_funding_dispersion,72)
+  market_carry_z_72h: div(funding_level_72h,clip(funding_dispersion_72h,0.000001,1.0))
+  market_carry_z_168h: div(funding_level_168h,clip(funding_dispersion_72h,0.000001,1.0))
+  breadth_24h: market_breadth_24h
+  co_movement_72h: market_co_movement_72h
+  relative_momentum_24h: sub(price_return_24h,market_trend_24h)
+  relative_momentum_72h: sub(price_return_72h,market_trend_72h)
+  breadth_adjusted_relative_momentum_24h: mul(relative_momentum_24h,clip(breadth_24h,0.1,1.0))
+  relative_carry_72h: sub(funding_72h_mean,funding_level_72h)
+  relative_carry_168h: sub(funding_168h_mean,funding_level_168h)
+  relative_carry_z_72h: div(relative_carry_72h,clip(funding_dispersion_72h,0.000001,1.0))
+  relative_carry_z_168h: div(relative_carry_168h,clip(funding_dispersion_72h,0.000001,1.0))
+  carry_term_structure_24_168: sub(funding_24h_mean,funding_168h_mean)
+  carry_term_structure_72_168: sub(funding_72h_mean,funding_168h_mean)
+  carry_decay_ratio_24_168: div(carry_term_structure_24_168,clip(abs(funding_168h_mean),0.000001,1.0))
+
+tracks:
+  trend_signals:
+    families:
+      perp_multi_asset_decision:
+        raw_series: *perp_cross_sectional_raw_series
+        aliases:
+          <<: *perp_cross_sectional_aliases
+      perp_basket_neutral_unlevered:
+        raw_series: *perp_cross_sectional_raw_series
+        aliases:
+          <<: *perp_cross_sectional_aliases
+      perp_basket_neutral_levered:
+        raw_series: *perp_cross_sectional_raw_series
+        aliases:
+          <<: *perp_cross_sectional_aliases
+      perp_multi_asset_carry:
+        raw_series: *perp_cross_sectional_raw_series
+        aliases:
+          <<: *perp_cross_sectional_aliases
+      perp_pair_trade_unlevered:
+        raw_series:
+          [
+            asset_1_price,
+            asset_2_price,
+            asset_1_funding,
+            asset_2_funding,
+            price_ratio,
+            funding_spread,
+            market_price_mean,
+            market_funding_mean,
+            market_funding_dispersion,
+            market_breadth_24h,
+            market_co_movement_72h,
+            market_realized_vol_168h,
+          ]
+        aliases:
+          asset_1_return_6h: pct_change(asset_1_price,6)
+          asset_1_return_24h: pct_change(asset_1_price,24)
+          asset_1_return_72h: pct_change(asset_1_price,72)
+          asset_2_return_6h: pct_change(asset_2_price,6)
+          asset_2_return_24h: pct_change(asset_2_price,24)
+          asset_2_return_72h: pct_change(asset_2_price,72)
+          asset_1_vol_24h: rolling_std(pct_change(asset_1_price,1),24)
+          asset_1_vol_72h: rolling_std(pct_change(asset_1_price,1),72)
+          asset_2_vol_24h: rolling_std(pct_change(asset_2_price,1),24)
+          asset_2_vol_72h: rolling_std(pct_change(asset_2_price,1),72)
+          asset_1_ema_gap_12_26: div(sub(ema(asset_1_price,12),ema(asset_1_price,26)),ema(asset_1_price,26))
+          asset_2_ema_gap_12_26: div(sub(ema(asset_2_price,12),ema(asset_2_price,26)),ema(asset_2_price,26))
+          asset_1_ema_slope_24: pct_change(ema(asset_1_price,24),6)
+          asset_2_ema_slope_24: pct_change(ema(asset_2_price,24),6)
+          asset_1_rsi_centered_14: div(sub(rsi(asset_1_price,14),50.0),50.0)
+          asset_2_rsi_centered_14: div(sub(rsi(asset_2_price,14),50.0),50.0)
+          asset_1_funding_24h_mean: rolling_mean(asset_1_funding,24)
+          asset_1_funding_72h_mean: rolling_mean(asset_1_funding,72)
+          asset_2_funding_24h_mean: rolling_mean(asset_2_funding,24)
+          asset_2_funding_72h_mean: rolling_mean(asset_2_funding,72)
+          asset_1_funding_accel_24h: diff(rolling_mean(asset_1_funding,24),24)
+          asset_2_funding_accel_24h: diff(rolling_mean(asset_2_funding,24),24)
+          asset_1_trend_efficiency_72h: div(abs(diff(asset_1_price,72)),clip(rolling_sum(abs(diff(asset_1_price,1)),72),0.0001,1000000.0))
+          asset_2_trend_efficiency_72h: div(abs(diff(asset_2_price,72)),clip(rolling_sum(abs(diff(asset_2_price,1)),72),0.0001,1000000.0))
+          pair_ratio_return_24h: pct_change(price_ratio,24)
+          pair_ratio_return_72h: pct_change(price_ratio,72)
+          pair_ratio_return_168h: pct_change(price_ratio,168)
+          pair_return_spread_6h: sub(asset_1_return_6h,asset_2_return_6h)
+          pair_return_spread_24h: sub(asset_1_return_24h,asset_2_return_24h)
+          pair_return_spread_72h: sub(asset_1_return_72h,asset_2_return_72h)
+          pair_trend_strength_72h: div(pct_change(price_ratio,72),rolling_std(pct_change(price_ratio,1),168))
+          pair_realized_vol_168h: rolling_std(pct_change(price_ratio,1),168)
+          pair_vol_spread_24h: sub(asset_1_vol_24h,asset_2_vol_24h)
+          pair_vol_spread_72h: sub(asset_1_vol_72h,asset_2_vol_72h)
+          pair_vol_ratio_24h: div(asset_1_vol_24h,clip(asset_2_vol_24h,0.0001,10.0))
+          pair_vol_ratio_72h: div(asset_1_vol_72h,clip(asset_2_vol_72h,0.0001,10.0))
+          pair_ema_gap_12_26: div(sub(ema(price_ratio,12),ema(price_ratio,26)),ema(price_ratio,26))
+          pair_ema_gap_spread_12_26: sub(asset_1_ema_gap_12_26,asset_2_ema_gap_12_26)
+          pair_ema_slope_spread_24: sub(asset_1_ema_slope_24,asset_2_ema_slope_24)
+          pair_macd_hist_12_26_9: sub(sub(ema(price_ratio,12),ema(price_ratio,26)),ema(sub(ema(price_ratio,12),ema(price_ratio,26)),9))
+          pair_bollinger_z_20: div(sub(price_ratio,rolling_mean(price_ratio,20)),rolling_std(price_ratio,20))
+          pair_bollinger_width_20: div(mul(2.0,rolling_std(price_ratio,20)),rolling_mean(price_ratio,20))
+          pair_rsi_centered_14: div(sub(rsi(price_ratio,14),50.0),50.0)
+          pair_rsi_spread_14: sub(asset_1_rsi_centered_14,asset_2_rsi_centered_14)
+          pair_log_spread: sub(log(asset_1_price),log(asset_2_price))
+          pair_residual_z_60: div(sub(pair_log_spread,rolling_mean(pair_log_spread,60)),clip(rolling_std(pair_log_spread,60),0.0001,10.0))
+          pair_residual_momentum_24h: diff(pair_residual_z_60,24)
+          pair_spread_vol_72h: rolling_std(pair_log_spread,72)
+          pair_corr_72h: rolling_corr(pct_change(asset_1_price,1),pct_change(asset_2_price,1),72)
+          pair_corr_168h: rolling_corr(pct_change(asset_1_price,1),pct_change(asset_2_price,1),168)
+          pair_beta_72h: rolling_beta(pct_change(asset_1_price,1),pct_change(asset_2_price,1),72)
+          pair_beta_stability_72h: rolling_std(pair_beta_72h,72)
+          pair_corr_drift_24h: diff(pair_corr_72h,24)
+          pair_corr_z_168h: rolling_zscore(pair_corr_72h,168)
+          pair_beta_drift_24h: diff(pair_beta_72h,24)
+          pair_beta_drift_z_168h: rolling_zscore(pair_beta_drift_24h,168)
+          pair_kalman_beta: kalman_beta(log(asset_1_price),log(asset_2_price))
+          pair_kalman_beta_drift_24h: diff(pair_kalman_beta,24)
+          pair_kalman_beta_stability_72h: rolling_std(pair_kalman_beta,72)
+          pair_kalman_residual: kalman_residual(log(asset_1_price),log(asset_2_price))
+          pair_kalman_residual_z_72h: rolling_zscore(pair_kalman_residual,72)
+          pair_kalman_residual_momentum_24h: diff(pair_kalman_residual_z_72h,24)
+          pair_residual_half_life_168h: mean_reversion_halflife(pair_log_spread,168)
+          pair_residual_hurst_168h: rolling_hurst(pair_log_spread,168)
+          pair_residual_autocorr_24h: rolling_autocorr(pair_log_spread,1,24)
+          pair_residual_autocorr_72h: rolling_autocorr(pair_log_spread,1,72)
+          pair_residual_skew_72h: rolling_skew(pair_log_spread,72)
+          pair_residual_kurt_72h: rolling_kurt(pair_log_spread,72)
+          pair_spread_vol_z_168h: rolling_zscore(pair_spread_vol_72h,168)
+          pair_spread_vol_of_vol_72h: rolling_std(pair_spread_vol_72h,72)
+          pair_trend_efficiency_spread_72h: sub(asset_1_trend_efficiency_72h,asset_2_trend_efficiency_72h)
+          asset_1_funding_carry_to_vol: div(rolling_mean(asset_1_funding,72),clip(rolling_std(pct_change(asset_1_price,1),168),0.0001,10.0))
+          asset_2_funding_carry_to_vol: div(rolling_mean(asset_2_funding,72),clip(rolling_std(pct_change(asset_2_price,1),168),0.0001,10.0))
+          pair_carry_to_vol_spread: sub(asset_1_funding_carry_to_vol,asset_2_funding_carry_to_vol)
+          pair_carry_to_vol_z_168h: rolling_zscore(pair_carry_to_vol_spread,168)
+          funding_spread_24h_mean: rolling_mean(funding_spread,24)
+          funding_spread_72h_mean: rolling_mean(funding_spread,72)
+          funding_spread_168h_mean: rolling_mean(funding_spread,168)
+          funding_spread_dispersion_72h: rolling_std(funding_spread,72)
+          funding_spread_dispersion_z_168h: rolling_zscore(funding_spread_dispersion_72h,168)
+          funding_accel_spread_24h: sub(asset_1_funding_accel_24h,asset_2_funding_accel_24h)
+          funding_spread_flip_prob_14d: sign_flip_prob(funding_spread,336)
+          market_trend_24h: pct_change(market_price_mean,24)
+          market_volatility_168h: market_realized_vol_168h
+          funding_level_72h: rolling_mean(market_funding_mean,72)
+          funding_dispersion_72h: rolling_mean(market_funding_dispersion,72)
+          breadth_24h: market_breadth_24h
+          co_movement_72h: market_co_movement_72h
+      perp_pair_trade_levered:
+        raw_series:
+          [
+            asset_1_price,
+            asset_2_price,
+            asset_1_funding,
+            asset_2_funding,
+            price_ratio,
+            funding_spread,
+            market_price_mean,
+            market_funding_mean,
+            market_funding_dispersion,
+            market_breadth_24h,
+            market_co_movement_72h,
+            market_realized_vol_168h,
+          ]
+        aliases:
+          asset_1_return_6h: pct_change(asset_1_price,6)
+          asset_1_return_24h: pct_change(asset_1_price,24)
+          asset_1_return_72h: pct_change(asset_1_price,72)
+          asset_2_return_6h: pct_change(asset_2_price,6)
+          asset_2_return_24h: pct_change(asset_2_price,24)
+          asset_2_return_72h: pct_change(asset_2_price,72)
+          asset_1_vol_24h: rolling_std(pct_change(asset_1_price,1),24)
+          asset_1_vol_72h: rolling_std(pct_change(asset_1_price,1),72)
+          asset_2_vol_24h: rolling_std(pct_change(asset_2_price,1),24)
+          asset_2_vol_72h: rolling_std(pct_change(asset_2_price,1),72)
+          asset_1_ema_gap_12_26: div(sub(ema(asset_1_price,12),ema(asset_1_price,26)),ema(asset_1_price,26))
+          asset_2_ema_gap_12_26: div(sub(ema(asset_2_price,12),ema(asset_2_price,26)),ema(asset_2_price,26))
+          asset_1_ema_slope_24: pct_change(ema(asset_1_price,24),6)
+          asset_2_ema_slope_24: pct_change(ema(asset_2_price,24),6)
+          asset_1_rsi_centered_14: div(sub(rsi(asset_1_price,14),50.0),50.0)
+          asset_2_rsi_centered_14: div(sub(rsi(asset_2_price,14),50.0),50.0)
+          asset_1_funding_24h_mean: rolling_mean(asset_1_funding,24)
+          asset_1_funding_72h_mean: rolling_mean(asset_1_funding,72)
+          asset_2_funding_24h_mean: rolling_mean(asset_2_funding,24)
+          asset_2_funding_72h_mean: rolling_mean(asset_2_funding,72)
+          asset_1_funding_accel_24h: diff(rolling_mean(asset_1_funding,24),24)
+          asset_2_funding_accel_24h: diff(rolling_mean(asset_2_funding,24),24)
+          asset_1_trend_efficiency_72h: div(abs(diff(asset_1_price,72)),clip(rolling_sum(abs(diff(asset_1_price,1)),72),0.0001,1000000.0))
+          asset_2_trend_efficiency_72h: div(abs(diff(asset_2_price,72)),clip(rolling_sum(abs(diff(asset_2_price,1)),72),0.0001,1000000.0))
+          pair_ratio_return_24h: pct_change(price_ratio,24)
+          pair_ratio_return_72h: pct_change(price_ratio,72)
+          pair_ratio_return_168h: pct_change(price_ratio,168)
+          pair_return_spread_6h: sub(asset_1_return_6h,asset_2_return_6h)
+          pair_return_spread_24h: sub(asset_1_return_24h,asset_2_return_24h)
+          pair_return_spread_72h: sub(asset_1_return_72h,asset_2_return_72h)
+          pair_trend_strength_72h: div(pct_change(price_ratio,72),rolling_std(pct_change(price_ratio,1),168))
+          pair_realized_vol_168h: rolling_std(pct_change(price_ratio,1),168)
+          pair_vol_spread_24h: sub(asset_1_vol_24h,asset_2_vol_24h)
+          pair_vol_spread_72h: sub(asset_1_vol_72h,asset_2_vol_72h)
+          pair_vol_ratio_24h: div(asset_1_vol_24h,clip(asset_2_vol_24h,0.0001,10.0))
+          pair_vol_ratio_72h: div(asset_1_vol_72h,clip(asset_2_vol_72h,0.0001,10.0))
+          pair_ema_gap_12_26: div(sub(ema(price_ratio,12),ema(price_ratio,26)),ema(price_ratio,26))
+          pair_ema_gap_spread_12_26: sub(asset_1_ema_gap_12_26,asset_2_ema_gap_12_26)
+          pair_ema_slope_spread_24: sub(asset_1_ema_slope_24,asset_2_ema_slope_24)
+          pair_macd_hist_12_26_9: sub(sub(ema(price_ratio,12),ema(price_ratio,26)),ema(sub(ema(price_ratio,12),ema(price_ratio,26)),9))
+          pair_bollinger_z_20: div(sub(price_ratio,rolling_mean(price_ratio,20)),rolling_std(price_ratio,20))
+          pair_bollinger_width_20: div(mul(2.0,rolling_std(price_ratio,20)),rolling_mean(price_ratio,20))
+          pair_rsi_centered_14: div(sub(rsi(price_ratio,14),50.0),50.0)
+          pair_rsi_spread_14: sub(asset_1_rsi_centered_14,asset_2_rsi_centered_14)
+          pair_log_spread: sub(log(asset_1_price),log(asset_2_price))
+          pair_residual_z_60: div(sub(pair_log_spread,rolling_mean(pair_log_spread,60)),clip(rolling_std(pair_log_spread,60),0.0001,10.0))
+          pair_residual_momentum_24h: diff(pair_residual_z_60,24)
+          pair_spread_vol_72h: rolling_std(pair_log_spread,72)
+          pair_corr_72h: rolling_corr(pct_change(asset_1_price,1),pct_change(asset_2_price,1),72)
+          pair_corr_168h: rolling_corr(pct_change(asset_1_price,1),pct_change(asset_2_price,1),168)
+          pair_beta_72h: rolling_beta(pct_change(asset_1_price,1),pct_change(asset_2_price,1),72)
+          pair_beta_stability_72h: rolling_std(pair_beta_72h,72)
+          pair_corr_drift_24h: diff(pair_corr_72h,24)
+          pair_corr_z_168h: rolling_zscore(pair_corr_72h,168)
+          pair_beta_drift_24h: diff(pair_beta_72h,24)
+          pair_beta_drift_z_168h: rolling_zscore(pair_beta_drift_24h,168)
+          pair_kalman_beta: kalman_beta(log(asset_1_price),log(asset_2_price))
+          pair_kalman_beta_drift_24h: diff(pair_kalman_beta,24)
+          pair_kalman_beta_stability_72h: rolling_std(pair_kalman_beta,72)
+          pair_kalman_residual: kalman_residual(log(asset_1_price),log(asset_2_price))
+          pair_kalman_residual_z_72h: rolling_zscore(pair_kalman_residual,72)
+          pair_kalman_residual_momentum_24h: diff(pair_kalman_residual_z_72h,24)
+          pair_residual_half_life_168h: mean_reversion_halflife(pair_log_spread,168)
+          pair_residual_hurst_168h: rolling_hurst(pair_log_spread,168)
+          pair_residual_autocorr_24h: rolling_autocorr(pair_log_spread,1,24)
+          pair_residual_autocorr_72h: rolling_autocorr(pair_log_spread,1,72)
+          pair_residual_skew_72h: rolling_skew(pair_log_spread,72)
+          pair_residual_kurt_72h: rolling_kurt(pair_log_spread,72)
+          pair_spread_vol_z_168h: rolling_zscore(pair_spread_vol_72h,168)
+          pair_spread_vol_of_vol_72h: rolling_std(pair_spread_vol_72h,72)
+          pair_trend_efficiency_spread_72h: sub(asset_1_trend_efficiency_72h,asset_2_trend_efficiency_72h)
+          asset_1_funding_carry_to_vol: div(rolling_mean(asset_1_funding,72),clip(rolling_std(pct_change(asset_1_price,1),168),0.0001,10.0))
+          asset_2_funding_carry_to_vol: div(rolling_mean(asset_2_funding,72),clip(rolling_std(pct_change(asset_2_price,1),168),0.0001,10.0))
+          pair_carry_to_vol_spread: sub(asset_1_funding_carry_to_vol,asset_2_funding_carry_to_vol)
+          pair_carry_to_vol_z_168h: rolling_zscore(pair_carry_to_vol_spread,168)
+          funding_spread_24h_mean: rolling_mean(funding_spread,24)
+          funding_spread_72h_mean: rolling_mean(funding_spread,72)
+          funding_spread_168h_mean: rolling_mean(funding_spread,168)
+          funding_spread_dispersion_72h: rolling_std(funding_spread,72)
+          funding_spread_dispersion_z_168h: rolling_zscore(funding_spread_dispersion_72h,168)
+          funding_accel_spread_24h: sub(asset_1_funding_accel_24h,asset_2_funding_accel_24h)
+          funding_spread_flip_prob_14d: sign_flip_prob(funding_spread,336)
+          market_trend_24h: pct_change(market_price_mean,24)
+          market_volatility_168h: market_realized_vol_168h
+          funding_level_72h: rolling_mean(market_funding_mean,72)
+          funding_dispersion_72h: rolling_mean(market_funding_dispersion,72)
+          breadth_24h: market_breadth_24h
+          co_movement_72h: market_co_movement_72h
+  yield_flows:
+    families:
+      basis_spread:
+        raw_series: [price, funding]
+        aliases:
+          price_return_24h: pct_change(price,24)
+          price_return_72h: pct_change(price,72)
+          realized_vol_168h: rolling_std(pct_change(price,1),168)
+          funding_72h_mean: rolling_mean(funding,72)
+          funding_168h_mean: rolling_mean(funding,168)
+          funding_flip_prob_14d: sign_flip_prob(funding,336)
+      stable_pt_ladder:
+        raw_series: [pt_price, implied_apy, underlying_apy, total_tvl, days_to_expiry]
+        aliases:
+          pt_discount_to_par: sub(1.0,pt_price)
+          implied_minus_underlying_apy: sub(implied_apy,underlying_apy)
+          implied_apy_level: implied_apy
+          underlying_apy_level: underlying_apy
+          expiry_roll_down: div(sub(1.0,pt_price),days_to_expiry)
+          tvl_momentum_30d: pct_change(total_tvl,30)
+      pt_yield_rotation:
+        raw_series: [pt_price, implied_apy, underlying_apy, total_tvl, days_to_expiry]
+        aliases:
+          pt_discount_to_par: sub(1.0,pt_price)
+          implied_minus_underlying_apy: sub(implied_apy,underlying_apy)
+          implied_apy_level: implied_apy
+          underlying_apy_level: underlying_apy
+          expiry_roll_down: div(sub(1.0,pt_price),days_to_expiry)
+          tvl_momentum_30d: pct_change(total_tvl,30)
+      lending_carry_rotation:
+        raw_series:
+          [
+            lending_price,
+            combined_supply_apy,
+            supply_apr,
+            supply_reward_apr,
+            base_yield_apy,
+            utilization,
+            supply_tvl_usd,
+            borrow_apr,
+            borrow_tvl_usd,
+          ]
+        aliases:
+          lending_carry_level: combined_supply_apy
+          lending_supply_apr: supply_apr
+          lending_reward_apr: supply_reward_apr
+          lending_base_yield_apy: base_yield_apy
+          lending_utilization: utilization
+          lending_price_return_24h: pct_change(lending_price,24)
+          lending_supply_tvl_momentum_168h: pct_change(supply_tvl_usd,168)
+          lending_carry_to_util: div(combined_supply_apy,clip(utilization,0.05,1.0))
+

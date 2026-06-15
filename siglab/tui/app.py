@@ -320,12 +320,12 @@ class SigLabTUI(App[None]):
         Binding("?", "show_help", "Help", show=True),
         Binding("f1", "show_help", "Help", show=False),
         Binding("escape", "go_back", "Back", show=False),
-        Binding("1", "switch_to_market", "Market", show=True),
-        Binding("2", "switch_to_paper", "Paper", show=True),
-        Binding("3", "switch_to_risk", "Risk", show=True),
-        Binding("4", "switch_to_strategy", "Strategy", show=True),
-        Binding("5", "switch_to_telemetry", "Telemetry", show=False),
-        Binding("6", "switch_to_evidence", "Evidence", show=False),
+        Binding("1", "switch_screen('market')", "Market", show=True),
+        Binding("2", "switch_screen('paper')", "Paper", show=True),
+        Binding("3", "switch_screen('risk')", "Risk", show=True),
+        Binding("4", "switch_screen('strategy')", "Strategy", show=True),
+        Binding("5", "switch_screen('telemetry')", "Telemetry", show=False),
+        Binding("6", "switch_screen('evidence')", "Evidence", show=False),
     ]
 
     # Reactive state
@@ -397,29 +397,9 @@ class SigLabTUI(App[None]):
 
     # ── Keyboard navigation shortcuts ──
 
-    def action_switch_to_market(self) -> None:
-        """Switch to the market screen (key 1)."""
-        self.switch_screen("market")
-
-    def action_switch_to_paper(self) -> None:
-        """Switch to the paper trading screen (key 2)."""
-        self.switch_screen("paper")
-
-    def action_switch_to_risk(self) -> None:
-        """Switch to the risk screen (key 3)."""
-        self.switch_screen("risk")
-
-    def action_switch_to_strategy(self) -> None:
-        """Switch to the strategy screen (key 4)."""
-        self.switch_screen("strategy")
-
-    def action_switch_to_telemetry(self) -> None:
-        """Switch to the telemetry screen (key 5)."""
-        self.switch_screen("telemetry")
-
-    def action_switch_to_evidence(self) -> None:
-        """Switch to the evidence screen (key 6)."""
-        self.switch_screen("evidence")
+    def action_switch_screen(self, screen_id: str) -> None:
+        """Switch to a screen by id (keys 1-6)."""
+        self.switch_screen(screen_id)
 
 
 if __name__ == "__main__":

@@ -155,28 +155,28 @@ class ResearchEvaluator:
                 "validation",
                 leverage_one_selector_rows or selector_results,
             )
-    if validation_window is not None:
-        validation_summary = self._run_summary_window(
-            window_spec=validation_window,
-            prices_all=prices_all,
-            target_all=target_all,
-            funding_all=funding_all,
-            spec=spec,
-            min_rows=min_rows,
-            window_results=window_results,
-            summary_prefix="validation",
-        )
-    if audit_window is not None:
-        audit_summary = self._run_summary_window(
-            window_spec=audit_window,
-            prices_all=prices_all,
-            target_all=target_all,
-            funding_all=funding_all,
-            spec=spec,
-            min_rows=min_rows,
-            window_results=window_results,
-            summary_prefix="audit",
-        )
+        if validation_window is not None:
+            validation_summary = self._run_summary_window(
+                window_spec=validation_window,
+                prices_all=prices_all,
+                target_all=target_all,
+                funding_all=funding_all,
+                spec=spec,
+                min_rows=min_rows,
+                window_results=window_results,
+                summary_prefix="validation",
+            )
+        if audit_window is not None:
+            audit_summary = self._run_summary_window(
+                window_spec=audit_window,
+                prices_all=prices_all,
+                target_all=target_all,
+                funding_all=funding_all,
+                spec=spec,
+                min_rows=min_rows,
+                window_results=window_results,
+                summary_prefix="audit",
+            )
 
         if not selector_results:
             raise ValueError("Evaluator could not build any valid walk-forward windows")

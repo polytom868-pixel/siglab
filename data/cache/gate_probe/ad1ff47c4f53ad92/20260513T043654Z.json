@@ -1,0 +1,115 @@
+{
+  "ok": true,
+  "spec_blueprint": {
+    "spec_hash": null,
+    "family": "perp_multi_asset_decision",
+    "basis_groups": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "HYPE"
+    ],
+    "features": [
+      "donchian_position_20",
+      "ema_gap_12_26",
+      "macd_hist_12_26_9",
+      "price_return_72h",
+      "realized_vol_168h",
+      "rsi_centered_14"
+    ],
+    "params": {
+      "gross_target": 1.0,
+      "min_abs_score": 0.2
+    },
+    "regime_gates": {
+      "entry": [
+        {
+          "expression": "funding_level_72h",
+          "max": 0.00015
+        }
+      ],
+      "exit_on_break": true
+    }
+  },
+  "analysis_scope": {
+    "mode": "train_only",
+    "selector_scope": "rolling_validation_chunks",
+    "validation_excluded": true,
+    "audit_excluded": true,
+    "train_window_count": 4
+  },
+  "gate_coverage": {
+    "configured": true,
+    "gate_count": 1,
+    "combined_active_fraction": 0.762542,
+    "entry": [
+      {
+        "expression": "funding_level_72h",
+        "max": 0.00015,
+        "active_fraction": 0.7633333333333333
+      }
+    ]
+  },
+  "selector_train_comparison": {
+    "gated": {
+      "window_count": 4,
+      "median_total_return": 0.38790657894849706,
+      "median_sharpe": 9.709060476392223,
+      "median_calmar": 7.138250081502839e+26,
+      "worst_max_drawdown": -0.5703814143607351,
+      "profitable_window_pct": 0.5,
+      "active_bar_fraction": 0.702341,
+      "position_flip_rate": 0.244966
+    },
+    "ungated": {
+      "window_count": 4,
+      "median_total_return": 0.666084342626341,
+      "median_sharpe": 12.167521128745069,
+      "median_calmar": 9.998613891621306e+37,
+      "worst_max_drawdown": -0.5703814143607351,
+      "profitable_window_pct": 0.5,
+      "active_bar_fraction": 0.859532,
+      "position_flip_rate": 0.275168
+    },
+    "delta": {
+      "median_total_return": -0.278178,
+      "median_sharpe": -2.458461,
+      "median_calmar": -9.998613891549922e+37,
+      "worst_max_drawdown": 0.0,
+      "profitable_window_pct": 0.0,
+      "active_bar_fraction": -0.157191,
+      "position_flip_rate": -0.030202
+    }
+  },
+  "kept_vs_blocked_forward_returns": [
+    {
+      "horizon_bars": 6,
+      "kept_mean_return": 0.098779,
+      "blocked_mean_return": 0.134473,
+      "kept_median_return": 0.116436,
+      "blocked_median_return": 0.149859
+    },
+    {
+      "horizon_bars": 24,
+      "kept_mean_return": 0.309076,
+      "blocked_mean_return": 0.810857,
+      "kept_median_return": 0.323236,
+      "blocked_median_return": 0.797583
+    },
+    {
+      "horizon_bars": 72,
+      "kept_mean_return": 0.336235,
+      "blocked_mean_return": 3.153529,
+      "kept_median_return": 0.31763,
+      "blocked_median_return": 3.307441
+    },
+    {
+      "horizon_bars": 168,
+      "kept_mean_return": null,
+      "blocked_mean_return": null,
+      "kept_median_return": null,
+      "blocked_median_return": null
+    }
+  ],
+  "warnings": []
+}
