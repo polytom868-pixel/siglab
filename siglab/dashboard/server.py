@@ -462,50 +462,40 @@ class DashboardApp:
         path = (self.settings.root_dir / relative_path).resolve()
         root = self.settings.root_dir.resolve()
         if root not in path.parents and path != root:
-            return {
-                "status": "blocked",
-                "path": relative_path,
-                "error": "artifact path escapes repo root",
-                "payload": None,
-            }
-        if not path.exists():
-            return {
-                "status": "missing",
-                "path": relative_path,
-                "error": "artifact missing",
-                "payload": None,
-            }
-        try:
-            payload = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
-            return {
-                "status": "malformed",
-                "path": relative_path,
-                "error": str(exc),
-                "payload": None,
-            }
-        if not isinstance(payload, dict):
-            return {
-                "status": "malformed",
-                "path": relative_path,
-                "error": "artifact root must be a JSON object",
-                "payload": None,
-            }
-        mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
-        age_seconds = max(0.0, (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds())
+            outcome: tuple[str, str] = ("blocked", "artifact path escapes repo root")
+        elif not path.exists():
+            outcome = ("missing", "artifact missing")
+        else:
+            try:
+                payload = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                outcome = ("malformed", str(exc))
+            else:
+                if not isinstance(payload, dict):
+                    outcome = ("malformed", "artifact root must be a JSON object")
+                else:
+                    mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+                    age_seconds = max(0.0, (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds())
+                    return {
+                        "status": "present",
+                        "path": relative_path,
+                        "mtime": mtime.isoformat(),
+                        "age_seconds": round(age_seconds, 3),
+                        "freshness": (
+                            "fresh"
+                            if age_seconds <= 15 * 60
+                            else "stale"
+                            if age_seconds <= 24 * 60 * 60
+                            else "expired"
+                        ),
+                        "payload": payload,
+                    }
+        status, error = outcome
         return {
-            "status": "present",
+            "status": status,
             "path": relative_path,
-            "mtime": mtime.isoformat(),
-            "age_seconds": round(age_seconds, 3),
-            "freshness": (
-                "fresh"
-                if age_seconds <= 15 * 60
-                else "stale"
-                if age_seconds <= 24 * 60 * 60
-                else "expired"
-            ),
-            "payload": payload,
+            "error": error,
+            "payload": None,
         }
 
     def _summarize_ops_artifacts(
