@@ -128,12 +128,12 @@ def detect_pt_roll_events(
                 "eligible_market_count": int(eligible.iloc[index].sum()),
                 "selected_market_count": int(current.sum()),
                 "from_days_to_expiry": {
-                    label: float(days_to_expiry.iloc[index].get(label))
+                    label: float(days_to_expiry.iloc[index].get(label, 0.0))
                     for label in exited
                     if pd.notna(days_to_expiry.iloc[index].get(label))
                 },
                 "to_days_to_expiry": {
-                    label: float(days_to_expiry.iloc[index].get(label))
+                    label: float(days_to_expiry.iloc[index].get(label, 0.0))
                     for label in entered
                     if pd.notna(days_to_expiry.iloc[index].get(label))
                 },

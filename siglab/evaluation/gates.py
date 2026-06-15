@@ -10,7 +10,7 @@ Assertions fulfilled: VAL-EVAL-005
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from siglab.track_registry import resolve_track
 
@@ -23,7 +23,7 @@ def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]
     when all gates pass, and ``reasons`` lists the human-readable tags of
     any failing gates.
     """
-    track = resolve_track(track)
+    track = cast(str, resolve_track(track))
     reasons: list[str] = []
 
     # ---- Liquidation gate ------------------------------------------------

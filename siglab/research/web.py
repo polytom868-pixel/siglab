@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from html import unescape
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
+from html import unescape
 
 import httpx
 
@@ -103,7 +103,7 @@ class WebResearcher:
             research_summary=research_summary,
             recent_results=recent_results,
         )
-        reports = await asyncio.gather(
+        reports: list[dict[str, Any] | BaseException] = await asyncio.gather(
             *[self._research_query(query) for query in queries],
             return_exceptions=True,
         )
@@ -112,7 +112,7 @@ class WebResearcher:
         for report in reports:
             if isinstance(report, Exception):
                 continue
-            cleaned_reports.append(report)
+            cleaned_reports.append(cast(dict[str, Any], report))
 
         return {
             "enabled": True,
@@ -276,7 +276,7 @@ class WebResearcher:
             json=payload,
         )
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     async def _explore_result(self, result: dict[str, Any]) -> dict[str, Any]:
         url = str(result.get("url") or "")

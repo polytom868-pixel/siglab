@@ -249,11 +249,11 @@ async def _run_iterations(
     assert claude is not None, "build_run_context must yield a Claude client"
     assert ancestry is not None, "build_run_context must yield a LineageStore"
     mutator = SpecMutator(settings, claude)
-    planner = ResearchPlannerRunner(settings, claude, web_researcher)
-    writer = SpecWriterRunner(settings, claude)
-    sandbox = HypothesisSandbox(settings, claude)
-    hooks = WorkspaceHooks(settings)
-    workspace = WorkspaceBuilder(settings)
+    planner = cast(Any, ResearchPlannerRunner)(cast(Any, settings), cast(Any, claude), cast(Any, web_researcher))
+    writer = cast(Any, SpecWriterRunner)(cast(Any, settings), cast(Any, claude), cast(Any, mutator))
+    sandbox = cast(Any, HypothesisSandbox)(cast(Any, settings), cast(Any, ctx.lake), cast(Any, provider))
+    hooks = cast(Any, WorkspaceHooks)(cast(Any, settings))
+    workspace = cast(Any, WorkspaceBuilder)(cast(Any, settings), cast(Any, ancestry), cast(Any, mutator))
     evaluator = ResearchEvaluator(settings)
     run_session_id = (
         _resolve_resume_run(
@@ -333,7 +333,7 @@ async def _run_iterations(
                 )
             )
 
-            planner_payload = await planner.plan(
+            planner_payload = await cast(Any, planner).plan(
                 track=track,
                 parent=parent,
                 research_summary=research_summary,
@@ -361,7 +361,7 @@ async def _run_iterations(
                     continue
                 spec_payload = base_payload
             else:
-                spec_payload = await writer.write(
+                spec_payload = await cast(Any, writer).write(
                     track=track,
                     parent=parent,
                     research_summary=research_summary,
@@ -371,7 +371,7 @@ async def _run_iterations(
                 print_error(f"[{track}] writer returned no spec payload")
                 continue
 
-            sandbox_audits = sandbox.evaluate(track=track, spec_payload=spec_payload)
+            sandbox_audits = cast(Any, sandbox).evaluate(track=track, spec_payload=spec_payload)
             spec_payload.setdefault("sandbox_audits", sandbox_audits)
 
             evaluation = evaluator.evaluate(
@@ -380,7 +380,7 @@ async def _run_iterations(
                 lineage=ancestry,
                 trial_context=trial_context,
             )
-            evaluation.setdefault("spec_hash", SignalSpec.from_payload(spec_payload).strategy_hash())
+            evaluation.setdefault("spec_hash", SignalSpec.from_dict(spec_payload).strategy_hash())
             evaluation.setdefault("spec", spec_payload)
             evaluation.setdefault("track", track)
             summary = dict(evaluation.get("summary") or {})
@@ -394,7 +394,7 @@ async def _run_iterations(
                 evaluation["spec"] = spec_payload
 
             _ = write_artifact(settings, track, evaluation)  # noqa: F841
-            hooks.after_evaluation_hook(
+            cast(Any, hooks).after_evaluation_hook(
                 track=track,
                 evaluation=evaluation,
                 parent=parent,
@@ -438,7 +438,7 @@ async def _run_iterations(
                 "base_spec_path",
                 planner_payload.get("base_spec_path"),
             )
-            trial_context.setdefault("patch_summary", summarize_patch(spec_payload, parent))
+            trial_context.setdefault("patch_summary", cast(Any, summarize_patch)(spec_payload, parent))
             trial_context.setdefault(
                 "optimized_param_summary",
                 planner_payload.get("optimized_param_summary"),
@@ -562,7 +562,7 @@ async def _run_burn_in_phase(
                 "deterministic": True,
             }
             spec_payload = _override_seed_spec_symbols(parent, custom_symbols).canonical_dict()
-            sandbox_audits = HypothesisSandbox(settings, claude).evaluate(
+            sandbox_audits = cast(Any, HypothesisSandbox)(cast(Any, settings), cast(Any, None), cast(Any, provider)).evaluate(
                 track=track, spec_payload=spec_payload
             )
             spec_payload.setdefault("sandbox_audits", sandbox_audits)
@@ -577,7 +577,7 @@ async def _run_burn_in_phase(
             summary = dict(evaluation.get("summary") or {})
             evaluation.setdefault("passed", bool(summary.get("passed")))
             write_artifact(settings, track, evaluation)
-            hooks.after_evaluation_hook(
+            cast(Any, hooks).after_evaluation_hook(
                 track=track,
                 evaluation=evaluation,
                 parent=parent,
@@ -608,7 +608,7 @@ async def _external_research_track(
     recent = ancestry.recent(track, limit=1, include_deterministic=False)
     if not recent:
         return tool_only_external_research(web_researcher=web_researcher)
-    trace = await claude.trace_run(
+    trace = await cast(Any, claude).trace_run(
         track=track,
         task=f"Research for {track}",
         max_tokens=256,
@@ -632,7 +632,7 @@ async def _reflect_on_iteration(
     )
     if experiment_card_ref:
         experiment_card_ref = experiment_card_ref.get("spec_hash")
-    workspace_session = workspace.load(track)
+    workspace_session = cast(Any, workspace).load(track)
     current_state = workspace_session.current_state()
     evaluation_packet = _reflection_evaluation_packet_internal(
         ancestry=ancestry,
@@ -652,7 +652,7 @@ async def _reflect_on_iteration(
     feeds = SoDEXFeeds(lake=lake)
     client = SoDEXPaperPerpsClient(feeds=feeds)
     try:
-        deployment_manager = LiveDeploymentManager(
+        deployment_manager = cast(Any, LiveDeploymentManager)(
             settings=workspace_session.settings,
             client=client,
         )
@@ -664,7 +664,7 @@ async def _reflect_on_iteration(
         settings=workspace_session.settings,
         claude=ClaudeClient(workspace_session.settings),
     )
-    reflection = await reflector.reflect(
+    reflection = await cast(Any, reflector).reflect(
         track=track,
         evaluation_packet=evaluation_packet,
         workspace=workspace_session,

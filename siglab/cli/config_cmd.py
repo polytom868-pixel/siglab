@@ -1,6 +1,7 @@
 """Config subcommand: validate config.json and environment settings."""
 
 from __future__ import annotations
+from typing import Any, cast
 
 import argparse
 import json
@@ -8,7 +9,7 @@ import json
 from siglab.config import load_settings
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     config_parser = subparsers.add_parser(
         "config",
         help="Configuration inspection and validation commands.",
@@ -68,7 +69,7 @@ def config_validate_command(args: argparse.Namespace) -> None:
     print_key_value_pairs(
         title="Config Details",
         pairs=[
-            ("api_base_url", str(system.get("api_base_url")), ""),
+            ("api_base_url", str(cast(dict[str, Any], system).get("api_base_url")), ""),
         ],
     )
     raise SystemExit(0)
