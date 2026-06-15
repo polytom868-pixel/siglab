@@ -7,6 +7,7 @@ import statistics
 import warnings
 from dataclasses import dataclass
 from typing import Any, cast
+from siglab.utils import safe_float
 
 from siglab.orchestration.contracts import OptimizerOutput
 from siglab.llm import LLMProviderError
@@ -750,8 +751,6 @@ def _threshold_bounds(value: Any) -> tuple[float, float, bool]:
     return current * 1.5 - 0.01, min(current * 0.5, -1e-6), False
 
 
-def _float_or_none(value: Any) -> float | None:
-    from siglab.utils import safe_float
-    return safe_float(value)
+_float_or_none = safe_float
 
 

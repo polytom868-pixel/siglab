@@ -19,7 +19,7 @@ from siglab.llm_metadata import (
 )
 from siglab.llm.policy import LLMRoutingPolicy
 from siglab.config import SiglabConfig
-from siglab.utils import percentile as _percentile
+from siglab.utils import int_or_zero, percentile as _percentile
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -1006,9 +1006,7 @@ def _compact_scalar(value: Any) -> Any:
     return value
 
 
-def _int_or_zero(value: Any) -> int:
-    from siglab.utils import int_or_zero as _int_or_zero_util
-    return _int_or_zero_util(value)
+_int_or_zero = int_or_zero
 
 
 def _estimate_message_tokens(messages: Sequence[dict[str, Any]]) -> int:

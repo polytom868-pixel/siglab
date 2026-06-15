@@ -22,7 +22,7 @@ from siglab.evaluation.feature_dsl import (
     load_feature_spec,
     resolve_feature_frames,
 )
-from siglab.utils import short_hash
+from siglab.utils import safe_float, short_hash
 
 from siglab.llm import ClaudeTool
 from siglab.schemas import SignalSpec
@@ -1643,13 +1643,7 @@ def _stack_frame(frame: pd.DataFrame | pd.Series) -> pd.Series:
 
 
 def _coerce_float(value: Any) -> float | None:
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not pd.notna(numeric):
-        return None
-    return numeric
+    return safe_float(value)
 
 
 def _frame_pair_stats(feature_frame: pd.DataFrame, target_frame: pd.DataFrame) -> dict[str, Any]:
@@ -1795,15 +1789,7 @@ def _pearson_corr(left: pd.Series, right: pd.Series) -> float | None:
 
 
 def _clean_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return None
-    if result != result:
-        return None
-    return result
+    return safe_float(value)
 
 
 

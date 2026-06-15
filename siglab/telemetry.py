@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
-from siglab.utils import percentile as _percentile
+from siglab.utils import safe_float, percentile as _percentile
 
 
 @dataclass(frozen=True)
@@ -187,9 +187,7 @@ def _confidence(sample_count: int) -> str:
     return "poor"
 
 
-def _float_or_none(value: Any) -> float | None:
-    from siglab.utils import safe_float
-    return safe_float(value)
+_float_or_none = safe_float
 
 
 def _mean(values: Iterable[float | None]) -> float | None:
