@@ -191,6 +191,13 @@ class TestSparkline:
 
 class TestSymbolListWidget:
     """Test the SymbolListWidget."""
+    @staticmethod
+    def _make_filter_widget(query: str | None = None, n: int = 5) -> SymbolListWidget:
+        widget = SymbolListWidget()
+        widget.set_symbols(_make_symbols(n))
+        if query is not None:
+            widget.set_filter(query)
+        return widget
 
     def test_init_empty(self) -> None:
         widget = SymbolListWidget()
@@ -204,32 +211,20 @@ class TestSymbolListWidget:
         assert len(widget.symbols) == 3
 
     def test_filter_text(self) -> None:
-        widget = SymbolListWidget()
-        syms = _make_symbols(5)
-        widget.set_symbols(syms)
-        widget.set_filter("BTC")
+        widget = self._make_filter_widget("BTC")
         assert len(widget.symbols) == 1
         assert widget.symbols[0].symbol == "BTC-USD"
 
     def test_filter_case_insensitive(self) -> None:
-        widget = SymbolListWidget()
-        syms = _make_symbols(5)
-        widget.set_symbols(syms)
-        widget.set_filter("eth")
+        widget = self._make_filter_widget("eth")
         assert len(widget.symbols) == 1
 
     def test_filter_no_match(self) -> None:
-        widget = SymbolListWidget()
-        syms = _make_symbols(5)
-        widget.set_symbols(syms)
-        widget.set_filter("ZZZZZ")
+        widget = self._make_filter_widget("ZZZZZ")
         assert len(widget.symbols) == 0
 
     def test_filter_clear(self) -> None:
-        widget = SymbolListWidget()
-        syms = _make_symbols(5)
-        widget.set_symbols(syms)
-        widget.set_filter("BTC")
+        widget = self._make_filter_widget("BTC")
         assert len(widget.symbols) == 1
         widget.set_filter("")
         assert len(widget.symbols) == 5
@@ -368,25 +363,25 @@ class TestOrderBookWidget:
         text = widget.render()
         assert "No data available" in str(text)
 
-    def test_render_with_data(self) -> None:
+    @staticmethod
+    def _make_book_widget() -> OrderBookWidget:
         widget = OrderBookWidget()
         book = _make_orderbook(5)
         widget.bids = book["bids"]
         widget.asks = book["asks"]
         widget.symbol = "BTC-USD"
-        text = widget.render()
-        rendered = str(text)
+        return widget
+
+    def test_render_with_data(self) -> None:
+        widget = self._make_book_widget()
+        rendered = str(widget.render())
         assert "BTC-USD" in rendered
         assert "BIDS" in rendered
         assert "ASKS" in rendered
 
     def test_render_shows_spread(self) -> None:
-        widget = OrderBookWidget()
-        book = _make_orderbook(5)
-        widget.bids = book["bids"]
-        widget.asks = book["asks"]
-        text = widget.render()
-        assert "Spread" in str(text)
+        widget = self._make_book_widget()
+        assert "Spread" in str(widget.render())
 
     def test_render_empty_book(self) -> None:
         widget = OrderBookWidget()
