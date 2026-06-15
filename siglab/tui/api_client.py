@@ -66,18 +66,22 @@ class TuiApiClient:
         """
         client = await self._ensure_client()
         try:
-            response = await getattr(client, method)(path, **kwargs)
-            response.raise_for_status()
-            return cast(dict[str, Any], response.json())
+            return await self._do_request(client, method, path, **kwargs)
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
             if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500:
                 raise  # Don't retry 4xx
             logger.warning("Request %s %s failed (%s), retrying in 0.5s", method, path, exc)
             await asyncio.sleep(0.5)
             client = await self._ensure_client()
-            response = await getattr(client, method)(path, **kwargs)
-            response.raise_for_status()
-            return cast(dict[str, Any], response.json())
+            return await self._do_request(client, method, path, **kwargs)
+
+    @staticmethod
+    async def _do_request(
+        client: httpx.AsyncClient, method: str, path: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        response = await getattr(client, method)(path, **kwargs)
+        response.raise_for_status()
+        return cast(dict[str, Any], response.json())
 
     async def _get(self, path: str, **kwargs: Any) -> dict[str, Any]:
         """GET request with retry. Thin wrapper around _request_with_retry."""
