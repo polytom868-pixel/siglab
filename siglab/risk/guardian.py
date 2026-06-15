@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -411,7 +411,7 @@ def check_concentration(
     default_limit = limits.get("default")
 
     for name, alloc in allocation.items():
-        limit = limits.get(name, default_limit)  # type: ignore[arg-type]
+        limit = limits.get(name, default_limit)
         if limit is None:
             continue
         if alloc > limit:

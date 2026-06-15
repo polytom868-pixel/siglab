@@ -6,7 +6,7 @@ import time
 import uuid
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Sequence
+from typing import Any, Awaitable, Callable, Sequence, cast
 
 import httpx
 
@@ -53,10 +53,11 @@ async def _openrouter_list_models(
     timeout_s: float = 30.0,
 ) -> dict[str, OpenRouterModelInfo]:
     now = time.monotonic()
-    cache = _openrouter_list_models.__dict__.setdefault("_cache", {})  # type: ignore[attr-defined]
-    cached_at: float | None = _openrouter_list_models.__dict__.get("_cached_at")  # type: ignore[attr-defined]
+    cache = cast(dict[str, OpenRouterModelInfo], _openrouter_list_models.__dict__.setdefault("_cache", {}))
+    cached_at_raw = _openrouter_list_models.__dict__.get("_cached_at")
+    cached_at: float | None = cached_at_raw if isinstance(cached_at_raw, (int, float)) else None
     if isinstance(cached_at, float) and cache and (now - cached_at) < cache_ttl:
-        return cache  # type: ignore[return-value]
+        return cache
     headers = {"Accept": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -85,8 +86,8 @@ async def _openrouter_list_models(
             prompt_usd_per_token=prompt_usd,
             completion_usd_per_token=completion_usd,
         )
-    _openrouter_list_models.__dict__["_cache"] = out  # type: ignore[attr-defined]
-    _openrouter_list_models.__dict__["_cached_at"] = now  # type: ignore[attr-defined]
+    _openrouter_list_models.__dict__["_cache"] = out
+    _openrouter_list_models.__dict__["_cached_at"] = now
     return out
 
 
@@ -98,7 +99,7 @@ def _openrouter_estimate_cost(
     catalog: dict[str, OpenRouterModelInfo] | None = None,
 ) -> float:
     if catalog is None:
-        catalog = _openrouter_list_models.__dict__.get("_cache", {})  # type: ignore[attr-defined]
+        catalog = cast(dict[str, OpenRouterModelInfo], _openrouter_list_models.__dict__.get("_cache", {}))
     info = (catalog.get(model) or catalog.get(model.strip().lower())) if isinstance(catalog, dict) else None
     if info is None:
         return 0.0
@@ -906,9 +907,12 @@ class ClaudeClient:
                 prompt_tokens=prompt,
                 completion_tokens=completion,
             )
-        try:
-            cost_float = float(cost_value)
-        except (TypeError, ValueError):
+        if cost_value is not None:
+            try:
+                cost_float = float(cost_value)
+            except (TypeError, ValueError):
+                cost_float = 0.0
+        else:
             cost_float = 0.0
         if cost_float is not None:
             self._usage_cost_usd += cost_float
@@ -1107,7 +1111,7 @@ class ClaudeClient:
         block_match = _JSON_BLOCK_RE.search(spec)
         if block_match:
             spec = block_match.group(1)
-        return json.loads(spec)
+        return cast(dict[str, Any], json.loads(spec))
 
 
 def _compact_scalar(value: Any) -> Any:
