@@ -36,15 +36,28 @@ class _Response:
 
 
 class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
-    async def test_prepare_signed_request_builds_headers_and_signature_input(self) -> None:
-        client = SoDEXSignedPerpsClient(
+    @staticmethod
+    def _make_client(*, dry_run: bool = True, client: object | None = None) -> SoDEXSignedPerpsClient:
+        return SoDEXSignedPerpsClient(
             api_key_name="siglab-key",
             account_id=1001,
             signer=_Signer(),
             nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
             environment="testnet",
-            dry_run=True,
+            dry_run=dry_run,
+            client=client,
         )
+
+    @staticmethod
+    def _leverage_request() -> SoDEXSignedRequest:
+        return SoDEXSignedRequest(
+            method="POST",
+            path="/trade/leverage",
+            body=perps_update_leverage_body(account_id=1001, symbol_id=1, leverage=5, margin_mode=1),
+        )
+
+    async def test_prepare_signed_request_builds_headers_and_signature_input(self) -> None:
+        client = self._make_client()
         request = SoDEXSignedRequest(
             method="POST",
             path="/trade/orders",
@@ -80,13 +93,7 @@ class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"type":"newOrder"', prepared["signing_payload"])
 
     async def test_send_signed_request_refuses_in_dry_run(self) -> None:
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            dry_run=True,
-        )
+        client = self._make_client()
 
         with self.assertRaises(SoDEXNotReadyError):
             await client.send_signed_request(
@@ -112,14 +119,7 @@ class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_client_builds_new_order_request_with_documented_path_and_weight(self) -> None:
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            environment="testnet",
-            dry_run=True,
-        )
+        client = self._make_client()
         orders = [
             perps_order_item(
                 cl_ord_id=f"siglab-{idx}",
@@ -142,14 +142,7 @@ class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"orders":[', prepared["body"])
 
     async def test_client_builds_update_leverage_request_with_documented_path_and_weight(self) -> None:
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            environment="testnet",
-            dry_run=True,
-        )
+        client = self._make_client()
 
         request = client.update_leverage_request(symbol_id=1, leverage=5, margin_mode=1)
         prepared = client.prepare_signed_request(request)
@@ -160,14 +153,7 @@ class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"type":"updateLeverage"', prepared["signing_payload"])
 
     async def test_client_builds_cancel_and_schedule_cancel_requests(self) -> None:
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            environment="testnet",
-            dry_run=True,
-        )
+        client = self._make_client()
 
         cancel_request = client.cancel_order_request(cancels=[perps_cancel_item(symbol_id=1, cl_ord_id="siglab-1")])
         schedule_request = client.schedule_cancel_request(scheduled_timestamp=1760373930000)
@@ -186,14 +172,7 @@ class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"type":"scheduleCancel"', schedule_prepared["signing_payload"])
 
     async def test_client_builds_update_margin_request(self) -> None:
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            environment="testnet",
-            dry_run=True,
-        )
+        client = self._make_client()
 
         request = client.update_margin_request(symbol_id=1, amount="-0.25")
         prepared = client.prepare_signed_request(request)
@@ -206,63 +185,24 @@ class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_signed_write_rejects_business_error_envelope(self) -> None:
         http = SimpleNamespace(request=AsyncMock(return_value=_Response({"code": 1001, "timestamp": 1, "error": "bad"})))
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            dry_run=False,
-            client=http,
-        )
+        client = self._make_client(dry_run=False, client=http)
 
         with self.assertRaises(SoDEXUpstreamError):
-            await client.send_signed_request(
-                SoDEXSignedRequest(
-                    method="POST",
-                    path="/trade/leverage",
-                    body=perps_update_leverage_body(account_id=1001, symbol_id=1, leverage=5, margin_mode=1),
-                )
-            )
+            await client.send_signed_request(self._leverage_request())
 
     async def test_signed_write_classifies_rate_limit(self) -> None:
         http = SimpleNamespace(request=AsyncMock(return_value=_Response({"code": 1, "timestamp": 1}, status_code=429)))
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            dry_run=False,
-            client=http,
-        )
+        client = self._make_client(dry_run=False, client=http)
 
         with self.assertRaises(SoDEXRateLimitError):
-            await client.send_signed_request(
-                SoDEXSignedRequest(
-                    method="POST",
-                    path="/trade/leverage",
-                    body=perps_update_leverage_body(account_id=1001, symbol_id=1, leverage=5, margin_mode=1),
-                )
-            )
+            await client.send_signed_request(self._leverage_request())
         self.assertEqual(client.metrics_snapshot()["endpoints"]["signed.write"]["429_count"], 1)
 
     async def test_signed_write_records_success_metrics(self) -> None:
         http = SimpleNamespace(request=AsyncMock(return_value=_Response({"code": 0, "timestamp": 1, "data": {}})))
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            dry_run=False,
-            client=http,
-        )
+        client = self._make_client(dry_run=False, client=http)
 
-        payload = await client.send_signed_request(
-            SoDEXSignedRequest(
-                method="POST",
-                path="/trade/leverage",
-                body=perps_update_leverage_body(account_id=1001, symbol_id=1, leverage=5, margin_mode=1),
-            )
-        )
+        payload = await client.send_signed_request(self._leverage_request())
 
         snapshot = client.metrics_snapshot()["endpoints"]["signed.write"]
         self.assertEqual(payload["code"], 0)
@@ -271,23 +211,10 @@ class SoDEXSignedClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_signed_write_classifies_transport_error(self) -> None:
         http = SimpleNamespace(request=AsyncMock(side_effect=httpx.ConnectError("boom")))
-        client = SoDEXSignedPerpsClient(
-            api_key_name="siglab-key",
-            account_id=1001,
-            signer=_Signer(),
-            nonce_manager=SoDEXNonceManager(now_ms=lambda: 1760373925000),
-            dry_run=False,
-            client=http,
-        )
+        client = self._make_client(dry_run=False, client=http)
 
         with self.assertRaises(SoDEXTransportError):
-            await client.send_signed_request(
-                SoDEXSignedRequest(
-                    method="POST",
-                    path="/trade/leverage",
-                    body=perps_update_leverage_body(account_id=1001, symbol_id=1, leverage=5, margin_mode=1),
-                )
-            )
+            await client.send_signed_request(self._leverage_request())
         self.assertEqual(client.metrics_snapshot()["endpoints"]["signed.write"]["transport_failures"], 1)
 
 
