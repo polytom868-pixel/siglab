@@ -25,7 +25,7 @@ from textual.reactive import reactive
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
-from siglab.tui.cli_bridge import run_cli
+from siglab.tui.cli_bridge import parse_rows_from_json, run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
     BORDER_DIM,
@@ -633,8 +633,7 @@ class TelemetryScreen(BaseScreen):
         try:
             result = await run_cli("ancestry", "--json", timeout=15.0)
             if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout)
-                rows = data if isinstance(data, list) else data.get("rows", data.get("experiments", []))
+                rows = parse_rows_from_json(result.stdout)
                 self._runs_data = rows
                 self._update_run_list(rows)
         except json.JSONDecodeError:

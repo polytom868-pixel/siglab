@@ -7,8 +7,21 @@ Uses Rich for formatting the captured output.
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
+
+def parse_rows_from_json(stdout: str) -> list[dict[str, Any]]:
+    """Parse a JSON document into a list of row dicts.
+
+    The ``ancestry`` and similar commands return either a top-level
+    list or an object with ``"rows"`` / ``"experiments"`` keys.
+    """
+    data = json.loads(stdout)
+    if isinstance(data, list):
+        return [r for r in data if isinstance(r, dict)]
+    rows = data.get("rows", data.get("experiments", []))
+    return [r for r in cast(list[dict[str, Any]], rows) if isinstance(r, dict)]
 
 class CliResult(NamedTuple):
     """Result of a CLI command execution.

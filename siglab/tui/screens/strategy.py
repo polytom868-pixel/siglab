@@ -23,7 +23,7 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import Input, Static
 
-from siglab.tui.cli_bridge import run_cli
+from siglab.tui.cli_bridge import parse_rows_from_json, run_cli
 from siglab.tui.formatting import (
     BORDER_DIM,
     INFO_BLUE,
@@ -433,9 +433,7 @@ class StrategyScreen(BaseScreen):
         try:
             result = await run_cli("ancestry", "--json", timeout=15.0)
             if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout)
-                rows = data if isinstance(data, list) else data.get("rows", data.get("experiments", []))
-                self._update_strategy_list(rows)
+                self._update_strategy_list(parse_rows_from_json(result.stdout))
             else:
                 logger.debug("ancestry returned non-zero or empty: %s", result.stderr[:100])
         except json.JSONDecodeError:
@@ -462,9 +460,9 @@ class StrategyScreen(BaseScreen):
         try:
             result = await run_cli("ancestry", "--json", timeout=15.0)
             if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout)
-                rows_raw = data if isinstance(data, list) else data.get("rows", data.get("experiments", []))
-                rows: list[dict[str, Any]] = [r for r in rows_raw if isinstance(r, dict)]
+                rows: list[dict[str, Any]] = [
+                    r for r in parse_rows_from_json(result.stdout) if isinstance(r, dict)
+                ]
                 for row in rows:
                     if str(row.get("spec_hash", "")) == spec_hash:
                         cached: dict[str, Any] = row
@@ -473,8 +471,6 @@ class StrategyScreen(BaseScreen):
         except Exception as exc:
             logger.debug("Failed to load results for %s: %s", spec_hash, exc)
         return None
-
-    # ── Actions ──────────────────────────────────────────────────────
 
     def action_refresh_now(self) -> None:
         """Force refresh strategy data."""
