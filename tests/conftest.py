@@ -9,7 +9,7 @@ Provides:
 """
 
 from __future__ import annotations
-
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
-
 from siglab.schemas import AssetUniverse, RiskBounds, SignalSpec
+from siglab.tui import api_client as _tui_api_client_module
 
 # ---------------------------------------------------------------------------
 # Repository root – single source of truth for all test files
@@ -228,3 +228,55 @@ def _make_json_safe(obj: Any) -> Any:
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
     return obj
+
+
+# ---------------------------------------------------------------------------
+# Fast-TUI API stub (pilot test speedup)
+# ---------------------------------------------------------------------------
+_FAST_TUI_API_FILES = frozenset(
+    {
+        "test_tui_validation_contract.py",
+        "test_tui_foundation.py",
+        "test_tui_market.py",
+        "test_tui_paper_trading.py",
+        "test_tui_risk_screen.py",
+        "test_tui_strategy.py",
+        "test_tui_evidence.py",
+        "test_tui_telemetry.py",
+    }
+)
+
+
+@pytest.fixture(autouse=True)
+def _fast_tui_api(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Stub TuiApiClient HTTP retry for pilot-bound TUI tests.
+
+    Pilot tests in the listed files spin up the full Textual app; the
+    screen ``on_mount`` fires 3 HTTP calls that retry-then-fail with a
+    half-second sleep, costing about 2.5s per pilot test. This fixture
+    patches :meth:`TuiApiClient._request_with_retry` with a no-op that
+    returns an empty dict, cutting the pilot suite by roughly 25s.
+    Opted out for ``TestApiClientMarketMethods`` (real retry path),
+    ``test_tui_api_client.py`` (real retry path), and
+    ``test_tui_tmux_hardening.py`` (opt-in tmux harness).
+    """
+    nodeid = request.node.nodeid
+    if "/test_tui_api_client.py" in nodeid or "/test_tui_tmux_hardening.py" in nodeid:
+        yield
+        return
+    if "TestApiClientMarketMethods" in nodeid:
+        yield
+        return
+    if not any(name in nodeid for name in _FAST_TUI_API_FILES):
+        yield
+        return
+
+    async def _stub_request(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {}
+
+    monkeypatch.setattr(
+        _tui_api_client_module.TuiApiClient,
+        "_request_with_retry",
+        _stub_request,
+    )
+    yield
