@@ -44,7 +44,6 @@ class _RawDictView:
 # ── Market Data Views ────────────────────────────────────────────────
 
 @dataclass(frozen=True, slots=True)
-</input>
 class TickerView:
     """Read-only view of a 24-hour ticker entry from the API.
 
