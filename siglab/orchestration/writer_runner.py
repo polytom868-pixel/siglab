@@ -364,6 +364,24 @@ class SpecWriterRunner:
             "failure_packet": latest_repair_packet,
         }
 
+    @staticmethod
+    def _empty_preflight(
+        *,
+        parse_error: str | None = None,
+        hard_issues: list[str] | None = None,
+        conformance_issues: list[str] | None = None,
+    ) -> PreflightResult:
+        return PreflightResult(
+            parse_error=parse_error,
+            hard_issues=list(hard_issues or []),
+            conformance_issues=list(conformance_issues or []),
+            gate_lint=None,
+            changed_fields=[],
+            harmless_changed_fields=[],
+            material_changed_fields=[],
+            validated_payload=None,
+        )
+
     async def _preflight_spec(
         self,
         *,
@@ -387,15 +405,9 @@ class SpecWriterRunner:
         gate_lint: dict[str, Any] | None = None
         activity_lint: dict[str, Any] | None = None
         if parse_error is not None or payload is None:
-            return PreflightResult(
+            return self._empty_preflight(
                 parse_error=parse_error,
                 hard_issues=[f"parse error: {parse_error}"] if parse_error else ["empty spec payload"],
-                conformance_issues=[],
-                gate_lint=None,
-                changed_fields=[],
-                harmless_changed_fields=[],
-                material_changed_fields=[],
-                validated_payload=None,
             )
         payload = self._apply_planner_gate_spec(payload=payload, planner_contract=planner_contract)
         extra_keys = sorted(set(payload) - self.TOP_LEVEL_KEYS)
@@ -408,16 +420,7 @@ class SpecWriterRunner:
             raw_spec = SignalSpec.from_dict(payload)
         except (KeyError, TypeError, ValueError) as exc:
             hard_issues.append(f"spec schema parse failed: {type(exc).__name__}: {exc}")
-            return PreflightResult(
-                parse_error=None,
-                hard_issues=hard_issues,
-                conformance_issues=[],
-                gate_lint=None,
-                changed_fields=[],
-                harmless_changed_fields=[],
-                material_changed_fields=[],
-                validated_payload=None,
-            )
+            return self._empty_preflight(hard_issues=hard_issues)
         if raw_spec.family != target_family:
             hard_issues.append(
                 f"family mismatch: expected `{target_family}` from the research note but got `{raw_spec.family}`"
@@ -440,16 +443,7 @@ class SpecWriterRunner:
             )
         except (KeyError, TypeError, ValueError) as exc:
             hard_issues.append(f"validator rejected spec: {type(exc).__name__}: {exc}")
-            return PreflightResult(
-                parse_error=None,
-                hard_issues=hard_issues,
-                conformance_issues=contract_issues,
-                gate_lint=None,
-                changed_fields=[],
-                harmless_changed_fields=[],
-                material_changed_fields=[],
-                validated_payload=None,
-            )
+            return self._empty_preflight(hard_issues=hard_issues, conformance_issues=contract_issues)
 
         raw_canonical = raw_spec.canonical_dict()
         validated_payload = validated.canonical_dict()

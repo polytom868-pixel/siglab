@@ -702,8 +702,6 @@ class DashboardApp:
         return spec
 
     def _now_iso(self) -> str:
-        from datetime import UTC, datetime
-
         return datetime.now(UTC).isoformat()
 
     def _annotate_experiment(
