@@ -10,7 +10,7 @@ from siglab.config import load_settings
 from siglab.hardening_profile import build_profile, profile_as_text, strict_failure_count
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "profile",
         help="Run the strict SigLab hardening profile.",

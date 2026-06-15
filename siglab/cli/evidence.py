@@ -18,7 +18,7 @@ from siglab.visualization import write_evidence_graph_html
 from siglab.cli.helpers import display_paths, sosovalue_currency_id, require_sosovalue_config
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # evidence-build
     parser = subparsers.add_parser(
         "evidence-build",

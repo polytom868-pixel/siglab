@@ -11,7 +11,7 @@ from siglab.search import LineageStore
 from siglab.track_registry import TRACK_CLI_CHOICES, resolve_track
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # ancestry
     ancestry_parser = subparsers.add_parser("ancestry")
     ancestry_parser.add_argument(

@@ -9,6 +9,7 @@ a text summary line.
 
 from __future__ import annotations
 
+import argparse
 from typing import Any
 
 from siglab.cli.demo import _build_demo_manifest
@@ -24,7 +25,7 @@ from siglab.cli.telemetry import (
 )
 from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the demo-run subparser next to demo-refresh."""
     parser = subparsers.add_parser(
         "demo-run",

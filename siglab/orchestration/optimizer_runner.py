@@ -68,7 +68,7 @@ class OptunaOptimizerRunner:
             raise RuntimeError("Optuna is not installed. Add the dependency before running the optimizer stage.")
         if not list(optuna_space.get("parameters") or []):
             summary = {"aggregate_score": None}
-            score = score_diagnosis(summary, cast(dict, incumbent_summary) if incumbent_summary is not None else {})
+            score = score_diagnosis(summary, cast(dict[str, Any], incumbent_summary) if incumbent_summary is not None else {})
             generalization = summarize_generalization(
                 summary,
                 optuna_space=optuna_space,
@@ -222,7 +222,7 @@ class OptunaOptimizerRunner:
             tuned_params=best_params,
             stability_pack=stability_pack,
         )
-        diagnosis = score_diagnosis(best_summary or {}, cast(dict, incumbent_summary) if incumbent_summary is not None else {})
+        diagnosis = score_diagnosis(best_summary or {}, cast(dict[str, Any], incumbent_summary) if incumbent_summary is not None else {})
         iteration_paths["optuna_best_path"].write_text(
             json.dumps(
                 {
@@ -320,7 +320,7 @@ class OptunaOptimizerRunner:
                 family=list(session.families),
             ),
         )
-        return validated.canonical_dict()
+        return cast(dict[str, Any], validated.canonical_dict())
 
     def _warm_start_params(
         self,
@@ -580,7 +580,7 @@ class OptunaOptimizerRunner:
     def _entry_gate(self, payload: dict[str, Any], index: int) -> dict[str, Any]:
         entry = list(dict(payload.get("regime_gates") or {}).get("entry") or [])
         if index >= len(entry):
-            return {}
+            return cast(dict[str, Any], {})
         return dict(entry[index] or {})
 
 

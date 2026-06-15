@@ -29,7 +29,7 @@ from siglab.tools import (
 )
 from siglab.workspace import WorkspaceBuilder
 from siglab.workspace.cards import dump_frontmatter, parse_frontmatter
-from tests._factories import make_workspace_triple
+from tests._factories import make_fake_claude, make_workspace_triple
 
 
 class WorkspaceFlowTests(unittest.TestCase):

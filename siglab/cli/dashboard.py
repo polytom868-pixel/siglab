@@ -10,7 +10,7 @@ from siglab.config import load_settings
 from siglab.dashboard import run_dashboard_server
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # dashboard (legacy embedded)
     parser = subparsers.add_parser("dashboard")
     parser.add_argument("--host", default="127.0.0.1")

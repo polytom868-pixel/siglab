@@ -44,7 +44,7 @@ SODEX_MODIFIER_ALIASES = {"NORMAL": 1, "STOP": 2, "BRACKET": 3, "ATTACHED_STOP":
 SODEX_MARGIN_MODE_ALIASES = {"ISOLATED": 1, "CROSS": 2}
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # sodex-preflight
     preflight_parser = subparsers.add_parser("sodex-preflight")
     preflight_parser.add_argument("--json", action="store_true")

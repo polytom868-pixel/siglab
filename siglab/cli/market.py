@@ -22,7 +22,7 @@ from siglab.cli.helpers import (
 )
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "market-report",
         help="Build a deterministic SoSoValue + SoDEX evidence-linked market report.",

@@ -24,7 +24,7 @@ from siglab.cli.helpers import (
 from siglab.cli.market import build_market_report, market_report_html
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # demo-report
     parser = subparsers.add_parser(
         "demo-report",

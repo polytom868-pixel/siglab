@@ -2709,7 +2709,8 @@ def _pre_audit_drawdown_pack(
             trough_timestamp = score_frame.index[trough_idx]
             trough_support = _safe_float(support_series.get(trough_timestamp), default=None)
         else:
-            position_sign = np.sign(window_positions.reindex(columns=score_window.columns).fillna(0.0))
+            signed = np.sign(window_positions.reindex(columns=score_window.columns).fillna(0.0))
+            position_sign: pd.DataFrame = pd.DataFrame(signed, index=score_window.index, columns=score_window.columns)
             for timestamp in score_window.index:
                 active_cols = list(score_window.columns[position_sign.loc[timestamp].abs() > 0])
                 if not active_cols:
@@ -2760,7 +2761,8 @@ def _pre_audit_drawdown_pack(
             trough_timestamp = component.index[trough_idx]
             trough_component = _safe_float(support_series.get(trough_timestamp), default=None)
         else:
-            position_sign = np.sign(window_positions.reindex(columns=component_window.columns).fillna(0.0))
+            signed = np.sign(window_positions.reindex(columns=component_window.columns).fillna(0.0))
+            position_sign = pd.DataFrame(signed, index=component_window.index, columns=component_window.columns)
             for timestamp in component_window.index:
                 active_cols = list(component_window.columns[position_sign.loc[timestamp].abs() > 0])
                 if not active_cols:
@@ -3118,18 +3120,18 @@ def _pre_audit_equity_shift_pack(
     if clean.shape[0] < 2:
         return {}
     drawdown = clean.div(clean.cummax()).sub(1.0)
-    peak_timestamp = clean.idxmax()
-    trough_timestamp = drawdown.idxmin()
-    drawdown_start = clean.loc[:trough_timestamp].idxmax()
+    peak_timestamp: pd.Timestamp = pd.Timestamp(clean.idxmax())
+    trough_timestamp: pd.Timestamp = pd.Timestamp(drawdown.idxmin())
+    drawdown_start: pd.Timestamp = pd.Timestamp(clean.loc[:trough_timestamp].idxmax())
     pre_peak = _equity_window_trade_stats(
         trade_episodes=trade_episodes,
-        start_timestamp=clean.index.min(),
+        start_timestamp=pd.Timestamp(clean.index.min()),
         end_timestamp=peak_timestamp,
     )
     post_peak = _equity_window_trade_stats(
         trade_episodes=trade_episodes,
         start_timestamp=peak_timestamp,
-        end_timestamp=clean.index.max(),
+        end_timestamp=pd.Timestamp(clean.index.max()),
     )
     drawdown_window = _equity_window_trade_stats(
         trade_episodes=trade_episodes,

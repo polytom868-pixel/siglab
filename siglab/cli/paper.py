@@ -21,7 +21,7 @@ def _make_paper_client(args: argparse.Namespace) -> SoDEXPaperPerpsClient:
     return SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # paper-start
     start_parser = subparsers.add_parser(
         "paper-start",

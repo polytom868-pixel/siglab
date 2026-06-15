@@ -18,7 +18,7 @@ from siglab.cli.helpers import (
 from siglab.cli.rich_utils import print_error, print_info, print_json, print_success, print_warning
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # deploy
     parser = subparsers.add_parser("deploy")
     parser.add_argument("--spec", required=True)

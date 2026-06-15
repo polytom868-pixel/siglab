@@ -11,7 +11,7 @@ from siglab.config import load_settings
 from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "telemetry-report",
         help="Aggregate empirical LLM/tool telemetry from run trace artifacts.",

@@ -10,7 +10,7 @@ from siglab.cli.helpers import add_json_flag, maybe_print_json
 from siglab.config import load_settings
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "api-surface",
         help="Summarize source-of-truth SoSoValue/SoDEX API surface maps.",

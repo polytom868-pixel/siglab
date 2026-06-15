@@ -20,7 +20,7 @@ from siglab.llm import ClaudeClient
 from siglab.search import LineageStore, SpecMutator
 
 
-def add_subparser(subparsers) -> None:
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # benchmark-init
     init_parser = subparsers.add_parser("benchmark-init")
     init_parser.add_argument(
