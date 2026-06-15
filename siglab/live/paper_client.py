@@ -418,36 +418,36 @@ class SoDEXPaperPerpsClient:
         sessions: list[dict[str, Any]] = []
         seen_stems: set[str] = set()
         for path in sorted(self.sessions_dir.glob("*.json")):
-            try:
-                data = self._read_session_file(path)
-                sessions.append({
-                    "session_id": data.get("session_id", path.stem),
-                    "name": data.get("name", path.stem),
-                    "created_at": data.get("created_at", 0.0),
-                    "order_count": len(data.get("orders", {})),
-                    "position_count": len(data.get("positions", {})),
-                    "pnl": data.get("pnl", 0.0),
-                })
+            if self._append_session_summary(sessions, path):
                 seen_stems.add(path.stem)
-            except Exception:
-                logger.warning("Failed to read session file %s", path)
         # Also pick up any legacy .npy-only sessions not yet migrated
         for path in sorted(self.sessions_dir.glob("*.npy")):
             if path.stem in seen_stems:
                 continue
-            try:
-                data = self._read_session_file(path)
-                sessions.append({
-                    "session_id": data.get("session_id", path.stem),
-                    "name": data.get("name", path.stem),
-                    "created_at": data.get("created_at", 0.0),
-                    "order_count": len(data.get("orders", {})),
-                    "position_count": len(data.get("positions", {})),
-                    "pnl": data.get("pnl", 0.0),
-                })
-            except Exception:
-                logger.warning("Failed to read session file %s", path)
+            self._append_session_summary(sessions, path)
         return sessions
+
+    def _append_session_summary(
+        self,
+        sessions: list[dict[str, Any]],
+        path: Path,
+    ) -> bool:
+        try:
+            data = self._read_session_file(path)
+        except Exception:
+            logger.warning("Failed to read session file %s", path)
+            return False
+        sessions.append(
+            {
+                "session_id": data.get("session_id", path.stem),
+                "name": data.get("name", path.stem),
+                "created_at": data.get("created_at", 0.0),
+                "order_count": len(data.get("orders", {})),
+                "position_count": len(data.get("positions", {})),
+                "pnl": data.get("pnl", 0.0),
+            }
+        )
+        return True
 
     def session_path(self, session_id: str) -> Path:
         """Return the .json file path for a session."""
