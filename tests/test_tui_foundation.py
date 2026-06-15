@@ -6,11 +6,14 @@ CLI bridge, placeholder screens, help overlay, and keyboard shortcuts.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
+from siglab.tui import SigLabTUI as _SigLabTUIExported
+from siglab.tui import formatting as _formatting
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.app import (
     NAV_ITEMS,
@@ -22,197 +25,192 @@ from siglab.tui.app import (
     SigLabTUI,
 )
 from siglab.tui.cli_bridge import CliResult, run_cli
+from siglab.tui.formatting import (
+    format_change,
+    format_pnl,
+    format_price,
+    format_score,
+    format_volume,
+    friendly_error,
+    truncate,
+)
+from siglab.tui.loading import LoadingIndicator
+from siglab.tui.widgets import SigLabStatusBar as _SigLabStatusBarExported
 from siglab.tui.widgets.status_bar import SigLabStatusBar
 
-
-# ── Constants Tests ───────────────────────────────────────────────────
-
-
-class TestNavConstants:
-    """Test navigation item constants are well-formed."""
-
-    def test_nav_items_has_six_entries(self) -> None:
-        assert len(NAV_ITEMS) == 6
-
-    def test_nav_items_have_required_fields(self) -> None:
-        for idx, label, screen_id in NAV_ITEMS:
-            assert isinstance(idx, str) and len(idx) == 1
-            assert isinstance(label, str) and len(label) > 0
-            assert isinstance(screen_id, str) and len(screen_id) > 0
-            # Labels should use ASCII bracket style, not emoji
-            assert "[" in label and "]" in label, f"Label '{label}' should use bracket style"
-
-    def test_screen_ids_match_nav_items(self) -> None:
-        expected = {item[2] for item in NAV_ITEMS}
-        assert SCREEN_IDS == expected
-
-    def test_screen_names_match_nav_items(self) -> None:
-        expected = {item[2]: item[1] for item in NAV_ITEMS}
-        assert SCREEN_NAMES == expected
-
-    def test_nav_item_indices_are_sequential(self) -> None:
-        indices = [idx for idx, _, _ in NAV_ITEMS]
-        assert indices == ["1", "2", "3", "4", "5", "6"]
+TUI_DIR = Path(__file__).resolve().parents[1] / "siglab" / "tui"
+SCREEN_CLASSES = (
+    __import__("siglab.tui.screens.market", fromlist=["MarketScreen"]).MarketScreen,
+    __import__("siglab.tui.screens.paper", fromlist=["PaperScreen"]).PaperScreen,
+    __import__("siglab.tui.screens.risk", fromlist=["RiskScreen"]).RiskScreen,
+    __import__("siglab.tui.screens.strategy", fromlist=["StrategyScreen"]).StrategyScreen,
+    __import__("siglab.tui.screens.telemetry", fromlist=["TelemetryScreen"]).TelemetryScreen,
+    __import__("siglab.tui.screens.evidence", fromlist=["EvidenceScreen"]).EvidenceScreen,
+)
 
 
-# ── App Instantiation Tests ──────────────────────────────────────────
+def _binding_keys(cls) -> list[str]:
+    return [b.key for b in cls.BINDINGS]
 
 
-class TestSigLabTUIApp:
-    """Test SigLabTUI app instantiation and configuration."""
-
-    def test_app_imports_cleanly(self) -> None:
-        assert SigLabTUI is not None
-
-    def test_app_has_title(self) -> None:
-        assert SigLabTUI.TITLE == "SigLab"
-
-    def test_app_has_subtitle(self) -> None:
-        assert SigLabTUI.SUB_TITLE == "Terminal Dashboard"
-
-    def test_app_has_css_path(self) -> None:
-        assert "styles/app.tcss" in SigLabTUI.CSS_PATH
-        # CSS is consolidated in app.tcss (variables + all screen styles)
-        assert len(SigLabTUI.CSS_PATH) == 1
-
-    def test_app_has_screens_registry(self) -> None:
-        assert hasattr(SigLabTUI, "SCREENS")
-        assert len(SigLabTUI.SCREENS) == 6
-        for screen_id in SCREEN_IDS:
-            assert screen_id in SigLabTUI.SCREENS
-
-    def test_app_has_bindings(self) -> None:
-        binding_keys = [b.key for b in SigLabTUI.BINDINGS]
-        assert "q" in binding_keys
-        assert "?" in binding_keys or "question_mark" in binding_keys
-        assert "escape" in binding_keys
-        assert "1" in binding_keys
-        assert "6" in binding_keys
-        assert "ctrl+c" in binding_keys
-
-    def test_app_instantiation_creates_api_client(self) -> None:
-        app = SigLabTUI()
-        assert isinstance(app.api_client, TuiApiClient)
+def test_nav_items_has_six_entries() -> None:
+    assert len(NAV_ITEMS) == 6
 
 
-# ── Placeholder Screen Tests ─────────────────────────────────────────
+def test_nav_items_have_required_fields() -> None:
+    for idx, label, screen_id in NAV_ITEMS:
+        assert isinstance(idx, str) and len(idx) == 1
+        assert isinstance(label, str) and len(label) > 0
+        assert isinstance(screen_id, str) and len(screen_id) > 0
+        assert "[" in label and "]" in label, f"Label '{label}' should use bracket style"
 
 
-class TestPlaceholderScreen:
-    """Test PlaceholderScreen renders correctly."""
-
-    def test_placeholder_screen_init_with_name(self) -> None:
-        screen = PlaceholderScreen("Market", screen_id="market")
-        assert screen._screen_name == "Market"
-        assert screen.id == "market"
-
-    def test_placeholder_screen_init_without_id(self) -> None:
-        screen = PlaceholderScreen("Test")
-        assert screen._screen_name == "Test"
+def test_screen_ids_and_names_match_nav_items() -> None:
+    assert SCREEN_IDS == {item[2] for item in NAV_ITEMS}
+    assert SCREEN_NAMES == {item[2]: item[1] for item in NAV_ITEMS}
 
 
-# ── Help Screen Tests ────────────────────────────────────────────────
+def test_nav_item_indices_are_sequential() -> None:
+    assert [idx for idx, _, _ in NAV_ITEMS] == ["1", "2", "3", "4", "5", "6"]
 
 
-class TestHelpScreen:
-    """Test HelpScreen overlay."""
-
-    def test_help_screen_has_bindings(self) -> None:
-        binding_keys = [b.key for b in HelpScreen.BINDINGS]
-        assert "escape" in binding_keys
-        assert "q" in binding_keys
-        assert "question_mark" in binding_keys or "?" in binding_keys
-
-    def test_help_screen_has_global_keybindings_list(self) -> None:
-        assert len(HelpScreen.GLOBAL_KEYBINDINGS) >= 7
-        keys = [k for k, _ in HelpScreen.GLOBAL_KEYBINDINGS]
-        assert "1-6" in keys
-
-    def test_help_screen_has_screen_keybindings(self) -> None:
-        assert "market" in HelpScreen.SCREEN_KEYBINDINGS
-        assert "paper" in HelpScreen.SCREEN_KEYBINDINGS
-        assert "risk" in HelpScreen.SCREEN_KEYBINDINGS
-        assert "strategy" in HelpScreen.SCREEN_KEYBINDINGS
-        assert "telemetry" in HelpScreen.SCREEN_KEYBINDINGS
-        assert "evidence" in HelpScreen.SCREEN_KEYBINDINGS
-
-    def test_help_screen_accepts_screen_context(self) -> None:
-        screen = HelpScreen(screen_name="Market", screen_id="market")
-        assert screen._screen_name == "Market"
-        assert screen._screen_id == "market"
-
-    def test_help_screen_default_no_context(self) -> None:
-        screen = HelpScreen()
-        assert screen._screen_name == ""
-        assert screen._screen_id == ""
+def test_app_title_and_subtitle() -> None:
+    assert SigLabTUI.TITLE == "SigLab"
+    assert SigLabTUI.SUB_TITLE == "Terminal Dashboard"
 
 
-# ── API Client Tests ─────────────────────────────────────────────────
+def test_app_has_css_path() -> None:
+    assert "styles/app.tcss" in SigLabTUI.CSS_PATH
+    assert len(SigLabTUI.CSS_PATH) == 1
 
 
-class TestTuiApiClient:
-    """Test TuiApiClient HTTP wrapper."""
+def test_app_has_screens_registry() -> None:
+    assert hasattr(SigLabTUI, "SCREENS")
+    assert len(SigLabTUI.SCREENS) == 6
+    for screen_id in SCREEN_IDS:
+        assert screen_id in SigLabTUI.SCREENS
 
-    def test_init_default_url(self) -> None:
-        client = TuiApiClient()
-        assert client._base_url == "http://localhost:3100"
-        assert client._timeout == 10.0
 
-    def test_init_custom_url(self) -> None:
-        client = TuiApiClient(base_url="http://example.com:9999/")
-        assert client._base_url == "http://example.com:9999"
+@pytest.mark.parametrize("expected_key", ["q", "?", "question_mark", "escape", "1", "6", "ctrl+c"])
+def test_app_has_required_bindings(expected_key) -> None:
+    keys = _binding_keys(SigLabTUI)
+    assert expected_key in keys or (
+        expected_key == "question_mark" and "?" in keys
+    ), f"Missing binding {expected_key}"
 
-    def test_init_custom_timeout(self) -> None:
-        client = TuiApiClient(timeout=30.0)
-        assert client._timeout == 30.0
 
-    def test_client_lazy_initialization(self) -> None:
-        client = TuiApiClient()
-        assert client._client is None
+def test_app_instantiation_creates_api_client() -> None:
+    assert isinstance(SigLabTUI().api_client, TuiApiClient)
 
-    @pytest.mark.asyncio
-    async def test_ensure_client_creates_httpx_client(self) -> None:
-        client = TuiApiClient()
-        http_client = await client._ensure_client()
-        assert isinstance(http_client, httpx.AsyncClient)
+
+def test_placeholder_screen_init() -> None:
+    with_id = PlaceholderScreen("Market", screen_id="market")
+    assert with_id._screen_name == "Market" and with_id.id == "market"
+    assert PlaceholderScreen("Test")._screen_name == "Test"
+
+
+def test_help_screen_has_bindings() -> None:
+    keys = _binding_keys(HelpScreen)
+    assert "escape" in keys and "q" in keys
+    assert "question_mark" in keys or "?" in keys
+
+
+def test_help_screen_global_and_screen_keybindings() -> None:
+    assert len(HelpScreen.GLOBAL_KEYBINDINGS) >= 7
+    assert "1-6" in [k for k, _ in HelpScreen.GLOBAL_KEYBINDINGS]
+    for screen_id in ["market", "paper", "risk", "strategy", "telemetry", "evidence"]:
+        assert screen_id in HelpScreen.SCREEN_KEYBINDINGS, f"Missing keybindings for {screen_id}"
+
+
+def test_help_screen_accepts_screen_context() -> None:
+    s = HelpScreen(screen_name="Market", screen_id="market")
+    assert s._screen_name == "Market" and s._screen_id == "market"
+    empty = HelpScreen()
+    assert empty._screen_name == "" and empty._screen_id == ""
+
+
+def test_api_client_init_default_url() -> None:
+    client = TuiApiClient()
+    assert client._base_url == "http://localhost:3100"
+    assert client._timeout == 10.0
+
+
+def test_api_client_init_custom_url() -> None:
+    assert TuiApiClient(base_url="http://example.com:9999/")._base_url == "http://example.com:9999"
+
+
+def test_api_client_init_custom_timeout() -> None:
+    assert TuiApiClient(timeout=30.0)._timeout == 30.0
+
+
+def test_api_client_lazy_initialization() -> None:
+    assert TuiApiClient()._client is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_client_creates_httpx_client() -> None:
+    client = TuiApiClient()
+    try:
+        assert isinstance(await client._ensure_client(), httpx.AsyncClient)
+    finally:
         await client.close()
 
-    @pytest.mark.asyncio
-    async def test_close_sets_client_none(self) -> None:
-        client = TuiApiClient()
-        await client._ensure_client()
-        assert client._client is not None
+
+@pytest.mark.asyncio
+async def test_close_sets_client_none() -> None:
+    client = TuiApiClient()
+    await client._ensure_client()
+    assert client._client is not None
+    await client.close()
+    assert client._client is None
+
+
+@pytest.mark.asyncio
+async def test_close_when_no_client() -> None:
+    client = TuiApiClient()
+    await client.close()  # Should not raise
+    assert client._client is None
+
+
+def _patched_get(payload: object, status_code: int = 200):
+    """Patch httpx.AsyncClient.get to return the given JSON payload."""
+    mock_response = MagicMock()
+    mock_response.status_code = status_code
+    mock_response.json.return_value = payload
+    mock_response.raise_for_status = MagicMock()
+    return patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method_name,payload,assertions",
+    [
+        ("get_health", {"status": "ok", "version": "0.1.0", "uptime_seconds": 42.0},
+         lambda r: r["status"] == "ok" and "version" in r and "uptime_seconds" in r),
+        ("get_config", {"system": {}, "sosovalue": {}}, lambda r: isinstance(r, dict)),
+        ("get_ops_board", {"artifact_status": {}, "summary": {}, "service_health": {}},
+         lambda r: isinstance(r, dict)),
+        ("get_evidence_graph", {"nodes": [], "edges": []},
+         lambda r: "nodes" in r and "edges" in r),
+        ("get_skill_report", {"skills": []}, lambda r: isinstance(r, dict)),
+        ("get_risk", {"composite_score": 0.5, "max_drawdown": 0.1},
+         lambda r: "composite_score" in r),
+    ],
+)
+async def test_api_client_get_methods(method_name, payload, assertions) -> None:
+    client = TuiApiClient()
+    try:
+        with _patched_get(payload):
+            result = await getattr(client, method_name)()
+            assert assertions(result)
+    finally:
         await client.close()
-        assert client._client is None
 
-    @pytest.mark.asyncio
-    async def test_close_when_no_client(self) -> None:
-        client = TuiApiClient()
-        await client.close()  # Should not raise
-        assert client._client is None
 
-    @pytest.mark.asyncio
-    async def test_get_health_success(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "status": "ok",
-            "version": "0.1.0",
-            "uptime_seconds": 42.0,
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response):
-            result = await client.get_health()
-            assert result["status"] == "ok"
-            assert "version" in result
-            assert "uptime_seconds" in result
-        await client.close()
-
-    @pytest.mark.asyncio
-    async def test_get_health_http_error(self) -> None:
-        client = TuiApiClient()
+@pytest.mark.asyncio
+async def test_get_health_http_error() -> None:
+    client = TuiApiClient()
+    try:
         mock_response = MagicMock()
         mock_response.status_code = 503
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -220,412 +218,178 @@ class TestTuiApiClient:
             request=httpx.Request("GET", "http://localhost:3100/health"),
             response=httpx.Response(503),
         )
-
         with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response):
             with pytest.raises(httpx.HTTPStatusError):
                 await client.get_health()
-        await client.close()
-
-    @pytest.mark.asyncio
-    async def test_get_config(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"system": {}, "sosovalue": {}}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response):
-            result = await client.get_config()
-            assert isinstance(result, dict)
-        await client.close()
-
-    @pytest.mark.asyncio
-    async def test_get_ops_board(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"artifact_status": {}, "summary": {}, "service_health": {}}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response):
-            result = await client.get_ops_board()
-            assert isinstance(result, dict)
-        await client.close()
-
-    @pytest.mark.asyncio
-    async def test_get_evidence_graph(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"nodes": [], "edges": []}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response):
-            result = await client.get_evidence_graph()
-            assert "nodes" in result
-            assert "edges" in result
-        await client.close()
-
-    @pytest.mark.asyncio
-    async def test_get_skill_report(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"skills": []}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response):
-            result = await client.get_skill_report()
-            assert isinstance(result, dict)
-        await client.close()
-
-    @pytest.mark.asyncio
-    async def test_get_risk(self) -> None:
-        client = TuiApiClient()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"composite_score": 0.5, "max_drawdown": 0.1}
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(httpx.AsyncClient, "get", new_callable=AsyncMock, return_value=mock_response):
-            result = await client.get_risk()
-            assert "composite_score" in result
+    finally:
         await client.close()
 
 
-# ── CLI Bridge Tests ─────────────────────────────────────────────────
+def test_cli_result_is_named_tuple() -> None:
+    result = CliResult(returncode=0, stdout="ok", stderr="", command="test")
+    assert result.returncode == 0 and result.stdout == "ok" and result.stderr == "" and result.command == "test"
 
 
-class TestCliBridge:
-    """Test the CLI bridge module."""
-
-    def test_cli_result_is_named_tuple(self) -> None:
-        result = CliResult(returncode=0, stdout="ok", stderr="", command="test")
-        assert result.returncode == 0
-        assert result.stdout == "ok"
-        assert result.stderr == ""
-        assert result.command == "test"
+def test_cli_result_fields() -> None:
+    for field in ("returncode", "stdout", "stderr", "command"):
+        assert field in CliResult._fields
 
-    def test_cli_result_fields(self) -> None:
-        assert hasattr(CliResult, "_fields")
-        assert "returncode" in CliResult._fields
-        assert "stdout" in CliResult._fields
-        assert "stderr" in CliResult._fields
-        assert "command" in CliResult._fields
 
-    @pytest.mark.asyncio
-    async def test_run_cli_with_args(self) -> None:
-        result = await run_cli("--help")
-        assert result.returncode == 0
-        assert "siglab" in result.stdout.lower() or "usage" in result.stdout.lower() or len(result.stdout) > 0
+@pytest.mark.asyncio
+async def test_run_cli_with_args() -> None:
+    result = await run_cli("--help")
+    assert result.returncode == 0
+    assert "siglab" in result.stdout.lower() or "usage" in result.stdout.lower() or len(result.stdout) > 0
 
 
-# ── Status Bar Tests ─────────────────────────────────────────────────
+def test_status_bar_init_defaults() -> None:
+    bar = SigLabStatusBar()
+    assert bar._version == "0.1.0" and bar._api_url == "http://localhost:3100" and bar._connected is False
 
 
-class TestSigLabStatusBar:
-    """Test the status bar widget."""
+def test_status_bar_init_custom() -> None:
+    bar = SigLabStatusBar(version="2.0.0", api_url="http://example.com:9999")
+    assert bar._version == "2.0.0" and bar._api_url == "http://example.com:9999"
 
-    def test_status_bar_init_defaults(self) -> None:
-        bar = SigLabStatusBar()
-        assert bar._version == "0.1.0"
-        assert bar._api_url == "http://localhost:3100"
-        assert bar._connected is False
 
-    def test_status_bar_init_custom(self) -> None:
-        bar = SigLabStatusBar(version="2.0.0", api_url="http://example.com:9999")
-        assert bar._version == "2.0.0"
-        assert bar._api_url == "http://example.com:9999"
+def test_status_bar_set_connected() -> None:
+    bar = SigLabStatusBar()
+    assert bar._connected is False
+    bar._connected = True
+    assert bar._connected is True
 
-    def test_status_bar_set_connected(self) -> None:
-        bar = SigLabStatusBar()
-        assert bar._connected is False
-        # set_connected updates internal state
-        # (full rendering test needs a mounted app)
-        bar._connected = True
-        assert bar._connected is True
 
+@pytest.mark.parametrize("attr", ["compose", "on_mount", "on_unmount", "_check_api_connection",
+                                  "watch_api_connected", "action_show_help", "action_go_back"])
+def test_app_has_required_method(attr) -> None:
+    assert hasattr(SigLabTUI, attr)
 
-# ── App Compose & Widget Tree Tests ──────────────────────────────────
 
+def test_app_has_screen_switch_actions() -> None:
+    for screen_id in SCREEN_IDS:
+        assert hasattr(SigLabTUI, f"action_switch_to_{screen_id}")
 
-class TestAppCompose:
-    """Test that the app composes the expected widget tree."""
 
-    def test_app_has_compose_method(self) -> None:
-        assert hasattr(SigLabTUI, "compose")
+@pytest.mark.parametrize("screen_cls", SCREEN_CLASSES)
+@pytest.mark.parametrize("expected_key", ["ctrl+c", "escape"])
+def test_all_screens_have_required_binding(screen_cls, expected_key) -> None:
+    assert expected_key in _binding_keys(screen_cls), f"{screen_cls.__name__} missing {expected_key}"
 
-    def test_app_has_on_mount(self) -> None:
-        assert hasattr(SigLabTUI, "on_mount")
 
-    def test_app_has_on_unmount(self) -> None:
-        assert hasattr(SigLabTUI, "on_unmount")
+@pytest.mark.parametrize("screen_cls", SCREEN_CLASSES)
+def test_all_screens_have_help_binding(screen_cls) -> None:
+    keys = _binding_keys(screen_cls)
+    assert "question_mark" in keys or "?" in keys, f"{screen_cls.__name__} missing ?"
 
-    def test_app_has_check_api_connection(self) -> None:
-        assert hasattr(SigLabTUI, "_check_api_connection")
 
-    def test_app_has_watch_api_connected(self) -> None:
-        assert hasattr(SigLabTUI, "watch_api_connected")
+def test_nav_sidebar_has_compose_and_highlight() -> None:
+    assert hasattr(NavSidebar, "compose") and hasattr(NavSidebar, "highlight_item")
 
-    def test_app_has_action_show_help(self) -> None:
-        assert hasattr(SigLabTUI, "action_show_help")
 
-    def test_app_has_action_go_back(self) -> None:
-        assert hasattr(SigLabTUI, "action_go_back")
+def test_nav_sidebar_build_items() -> None:
+    items = NavSidebar._build_items()
+    assert len(items) == 6
+    assert [item.id for item in items] == [
+        "nav-market", "nav-paper", "nav-risk", "nav-strategy", "nav-telemetry", "nav-evidence",
+    ]
 
-    def test_app_has_screen_switch_actions(self) -> None:
-        for screen_id in SCREEN_IDS:
-            method_name = f"action_switch_to_{screen_id}"
-            assert hasattr(SigLabTUI, method_name), f"Missing {method_name}"
 
-    def test_all_screens_have_ctrl_c_binding(self) -> None:
-        """Verify all screens have consistent ctrl+c binding."""
-        from siglab.tui.screens.market import MarketScreen
-        from siglab.tui.screens.paper import PaperScreen
-        from siglab.tui.screens.risk import RiskScreen
-        from siglab.tui.screens.strategy import StrategyScreen
-        from siglab.tui.screens.telemetry import TelemetryScreen
-        from siglab.tui.screens.evidence import EvidenceScreen
-        for screen_cls in [MarketScreen, PaperScreen, RiskScreen, StrategyScreen, TelemetryScreen, EvidenceScreen]:
-            keys = [b.key for b in screen_cls.BINDINGS]
-            assert "ctrl+c" in keys, f"{screen_cls.__name__} missing ctrl+c"
-            assert "question_mark" in keys or "?" in keys, f"{screen_cls.__name__} missing ?"
-            assert "escape" in keys, f"{screen_cls.__name__} missing escape"
+@pytest.mark.parametrize("css_file", ["app.tcss", "theme.tcss"])
+def test_css_files_exist(css_file) -> None:
+    assert (TUI_DIR / "styles" / css_file).exists()
 
-    def test_all_screens_have_escape_binding(self) -> None:
-        """Verify all screens have escape binding."""
-        from siglab.tui.screens.market import MarketScreen
-        from siglab.tui.screens.paper import PaperScreen
-        from siglab.tui.screens.risk import RiskScreen
-        from siglab.tui.screens.strategy import StrategyScreen
-        from siglab.tui.screens.telemetry import TelemetryScreen
-        from siglab.tui.screens.evidence import EvidenceScreen
-        for screen_cls in [MarketScreen, PaperScreen, RiskScreen, StrategyScreen, TelemetryScreen, EvidenceScreen]:
-            keys = [b.key for b in screen_cls.BINDINGS]
-            assert "escape" in keys, f"{screen_cls.__name__} missing escape"
 
+def test_app_tcss_has_sidebar_and_status_bar_styles() -> None:
+    content = (TUI_DIR / "styles" / "app.tcss").read_text()
+    for selector in ("#nav-sidebar", "#nav-title", "#nav-list", "#status-bar"):
+        assert selector in content
 
-# ── NavSidebar Tests ─────────────────────────────────────────────────
 
+def test_theme_tcss_has_color_variables() -> None:
+    content = (TUI_DIR / "styles" / "theme.tcss").read_text()
+    for var in ("$accent-green", "$warning-yellow", "$error-red", "$info-blue", "$text-primary",
+                "$success", "$warning", "$error", "$info"):
+        assert var in content
 
-class TestNavSidebar:
-    """Test the navigation sidebar widget."""
 
-    def test_nav_sidebar_has_compose(self) -> None:
-        assert hasattr(NavSidebar, "compose")
+def test_theme_bg_not_pure_black() -> None:
+    content = (TUI_DIR / "styles" / "theme.tcss").read_text()
+    assert "$bg: #0a0a0a;" in content
+    assert "$bg: #000000" not in content
 
-    def test_nav_sidebar_has_highlight_item(self) -> None:
-        assert hasattr(NavSidebar, "highlight_item")
 
-    def test_nav_sidebar_build_items_returns_list(self) -> None:
-        items = NavSidebar._build_items()
-        assert len(items) == 6
+def test_tui_init_exports_siglab_tui() -> None:
+    assert _SigLabTUIExported is SigLabTUI
 
-    def test_nav_sidebar_build_items_ids(self) -> None:
-        items = NavSidebar._build_items()
-        ids = [item.id for item in items]
-        assert ids == ["nav-market", "nav-paper", "nav-risk", "nav-strategy", "nav-telemetry", "nav-evidence"]
 
+def test_widgets_init_exports_status_bar() -> None:
+    assert _SigLabStatusBarExported is SigLabStatusBar
 
-# ── Theme System Tests ───────────────────────────────────────────────
 
+@pytest.mark.parametrize("subdir", ["", "widgets", "styles"])
+def test_package_init_exists(subdir) -> None:
+    assert (TUI_DIR / subdir / "__init__.py").exists()
 
-class TestThemeSystem:
-    """Test that the theme/style files exist and are valid."""
 
-    def test_app_tcss_exists(self) -> None:
-        from pathlib import Path
+def test_friendly_error_handles_known_exceptions() -> None:
+    cases = [
+        (httpx.ConnectError("Connection refused"), ("connect", "server"), True),
+        (httpx.TimeoutException("Timed out"), ("timeout", "timed out"), False),
+        (httpx.HTTPStatusError("Server Error", request=httpx.Request("GET", "http://t"),
+                                response=httpx.Response(500)),
+         ("500", "server"), False),
+        (ValueError("bad value"), ("unexpected", "error"), False),
+    ]
+    for exc, required_words, no_traceback in cases:
+        msg_lower = friendly_error(exc).lower()
+        assert any(w in msg_lower for w in required_words), f"Missing keyword for {exc!r}"
+        if no_traceback:
+            assert "traceback" not in msg_lower and "httpx" not in msg_lower
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
-        assert tcss_path.exists()
 
-    def test_theme_tcss_exists(self) -> None:
-        from pathlib import Path
+def test_format_price() -> None:
+    assert format_price(67234.56) == "67,234.56" and format_price(0.00123) == "0.001230"
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "theme.tcss"
-        assert tcss_path.exists()
 
-    def test_app_tcss_has_sidebar_styles(self) -> None:
-        from pathlib import Path
+@pytest.mark.parametrize("value,expected", [(2_500_000_000, "B"), (5_000_000, "M"), (15_000, "K")])
+def test_format_volume_suffix(value, expected) -> None:
+    assert expected in format_volume(value)
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
-        content = tcss_path.read_text()
-        assert "#nav-sidebar" in content
-        assert "#nav-title" in content
-        assert "#nav-list" in content
-        assert "#status-bar" in content
 
-    def test_theme_tcss_has_color_variables(self) -> None:
-        from pathlib import Path
+def test_format_change_positive_and_negative() -> None:
+    assert "2.50%" in format_change(2.5).plain
+    assert "1.30%" in format_change(-1.3).plain
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "theme.tcss"
-        content = tcss_path.read_text()
-        assert "$accent-green" in content
-        assert "$warning-yellow" in content
-        assert "$error-red" in content
-        assert "$info-blue" in content
-        assert "$text-primary" in content
 
-    def test_theme_tcss_has_semantic_tokens(self) -> None:
-        from pathlib import Path
+def test_format_pnl() -> None:
+    assert "1,234.56" in format_pnl(1234.56).plain
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "theme.tcss"
-        content = tcss_path.read_text()
-        assert "$success" in content
-        assert "$warning" in content
-        assert "$error" in content
-        assert "$info" in content
 
-    def test_theme_bg_not_pure_black(self) -> None:
-        """Background should be slightly off-black for CRT aesthetic."""
-        from pathlib import Path
+def test_format_score() -> None:
+    assert "0.850" in format_score(0.85).plain
+    assert format_score(None).plain == "─"
 
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "theme.tcss"
-        content = tcss_path.read_text()
-        assert "$bg: #0a0a0a;" in content
-        assert "$bg: #000000" not in content
 
+def test_truncate() -> None:
+    assert truncate("hello", 10) == "hello"
+    long = truncate("hello world", 6)
+    assert len(long) == 6 and long.endswith("…")
 
-# ── Module Structure Tests ───────────────────────────────────────────
 
+def test_color_constants_defined() -> None:
+    assert (_formatting.ACCENT_GREEN == "#4ade80" and _formatting.ERROR_RED == "#f87171"
+            and _formatting.WARNING_YELLOW == "#f0b456" and _formatting.INFO_BLUE == "#60a5fa"
+            and _formatting.BG == "#0a0a0a")
 
-class TestModuleStructure:
-    """Test that the TUI module structure is correct."""
 
-    def test_tui_init_exports_siglab_tui(self) -> None:
-        from siglab.tui import SigLabTUI as Exported
+def test_loading_indicator_import() -> None:
+    assert LoadingIndicator is not None
 
-        assert Exported is SigLabTUI
 
-    def test_widgets_init_exports_status_bar(self) -> None:
-        from siglab.tui.widgets import SigLabStatusBar as Exported
+def test_loading_indicator_default_state() -> None:
+    indicator = LoadingIndicator()
+    assert indicator.loading is False and indicator.status_text == ""
 
-        assert Exported is SigLabStatusBar
 
-    def test_tui_package_init_exists(self) -> None:
-        from pathlib import Path
-
-        init_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "__init__.py"
-        assert init_path.exists()
-
-    def test_widgets_package_init_exists(self) -> None:
-        from pathlib import Path
-
-        init_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "widgets" / "__init__.py"
-        assert init_path.exists()
-
-    def test_styles_package_init_exists(self) -> None:
-        from pathlib import Path
-
-        init_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "__init__.py"
-        assert init_path.exists()
-
-
-# ── Formatting Module Tests ──────────────────────────────────────────
-
-
-class TestFormatting:
-    """Test the shared formatting helpers module."""
-
-    def test_friendly_error_connect(self) -> None:
-        from siglab.tui.formatting import friendly_error
-        import httpx
-        exc = httpx.ConnectError("Connection refused")
-        msg = friendly_error(exc)
-        assert "connect" in msg.lower() or "server" in msg.lower()
-
-    def test_friendly_error_timeout(self) -> None:
-        from siglab.tui.formatting import friendly_error
-        import httpx
-        exc = httpx.TimeoutException("Timed out")
-        msg = friendly_error(exc)
-        assert "timed out" in msg.lower() or "timeout" in msg.lower()
-
-    def test_friendly_error_http_status(self) -> None:
-        from siglab.tui.formatting import friendly_error
-        import httpx
-        exc = httpx.HTTPStatusError(
-            "Server Error",
-            request=httpx.Request("GET", "http://test"),
-            response=httpx.Response(500),
-        )
-        msg = friendly_error(exc)
-        assert "500" in msg or "server" in msg.lower()
-
-    def test_friendly_error_generic(self) -> None:
-        from siglab.tui.formatting import friendly_error
-        msg = friendly_error(ValueError("bad value"))
-        assert "unexpected" in msg.lower() or "error" in msg.lower()
-
-    def test_format_price_high(self) -> None:
-        from siglab.tui.formatting import format_price
-        assert format_price(67234.56) == "67,234.56"
-
-    def test_format_price_low(self) -> None:
-        from siglab.tui.formatting import format_price
-        assert format_price(0.00123) == "0.001230"
-
-    def test_format_volume(self) -> None:
-        from siglab.tui.formatting import format_volume
-        assert "B" in format_volume(2_500_000_000)
-        assert "M" in format_volume(5_000_000)
-        assert "K" in format_volume(15_000)
-
-    def test_format_change_positive(self) -> None:
-        from siglab.tui.formatting import format_change
-        text = format_change(2.5)
-        assert "2.50%" in text.plain
-
-    def test_format_change_negative(self) -> None:
-        from siglab.tui.formatting import format_change
-        text = format_change(-1.3)
-        assert "1.30%" in text.plain
-
-    def test_format_pnl(self) -> None:
-        from siglab.tui.formatting import format_pnl
-        text = format_pnl(1234.56)
-        assert "1,234.56" in text.plain
-
-    def test_format_score_high(self) -> None:
-        from siglab.tui.formatting import format_score
-        text = format_score(0.85)
-        assert "0.850" in text.plain
-
-    def test_format_score_none(self) -> None:
-        from siglab.tui.formatting import format_score
-        text = format_score(None)
-        assert text.plain == "\u2500"
-
-    def test_truncate_short(self) -> None:
-        from siglab.tui.formatting import truncate
-        assert truncate("hello", 10) == "hello"
-
-    def test_truncate_long(self) -> None:
-        from siglab.tui.formatting import truncate
-        result = truncate("hello world", 6)
-        assert len(result) == 6
-        assert result.endswith("\u2026")
-
-    def test_color_constants_defined(self) -> None:
-        from siglab.tui import formatting
-        assert formatting.ACCENT_GREEN == "#4ade80"
-        assert formatting.ERROR_RED == "#f87171"
-        assert formatting.WARNING_YELLOW == "#f0b456"
-        assert formatting.INFO_BLUE == "#60a5fa"
-        assert formatting.BG == "#0a0a0a"
-
-
-# ── Loading Indicator Tests ──────────────────────────────────────────
-
-
-class TestLoadingIndicator:
-    """Test the loading indicator widget."""
-
-    def test_loading_indicator_import(self) -> None:
-        from siglab.tui.loading import LoadingIndicator
-        assert LoadingIndicator is not None
-
-    def test_loading_indicator_default_state(self) -> None:
-        from siglab.tui.loading import LoadingIndicator
-        indicator = LoadingIndicator()
-        assert indicator.loading is False
-        assert indicator.status_text == ""
-
-    def test_loading_indicator_has_default_css(self) -> None:
-        from siglab.tui.loading import LoadingIndicator
-        assert "height: 1" in LoadingIndicator.DEFAULT_CSS
+def test_loading_indicator_has_default_css() -> None:
+    assert "height: 1" in LoadingIndicator.DEFAULT_CSS
