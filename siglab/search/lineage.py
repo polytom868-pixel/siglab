@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections import Counter, defaultdict
+
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 from siglab.schemas import SignalSpec
-from siglab.track_registry import canonical_track_name, matching_track_names, resolve_track
+from siglab.track_registry import matching_track_names, resolve_track
 
 from siglab.search.lineage_types import (
     _maturity_bucket,
@@ -41,6 +41,7 @@ from siglab.search.lineage_analysis import (
     last_five_runs as _last_five_runs,
     query_relevance as _query_relevance,
     experiment_row_payload,
+    is_deterministic_experiment,
     feature_hash,
     filter_run_scope,
     row_diagnostic_snapshot as _row_diagnostic_snapshot,
@@ -611,7 +612,6 @@ class LineageStore:
     ) -> list[dict[str, Any]]:
         rows = self._track_experiments(track, run_session_id=run_session_id)
         if not include_deterministic:
-            from siglab.search.lineage_analysis import is_deterministic_experiment
 
             rows = [row for row in rows if not is_deterministic_experiment(row)]
         return rows[:limit]
@@ -810,7 +810,6 @@ class LineageStore:
         limit: int = 3,
         run_session_id: str | None = None,
     ) -> dict[str, Any]:
-        from siglab.search.lineage_analysis import is_deterministic_experiment
 
         experiments_all = self._track_experiments(track, run_session_id=run_session_id)
         query_cards = (
@@ -849,7 +848,6 @@ class LineageStore:
         return feature_hash(features)
 
     def _is_deterministic_experiment(self, row: dict[str, Any]) -> bool:
-        from siglab.search.lineage_analysis import is_deterministic_experiment
 
         return is_deterministic_experiment(row)
 

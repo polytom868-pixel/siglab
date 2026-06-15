@@ -6,12 +6,13 @@ arguments.  None of them own a database connection; callers in
 """
 
 from __future__ import annotations
-
+__all__ = ["feature_hash"]
 import json
 import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
+from siglab.utils import feature_hash
 
 from siglab.evaluation.strategy_semantics import inferred_trade_style
 
@@ -52,9 +53,6 @@ def experiment_row_payload(row: tuple[Any, ...]) -> dict[str, Any]:
         "summary": json.loads(row[9]),
         "artifact_path": row[10],
     }
-
-
-from siglab.utils import feature_hash
 
 
 def is_deterministic_experiment(row: dict[str, Any]) -> bool:

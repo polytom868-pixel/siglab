@@ -24,6 +24,10 @@ from siglab.schemas import SignalSpec, CompiledChild
 from siglab.config import SiglabConfig
 from siglab.evaluation.backtest import convert_to_spot
 
+from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
+from siglab.utils import feature_hash as _feature_hash
+
+
 from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
 
 PERP_EXECUTION_PROFILES = {
@@ -567,7 +571,7 @@ def _single_column_frame(series: pd.Series, *, name: str) -> pd.DataFrame:
     return clean.rename(name).to_frame()
 
 
-from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
+
 
 
 def _perp_global_raw_frames(
@@ -744,7 +748,7 @@ def _build_lending_price_frames(
     return root_prices.reindex(carry_factor.index).ffill().mul(carry_factor)
 
 
-from siglab.utils import feature_hash as _feature_hash
+
 
 
 def _history_bounds(frame: pd.DataFrame) -> dict[str, str | None]:

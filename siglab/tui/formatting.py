@@ -6,10 +6,9 @@ across screen modules and ensure theme consistency.
 
 from __future__ import annotations
 
+__all__ = ["safe_float"]
 from rich.text import Text
 from siglab.utils import safe_float
-
-
 # ── Color Constants ──────────────────────────────────────────────────
 # Single source of truth for all Rich Text colors in TUI widgets.
 # Keep in sync with siglab/tui/styles/theme.tcss variables.
@@ -522,6 +521,3 @@ SCROLLABLE_CSS = "overflow-y: auto; {panel}".format(panel=PANEL_CSS)
 COMPACT_CSS = "height: auto; min-height: 5; {panel}".format(panel=PANEL_CSS)
 EXPANDABLE_CSS = "height: 1fr; min-height: 6; {scroll}".format(scroll=SCROLLABLE_CSS)
 
-
-# Re-export Any for callers that import safe_float
-from typing import Any  # noqa: E402

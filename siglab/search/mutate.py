@@ -21,6 +21,8 @@ from siglab.schemas import SignalSpec
 from siglab.search.select import rank_deterministic_specs
 from siglab.config import SiglabConfig
 from siglab.track_registry import canonical_track_name, resolve_track, storage_track_name
+from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
+from siglab.utils import safe_float as _safe_float
 
 PAIR_UNIVERSES: list[list[str]] = [
     ["ETH", "BTC"],
@@ -39,7 +41,6 @@ LEVERED_PAIR_FAMILY = "perp_pair_trade_levered"
 BASKET_NEUTRAL_UNLEVERED_FAMILY = "perp_basket_neutral_unlevered"
 BASKET_NEUTRAL_LEVERED_FAMILY = "perp_basket_neutral_levered"
 MULTI_ASSET_CARRY_FAMILY = "perp_multi_asset_carry"
-from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
 BASKET_NEUTRAL_FAMILIES = {
     UNLEVERED_PAIR_FAMILY,
     LEVERED_PAIR_FAMILY,
@@ -1935,8 +1936,6 @@ def _family_scope(family: str | list[str] | None) -> set[str] | None:
         return {family}
     return {str(item) for item in family}
 
-
-from siglab.utils import safe_float as _safe_float
 
 
 

@@ -17,6 +17,9 @@ from siglab.schemas import SignalSpec
 from siglab.config import SiglabConfig
 from siglab.evaluator.backtesting import BacktestConfig  # via shim for mock compat
 
+from siglab.utils import safe_float as _safe_float
+from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
+from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_audit_trade_episodes_from_canonical
 # Lazy wrappers so unittest.mock.patch("siglab.evaluator.core.compile_spec") works.
 
 
@@ -1710,9 +1713,6 @@ class ResearchEvaluator:
         }
 
 
-from siglab.utils import safe_float as _safe_float
-
-
 def _unique_float_values(values: list[float], *, low: float, high: float) -> list[float]:
     cleaned: list[float] = []
     seen: set[float] = set()
@@ -1920,9 +1920,6 @@ def _row_direction_label(row: pd.Series, *, epsilon: float = 1e-9) -> str:
     if net < -epsilon or (shorts and not longs):
         return "net_short"
     return "mixed"
-
-
-from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
 
 
 def _pair_position_episodes(
@@ -2832,9 +2829,6 @@ def _series_from_payload(
     series = pd.Series(values.to_numpy(), index=index)
     series = series[~series.index.isna()]
     return series.sort_index()
-
-
-from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_audit_trade_episodes_from_canonical
 
 
 def _episode_direction_counts(trade_episodes: list[dict[str, Any]]) -> dict[str, int]:

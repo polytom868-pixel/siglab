@@ -29,6 +29,7 @@ from siglab.schemas import SignalSpec
 from siglab.search import LineageStore
 from siglab.config import SiglabConfig
 from siglab.evaluator.backtesting import BacktestConfig, run_backtest
+from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_audit_trade_episodes
 
 DEFAULT_HORIZONS = (6, 24, 72, 168)
 MAX_COMPARE_FEATURES = 6
@@ -1806,7 +1807,7 @@ def _clean_float(value: Any) -> float | None:
         return None
     return result
 
-from siglab.utils import safe_float as _safe_float
+
 
 
 def _sanitize_limit(raw: Any, *, default: int) -> int:
@@ -1817,7 +1818,7 @@ def _sanitize_limit(raw: Any, *, default: int) -> int:
     return max(1, min(50, value))
 
 
-from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_audit_trade_episodes
+
 
 
 def _episode_bucket(bars: Any) -> str | None:

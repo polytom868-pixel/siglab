@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from hashlib import sha256
 from typing import Any
 from siglab.utils import short_hash
 
