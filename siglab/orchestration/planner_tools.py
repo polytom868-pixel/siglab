@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from siglab.llm import ClaudeTool
 from siglab.research import HypothesisSandbox, WebResearcher
@@ -274,7 +274,7 @@ def wrap_probe_tool(
     tool_refs: list[str],
     probe_budget: ToolBudget,
     workspace_builder: WorkspaceBuilder,
-):
+) -> Callable[[dict[str, Any]], Awaitable[Any]]:
     async def _handler(arguments: dict[str, Any]) -> Any:
         tool_count = probe_budget.per_tool.get(tool.name, 0)
         total_count = probe_budget.total

@@ -11,7 +11,7 @@ import json
 import math
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from siglab.utils import feature_hash
 
 from siglab.evaluation.strategy_semantics import inferred_trade_style
@@ -36,7 +36,7 @@ def spec_payload(raw_json: str) -> dict[str, Any]:
 
     payload = json.loads(raw_json)
     payload["track"] = resolve_track(payload.get("track"))
-    return payload
+    return cast(dict[str, Any], payload)
 
 
 def experiment_row_payload(row: tuple[Any, ...]) -> dict[str, Any]:

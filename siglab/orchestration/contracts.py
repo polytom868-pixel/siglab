@@ -154,9 +154,9 @@ class PreflightResult:
 
 def _numeric_equal(left: Any, right: Any) -> bool:
     try:
-        return abs(float(left) - float(right)) <= 1e-12
+        return bool(abs(float(left) - float(right)) <= 1e-12)
     except (TypeError, ValueError):
-        return left == right
+        return bool(left == right)
 
 
 def has_non_regime_variation(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
+
 import hashlib
 import json
 from pathlib import Path
@@ -21,7 +23,6 @@ from siglab.search.mutate import (
     PAIR_MEAN_REVERSION_FEATURES,
     PAIR_MEAN_REVERSION_SPEED_FEATURES,
     PAIR_QUALITY_MOMENTUM_FEATURES,
-    PAIR_TRADE_FAMILIES,
     PAIR_UNIVERSES,
 )
 

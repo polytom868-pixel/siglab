@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -584,7 +584,7 @@ def _write_benchmark_artifact(*, settings: Any, track: str, evaluation: dict[str
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     target = target_dir / f"{timestamp}_{evaluation['spec_hash']}.json"
     target.write_text(json.dumps(evaluation, indent=2, ensure_ascii=True))
-    return target
+    return cast(Path, target)
 
 
 def _append_result_row(

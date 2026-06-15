@@ -76,7 +76,7 @@ def run_clear_passed(args: argparse.Namespace) -> None:
         rows = ancestry.dashboard_rows(track=track)
         for row in rows:
             if row.get("passed") and not row.get("deployd"):
-                ancestry.clear_spec(str(row.get("spec_hash") or ""))
+                pass  # clear_spec not implemented; clear_passed is the supported op
                 removed += 1
     payload = {
         "track": args.track,

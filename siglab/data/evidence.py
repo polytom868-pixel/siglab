@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -377,7 +377,7 @@ def _matched_currency_symbol(value: Any, *, preferred: str | None = None) -> str
     return fallback
 
 
-def _record_day(value: Any) -> "datetime.date | None":
+def _record_day(value: Any) -> date | None:
     if value is None:
         return None
     raw = str(value)
