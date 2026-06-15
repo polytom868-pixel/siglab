@@ -314,9 +314,12 @@ class EvaluationPlanTests(unittest.TestCase):
     def setUp(self) -> None:
         self.ev = _make_evaluator()
 
+    def _plan(self, periods: int, freq: str = "h", min_rows: int = 30) -> dict:
+        index = pd.date_range("2020-01-01", periods=periods, freq=freq)
+        return self.ev._evaluation_plan(index, min_rows=min_rows)
+
     def test_short_data_no_holdout(self) -> None:
-        index = pd.date_range("2020-01-01", periods=40, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(40)
         self.assertIsNone(plan["validation_window"])
         self.assertIsNone(plan["audit_window"])
         self.assertEqual(plan["selector_scope"], "in_sample_only")
@@ -324,13 +327,11 @@ class EvaluationPlanTests(unittest.TestCase):
         self.assertFalse(plan["visual_split"]["selector_uses_holdout"])
 
     def test_short_data_has_selector_windows(self) -> None:
-        index = pd.date_range("2020-01-01", periods=40, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(40)
         self.assertGreater(len(plan["selector_windows"]), 0)
 
     def test_short_data_visual_split_ranges(self) -> None:
-        index = pd.date_range("2020-01-01", periods=40, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(40)
         ranges = plan["visual_split"]["ranges"]
         self.assertEqual(len(ranges), 1)
         self.assertEqual(ranges[0]["kind"], "in_sample")
@@ -345,15 +346,13 @@ class EvaluationPlanTests(unittest.TestCase):
 
     def test_medium_data_has_validation_no_audit(self) -> None:
         """Medium-length data gets a validation holdout but no audit."""
-        index = pd.date_range("2020-01-01", periods=80, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(80)
         self.assertIsNotNone(plan["validation_window"])
         self.assertIsNone(plan["audit_window"])
         self.assertEqual(plan["validation_window"]["role"], "validation_holdout")
 
     def test_medium_data_split_boundaries(self) -> None:
-        index = pd.date_range("2020-01-01", periods=80, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(80)
         val = plan["validation_window"]
         self.assertGreaterEqual(val["start_idx"], 0)
         self.assertLessEqual(val["end_idx"], 80)
@@ -361,24 +360,21 @@ class EvaluationPlanTests(unittest.TestCase):
 
     def test_long_data_rolling_chunks(self) -> None:
         """Long data with DatetimeIndex produces rolling chunks."""
-        index = pd.date_range("2020-01-01", periods=1000, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(1000)
         self.assertEqual(plan["selector_scope"], "rolling_validation_chunks")
         self.assertIsNone(plan["validation_window"])
         self.assertIsNotNone(plan["audit_window"])
         self.assertTrue(plan["visual_split"]["strict_holdout"])
 
     def test_long_data_rolling_chunks_audit_slice(self) -> None:
-        index = pd.date_range("2020-01-01", periods=1000, freq="D")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(1000, freq="D")
         audit = plan["audit_window"]
-        size = len(index)
+        size = 1000
         expected_audit_size = max(30, round(size * 0.10))
         self.assertEqual(int(audit["end_idx"]) - int(audit["start_idx"]), expected_audit_size)
 
     def test_visual_split_rolling_ranges(self) -> None:
-        index = pd.date_range("2020-01-01", periods=1000, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(1000)
         ranges = plan["visual_split"]["ranges"]
         self.assertEqual(len(ranges), 2)
         kinds = [r["kind"] for r in ranges]
@@ -387,15 +383,13 @@ class EvaluationPlanTests(unittest.TestCase):
 
     def test_long_data_fallback_has_validation_and_audit(self) -> None:
         """When rolling chunks < 3, fall back to in-sample + val + audit."""
-        index = pd.date_range("2020-01-01", periods=120, freq="D")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(120, freq="D")
         self.assertEqual(plan["selector_scope"], "in_sample_only")
         self.assertIsNotNone(plan["validation_window"])
         self.assertIsNotNone(plan["audit_window"])
 
     def test_long_data_fallback_visual_split_three_ranges(self) -> None:
-        index = pd.date_range("2020-01-01", periods=120, freq="D")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(120, freq="D")
         ranges = plan["visual_split"]["ranges"]
         self.assertEqual(len(ranges), 3)
         kinds = [r["kind"] for r in ranges]
@@ -404,13 +398,11 @@ class EvaluationPlanTests(unittest.TestCase):
         self.assertIn("audit_holdout", kinds)
 
     def test_fallback_strict_holdout_true(self) -> None:
-        index = pd.date_range("2020-01-01", periods=120, freq="D")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(120, freq="D")
         self.assertTrue(plan["visual_split"]["strict_holdout"])
 
     def test_visual_split_includes_timestamps(self) -> None:
-        index = pd.date_range("2020-01-01", periods=80, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=30)
+        plan = self._plan(80)
         ranges = plan["visual_split"]["ranges"]
         for r in ranges:
             self.assertIn("start_timestamp", r)
@@ -418,8 +410,7 @@ class EvaluationPlanTests(unittest.TestCase):
 
     def test_evaluation_plan_min_rows_near_boundary(self) -> None:
         """Edge: min_rows values near boundary conditions."""
-        index = pd.date_range("2020-01-01", periods=100, freq="h")
-        plan = self.ev._evaluation_plan(index, min_rows=14)
+        plan = self._plan(100, min_rows=14)
         self.assertIn("selector_windows", plan)
 
 
