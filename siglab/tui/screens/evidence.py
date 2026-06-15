@@ -474,7 +474,9 @@ class EvidenceScreen(BaseScreen):
         Binding("n", "next_step", "Next Step", show=True),
         Binding("p", "prev_step", "Prev Step", show=True),
         Binding("a", "run_all", "Run All", show=True),
-        Binding("f", "filter_source", "Sources", show=False),
+        Binding("f", "filter_source", "Sources", show=True),
+        Binding("e", "filter_entity", "Entities", show=True),
+        Binding("ctrl+l", "filter_clear", "Clear", show=False),
     ]
 
     api_connected: reactive[bool] = reactive(False)
@@ -575,26 +577,27 @@ class EvidenceScreen(BaseScreen):
             self.active_pane = "graph"
             self.query_one("#evidence-graph", EvidenceGraphWidget).focus()
 
+    def _apply_filter(self, kind: str) -> None:
+        """Apply a kind filter to the graph (or clear when ``kind`` is empty)."""
+        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
+        if kind:
+            graph.set_filter(kind=kind)
+        else:
+            graph.set_filter()
+        self._current_filter = kind
+        self._update_status()
+
     def action_filter_source(self) -> None:
         """Filter graph to show only source nodes."""
-        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
-        graph.set_filter(kind="source")
-        self._current_filter = "source"
-        self._update_status()
+        self._apply_filter("source")
 
     def action_filter_entity(self) -> None:
         """Filter graph to show only entity nodes."""
-        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
-        graph.set_filter(kind="entity")
-        self._current_filter = "entity"
-        self._update_status()
+        self._apply_filter("entity")
 
     def action_filter_clear(self) -> None:
         """Clear all filters."""
-        graph = self.query_one("#evidence-graph", EvidenceGraphWidget)
-        graph.set_filter()
-        self._current_filter = ""
-        self._update_status()
+        self._apply_filter("")
 
     def action_next_step(self) -> None:
         """Move to next demo step."""
@@ -606,6 +609,31 @@ class EvidenceScreen(BaseScreen):
         demo = self.query_one("#demo-flow", DemoFlowWidget)
         demo.retreat_step()
 
+    async def _run_demo_step(self, step_data: dict[str, Any]) -> int:
+        """Execute a single demo step and record the result on the widget.
+
+        Returns the CLI returncode (or ``-1`` on exception).
+        """
+        demo = self.query_one("#demo-flow", DemoFlowWidget)
+        step_num = step_data["step"]
+        args = step_data["command"].split()
+        try:
+            result = await run_cli(*args, timeout=60.0)
+            demo.set_step_result(step_num, {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            })
+            return result.returncode
+        except Exception as exc:
+            demo.set_step_result(step_num, {
+                "returncode": -1,
+                "stdout": "",
+                "stderr": str(exc),
+            })
+            logger.debug("Demo step %s failed: %s", step_num, exc)
+            return -1
+
     async def action_run_step(self) -> None:
         """Run the current demo step."""
         demo = self.query_one("#demo-flow", DemoFlowWidget)
@@ -614,31 +642,14 @@ class EvidenceScreen(BaseScreen):
         if step_data is None:
             return
 
-        command = step_data["command"]
-
         demo.set_running(True)
         self.demo_running = True
         self._update_status_running(step_data["title"])
 
         try:
-            # Parse command into args
-            args = command.split()
-            result = await run_cli(*args, timeout=60.0)
-            demo.set_step_result(step_data["step"], {
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            })
-            # Auto-advance on success
-            if result.returncode == 0:
+            returncode = await self._run_demo_step(step_data)
+            if returncode == 0:
                 demo.advance_step()
-        except Exception as exc:
-            demo.set_step_result(step_data["step"], {
-                "returncode": -1,
-                "stdout": "",
-                "stderr": str(exc),
-            })
-            logger.debug(f"Demo step {step_data['step']} failed: {exc}")
         finally:
             demo.set_running(False)
             self.demo_running = False
@@ -658,21 +669,7 @@ class EvidenceScreen(BaseScreen):
             demo._current_step = step_num
             demo.set_running(True)
             self._update_status_running(step_data["title"])
-
-            try:
-                args = step_data["command"].split()
-                result = await run_cli(*args, timeout=60.0)
-                demo.set_step_result(step_num, {
-                    "returncode": result.returncode,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                })
-            except Exception as exc:
-                demo.set_step_result(step_num, {
-                    "returncode": -1,
-                    "stdout": "",
-                    "stderr": str(exc),
-                })
+            await self._run_demo_step(step_data)
 
         demo.set_running(False)
         self.demo_running = False
