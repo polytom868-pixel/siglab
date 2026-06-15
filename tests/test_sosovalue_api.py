@@ -34,6 +34,15 @@ class _FakeResponse:
 
 
 class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
+
+    _ETF_INFLOW_ROW: dict[str, object] = {
+        "date": "2026-01-01",
+        "totalNetInflow": 123.4,
+        "totalValueTraded": 456.7,
+        "totalNetAssets": 890.1,
+        "cumNetInflow": 234.5,
+    }
+
     def _current_metrics_payload(self) -> dict[str, object]:
         metric = {"value": 1.0, "lastUpdateDate": "2026-01-01", "status": 1}
         return {
@@ -72,13 +81,7 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
                         "code": 0,
                         "data": {
                             "list": [
-                                {
-                                    "date": "2026-01-01",
-                                    "totalNetInflow": 123.4,
-                                    "totalValueTraded": 456.7,
-                                    "totalNetAssets": 890.1,
-                                    "cumNetInflow": 234.5,
-                                }
+                                    dict(self._ETF_INFLOW_ROW),
                             ]
                         },
                     }
@@ -242,13 +245,7 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
                         "code": 0,
                         "data": {
                             "list": [
-                                {
-                                    "date": "2026-01-01",
-                                    "totalNetInflow": 123.4,
-                                    "totalValueTraded": 456.7,
-                                    "totalNetAssets": 890.1,
-                                    "cumNetInflow": 234.5,
-                                }
+                                    dict(self._ETF_INFLOW_ROW),
                             ]
                         },
                     }
@@ -376,13 +373,7 @@ class SoSoValueClientTests(unittest.IsolatedAsyncioTestCase):
                         "code": 0,
                         "data": {
                             "list": [
-                                {
-                                    "date": "2026-01-01",
-                                    "totalNetInflow": 123.4,
-                                    "totalValueTraded": 456.7,
-                                    "totalNetAssets": 890.1,
-                                    "cumNetInflow": 234.5,
-                                }
+                                    dict(self._ETF_INFLOW_ROW),
                             ]
                         },
                     }
