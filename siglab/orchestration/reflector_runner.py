@@ -35,6 +35,22 @@ class ReflectionRunner:
         "tracking_tags",
         "status",
     }
+    _STRING_FIELD_DEFAULTS: tuple[tuple[str, str], ...] = (
+        ("family", ""),
+        ("verdict", "informative_failure"),
+        ("failure_mode", "needs_follow_up"),
+        ("why_parent_change_failed", ""),
+        ("failed_motif_signature", ""),
+        ("one_reusable_lesson", ""),
+        ("one_next_test", ""),
+        ("next_move", ""),
+        ("status", "active"),
+    )
+    _STRING_LIST_FIELDS: tuple[str, ...] = (
+        "do_not_repeat",
+        "evidence_paths",
+        "tracking_tags",
+    )
 
     def __init__(
         self,
@@ -131,18 +147,14 @@ class ReflectionRunner:
         for key, fallback_value in fallback.items():
             if key not in merged or self._is_missing_value(merged[key]):
                 merged[key] = fallback_value
-        merged["family"] = str(merged.get("family") or "")
-        merged["verdict"] = str(merged.get("verdict") or "informative_failure")
-        merged["failure_mode"] = str(merged.get("failure_mode") or "needs_follow_up")
-        merged["why_parent_change_failed"] = str(merged.get("why_parent_change_failed") or "")
-        merged["failed_motif_signature"] = str(merged.get("failed_motif_signature") or "")
-        merged["one_reusable_lesson"] = str(merged.get("one_reusable_lesson") or "")
-        merged["one_next_test"] = str(merged.get("one_next_test") or "")
-        merged["next_move"] = str(merged.get("next_move") or "")
-        merged["status"] = str(merged.get("status") or "active")
-        merged["do_not_repeat"] = self._string_list(merged.get("do_not_repeat"))
-        merged["evidence_paths"] = self._string_list(merged.get("evidence_paths"))
-        merged["tracking_tags"] = self._string_list(merged.get("tracking_tags"))
+        for key, default in (
+            ("family", ""), ("verdict", "informative_failure"), ("failure_mode", "needs_follow_up"),
+            ("why_parent_change_failed", ""), ("failed_motif_signature", ""), ("one_reusable_lesson", ""),
+            ("one_next_test", ""), ("next_move", ""), ("status", "active"),
+        ):
+            merged[key] = str(merged.get(key) or default)
+        for key in ("do_not_repeat", "evidence_paths", "tracking_tags"):
+            merged[key] = self._string_list(merged.get(key))
         return merged
 
     def _retained_body(
