@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable, ClassVar, cast
+from typing import Any, Callable, ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -467,7 +467,7 @@ class StrategyScreen(BaseScreen):
                 rows: list[dict[str, Any]] = [r for r in rows_raw if isinstance(r, dict)]
                 for row in rows:
                     if str(row.get("spec_hash", "")) == spec_hash:
-                        cached: dict[str, Any] = cast(dict[str, Any], row)
+                        cached: dict[str, Any] = row
                         self._results_cache[spec_hash] = cached
                         return cached
         except Exception as exc:

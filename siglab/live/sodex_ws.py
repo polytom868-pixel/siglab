@@ -143,7 +143,9 @@ class SoDEXWebSocketClient:
             self.metrics.connections += 1
             self.metrics.latencies_ms.append((time.perf_counter() - started) * 1000.0)
             self.metrics.reconnects = 0
-        return self._connection
+        conn = self._connection
+        assert conn is not None
+        return conn
 
     async def subscribe(self, params: dict[str, Any], *, request_id: int | None = None) -> dict[str, Any]:
         _validate_subscription_params(params)

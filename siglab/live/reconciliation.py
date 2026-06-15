@@ -94,17 +94,17 @@ class ReconciliationEngine:
                 "note": "Insufficient overlapping periods for reconciliation",
             }
 
-        bt = backtest_pnl.loc[common_idx].values.astype(float)
-        pt = paper_pnl.loc[common_idx].values.astype(float)
+        bt = np.asarray(backtest_pnl.loc[common_idx].values, dtype=float)
+        pt = np.asarray(paper_pnl.loc[common_idx].values, dtype=float)
 
         # --- Correlation coefficient -----------------------------------------
-        if np.std(bt) > 0 and np.std(pt) > 0:
-            correlation = float(np.corrcoef(bt, pt)[0, 1])
+        if float(np.std(bt)) > 0 and float(np.std(pt)) > 0:
+            correlation = float(np.corrcoef(np.asarray(bt, dtype=float), np.asarray(pt, dtype=float))[0, 1])
         else:
             correlation = None
 
         # --- Tracking error --------------------------------------------------
-        diff = bt - pt
+        diff = np.asarray(bt, dtype=float) - np.asarray(pt, dtype=float)
         tracking_error = float(np.std(diff, ddof=1))
 
         # --- Bias ------------------------------------------------------------

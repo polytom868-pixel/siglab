@@ -8,7 +8,7 @@ Used by ``runner.py`` to evaluate strategy performance over historical data.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -75,12 +75,13 @@ def run_backtest(
     pnl = pnl.sub(slippage_by_bar.reindex(pnl.index, fill_value=0.0))
 
     # Funding: only at 8-hour settlement boundaries
+    pnl_dt_index = cast(pd.DatetimeIndex, pnl.index)
+    funding_settlement_mask = (pnl_dt_index.hour % 8 == 0) & (pnl_dt_index.minute == 0)
     if config.funding_rates is not None:
         funding = config.funding_rates.reindex(prices.index).ffill().fillna(0.0)
         funding = funding.reindex(columns=prices.columns, fill_value=0.0)
-        funding_settlement = (pnl.index.hour % 8 == 0) & (pnl.index.minute == 0)
         funding_cost = funding.mul(weights.shift(1).fillna(0.0)).sum(axis=1)
-        funding_cost = funding_cost.where(funding_settlement, 0.0)
+        funding_cost = funding_cost.where(funding_settlement_mask, 0.0)
         pnl = pnl.add(funding_cost, fill_value=0.0)
 
     equity = (1.0 + pnl).cumprod()
@@ -97,21 +98,22 @@ def run_backtest(
     if config.funding_rates is not None:
         funding = config.funding_rates.reindex(prices.index).ffill().fillna(0.0)
         funding = funding.reindex(columns=prices.columns, fill_value=0.0)
-        funding_settlement_mask = (pnl.index.hour % 8 == 0) & (pnl.index.minute == 0)
         funding_amounts = funding.mul(weights.shift(1).fillna(0.0)).sum(axis=1)
         metrics_by_period["funding_amount"] = funding_amounts.where(funding_settlement_mask, 0.0)
     else:
         metrics_by_period["funding_amount"] = 0.0
     metrics_by_period["fee_amount"] = fee_by_bar.reindex(pnl.index, fill_value=0.0)
     trades_frame = weights.diff().abs().fillna(weights.abs())
-    trades_frame = trades_frame.stack().rename("size").reset_index()
+    stacked = trades_frame.stack()
+    stacked = cast("pd.Series[Any]", stacked)
+    trades_frame = stacked.rename("size").reset_index()
     trades_frame.columns = ["timestamp", "symbol", "size"]
     trades_frame = trades_frame[trades_frame["size"] > float(config.rebalance_threshold)]
     trades = [
         {
             "timestamp": row.timestamp,
             "symbol": row.symbol,
-            "size": float(row.size),
+            "size": float(cast("float", row.size)),
         }
         for row in trades_frame.itertuples(index=False)
     ]

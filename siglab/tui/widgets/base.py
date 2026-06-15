@@ -129,6 +129,7 @@ class FilterableListWidget(Static):
 
     def _render_item(self, item: Any, index: int, is_selected: bool) -> Text:
         """Override in subclass to define per-item rendering."""
+        return Text("")
 
 
 class ComparisonWidget(Static):

@@ -6,7 +6,7 @@ content area, and status bar. Acts as the shell for all TUI screens.
 
 from __future__ import annotations
 
-from typing import Callable, ClassVar
+from typing import Any, Callable, ClassVar, cast
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -46,7 +46,7 @@ SCREEN_IDS = {screen_id for _, _, screen_id in NAV_ITEMS}
 # ── Placeholder screen used for screens not yet implemented ───────────
 
 
-class PlaceholderScreen(Screen):
+class PlaceholderScreen(Screen[Any]):
     """A placeholder screen showing that the feature is coming soon."""
 
     def compose(self) -> ComposeResult:
@@ -205,7 +205,7 @@ class HelpScreen(ModalScreen[None]):
             return []
         items: list[Static] = []
         items.append(Static(""))
-        items.append(Static(f"  \u2014 {self._screen_name or 'Screen'} Shortcuts \u2014", style=f"bold {INFO_BLUE}"))
+        items.append(Static(f"  \u2014 {self._screen_name or 'Screen'} Shortcuts \u2014"))
         for key, desc in bindings:
             items.append(self._render_binding(key, desc))
         return items
@@ -266,7 +266,7 @@ class NavSidebar(Static):
 # Build the SCREENS dict at class definition time.
 # Textual expects SCREENS values to be Screen subclasses or callables,
 # not instances — it instantiates them lazily on first push_screen().
-_BUILTIN_SCREENS: dict[str, Callable[[], Screen]] = {}
+_BUILTIN_SCREENS: dict[str, Callable[[], Screen[Any]]] = {}
 
 # Market screen — real implementation
 _BUILTIN_SCREENS["market"] = MarketScreen
@@ -290,12 +290,13 @@ _BUILTIN_SCREENS["evidence"] = EvidenceScreen
 for _idx, _label, _screen_id in NAV_ITEMS:
     if _screen_id in ("market", "paper", "risk", "strategy", "telemetry", "evidence"):
         continue  # already registered above
-    _BUILTIN_SCREENS[_screen_id] = lambda _lbl=_label, _sid=_screen_id: (
-        PlaceholderScreen(_lbl, screen_id=_sid)
-    )
+    def _make_placeholder(_lbl: str = _label, _sid: str = _screen_id) -> Screen[Any]:
+        return cast(Screen[Any], PlaceholderScreen(_lbl, screen_id=_sid))
+    _BUILTIN_SCREENS[_screen_id] = _make_placeholder
 
 
-class SigLabTUI(App):
+
+class SigLabTUI(App[None]):
     """SigLab Terminal UI — main application class.
 
     Provides a navigation shell with sidebar, content area, and status bar.
@@ -310,8 +311,7 @@ class SigLabTUI(App):
     # All styles (variables + per-screen) are consolidated in app.tcss.
     CSS_PATH = ["styles/app.tcss"]
 
-    # Register screens (placeholders for now, expanded in later features)
-    SCREENS: ClassVar[dict[str, Callable[[], Screen]]] = _BUILTIN_SCREENS
+    SCREENS: ClassVar[dict[str, Callable[[], Screen[Any]]]] = _BUILTIN_SCREENS
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit", "Quit", show=True),

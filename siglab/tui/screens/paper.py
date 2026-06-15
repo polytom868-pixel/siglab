@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -266,7 +266,7 @@ class OrderFormWidget(Static):
         Binding("enter", "submit_order", "Submit Order", show=False),
     ]
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._side: str = "BUY"
         self._order_type: str = "MARKET"
@@ -521,7 +521,7 @@ class PaperScreen(BaseScreen):
     _refresh_interval: ClassVar[float] = 15.0
     _api_client_class: ClassVar[type] = TuiApiClient
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._pnl_history: list[float] = []
         self._mark_prices: dict[str, float] = {}
@@ -558,11 +558,13 @@ class PaperScreen(BaseScreen):
 
         Kept as a separate method so tests can mock it independently.
         """
+        if self._api is None:
+            return None
         data = await self._api.list_paper_sessions()
         all_sessions = data.get("sessions", [])
         matches = [s for s in all_sessions if s.get("name") == name]
         if matches:
-            return sorted(matches, key=lambda s: s.get("created_at", 0))[-1]
+            return cast(dict[str, Any], sorted(matches, key=lambda s: s.get("created_at", 0))[-1])
         return None
 
     async def _init_session(self) -> None:
@@ -653,7 +655,7 @@ class PaperScreen(BaseScreen):
         Zero-copy: passes the positions list and mark_prices dict
         as references — no intermediate copies.
         """
-        def _update(w):
+        def _update(w: PositionsTableWidget) -> None:
             w.positions = positions
             w.mark_prices = self._mark_prices
         safe_query(self, "#positions-table", PositionsTableWidget, _update)
@@ -673,7 +675,7 @@ class PaperScreen(BaseScreen):
         the previous ``list(self._pnl_history)`` copy on every cycle.
         """
         # Update account summary — store reference to API response dict
-        def _update_summary(w):
+        def _update_summary(w: AccountSummaryWidget) -> None:
             w.pnl_data = pnl_data
             w.session_name = self.session_name
         safe_query(self, "#account-summary", AccountSummaryWidget, _update_summary)
@@ -693,6 +695,8 @@ class PaperScreen(BaseScreen):
 
     async def _place_order(self, params: dict[str, str]) -> None:
         """Place a paper order via the FastAPI HTTP client."""
+        if self._api is None:
+            return
         if not self.session_id:
             safe_query(self, "#order-form", OrderFormWidget,
                        lambda w: w.show_error("No active session"))
@@ -786,6 +790,8 @@ class PaperScreen(BaseScreen):
 
     async def _do_cancel_order(self, order_id: str) -> None:
         """Cancel an open paper order via the FastAPI HTTP client."""
+        if self._api is None:
+            return
         try:
             data = await self._api.cancel_paper_order(
                 self.session_id, order_id

@@ -6,6 +6,8 @@ across screen modules and ensure theme consistency.
 
 from __future__ import annotations
 
+from typing import Any, Callable
+
 __all__ = ["safe_float"]
 from rich.text import Text
 from siglab.utils import safe_float
@@ -422,7 +424,7 @@ def render_list_item(
         return result
 
 
-def safe_query(screen, widget_id: str, widget_type, fn=None):
+def safe_query(screen: Any, widget_id: str, widget_type: type[Any], fn: Callable[[Any], Any] | None = None) -> Any:
     """Safely query a widget and optionally apply a function to it.
 
     Eliminates the pervasive ``try: self.query_one(id, Type).fn()
@@ -448,10 +450,12 @@ def safe_query(screen, widget_id: str, widget_type, fn=None):
         return None
 
 
-def safe_update_text(screen, widget_id: str, text: str) -> None:
+def safe_update_text(screen: Any, widget_id: str, text: str) -> None:
     """Shorthand for ``safe_query`` on a ``Static`` widget ``update()``."""
     from textual.widgets import Static  # local import to avoid circular
-    safe_query(screen, widget_id, Static, lambda w: w.update(text))
+    def _do_update(w: Static) -> None:
+        w.update(text)
+    safe_query(screen, widget_id, Static, _do_update)
 
 
 def sanitize_status_text(text: str, max_len: int = 120) -> str:

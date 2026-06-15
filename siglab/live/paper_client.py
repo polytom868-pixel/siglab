@@ -28,7 +28,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -893,7 +893,7 @@ class SoDEXPaperPerpsClient:
                         self._fill_order(session, order, fill_price)
                 else:
                     self._fill_order(session, order, fill_price)
-                if order.status == PaperOrderStatus.FILLED:
+                if cast(PaperOrderStatus, order.status) == PaperOrderStatus.FILLED:
                     fills.append(order.to_dict())
 
         return fills
@@ -1226,7 +1226,7 @@ class SoDEXPaperPerpsClient:
         # Prefer JSON
         if json_path.exists():
             with open(json_path, "r") as f:
-                data = json.load(f)
+                data: Any = json.load(f)
             if not isinstance(data, dict):
                 raise PaperClientError(
                     f"expected dict in JSON file {json_path}, got {type(data).__name__}"
@@ -1235,7 +1235,7 @@ class SoDEXPaperPerpsClient:
 
         # Fall back to legacy npy
         if npy_path.exists():
-            data: Any = np.load(str(npy_path), allow_pickle=True)
+            data: Any = np.load(str(npy_path), allow_pickle=True)  # type: ignore[no-redef]
             if isinstance(data, np.ndarray) and data.ndim == 0:
                 data = data.item()
             if not isinstance(data, dict):

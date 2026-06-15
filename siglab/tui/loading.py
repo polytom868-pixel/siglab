@@ -10,6 +10,7 @@ from typing import Any
 
 from rich.text import Text
 from textual.reactive import reactive
+from textual.timer import Timer
 from textual.widgets import Static
 
 from siglab.tui.formatting import ACCENT_GREEN, TEXT_MUTED
@@ -48,8 +49,8 @@ class LoadingIndicator(Static):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._spinner_idx = 0
-        self._timer = None
+        self._timer: Timer | None = None
+        self._spinner_idx: int = 0
 
     def on_mount(self) -> None:
         """Start the spinner timer."""

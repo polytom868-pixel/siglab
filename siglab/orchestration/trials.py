@@ -4,6 +4,7 @@ import copy
 import math
 from collections.abc import Callable
 from typing import Any
+from siglab.utils import safe_float
 
 
 SCORE_COMPONENT_WEIGHTS: tuple[tuple[str, float], ...] = (
@@ -56,8 +57,8 @@ def score_diagnosis(
     biggest_drag: dict[str, Any] | None = None
 
     for key, weight in SCORE_COMPONENT_WEIGHTS:
-        spec_value = _float_or_none(spec_summary.get(key))
-        incumbent_value = _float_or_none(incumbent_summary.get(key))
+        spec_value = safe_float(spec_summary.get(key))
+        incumbent_value = safe_float(incumbent_summary.get(key))
         delta = None
         weighted_delta = None
         helped = False
@@ -84,8 +85,8 @@ def score_diagnosis(
 
     diagnostics: list[dict[str, Any]] = []
     for key in EXTRA_DIAGNOSTIC_COMPONENTS:
-        spec_value = _float_or_none(spec_summary.get(key))
-        incumbent_value = _float_or_none(incumbent_summary.get(key))
+        spec_value = safe_float(spec_summary.get(key))
+        incumbent_value = safe_float(incumbent_summary.get(key))
         diagnostics.append(
             {
                 "name": key,
@@ -105,8 +106,8 @@ def score_diagnosis(
         )
 
     aggregate_score_delta = None
-    spec_aggregate = _float_or_none(spec_summary.get("aggregate_score"))
-    incumbent_aggregate = _float_or_none(incumbent_summary.get("aggregate_score"))
+    spec_aggregate = safe_float(spec_summary.get("aggregate_score"))
+    incumbent_aggregate = safe_float(incumbent_summary.get("aggregate_score"))
     if spec_aggregate is not None and incumbent_aggregate is not None:
         aggregate_score_delta = spec_aggregate - incumbent_aggregate
 
@@ -131,7 +132,7 @@ def summarize_return_attribution(
 ) -> dict[str, Any]:
     summary = dict(summary or {})
     canonical_run = dict(canonical_run or {})
-    total_return = _float_or_none(summary.get("pre_audit_canonical_total_return"))
+    total_return = safe_float(summary.get("pre_audit_canonical_total_return"))
     if total_return is None:
         total_return = _canonical_total_return(canonical_run)
 
@@ -187,12 +188,12 @@ def summarize_generalization(
     tuned_params = dict(tuned_params or {})
     stability_pack = dict(stability_pack or {})
 
-    aggregate_score = _float_or_none(summary.get("aggregate_score"))
-    validation_total_return = _float_or_none(summary.get("validation_total_return"))
-    pre_audit_total_return = _float_or_none(summary.get("pre_audit_canonical_total_return"))
-    audit_total_return = _float_or_none(summary.get("audit_total_return"))
+    aggregate_score = safe_float(summary.get("aggregate_score"))
+    validation_total_return = safe_float(summary.get("validation_total_return"))
+    pre_audit_total_return = safe_float(summary.get("pre_audit_canonical_total_return"))
+    audit_total_return = safe_float(summary.get("audit_total_return"))
     audit_available = bool(summary.get("audit_available")) if "audit_available" in summary else audit_total_return is not None
-    active_bar_fraction = _float_or_none(
+    active_bar_fraction = safe_float(
         summary.get("active_bar_fraction", summary.get("policy_active_bar_fraction"))
     )
     canonical_run = dict(evaluation.get("canonical_run") or {})
@@ -209,9 +210,9 @@ def summarize_generalization(
         pre_audit_total_return=pre_audit_total_return,
     )
     window_variation = _selector_window_variation(evaluation)
-    selector_return_std = _float_or_none(window_variation.get("return_std"))
-    selector_sharpe_std = _float_or_none(window_variation.get("sharpe_std"))
-    selector_profitable_window_pct = _float_or_none(
+    selector_return_std = safe_float(window_variation.get("return_std"))
+    selector_sharpe_std = safe_float(window_variation.get("sharpe_std"))
+    selector_profitable_window_pct = safe_float(
         window_variation.get("profitable_window_pct", summary.get("profitable_window_pct"))
     )
     extreme_param_penalty = _extreme_param_penalty(
@@ -279,7 +280,7 @@ def summarize_generalization(
         if low_bar_shortfall > 0.0
         else 0.0
     )
-    stability_penalty = _float_or_none(stability_pack.get("stability_penalty")) or 0.0
+    stability_penalty = safe_float(stability_pack.get("stability_penalty")) or 0.0
 
     fragility_penalty = (
         negative_validation_penalty
@@ -358,10 +359,10 @@ def deployment_rank(
     summary = dict(summary or {})
     trial_context = dict(trial_context or {})
     return (
-        _float_or_none(trial_context.get("deployment_score")) or -1e18,
-        _float_or_none(summary.get("aggregate_score")) or -1e18,
-        _float_or_none(summary.get("validation_total_return")) or -1e18,
-        _float_or_none(summary.get("pre_audit_canonical_total_return")) or -1e18,
+        safe_float(trial_context.get("deployment_score")) or -1e18,
+        safe_float(summary.get("aggregate_score")) or -1e18,
+        safe_float(summary.get("validation_total_return")) or -1e18,
+        safe_float(summary.get("pre_audit_canonical_total_return")) or -1e18,
     )
 
 
@@ -471,9 +472,7 @@ def _format_patch_value(value: Any) -> str:
     return str(value)
 
 
-def _float_or_none(value: Any) -> float | None:
-    from siglab.utils import safe_float
-    return safe_float(value)
+_float_or_none = safe_float
 
 
 def _component_brief(component: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -530,7 +529,7 @@ def _nearest_miss_analysis(
 
 
 def _fmt_delta(value: Any) -> str:
-    numeric = _float_or_none(value)
+    numeric = safe_float(value)
     if numeric is None:
         return "n/a"
     sign = "+" if numeric >= 0.0 else ""
@@ -538,7 +537,7 @@ def _fmt_delta(value: Any) -> str:
 
 
 def _delta_direction(value: Any) -> str:
-    numeric = _float_or_none(value)
+    numeric = safe_float(value)
     if numeric is None:
         return "was unavailable"
     if numeric > 0.0:
@@ -556,8 +555,8 @@ def _canonical_total_return(canonical_run: dict[str, Any]) -> float | None:
     values = list(equity_curve.get("values") or [])
     if not values:
         return None
-    first = _float_or_none(values[0])
-    last = _float_or_none(values[-1])
+    first = safe_float(values[0])
+    last = safe_float(values[-1])
     if first is None or first == 0.0 or last is None:
         return None
     return (last / first) - 1.0
@@ -575,7 +574,7 @@ def _metric_total(frame: Any, column_name: str, *, use_last: bool = False) -> fl
     for row in rows:
         if not isinstance(row, list) or index >= len(row):
             continue
-        value = _float_or_none(row[index])
+        value = safe_float(row[index])
         if value is not None:
             values.append(value)
     if not values:
@@ -595,7 +594,7 @@ def _metric_mean(frame: Any, column_name: str) -> float | None:
     for row in rows:
         if not isinstance(row, list) or index >= len(row):
             continue
-        value = _float_or_none(row[index])
+        value = safe_float(row[index])
         if value is not None:
             values.append(value)
     if not values:
@@ -645,7 +644,7 @@ def _selector_window_variation(evaluation: dict[str, Any]) -> dict[str, float | 
     returns = [
         value
         for value in (
-            _float_or_none(dict(row.get("stats") or {}).get("total_return"))
+            safe_float(dict(row.get("stats") or {}).get("total_return"))
             for row in rows
         )
         if value is not None
@@ -653,7 +652,7 @@ def _selector_window_variation(evaluation: dict[str, Any]) -> dict[str, float | 
     sharpe = [
         value
         for value in (
-            _float_or_none(dict(row.get("stats") or {}).get("sharpe"))
+            safe_float(dict(row.get("stats") or {}).get("sharpe"))
             for row in rows
         )
         if value is not None
@@ -715,9 +714,9 @@ def _normalized_param_position(
     high: Any,
     log: bool,
 ) -> float | None:
-    numeric = _float_or_none(value)
-    low_value = _float_or_none(low)
-    high_value = _float_or_none(high)
+    numeric = safe_float(value)
+    low_value = safe_float(low)
+    high_value = safe_float(high)
     if numeric is None or low_value is None or high_value is None or high_value <= low_value:
         return None
     if log and numeric > 0.0 and low_value > 0.0 and high_value > 0.0:
@@ -735,8 +734,8 @@ def _return_driver_label(
     price_contribution: float | None,
     carry_contribution: float | None,
 ) -> str:
-    price_abs = abs(_float_or_none(price_contribution) or 0.0)
-    carry_abs = abs(_float_or_none(carry_contribution) or 0.0)
+    price_abs = abs(safe_float(price_contribution) or 0.0)
+    carry_abs = abs(safe_float(carry_contribution) or 0.0)
     if price_abs < 1e-9 and carry_abs < 1e-9:
         return "mixed"
     if price_abs > carry_abs * 1.5:
@@ -866,7 +865,7 @@ def _fragility_label(
         return "fragile"
     if stability_pack and (
         str(stability_pack.get("status") or "") != "ok"
-        or (_float_or_none(stability_pack.get("passed_fraction")) or 0.0) < 1.0
+        or (safe_float(stability_pack.get("passed_fraction")) or 0.0) < 1.0
     ):
         return "fragile"
     if fragility_penalty >= 1.5:

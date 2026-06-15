@@ -395,6 +395,8 @@ class MarketScreen(BaseScreen):
 
     async def _fetch_tickers(self) -> None:
         """Fetch ticker data and update symbol list + ticker table."""
+        if self._api is None:
+            return
         data = await self._api.get_market_tickers()
         tickers = data.get("tickers", [])
         if tickers:
@@ -410,6 +412,8 @@ class MarketScreen(BaseScreen):
 
     async def _fetch_klines(self) -> None:
         """Fetch kline data for the current symbol."""
+        if self._api is None:
+            return
         data = await self._api.get_market_klines(
             self.current_symbol, DEFAULT_INTERVAL, KLINES_LIMIT
         )
@@ -421,6 +425,8 @@ class MarketScreen(BaseScreen):
 
     async def _fetch_orderbook(self) -> None:
         """Fetch order book for the current symbol."""
+        if self._api is None:
+            return
         data = await self._api.get_market_orderbook(
             self.current_symbol, ORDERBOOK_LIMIT
         )

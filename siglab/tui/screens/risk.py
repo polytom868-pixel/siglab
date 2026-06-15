@@ -369,10 +369,10 @@ class RiskScreen(BaseScreen):
     _refresh_interval: ClassVar[float] = 15.0
     _api_client_class: ClassVar[type] = TuiApiClient
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._all_alerts: list[dict[str, Any]] = []
-        self._ws_task: asyncio.Task | None = None
+        self._ws_task: asyncio.Task[None] | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="risk-layout"):
@@ -403,6 +403,8 @@ class RiskScreen(BaseScreen):
 
     async def _ws_risk_loop(self) -> None:
         """Subscribe to risk_score WebSocket updates in background."""
+        if self._api is None:
+            return
         backoff = 1.0
         max_backoff = 30.0
         while True:
@@ -422,10 +424,10 @@ class RiskScreen(BaseScreen):
             # Update gauge
             composite = msg.get("composite_score")
             strategy_count = msg.get("strategy_count", 0)
-            safe_query(self, "#risk-gauge", RiskGaugeWidget, lambda w: (
-                setattr(w, "composite_score", composite),
-                setattr(w, "strategy_count", strategy_count),
-            ))
+            def _update_gauge_from_ws(w: RiskGaugeWidget) -> None:
+                w.composite_score = composite
+                w.strategy_count = strategy_count
+            safe_query(self, "#risk-gauge", RiskGaugeWidget, _update_gauge_from_ws)
 
             # Update drawdown
             safe_query(self, "#risk-drawdown", DrawdownSparklineWidget,
@@ -457,18 +459,20 @@ class RiskScreen(BaseScreen):
         references to widget reactive attributes.  Lists from the
         response are stored as-is (no intermediate copies).
         """
+        if self._api is None:
+            return
         try:
             data = await self._api.get_risk()
 
             # Update composite score gauge — pass references
-            def _update_gauge(w):
+            def _update_gauge(w: RiskGaugeWidget) -> None:
                 w.composite_score = data.get("composite_score")
                 w.sub_scores = data.get("sub_scores", {})
                 w.strategy_count = int(data.get("strategy_count", 0))
             safe_query(self, "#risk-gauge", RiskGaugeWidget, _update_gauge)
 
             # Update drawdown sparkline — pass references
-            def _update_dd(w):
+            def _update_dd(w: DrawdownSparklineWidget) -> None:
                 w.drawdown_history = data.get("drawdown_history", [])
                 w.max_drawdown = data.get("max_drawdown")
                 w.current_drawdown = data.get("current_drawdown")
@@ -476,7 +480,7 @@ class RiskScreen(BaseScreen):
             safe_query(self, "#risk-drawdown", DrawdownSparklineWidget, _update_dd)
 
             # Update correlation matrix — pass references
-            def _update_corr(w):
+            def _update_corr(w: CorrelationHeatmapWidget) -> None:
                 w.matrix = data.get("correlation_matrix")
                 w.strategy_names = data.get("strategy_names", [])
             safe_query(self, "#risk-correlation", CorrelationHeatmapWidget, _update_corr)

@@ -5,11 +5,13 @@ import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol, cast
 
-from eth_utils import keccak
+from eth_utils import keccak  # type: ignore[attr-defined]
 from eth_account import Account
 from eth_account.messages import encode_typed_data
+__all__ = ["keccak"]
+
 
 
 SUPPORTED_SODEX_SIGNED_ACTIONS = frozenset(
@@ -94,7 +96,7 @@ class SoDEXNonceManager:
         self,
         *,
         store_path: Path | None = None,
-        now_ms: callable | None = None,
+        now_ms: Callable[[], int] | None = None,
         window_past_ms: int = 2 * 24 * 60 * 60 * 1000,
         window_future_ms: int = 24 * 60 * 60 * 1000,
         high_water_size: int = 64,
@@ -203,7 +205,7 @@ def validate_action_payload(payload: OrderedDict[str, Any]) -> None:
 
 def http_body_from_action_payload(payload: OrderedDict[str, Any]) -> OrderedDict[str, Any]:
     validate_action_payload(payload)
-    return payload["params"]
+    return cast("OrderedDict[str, Any]", payload["params"])
 
 
 def build_eip712_domain(*, domain: str, environment: str = "mainnet") -> dict[str, Any]:

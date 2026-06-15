@@ -619,6 +619,8 @@ class TelemetryScreen(BaseScreen):
 
     async def _fetch_ops_board(self) -> None:
         """Fetch ops-board data from FastAPI."""
+        if self._api is None:
+            return
         try:
             data = await self._api.get_ops_board()
             self._ops_data = data
@@ -651,8 +653,7 @@ class TelemetryScreen(BaseScreen):
                    lambda w: setattr(w, "telemetry_data", data))
 
     def _update_service_health(self, data: dict[str, Any]) -> None:
-        """Update the service health widget."""
-        def _update(w):
+        def _update(w: ServiceHealthWidget) -> None:
             w.service_health = data.get("service_health", {})
             w.artifact_status = data.get("artifact_status", {})
         safe_query(self, "#service-health", ServiceHealthWidget, _update)

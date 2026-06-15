@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import time
 from contextlib import asynccontextmanager
-from typing import Any
+from pathlib import Path
+from typing import Any, AsyncIterator
+
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +22,7 @@ class WebSocketManager:
     def __init__(self) -> None:
         self._connections: set[Any] = set()
         self._subscriptions: dict[str, set[Any]] = {}
-        self._update_task: asyncio.Task | None = None
+        self._update_task: asyncio.Task[None] | None = None
 
     def register(self, websocket: Any) -> None:
         self._connections.add(websocket)
@@ -61,14 +63,14 @@ class DashboardState:
                 from siglab.data.store import ParquetLake
 
                 lake_dir = self.config.data_lake_dir if self.config else "data/cache"
-                self._sodex_feeds = SoDEXFeeds(ParquetLake(lake_dir))
+                self._sodex_feeds = SoDEXFeeds(ParquetLake(Path(lake_dir)))
             except Exception:
                 return None
         return self._sodex_feeds
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan: load config and open lineage store on startup."""
     state = DashboardState()
     try:

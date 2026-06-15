@@ -4,7 +4,7 @@ import copy
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -1638,7 +1638,7 @@ def _stack_frame(frame: pd.DataFrame | pd.Series) -> pd.Series:
     if isinstance(frame, pd.Series):
         return pd.to_numeric(frame, errors="coerce").dropna()
     if isinstance(frame, pd.DataFrame):
-        return frame.apply(pd.to_numeric, errors="coerce").stack(future_stack=True).dropna()
+        return cast(pd.Series, frame.apply(pd.to_numeric, errors="coerce").stack(future_stack=True).dropna())
     return pd.Series(dtype=float)
 
 
@@ -1653,13 +1653,11 @@ def _coerce_float(value: Any) -> float | None:
 
 
 def _frame_pair_stats(feature_frame: pd.DataFrame, target_frame: pd.DataFrame) -> dict[str, Any]:
-    aligned = pd.concat(
-        [
-            feature_frame.stack(future_stack=True).rename("feature"),
-            target_frame.stack(future_stack=True).rename("target"),
-        ],
-        axis=1,
-    ).dropna()
+    feature_series = cast("pd.Series[Any]", feature_frame.stack(future_stack=True))
+    target_series = cast("pd.Series[Any]", target_frame.stack(future_stack=True))
+    feature_series.name = "feature"
+    target_series.name = "target"
+    aligned = pd.concat([feature_series, target_series], axis=1).dropna()
     if aligned.empty:
         return {
             "rows": 0,
