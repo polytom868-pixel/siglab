@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from itertools import count
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from siglab.config import load_settings
 from siglab.data import MarketDataProvider, ParquetLake
@@ -182,8 +182,8 @@ async def run_command(args: argparse.Namespace) -> None:
     custom_symbols = _parse_symbol_override(getattr(args, "symbols", None))
 
     if custom_symbols is not None:
-        _validate_symbol_override(settings, custom_symbols)
-
+        provider = MarketDataProvider(settings, build_run_context(settings).lake)
+        await _validate_symbol_override(provider=provider, custom_symbols=custom_symbols)
     use_historical_seeds = bool(getattr(args, "use_historical_seeds", False))
     memory_scope = getattr(args, "memory_scope", None) or "session_local"
     skip_llm = bool(getattr(args, "skip_llm", False))
@@ -193,10 +193,13 @@ async def run_command(args: argparse.Namespace) -> None:
         else None
     )
 
-    tracks = (
-        list(settings.tracks)
-        if args.track == "all"
-        else [resolve_track(args.track)]
+    tracks = cast(
+        list[str],
+        (
+            list(settings.tracks)
+            if args.track == "all"
+            else [resolve_track(args.track)]
+        ),
     )
     for track in tracks:
         track_iterations = int(getattr(args, "iterations", 1) or 1)
@@ -243,6 +246,8 @@ async def _run_iterations(
     claude = ctx.claude
     web_researcher = WebResearcher(settings, ctx.lake)
     ancestry = ctx.ancestry
+    assert claude is not None, "build_run_context must yield a Claude client"
+    assert ancestry is not None, "build_run_context must yield a LineageStore"
     mutator = SpecMutator(settings, claude)
     planner = ResearchPlannerRunner(settings, claude, web_researcher)
     writer = SpecWriterRunner(settings, claude)
@@ -250,10 +255,13 @@ async def _run_iterations(
     hooks = WorkspaceHooks(settings)
     workspace = WorkspaceBuilder(settings)
     evaluator = ResearchEvaluator(settings)
-    run_session_id = _resolve_resume_run(
-        ancestry=ancestry,
-        track=track,
-        resume_session_id=resume_run_session_id,
+    run_session_id = (
+        _resolve_resume_run(
+            settings=settings,
+            run_session_id=resume_run_session_id or "default",
+        )["workspace_root"].name
+        if resume_run_session_id
+        else "default"
     )
     phase_label = "burn_in" if burn_in_iterations > 0 else "main"
     resume_safe_check_enabled = bool(loop_policy.get("resume_safe_check"))
@@ -407,7 +415,7 @@ async def _run_iterations(
             credit_stop = _credit_budget_stop_payload_internal(
                 claude=claude,
                 loop_policy=loop_policy,
-                run_label=run_label,
+                run_label=run_label or "",
                 runner_label=runner_label,
                 phase_label=phase_label,
                 next_iteration=iteration_number + 1,
@@ -630,7 +638,7 @@ async def _reflect_on_iteration(
         ancestry=ancestry,
         evaluation=evaluation,
         parent_hash=parent_hash,
-        experiment_card_ref=experiment_card_ref,
+        experiment_card_ref=cast(str | None, experiment_card_ref),
         workspace_session=workspace_session,
         current_state=current_state,
         trial_context=trial_context,
@@ -848,13 +856,14 @@ async def inspect_command(args: argparse.Namespace) -> None:
     provider = MarketDataProvider(settings, ctx.lake)
     claude = ctx.claude
     web_researcher = WebResearcher(settings, ctx.lake)
-    mutator = SpecMutator(settings, claude)
     ancestry = ctx.ancestry
-
-    tracks = (
-        list(settings.tracks)
+    assert claude is not None, "build_run_context must yield a Claude client"
+    assert ancestry is not None, "build_run_context must yield a LineageStore"
+    mutator = SpecMutator(settings, claude)
+    tracks: list[str] = (
+        [str(track) for track in list(settings.tracks)]
         if args.track == "all"
-        else [resolve_track(args.track)]
+        else [str(resolve_track(args.track))]
     )
     try:
         for track in tracks:
@@ -979,7 +988,7 @@ def _write_provider_metrics_artifact_internal(
     jsonl_path = metrics_dir / f"{run_session_id}.jsonl"
     with jsonl_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=True, default=str) + "\n")
-    return jsonl_path
+    return cast(Path, jsonl_path)
 
 
 def _resume_safe_check_internal(*, settings: Any, run_session_id: str) -> None:

@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from siglab.io_utils import json_safe, load_json_path
@@ -75,8 +75,8 @@ class DashboardApp:
         cache = self._json_cache()
         cache_key = str(path)
         if cache_key in cache:
-            return cache[cache_key]
-        payload = load_json_path(path)
+            return cast(dict[str, Any] | None, cache[cache_key])
+        payload: dict[str, Any] | None = load_json_path(path)
         cache[cache_key] = payload
         return payload
 
@@ -328,14 +328,14 @@ class DashboardApp:
         experiments = [row for row in scoped_rows if not family or row["family"] == family]
         runs = self.runs_payload(track=track, family=family)["runs"]
 
-        summary = {
+        summary: dict[str, Any] = {
             "experiment_count": len(experiments),
             "run_count": len(runs),
             "benchmark_run_count": sum(1 for row in runs if row.get("benchmark_mode")),
             "harness_run_count": sum(1 for row in runs if not row.get("benchmark_mode")),
             "deployd_count": sum(1 for row in experiments if row["deployd"]),
             "tool_traced_count": sum(1 for row in experiments if row.get("tool_trace", {}).get("tool_calls")),
-            "tracks": {},
+            "tracks": cast(dict[str, dict[str, Any]], {}),
             "families": sorted({row["family"] for row in scoped_rows}),
         }
         for track_name in sorted({row["track"] for row in experiments}):

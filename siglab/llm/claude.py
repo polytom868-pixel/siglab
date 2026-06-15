@@ -6,7 +6,7 @@ import time
 import uuid
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Sequence
+from typing import Any, Awaitable, Callable, Sequence, cast
 
 import httpx
 
@@ -997,7 +997,7 @@ class ClaudeClient:
         block_match = _JSON_BLOCK_RE.search(spec)
         if block_match:
             spec = block_match.group(1)
-        return json.loads(spec)
+        return cast(dict[str, Any], json.loads(spec))
 
 
 def _compact_scalar(value: Any) -> Any:

@@ -566,13 +566,13 @@ class SpecWriterRunner:
         regime_gates = self._dict_or_empty(normalized.get("regime_gates"))
         if not regime_gates:
             normalized["regime_gates"] = {"entry": [], "exit_on_break": False}
-            return normalized
+            return cast(dict[str, Any], normalized)
         entry = regime_gates.get("entry")
         if entry is None or entry == []:
             regime_gates["entry"] = []
             regime_gates["exit_on_break"] = False
         normalized["regime_gates"] = regime_gates
-        return normalized
+        return cast(dict[str, Any], normalized)
 
     def _repair_prompt(
         self,
@@ -761,7 +761,7 @@ class SpecWriterRunner:
         return self.MAX_ATTEMPTS
 
     def _clone_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return json_clone(payload)
+        return cast(dict[str, Any], json_clone(payload))
 
     def _load_planner_contract(
         self,
@@ -847,7 +847,7 @@ class SpecWriterRunner:
         regime_gates = self._dict_or_empty(normalized.get("regime_gates"))
         actual_entries = list(regime_gates.get("entry") or [])
         if not actual_entries:
-            return normalized
+            return cast(dict[str, Any], normalized)
         rewritten_entries: list[Any] = []
         for gate in actual_entries:
             gate_expression = ""
@@ -883,7 +883,7 @@ class SpecWriterRunner:
             rewritten_entries.append(rewritten)
         regime_gates["entry"] = rewritten_entries
         normalized["regime_gates"] = regime_gates
-        return normalized
+        return cast(dict[str, Any], normalized)
 
     def _cookbook_paths(self, *, session: WorkspaceSession, family: str) -> list[Path]:
         prompt_module = family_prompt_module(self.mutator._family_spec(session.track, family)) or ""

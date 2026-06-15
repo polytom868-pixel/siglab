@@ -13,7 +13,7 @@ helpers bridge the engine to ``SoDEXPaperPerpsClient`` sessions.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -258,11 +258,11 @@ def _compute_trade_pnl(order: Any, prior_position: float, prior_entry: float) ->
     if prior_position > 0 and order.side == PaperOrderSide.SELL:
         # Reducing long
         close_qty = min(qty, prior_position)
-        return close_qty * (fill_price - prior_entry)
+        return cast(float, close_qty * (fill_price - prior_entry))
     elif prior_position < 0 and order.side == PaperOrderSide.BUY:
         # Reducing short
         close_qty = min(qty, abs(prior_position))
-        return close_qty * (prior_entry - fill_price)
+        return cast(float, close_qty * (prior_entry - fill_price))
 
     return 0.0
 
@@ -445,7 +445,7 @@ def extract_daily_metrics(
     # Group by day
     from collections import defaultdict
 
-    day_orders: dict[str, list] = defaultdict(list)
+    day_orders: dict[str, list[Any]] = defaultdict(list)
     for order in filled_orders:
         day = _ts_to_day_key(order.fill_timestamp)  # type: ignore[arg-type]
         day_orders[day].append(order)

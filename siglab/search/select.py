@@ -4,7 +4,7 @@ import dataclasses
 import math
 import random
 from collections import defaultdict
-from typing import Any
+from typing import Any, cast
 
 from siglab.schemas import SignalSpec
 from siglab.evaluation.score import _bounded
@@ -215,7 +215,7 @@ def _archive_counts(rows: list[dict[str, Any]]) -> dict[str, defaultdict[str, in
     return counts
 
 
-def _param_distance(a_params: dict, b_params: dict) -> float:
+def _param_distance(a_params: dict[str, Any], b_params: dict[str, Any]) -> float:
     """Compute normalized distance between numeric params."""
     shared = set(a_params or {}) & set(b_params or {})
     if not shared:
@@ -233,7 +233,7 @@ def _descriptor_novelty(
     *,
     payload: dict[str, Any],
     archive_counts: dict[str, defaultdict[str, int]],
-    same_cell_params: list[dict] | None = None,
+    same_cell_params: list[dict[str, Any]] | None = None,
 ) -> float:
     descriptor = _spec_descriptor(payload)
     parts = [
@@ -390,7 +390,7 @@ def pick_deterministic_parent(
         other = _RNG.choice([spec for spec, _ in frontier if spec.strategy_hash() != chosen.strategy_hash()])
         child_dict = crossover_specs(chosen.canonical_dict(), other.canonical_dict())
         return SignalSpec.from_dict(child_dict)
-    return chosen
+    return cast(SignalSpec, chosen)
 
 
 def rank_deterministic_specs(
@@ -528,9 +528,8 @@ def plurality_select(specs: list[SignalSpec], k: int = 1) -> SignalSpec:
     merged_params: dict[str, Any] = {}
     for key in param_keys:
         values = [
-            float((spec.params or {}).get(key))
+            float((spec.params or {}).get(key, 0.0) or 0.0)
             for spec in specs
-            if (spec.params or {}).get(key) is not None
         ]
         if values:
             merged_params[key] = sum(values) / len(values)

@@ -163,6 +163,8 @@ class LiveDeploymentManager:
         runner_response: dict[str, Any] | None = None
         normalized_job_name = job_name or f"{strategy_name}-update"
         if schedule:
+            assert interval_seconds is not None
+            assert wallet_label is not None
             runner_response = self._ensure_runner_job(
                 strategy_name=strategy_name,
                 job_name=normalized_job_name,

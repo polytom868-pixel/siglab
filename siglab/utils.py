@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import math
 import hashlib
-from typing import Any
+from typing import Any, Awaitable, Callable, cast
+
 
 
 def percentile(values: list[float], percentile: int) -> float | None:
@@ -77,21 +78,21 @@ def short_hash(payload: str, length: int = 16) -> str:
     return h(payload.encode("utf-8")).hexdigest()[:length]
 
 
-async def _get_url(url, **kw) -> dict:
+async def _get_url(url: str, **kw: Any) -> dict[str, Any]:
     import aiohttp
     async with aiohttp.ClientSession() as session:
         async with session.get(url, **kw) as resp:
-            return await resp.json()
+            return cast(dict[str, Any], await resp.json())
 
 
-async def _post_url(url, payload, **kw) -> dict:
+async def _post_url(url: str, payload: dict[str, Any], **kw: Any) -> dict[str, Any]:
     import aiohttp
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload, **kw) as resp:
-            return await resp.json()
+            return cast(dict[str, Any], await resp.json())
 
 
-async def run_with_backoff(coro_factory, *, max_retries=3, backoff_s=1.0) -> Any:
+async def run_with_backoff(coro_factory: Callable[[], Awaitable[Any]], *, max_retries: int = 3, backoff_s: float = 1.0) -> Any:
     import asyncio
     attempt = 0
     while True:
@@ -104,7 +105,7 @@ async def run_with_backoff(coro_factory, *, max_retries=3, backoff_s=1.0) -> Any
             await asyncio.sleep(backoff_s * (2 ** (attempt - 1)))
 
 
-async def async_limiter_call(callable, *, rate_limit: int = 20) -> Any:
+async def async_limiter_call(callable: Callable[[], Awaitable[Any]], *, rate_limit: int = 20) -> Any:
     import asyncio
     sem = asyncio.Semaphore(rate_limit)
     async with sem:

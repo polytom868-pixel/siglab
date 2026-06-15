@@ -10,7 +10,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from siglab.path_utils import resolve_path_from_root
 
@@ -105,7 +105,7 @@ def float_or_none(value: Any) -> float | None:
 def load_json_if_exists(path: Path | None) -> dict[str, Any] | None:
     if path is None or not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
 def split_cli_list(value: str) -> list[str]:
@@ -325,7 +325,7 @@ def display_deployment_record(*, settings: Any, record: dict[str, Any]) -> dict[
 def display_path_static(value: Any, root_dir: Path) -> str:
     """Resolve a path for display, relative to root_dir if possible."""
     from siglab.path_utils import display_path as _dp
-    return _dp(value, root_dir=root_dir)
+    return cast(str, _dp(value, root_dir=root_dir))
 
 
 def strip_audit_fields(payload: Any) -> Any:
@@ -352,7 +352,7 @@ def agent_safe_recent_results(rows: list[dict[str, Any]]) -> list[dict[str, Any]
 
 
 def agent_safe_memory_packet(packet: dict[str, Any]) -> dict[str, Any]:
-    return strip_audit_fields(dict(packet or {}))
+    return cast(dict[str, Any], strip_audit_fields(dict(packet or {})))
 
 
 def tool_only_external_research(*, web_researcher: Any) -> dict[str, Any]:
@@ -395,7 +395,7 @@ def incumbent_detail(
     spec_hash = str(best.get("spec_hash") or "")
     if not spec_hash:
         return None
-    return ancestry.experiment_detail(spec_hash)
+    return cast(dict[str, Any] | None, ancestry.experiment_detail(spec_hash))
 
 
 def base_spec_payload_for_family(
@@ -532,7 +532,7 @@ def write_artifact(
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     target = target_dir / f"{timestamp}_{evaluation['spec_hash']}.json"
     write_json(target, evaluation)
-    return target
+    return cast(Path, target)
 
 
 def parse_family_scope(

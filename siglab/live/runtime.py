@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from siglab.data import MarketDataProvider, ParquetLake
 from siglab.evaluator.compile import compile_spec
@@ -186,6 +186,11 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         self.live_spec: dict[str, Any] = {}
         self.spec: SignalSpec | None = None
         self.sodex_adapter: SoDEXExecutionAdapter | None = None
+
+    def _get_strategy_wallet_address(self) -> str:
+        runtime = dict(self.live_spec.get("runtime") or {})
+        address = runtime.get("wallet_address") or runtime.get("address") or ""
+        return str(address)
 
     async def setup(self) -> None:
         self.live_spec = self._load_live_spec()
@@ -472,7 +477,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         spec_path = self._spec_path()
         if not spec_path.exists():
             raise FileNotFoundError(f"Live spec not found: {spec_path}")
-        return json.loads(spec_path.read_text())
+        return cast(dict[str, Any], json.loads(spec_path.read_text()))
 
     def _spec_path(self) -> Path:
         if isinstance(self.SPEC_PATH, Path):

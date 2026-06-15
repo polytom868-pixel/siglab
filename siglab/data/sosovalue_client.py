@@ -8,7 +8,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from siglab.utils import percentile as _percentile
@@ -687,7 +687,7 @@ class SoSoValueClient:
 
     def _backoff_s(self, attempt: int) -> float:
         base = min(2.0, 0.25 * (2**attempt))
-        return float(base + random.uniform(0.0, base * 0.25))
+        return cast(float, base + random.uniform(0.0, base * 0.25))
 
     def _verify_config(self) -> ssl.SSLContext | bool:
         if self.verify is not None:

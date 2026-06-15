@@ -85,27 +85,27 @@ PAIR_CARRY_REGIME_FEATURES = [
 ]
 
 
-def crossover_specs(a_dict: dict, b_dict: dict) -> dict:
+def crossover_specs(a_dict: dict[str, Any], b_dict: dict[str, Any]) -> dict[str, Any]:
     """Uniform crossover on discrete fields, average on numeric params."""
-    child = {}
+    child: dict[str, Any] = {}
     for key in set(a_dict) | set(b_dict):
         va, vb = a_dict.get(key), b_dict.get(key)
         if key == "features":
             pool = list(set(va or []) | set(vb or []))
             child[key] = random.sample(pool, min(len(pool), max(len(va or []), 1)))
         elif key == "params" and isinstance(va, dict) and isinstance(vb, dict):
-            merged = {}
+            merged: dict[str, Any] = {}
             for pk in set(va) | set(vb):
                 pa, pb = va.get(pk), vb.get(pk)
                 if isinstance(pa, (int, float)) and isinstance(pb, (int, float)):
                     merged[pk] = (pa + pb) / 2.0
                 else:
-                    merged[pk] = random.choice([pa, pb])
+                    merged[pk] = random.choice([pa, pb]) if pa is not None and pb is not None else (pa or pb)
             child[key] = merged
         elif key == "family":
-            child[key] = random.choice([va, vb])
+            child[key] = random.choice([va, vb]) if va is not None and vb is not None else (va or vb)
         else:
-            child[key] = random.choice([va, vb])
+            child[key] = random.choice([va, vb]) if va is not None and vb is not None else (va or vb)
     return child
 
 
@@ -206,6 +206,7 @@ class SpecMutator:
         if include_historical is None:
             include_historical = bool(getattr(self.settings, "use_historical_seeds", False))
         if include_historical:
+            assert canonical_track is not None
             rows = self._merge_historical_seed_specs(
                 rows=rows,
                 track=canonical_track,

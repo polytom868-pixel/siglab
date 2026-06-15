@@ -17,6 +17,17 @@ from siglab.evaluation.strategy_semantics import (
     supports_explicit_trade_style,
 )
 
+__all__ = [
+    "feature_roles_for_formula",
+    "motif_signature",
+    "MOMENTUM_KEYWORDS",
+    "NON_REGIME_ROLES",
+    "spec_feature_roles",
+    "dict_or_empty",
+    "gate_dimensions",
+    "normalized_gate_entries",
+    "supports_explicit_trade_style",
+]
 
 # ---------------------------------------------------------------------------
 # Typed orchestration contracts — replace untyped dict[str, Any] pipeline
