@@ -53,6 +53,7 @@ class SigLabStatusBar(Widget):
     }
     """
 
+    BINDINGS = [("?", "help", "Show help")]
     def __init__(
         self,
         version: str = "0.1.0",

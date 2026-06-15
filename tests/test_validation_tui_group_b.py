@@ -678,20 +678,18 @@ class TestVAL_TUI_004_OrderPlacementFlow:
             "status": "OPEN",
         })
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 0
-            mock_exec.return_value = mock_proc
-
-            with patch("asyncio.wait_for", new_callable=AsyncMock, return_value=(order_result.encode(), b"")):
-                with patch.object(screen, "_refresh_all", new_callable=AsyncMock):
-                    params = {
-                        "symbol": "BTC-USD",
-                        "side": "BUY",
-                        "quantity": "0.5",
-                        "order_type": "MARKET",
-                    }
-                    await screen._place_order(params)
+        with patch.object(
+            screen._api, "place_paper_order", new_callable=AsyncMock,
+            return_value=json.loads(order_result),
+        ):
+            with patch.object(screen, "_refresh_all", new_callable=AsyncMock):
+                params = {
+                    "symbol": "BTC-USD",
+                    "side": "BUY",
+                    "quantity": "0.5",
+                    "order_type": "MARKET",
+                }
+                await screen._place_order(params)
 
         mock_form.show_success.assert_called_once()
         success_msg = mock_form.show_success.call_args[0][0]
@@ -727,19 +725,17 @@ class TestVAL_TUI_004_OrderPlacementFlow:
         mock_form = MagicMock()
         screen.query_one = MagicMock(return_value=mock_form)
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 1
-            mock_exec.return_value = mock_proc
-
-            with patch("asyncio.wait_for", new_callable=AsyncMock, return_value=(b"", b"Order failed")):
-                params = {
-                    "symbol": "BTC-USD",
-                    "side": "BUY",
-                    "quantity": "0.5",
-                    "order_type": "MARKET",
-                }
-                await screen._place_order(params)
+        with patch.object(
+            screen._api, "place_paper_order", new_callable=AsyncMock,
+            side_effect=Exception("Order failed"),
+        ):
+            params = {
+                "symbol": "BTC-USD",
+                "side": "BUY",
+                "quantity": "0.5",
+                "order_type": "MARKET",
+            }
+            await screen._place_order(params)
 
         mock_form.show_error.assert_called_once()
 
