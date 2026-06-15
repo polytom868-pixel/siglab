@@ -564,6 +564,16 @@ def track_drawdown_events(equity_curve: np.ndarray) -> list[DrawdownEvent]:
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size < 2:
         return []
 
+    def _build_event(recovery: int | None) -> DrawdownEvent:
+        dd_pct = float((equity_curve[trough_idx] - equity_curve[peak_idx]) / equity_curve[peak_idx])
+        return DrawdownEvent(
+            start_date=f"period_{peak_idx}",
+            peak_date=f"period_{peak_idx}",
+            trough_date=f"period_{trough_idx}",
+            recovery_date=None if recovery is None else f"period_{recovery}",
+            max_drawdown_pct=dd_pct,
+        )
+
     events: list[DrawdownEvent] = []
     n = len(equity_curve)
 
@@ -576,14 +586,7 @@ def track_drawdown_events(equity_curve: np.ndarray) -> list[DrawdownEvent]:
             # New peak reached
             if in_drawdown:
                 # Recovery! Record event up to this point
-                dd_pct = float((equity_curve[trough_idx] - equity_curve[peak_idx]) / equity_curve[peak_idx])
-                events.append(DrawdownEvent(
-                    start_date=f"period_{peak_idx}",
-                    peak_date=f"period_{peak_idx}",
-                    trough_date=f"period_{trough_idx}",
-                    recovery_date=f"period_{i}",
-                    max_drawdown_pct=dd_pct,
-                ))
+                events.append(_build_event(i))
                 in_drawdown = False
             peak_idx = i
         elif equity_curve[i] < equity_curve[peak_idx]:
@@ -598,13 +601,7 @@ def track_drawdown_events(equity_curve: np.ndarray) -> list[DrawdownEvent]:
 
     # Handle final drawdown if still active
     if in_drawdown:
-        dd_pct = float((equity_curve[trough_idx] - equity_curve[peak_idx]) / equity_curve[peak_idx])
-        events.append(DrawdownEvent(
-            start_date=f"period_{peak_idx}",
-            peak_date=f"period_{peak_idx}",
-            trough_date=f"period_{trough_idx}",
-            recovery_date=None,
-            max_drawdown_pct=dd_pct,
-        ))
+        events.append(_build_event(None))
 
     return events
+
