@@ -3523,8 +3523,7 @@ def _pre_audit_context_pack(
 
 
 def _series_has_finite_values(payload: dict[str, Any] | None) -> bool:
-    values = list((payload or {}).get("values") or [])
-    return any(value is not None for value in values)
+    return bool(_series_values(payload))
 
 
 def _series_total_return(
@@ -3533,9 +3532,7 @@ def _series_total_return(
     end_idx: int | None = None,
 ) -> float | None:
     values = _series_values(payload, end_idx=end_idx)
-    if len(values) < 2 or values[0] == 0.0:
-        return None
-    return float(values[-1] / values[0] - 1.0)
+    return float(values[-1] / values[0] - 1.0) if len(values) >= 2 and values[0] != 0.0 else None
 
 
 def _series_last_value(
@@ -3544,9 +3541,7 @@ def _series_last_value(
     end_idx: int | None = None,
 ) -> float | None:
     values = _series_values(payload, end_idx=end_idx)
-    if not values:
-        return None
-    return float(values[-1])
+    return float(values[-1]) if values else None
 
 
 def _series_min_value(
@@ -3555,9 +3550,7 @@ def _series_min_value(
     end_idx: int | None = None,
 ) -> float | None:
     values = _series_values(payload, end_idx=end_idx)
-    if not values:
-        return None
-    return float(min(values))
+    return float(min(values)) if values else None
 
 
 def _series_values(
