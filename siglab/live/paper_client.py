@@ -219,22 +219,18 @@ class PaperSession:
 
 
 def _generate_session_id() -> str:
-    """Generate a short unique session ID."""
     return uuid.uuid4().hex[:12]
 
 
 def _generate_order_id() -> str:
-    """Generate a unique order ID."""
     return uuid.uuid4().hex[:16]
 
 
 def _now_timestamp() -> float:
-    """Current time as seconds since epoch."""
     return time.time()
 
 
 def _validate_symbol(symbol: str) -> str:
-    """Validate and normalize a perp symbol."""
     symbol = str(symbol).strip().upper()
     if not symbol:
         raise PaperClientError("symbol must not be empty")
@@ -244,7 +240,6 @@ def _validate_symbol(symbol: str) -> str:
 
 
 def _validate_quantity(quantity: float) -> float:
-    """Validate order quantity."""
     try:
         qty = float(quantity)
     except (TypeError, ValueError):
@@ -274,7 +269,6 @@ def _validate_price(price: float | None, order_type: PaperOrderType) -> float | 
 
 
 def _validate_side(side: str) -> PaperOrderSide:
-    """Validate order side."""
     try:
         return PaperOrderSide(side.upper())
     except ValueError:
@@ -282,7 +276,6 @@ def _validate_side(side: str) -> PaperOrderSide:
 
 
 def _validate_order_type(order_type: str) -> PaperOrderType:
-    """Validate order type."""
     try:
         return PaperOrderType(order_type.upper())
     except ValueError:
@@ -290,7 +283,6 @@ def _validate_order_type(order_type: str) -> PaperOrderType:
 
 
 def _validate_time_in_force(tif: str) -> PaperTimeInForce:
-    """Validate time-in-force."""
     try:
         return PaperTimeInForce(tif.upper())
     except ValueError:

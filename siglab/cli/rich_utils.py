@@ -189,28 +189,33 @@ def make_progress(**kwargs: Any) -> Progress:
 # ── Semantic print helpers ───────────────────────────────────────────────
 
 
+_PRINT_ICONS = {"success": "✔", "error": "✘", "warning": "⚠", "info": "ℹ"}
+
+
+def _print_styled(message: str, style: str, *, icon: bool = True) -> None:
+    """Print a styled message with an optional icon (✔/✘/⚠/ℹ) by style name."""
+    prefix = f"[{style}]{_PRINT_ICONS[style]}[/] " if icon and style in _PRINT_ICONS else ""
+    get_console().print(f"{prefix}{message}")
+
+
 def print_success(message: str) -> None:
     """Print a success message with green checkmark."""
-    console = get_console()
-    console.print(f"[success]✔[/] {message}")
+    _print_styled(message, "success")
 
 
 def print_error(message: str) -> None:
     """Print an error message with red cross."""
-    console = get_console()
-    console.print(f"[error]✘[/] {message}")
+    _print_styled(message, "error")
 
 
 def print_warning(message: str) -> None:
     """Print a warning message with yellow warning sign."""
-    console = get_console()
-    console.print(f"[warning]⚠[/] {message}")
+    _print_styled(message, "warning")
 
 
 def print_info(message: str) -> None:
     """Print an informational message with blue info sign."""
-    console = get_console()
-    console.print(f"[info]ℹ[/] {message}")
+    _print_styled(message, "info")
 
 
 def print_header(title: str) -> None:

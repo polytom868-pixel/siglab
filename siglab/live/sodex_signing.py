@@ -298,6 +298,11 @@ def perps_order_item(
     )
 
 
+def _perps_action_body(action: str, params: list[tuple[str, Any]]) -> OrderedDict[str, Any]:
+    """Build a SoDEX perps signing body with ordered type + params fields."""
+    return OrderedDict([("type", action), ("params", OrderedDict(params))])
+
+
 def perps_new_order_body(*, account_id: int, symbol_id: int, orders: list[OrderedDict[str, Any]]) -> OrderedDict[str, Any]:
     if not orders:
         raise SoDEXConfigError("Perps order batch cannot be empty")
@@ -305,21 +310,11 @@ def perps_new_order_body(*, account_id: int, symbol_id: int, orders: list[Ordere
         raise SoDEXConfigError("Perps order batch cannot exceed 100 orders")
     if any(not isinstance(order, OrderedDict) for order in orders):
         raise SoDEXConfigError("Perps orders must be OrderedDict instances to preserve signing field order")
-    return OrderedDict(
-        [
-            ("type", "newOrder"),
-            (
-                "params",
-                OrderedDict(
-                    [
-                        ("accountID", validate_account_id(account_id)),
-                        ("symbolID", int(symbol_id)),
-                        ("orders", orders),
-                    ]
-                ),
-            ),
-        ]
-    )
+    return _perps_action_body("newOrder", [
+        ("accountID", validate_account_id(account_id)),
+        ("symbolID", int(symbol_id)),
+        ("orders", orders),
+    ])
 
 
 def perps_update_leverage_body(
@@ -329,22 +324,12 @@ def perps_update_leverage_body(
     leverage: int,
     margin_mode: int,
 ) -> OrderedDict[str, Any]:
-    return OrderedDict(
-        [
-            ("type", "updateLeverage"),
-            (
-                "params",
-                OrderedDict(
-                    [
-                        ("accountID", validate_account_id(account_id)),
-                        ("symbolID", int(symbol_id)),
-                        ("leverage", int(leverage)),
-                        ("marginMode", int(margin_mode)),
-                    ]
-                ),
-            ),
-        ]
-    )
+    return _perps_action_body("updateLeverage", [
+        ("accountID", validate_account_id(account_id)),
+        ("symbolID", int(symbol_id)),
+        ("leverage", int(leverage)),
+        ("marginMode", int(margin_mode)),
+    ])
 
 
 def perps_cancel_item(*, symbol_id: int, order_id: int | None = None, cl_ord_id: str | None = None) -> OrderedDict[str, Any]:
@@ -366,57 +351,27 @@ def perps_cancel_order_body(*, account_id: int, cancels: list[OrderedDict[str, A
         raise SoDEXConfigError("Perps cancel batch cannot exceed 100 cancels")
     if any(not isinstance(cancel, OrderedDict) for cancel in cancels):
         raise SoDEXConfigError("Perps cancels must be OrderedDict instances to preserve signing field order")
-    return OrderedDict(
-        [
-            ("type", "cancelOrder"),
-            (
-                "params",
-                OrderedDict(
-                    [
-                        ("accountID", validate_account_id(account_id)),
-                        ("cancels", cancels),
-                    ]
-                ),
-            ),
-        ]
-    )
+    return _perps_action_body("cancelOrder", [
+        ("accountID", validate_account_id(account_id)),
+        ("cancels", cancels),
+    ])
 
 
 def perps_schedule_cancel_body(*, account_id: int, scheduled_timestamp: int | None = None) -> OrderedDict[str, Any]:
-    return OrderedDict(
-        [
-            ("type", "scheduleCancel"),
-            (
-                "params",
-                OrderedDict(
-                    [
-                        ("accountID", validate_account_id(account_id)),
-                        ("scheduledTimestamp", int(scheduled_timestamp) if scheduled_timestamp is not None else None),
-                    ]
-                ),
-            ),
-        ]
-    )
+    return _perps_action_body("scheduleCancel", [
+        ("accountID", validate_account_id(account_id)),
+        ("scheduledTimestamp", int(scheduled_timestamp) if scheduled_timestamp is not None else None),
+    ])
 
 
 def perps_update_margin_body(*, account_id: int, symbol_id: int, amount: str) -> OrderedDict[str, Any]:
     if not isinstance(amount, str) or not amount.strip():
         raise SoDEXConfigError("UpdateMargin amount must be a non-empty DecimalString")
-    return OrderedDict(
-        [
-            ("type", "updateMargin"),
-            (
-                "params",
-                OrderedDict(
-                    [
-                        ("accountID", validate_account_id(account_id)),
-                        ("symbolID", int(symbol_id)),
-                        ("amount", amount),
-                    ]
-                ),
-            ),
-        ]
-    )
+    return _perps_action_body("updateMargin", [
+        ("accountID", validate_account_id(account_id)),
+        ("symbolID", int(symbol_id)),
+        ("amount", amount),
+    ])
 
 
 def _canonical_value(value: Any) -> Any:
