@@ -367,7 +367,7 @@ class ComparisonPanelWidget(ComparisonWidget):
 class StrategyScreen(BaseScreen):
     """Strategy Research screen — browse, search, evaluate, and compare strategies."""
 
-    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("e", "run_eval", "Evaluate", show=True),
         Binding("i", "init_deck", "Init Deck", show=True),
         Binding("c", "toggle_compare", "Compare", show=True),

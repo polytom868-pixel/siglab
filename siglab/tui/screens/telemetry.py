@@ -528,7 +528,7 @@ class TelemetryScreen(BaseScreen):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("space", "toggle_select", "Select", show=True),
         Binding("c", "toggle_compare", "Compare", show=True),
         Binding("s", "cycle_sort", "Sort", show=True),

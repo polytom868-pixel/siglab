@@ -262,7 +262,7 @@ class OrderFormWidget(Static):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("enter", "submit_order", "Submit Order", show=False),
     ]
 
@@ -503,7 +503,7 @@ class OrderHistoryWidget(Static):
 class PaperScreen(BaseScreen):
     """Paper trading screen with positions, order form, history, and PnL chart."""
 
-    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("s", "focus_symbol", "Symbol", show=True),
         Binding("b", "toggle_side", "Buy/Sell", show=True),
         Binding("t", "toggle_type", "Type", show=True),
@@ -848,7 +848,7 @@ class _TextInputScreen(Screen[tuple[str, str] | None]):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "dismiss", "Cancel"),
     ]
 
@@ -905,7 +905,7 @@ class _CancelOrderScreen(Screen[str | None]):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "dismiss", "Cancel"),
     ]
 

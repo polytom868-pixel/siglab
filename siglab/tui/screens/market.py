@@ -347,7 +347,7 @@ class MarketScreen(BaseScreen):
     - Right bottom: Order book depth
     """
 
-    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("enter", "select_symbol", "Select", show=False),
     ]
 

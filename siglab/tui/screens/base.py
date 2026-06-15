@@ -41,7 +41,7 @@ class BaseScreen(Screen[None]):
     Subclasses implement ``_fetch_data()`` for the actual data loading.
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "go_back", "Back", show=True),
         Binding("r", "refresh_now", "Refresh", show=True),
         Binding("j", "move_down", "Down", show=False),

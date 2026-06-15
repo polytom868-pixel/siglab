@@ -107,7 +107,7 @@ class HelpScreen(ModalScreen[None]):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "dismiss", "Close"),
         Binding("q", "dismiss", "Close"),
         Binding("question_mark", "dismiss", "Close"),
@@ -313,7 +313,7 @@ class SigLabTUI(App):
     # Register screens (placeholders for now, expanded in later features)
     SCREENS: ClassVar[dict[str, Callable[[], Screen]]] = _BUILTIN_SCREENS
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit", "Quit", show=True),
         Binding("ctrl+q", "quit", "Quit", show=False),
         Binding("ctrl+c", "quit", "Quit", show=False),

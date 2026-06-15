@@ -467,7 +467,7 @@ class EvidenceScreen(BaseScreen):
     - Right: Interactive demo flow walkthrough
     """
 
-    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("tab", "switch_pane", "Switch Pane", show=True),
         Binding("enter", "run_step", "Run Step", show=True),
         Binding("n", "next_step", "Next Step", show=True),

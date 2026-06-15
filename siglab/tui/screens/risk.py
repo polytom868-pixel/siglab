@@ -358,7 +358,7 @@ class RiskScreen(BaseScreen):
     Supports WebSocket risk_score subscription for real-time updates.
     """
 
-    BINDINGS: ClassVar[list[Binding]] = BaseScreen.BINDINGS + [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("f", "filter_alerts", "Filter", show=False),
     ]
 
