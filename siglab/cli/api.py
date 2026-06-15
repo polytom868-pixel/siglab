@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from siglab.cli.rich_utils import get_console, make_table, status_style
+from siglab.cli.rich_utils import get_console, make_table, print_json, status_style
 from siglab.cli.helpers import add_json_flag, maybe_print_json
 from siglab.config import load_settings
 

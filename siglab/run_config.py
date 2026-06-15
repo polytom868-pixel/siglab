@@ -8,7 +8,7 @@ from siglab.io_utils import read_json_if_exists
 from siglab.schemas import SignalSpec
 from siglab.search.mutate import SpecMutator
 from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
-from siglab.track_registry import resolve_track
+from siglab.track_registry import canonical_track_name, resolve_track
 
 
 def resolve_memory_scope(*, explicit: str | None, default: str | None) -> str:

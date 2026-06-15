@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 from siglab.schemas import SignalSpec
-from siglab.track_registry import matching_track_names, resolve_track
+from siglab.track_registry import canonical_track_name, matching_track_names, resolve_track
 
 from siglab.search.lineage_types import (
     _maturity_bucket,
@@ -809,6 +810,7 @@ class LineageStore:
         limit: int = 3,
         run_session_id: str | None = None,
     ) -> dict[str, Any]:
+        from siglab.search.lineage_analysis import is_deterministic_experiment
 
         experiments_all = self._track_experiments(track, run_session_id=run_session_id)
         query_cards = (

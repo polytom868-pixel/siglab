@@ -1806,6 +1806,7 @@ def _clean_float(value: Any) -> float | None:
         return None
     return result
 
+from siglab.utils import safe_float as _safe_float
 
 
 def _sanitize_limit(raw: Any, *, default: int) -> int:
