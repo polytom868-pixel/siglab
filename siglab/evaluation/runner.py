@@ -23,14 +23,15 @@ from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_au
 # Lazy wrappers so unittest.mock.patch("siglab.evaluator.core.compile_spec") works.
 
 
-async def _lazy_compile_spec(settings, provider, spec):
+async def _lazy_compile_spec(settings: Any, provider: Any, spec: Any) -> Any:
     from siglab.evaluator.core import compile_spec as _fn
     return await _fn(settings, provider, spec)
 
 
-def _lazy_run_backtest(prices, target_weights, config):
+def _lazy_run_backtest(prices: Any, target_weights: Any, config: Any) -> Any:
     from siglab.evaluator.core import run_backtest as _fn
     return _fn(prices, target_weights, config)
+
 
 
 class ResearchEvaluator:
