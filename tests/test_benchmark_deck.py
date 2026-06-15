@@ -143,6 +143,16 @@ class BenchmarkDeckTests(unittest.IsolatedAsyncioTestCase):
             ancestry_db_path=root / "ancestry.db",
         )
 
+    def _evaluate(self, settings, ancestry, mutator, evaluator, provider):
+        return evaluate_benchmark_deck(
+            settings=settings,
+            ancestry=ancestry,
+            mutator=mutator,
+            evaluator=evaluator,
+            provider=provider,
+            deck_name=DEFAULT_BENCHMARK_DECK,
+        )
+
     def _record_experiment(
         self,
         *,
@@ -297,14 +307,7 @@ class BenchmarkDeckTests(unittest.IsolatedAsyncioTestCase):
             paths = benchmark_paths(settings=settings, deck_name=DEFAULT_BENCHMARK_DECK)
 
             paths.spec_path.write_text(yaml.safe_dump(better.canonical_dict(), sort_keys=False))
-            keep_result = await evaluate_benchmark_deck(
-                settings=settings,
-                ancestry=ancestry,
-                mutator=mutator,
-                evaluator=evaluator,
-                provider=provider,
-                deck_name=DEFAULT_BENCHMARK_DECK,
-            )
+            keep_result = await self._evaluate(settings, ancestry, mutator, evaluator, provider)
             self.assertEqual(keep_result["status"], "keep")
             self.assertEqual(
                 SignalSpec.from_dict(yaml.safe_load(paths.best_spec_path.read_text())).strategy_hash(),
@@ -327,14 +330,7 @@ class BenchmarkDeckTests(unittest.IsolatedAsyncioTestCase):
             )
 
             paths.spec_path.write_text(yaml.safe_dump(worse.canonical_dict(), sort_keys=False))
-            discard_result = await evaluate_benchmark_deck(
-                settings=settings,
-                ancestry=ancestry,
-                mutator=mutator,
-                evaluator=evaluator,
-                provider=provider,
-                deck_name=DEFAULT_BENCHMARK_DECK,
-            )
+            discard_result = await self._evaluate(settings, ancestry, mutator, evaluator, provider)
             self.assertEqual(discard_result["status"], "discard")
             self.assertEqual(
                 SignalSpec.from_dict(yaml.safe_load(paths.best_spec_path.read_text())).strategy_hash(),
