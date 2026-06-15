@@ -64,6 +64,7 @@ class BaseScreen(Screen[None]):
     # The base class creates an instance if none is passed via the
     # constructor and closes it on unmount.
     _api_client_class: ClassVar[type | None] = None
+    _api: TuiApiClient | None
 
     # ── Search/filter contract ───────────────────────────────────────
     # Set these in subclasses to get automatic search wiring:
