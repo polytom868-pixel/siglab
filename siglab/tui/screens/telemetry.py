@@ -682,54 +682,45 @@ class TelemetryScreen(BaseScreen):
             lw.toggle_select()
             self._update_comparison()
 
+    def _show_detail_view(self) -> None:
+        """Apply the current ``_detail_view`` setting to the right-column widgets."""
+        provider = safe_query(self, "#provider-metrics", ProviderMetricsWidget)
+        tool_usage = safe_query(self, "#tool-usage", ToolUsageWidget)
+        health = safe_query(self, "#service-health", ServiceHealthWidget)
+        if not all([provider, tool_usage, health]):
+            return
+        is_telemetry = self._detail_view == "telemetry"
+        provider.set_class(is_telemetry, "hidden")
+        tool_usage.set_class(is_telemetry, "hidden")
+        health.set_class(not is_telemetry, "hidden")
+
     def action_toggle_compare(self) -> None:
         """Toggle between detail view and comparison view."""
         self.compare_mode = not self.compare_mode
         detail = safe_query(self, "#run-detail", RunDetailWidget)
-        provider = safe_query(self, "#provider-metrics", ProviderMetricsWidget)
-        tool_usage = safe_query(self, "#tool-usage", ToolUsageWidget)
-        health = safe_query(self, "#service-health", ServiceHealthWidget)
         comparison = safe_query(self, "#telemetry-comparison", RunComparisonWidget)
-        if not all([detail, provider, tool_usage, health, comparison]):
+        if not detail or not comparison:
             return
-
         if self.compare_mode:
-            for w in (detail, provider, tool_usage, health):
-                w.add_class("hidden")
+            for w_id in ("#provider-metrics", "#tool-usage", "#service-health"):
+                w = safe_query(self, w_id, Static)
+                if w is not None:
+                    w.add_class("hidden")
             comparison.remove_class("hidden")
             self._update_comparison()
         else:
             comparison.add_class("hidden")
             detail.remove_class("hidden")
-            if self._detail_view == "telemetry":
-                provider.remove_class("hidden")
-                tool_usage.remove_class("hidden")
-                health.add_class("hidden")
-            else:
-                provider.add_class("hidden")
-                tool_usage.add_class("hidden")
-                health.remove_class("hidden")
+            self._show_detail_view()
 
     def action_toggle_detail_view(self) -> None:
         """Toggle between telemetry and health views."""
         if self.compare_mode:
             return
         self._detail_view = "health" if self._detail_view == "telemetry" else "telemetry"
-        provider = safe_query(self, "#provider-metrics", ProviderMetricsWidget)
-        tool_usage = safe_query(self, "#tool-usage", ToolUsageWidget)
-        health = safe_query(self, "#service-health", ServiceHealthWidget)
-        if not all([provider, tool_usage, health]):
-            return
-        if self._detail_view == "telemetry":
-            provider.remove_class("hidden")
-            tool_usage.remove_class("hidden")
-            health.add_class("hidden")
-            self.notify("View: Telemetry", severity="information", timeout=1)
-        else:
-            provider.add_class("hidden")
-            tool_usage.add_class("hidden")
-            health.remove_class("hidden")
-            self.notify("View: Service Health", severity="information", timeout=1)
+        self._show_detail_view()
+        label = "Telemetry" if self._detail_view == "telemetry" else "Service Health"
+        self.notify(f"View: {label}", severity="information", timeout=1)
 
     def action_cycle_sort(self) -> None:
         """Cycle sort column (date, score, track)."""

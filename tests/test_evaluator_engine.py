@@ -34,27 +34,13 @@ class EvaluateGatesAllPassTests(unittest.TestCase):
     """evaluate_gates returns (True, []) when all conditions pass."""
 
     def test_trend_signals_passes_all_gates(self) -> None:
-        summary: dict[str, Any] = {
-            "liquidation_count": 0,
-            "median_total_return": 0.05,
-            "median_sharpe": 1.2,
-            "worst_max_drawdown": -0.20,
-            "asset_breadth": 3,
-            "canonical_series_valid": True,
-        }
+        summary = {**_BASE_TREND_SIGNALS, "median_sharpe": 1.2}
         ok, reasons = evaluate_gates("trend_signals", summary)
         self.assertTrue(ok)
         self.assertEqual(reasons, [])
 
     def test_yield_flows_passes_all_gates(self) -> None:
-        summary: dict[str, Any] = {
-            "liquidation_count": 0,
-            "median_total_return": 0.03,
-            "median_sharpe": 0.5,
-            "worst_max_drawdown": -0.10,
-            "asset_breadth": 2,
-            "canonical_series_valid": True,
-        }
+        summary = {**_BASE_YIELD_FLOWS, "median_sharpe": 0.5}
         ok, reasons = evaluate_gates("yield_flows", summary)
         self.assertTrue(ok)
         self.assertEqual(reasons, [])
