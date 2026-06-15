@@ -276,13 +276,9 @@ class ResearchPlannerRunner:
                     json.dumps(evidence_summary, indent=2, ensure_ascii=True, sort_keys=True, default=str)[:6000],
                 ]
             )
-        for rel_path in [*DEFAULT_FILES, f"manifests/family/{parent.family}.md"]:
-            path = session.root / rel_path
-            if not path.exists():
-                continue
-            age = time.time() - path.stat().st_mtime
-            warning = f"⚠️ STALE: last modified {int(age/60)}m ago. " if age > 3600 else ""
-            parts.extend(["", f"## {rel_path}", "<!-- BEGIN EXTERNAL DATA -->", warning + path.read_text()[:9000], "<!-- END EXTERNAL DATA -->"])
+        self._append_workspace_context(
+            parts, session, [*DEFAULT_FILES, f"manifests/family/{parent.family}.md"], max_chars=9000,
+        )
         return "\n".join(parts)
 
     def _latest_evidence_summary(self, *, session: WorkspaceSession) -> dict[str, Any] | None:
@@ -378,28 +374,16 @@ class ResearchPlannerRunner:
         ]
         if previous_note:
             parts.extend(["", "## Previous Research Note", previous_note])
-        for rel_path in [
-            "TASK.md",
-            "current/SESSION_STATE.json",
-            "current/frontier_brief.md",
-            "current/incumbent_spec.yaml",
-            "current/recent_trials.md",
-            "current/parent_card.md",
-            f"manifests/family/{parent.family}.md",
-        ]:
-            path = session.root / rel_path
-            if not path.exists():
-                continue
-            age = time.time() - path.stat().st_mtime
-            warning = f"⚠️ STALE: last modified {int(age/60)}m ago. " if age > 3600 else ""
-            parts.extend(["", f"## {rel_path}", "<!-- BEGIN EXTERNAL DATA -->", warning + path.read_text()[:7000], "<!-- END EXTERNAL DATA -->"])
+        self._append_workspace_context(
+            parts, session, [
+                "TASK.md", "current/SESSION_STATE.json", "current/frontier_brief.md",
+                "current/incumbent_spec.yaml", "current/recent_trials.md", "current/parent_card.md",
+                f"manifests/family/{parent.family}.md",
+            ], max_chars=7000,
+        )
         return "\n".join(parts)
 
     def _planner_max_tool_rounds(self) -> int:
-        configured = int(getattr(self.settings, "claude_max_tool_rounds", 8))
-        if str(getattr(self.settings, "llm_provider", "") or "").lower() == "bai":
-            return max(1, min(configured, 4))
-        return max(1, min(configured, 8))
 
     def _planner_max_tokens(self) -> int:
         if str(getattr(self.settings, "llm_provider", "") or "").lower() == "bai":

@@ -2157,6 +2157,18 @@ def _lookup_timestamp(index: pd.Index, timestamp: Any) -> pd.Timestamp | None:
         position = len(index) - 1
     return pd.Timestamp(index[position])
 
+def _regime_binary_label(
+    value: float | None,
+    threshold: float | None,
+    high_label: str,
+    low_label: str,
+) -> str | None:
+    if value is None:
+        return None
+    if threshold is None:
+        return None
+    return high_label if value >= threshold else low_label
+
 
 def _pair_regime_snapshot(
     *,
@@ -2194,74 +2206,19 @@ def _pair_regime_snapshot(
         net_exposure_value = _safe_float(exposure_row.sum(axis=1).get(aligned_timestamp))
 
     snapshot = {
-        "timestamp": aligned_timestamp.isoformat(),
-        "market_trend_label": (
-            "market_uptrend"
-            if market_trend_value is not None and market_trend_value >= 0.0
-            else "market_downtrend"
-            if market_trend_value is not None
-            else None
-        ),
+        "market_trend_label": _regime_binary_label(market_trend_value, 0.0, "market_uptrend", "market_downtrend"),
         "market_trend_24h": market_trend_value,
-        "market_volatility_label": (
-            "high_volatility"
-            if market_volatility_value is not None
-            and market_vol_threshold is not None
-            and market_volatility_value >= market_vol_threshold
-            else "low_volatility"
-            if market_volatility_value is not None and market_vol_threshold is not None
-            else None
-        ),
+        "market_volatility_label": _regime_binary_label(market_volatility_value, market_vol_threshold, "high_volatility", "low_volatility"),
         "market_volatility_168h": market_volatility_value,
-        "funding_level_label": (
-            "high_funding"
-            if funding_level_value is not None
-            and funding_level_threshold is not None
-            and funding_level_value >= funding_level_threshold
-            else "low_funding"
-            if funding_level_value is not None and funding_level_threshold is not None
-            else None
-        ),
+        "funding_level_label": _regime_binary_label(funding_level_value, funding_level_threshold, "high_funding", "low_funding"),
         "funding_level_72h": funding_level_value,
-        "funding_dispersion_label": (
-            "funding_dispersed"
-            if funding_dispersion_value is not None
-            and funding_threshold is not None
-            and funding_dispersion_value >= funding_threshold
-            else "funding_compressed"
-            if funding_dispersion_value is not None and funding_threshold is not None
-            else None
-        ),
+        "funding_dispersion_label": _regime_binary_label(funding_dispersion_value, funding_threshold, "funding_dispersed", "funding_compressed"),
         "funding_dispersion_72h": funding_dispersion_value,
-        "breadth_label": (
-            "broad_participation"
-            if breadth_value is not None
-            and breadth_threshold is not None
-            and breadth_value >= breadth_threshold
-            else "weak_participation"
-            if breadth_value is not None and breadth_threshold is not None
-            else None
-        ),
+        "breadth_label": _regime_binary_label(breadth_value, breadth_threshold, "broad_participation", "weak_participation"),
         "breadth_24h": breadth_value,
-        "co_movement_label": (
-            "high_co_movement"
-            if co_movement_value is not None
-            and co_movement_threshold is not None
-            and co_movement_value >= co_movement_threshold
-            else "low_co_movement"
-            if co_movement_value is not None and co_movement_threshold is not None
-            else None
-        ),
+        "co_movement_label": _regime_binary_label(co_movement_value, co_movement_threshold, "high_co_movement", "low_co_movement"),
         "co_movement_72h": co_movement_value,
-        "concentration_label": (
-            "concentrated"
-            if concentration_value is not None
-            and concentration_threshold is not None
-            and concentration_value >= concentration_threshold
-            else "diversified"
-            if concentration_value is not None and concentration_threshold is not None
-            else None
-        ),
+        "concentration_label": _regime_binary_label(concentration_value, concentration_threshold, "concentrated", "diversified"),
         "concentration": concentration_value,
         "position_direction": position_direction,
         "position_structure_label": position_direction,
@@ -2277,33 +2234,11 @@ def _pair_regime_snapshot(
         correlation_threshold = thresholds.get("pair_correlation_median")
         snapshot.update(
             {
-                "pair_volatility_label": (
-                    "high_volatility"
-                    if pair_volatility_value is not None
-                    and pair_vol_threshold is not None
-                    and pair_volatility_value >= pair_vol_threshold
-                    else "low_volatility"
-                    if pair_volatility_value is not None and pair_vol_threshold is not None
-                    else None
-                ),
+                "pair_volatility_label": _regime_binary_label(pair_volatility_value, pair_vol_threshold, "high_volatility", "low_volatility"),
                 "pair_volatility_72h": pair_volatility_value,
-                "pair_correlation_label": (
-                    "high_correlation"
-                    if pair_correlation_value is not None
-                    and correlation_threshold is not None
-                    and pair_correlation_value >= correlation_threshold
-                    else "low_correlation"
-                    if pair_correlation_value is not None and correlation_threshold is not None
-                    else None
-                ),
+                "pair_correlation_label": _regime_binary_label(pair_correlation_value, correlation_threshold, "high_correlation", "low_correlation"),
                 "pair_correlation_72h": pair_correlation_value,
-                "pair_direction_label": (
-                    "asset_1_leading"
-                    if pair_direction_value is not None and pair_direction_value >= 0.0
-                    else "asset_2_leading"
-                    if pair_direction_value is not None
-                    else None
-                ),
+                "pair_direction_label": _regime_binary_label(pair_direction_value, 0.0, "asset_1_leading", "asset_2_leading"),
                 "pair_direction_24h": pair_direction_value,
             }
         )
