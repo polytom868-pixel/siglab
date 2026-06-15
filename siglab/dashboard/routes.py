@@ -17,6 +17,11 @@ router = APIRouter()
 
 SIGLAB_VERSION = "0.1.0"
 
+
+def _now_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string."""
+    return datetime.now(UTC).isoformat()
+
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
@@ -182,7 +187,7 @@ async def ops_board(request: Request) -> dict[str, Any]:
     }
 
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": _now_iso(),
         "artifact_status": {
             name: {
                 "status": art.get("status"),
@@ -429,7 +434,7 @@ async def skill_report(request: Request) -> dict[str, Any]:
     state = request.app.state.dashboard
     report = _build_skill_report(state)
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": _now_iso(),
         "skills": report,
         "total_skills": len(report),
         "total_invocations": sum(s["usage_count"] for s in report),
@@ -474,7 +479,7 @@ async def risk(request: Request) -> dict[str, Any]:
     state = request.app.state.dashboard
     metrics = _compute_risk_metrics(state)
     return {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": _now_iso(),
         **metrics,
     }
 

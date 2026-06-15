@@ -320,12 +320,12 @@ class SigLabTUI(App[None]):
         Binding("?", "show_help", "Help", show=True),
         Binding("f1", "show_help", "Help", show=False),
         Binding("escape", "go_back", "Back", show=False),
-        Binding("1", "switch_screen('market')", "Market", show=True),
-        Binding("2", "switch_screen('paper')", "Paper", show=True),
-        Binding("3", "switch_screen('risk')", "Risk", show=True),
-        Binding("4", "switch_screen('strategy')", "Strategy", show=True),
-        Binding("5", "switch_screen('telemetry')", "Telemetry", show=False),
-        Binding("6", "switch_screen('evidence')", "Evidence", show=False),
+        Binding("1", "go_to_screen('market')", "Market", show=True),
+        Binding("2", "go_to_screen('paper')", "Paper", show=True),
+        Binding("3", "go_to_screen('risk')", "Risk", show=True),
+        Binding("4", "go_to_screen('strategy')", "Strategy", show=True),
+        Binding("5", "go_to_screen('telemetry')", "Telemetry", show=False),
+        Binding("6", "go_to_screen('evidence')", "Evidence", show=False),
     ]
 
     # Reactive state
@@ -397,7 +397,7 @@ class SigLabTUI(App[None]):
 
     # ── Keyboard navigation shortcuts ──
 
-    def action_switch_screen(self, screen_id: str) -> None:
+    def action_go_to_screen(self, screen_id: str) -> None:
         """Switch to a screen by id (keys 1-6)."""
         self.switch_screen(screen_id)
 
