@@ -76,5 +76,96 @@ class FakeClaude:
 def make_sosovalue_envelope(rows: list[dict] | None = None) -> dict:
     return {"code": 0, "message": "success", "data": rows or []}
 
-def make_soxdex_envelope(rows: list[dict] | None = None) -> dict:
-    return {"data": rows or []}
+
+def make_mock_settings(**overrides) -> MagicMock:
+    """Build a mock SiglabConfig with the same field defaults as
+    make_minimal_settings() but as a MagicMock (faster construction,
+    no validation). Use when tests don't introspect the Settings type.
+    Replaces the 4 inline _make_mock_settings() copies in test_evaluator_core,
+    test_evaluator_compile, test_evaluator_engine, test_evaluator_backtesting.
+    """
+    settings = MagicMock()
+    settings.root_dir = "/tmp"
+    settings.sosovalue_config_path = "/tmp/soso.json"
+    settings.generated_strategy_dir = "/tmp/strategies"
+    settings.data_lake_dir = "/tmp/lake"
+    settings.artifact_dir = "/tmp/artifacts"
+    settings.live_dir = "/tmp/live"
+    settings.ancestry_db_path = "/tmp/ancestry.db"
+    settings.sosovalue_api_key_override = None
+    for key, value in overrides.items():
+        setattr(settings, key, value)
+    return settings
+
+
+# Common YAML return value used by FakeClaude.complete_text_with_tools in test_workspace_flow.
+# Centralized so 14 inline copies (~37 lines each) become a single import.
+_REFINE_CARRY_YAML = """---
+decision: refine_current_family
+search_mode: branch_same_family
+target_family: perp_multi_asset_carry
+target_universe: [BTC, ETH, SOL, HYPE]
+core_hypothesis: generic top-level note
+informative_test: generic top-level test
+expected_success: [better validation robustness]
+expected_failure: [no measurable change]
+evidence_paths: []
+tools_used: []
+tracking_tags: [perp_multi_asset_carry]
+must_answer: Does one concrete regime discriminator improve pre-audit return without making validation negative for `perp_multi_asset_carry`?
+required_feature_roles: [one core_carry feature, one orthogonal_regime feature]
+forbidden_motifs: [second pure trend overlay]
+gate_intent: {}
+writer_inputs: [manifests/family/perp_multi_asset_carry.md]
+---
+
+```yaml
+---
+target_family: perp_multi_asset_carry
+must_answer: Does adding a market_volatility_168h gate improve pre-audit return above 0.336 while keeping validation positive for `perp_multi_asset_carry`?
+required_features:
+  - funding_carry_to_vol
+  - market_volatility_168h
+required_gate_dimensions:
+  - market_volatility_168h
+forbidden_motifs:
+  - perp_multi_asset_carry|unspecified|core_carry+funding+orthogonal_regime|funding_dispersion_72h
+---
+```
+
+## Diagnosis
+Use the embedded spec, not the generic one.
+"""
+
+
+def make_fake_claude(
+    text_return: str = _REFINE_CARRY_YAML,
+    json_return: dict[str, object] | None = None,
+    metrics: dict[str, object] | None = None,
+) -> FakeClaude:
+    """Build a FakeClaude that records calls and returns canned responses.
+
+    Centralizes the 14+ inline FakeClaude classes in test_workspace_flow.py
+    and 3 in test_cli_agent_safety.py.
+    """
+    if json_return is None:
+        json_return = {}
+    if metrics is None:
+        metrics = {
+            "provider": "bai",
+            "model": "deepseek-v4-flash",
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "credits_estimate": 0.3,
+                "cost_usd": None,
+            },
+            "context_pressure": {"event_count": 0, "latest": None},
+            "credit_pressure": {"event_count": 0, "latest": None},
+        }
+    fake = FakeClaude()
+    fake._text_return = text_return
+    fake._json_return = json_return
+    fake._metrics = metrics
+    return fake
