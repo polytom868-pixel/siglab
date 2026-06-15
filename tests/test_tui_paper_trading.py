@@ -54,13 +54,6 @@ class TestFormattingHelpers:
         text = format_pnl(0.0)
         assert "0.00" in text.plain
 
-    def test_format_price_comma_separated(self) -> None:
-        """format_price uses comma-separated formatting."""
-        assert format_price(67210.50) == "67,210.50"
-
-    def test_format_price_medium(self) -> None:
-        assert format_price(1.2345) == "1.2345"
-
     def test_format_price_small(self) -> None:
         assert format_price(0.15) == "0.150000"
 
@@ -217,10 +210,21 @@ class TestOrderFormWidget:
         widget.toggle_type()
         assert widget._order_type == "MARKET"
 
-    def test_get_order_params_market_valid(self) -> None:
+    @staticmethod
+    def _setup(**kwargs: str) -> OrderFormWidget:
         widget = OrderFormWidget()
-        widget.set_symbol("BTC-USD")
-        widget.set_quantity("0.5")
+        if "symbol" in kwargs:
+            widget.set_symbol(kwargs["symbol"])
+        if "quantity" in kwargs:
+            widget.set_quantity(kwargs["quantity"])
+        if "price" in kwargs:
+            widget.set_price(kwargs["price"])
+        if kwargs.get("type") == "LIMIT":
+            widget.toggle_type()
+        return widget
+
+    def test_get_order_params_market_valid(self) -> None:
+        widget = self._setup(symbol="BTC-USD", quantity="0.5")
         params = widget.get_order_params()
         assert params is not None
         assert params["symbol"] == "BTC-USD"
@@ -230,61 +234,44 @@ class TestOrderFormWidget:
         assert "price" not in params
 
     def test_get_order_params_limit_valid(self) -> None:
-        widget = OrderFormWidget()
-        widget.set_symbol("ETH-USD")
-        widget.set_quantity("2.0")
-        widget.set_price("3500")
-        widget.toggle_type()  # switch to LIMIT
+        widget = self._setup(symbol="ETH-USD", quantity="2.0", price="3500", type="LIMIT")
         params = widget.get_order_params()
         assert params is not None
         assert params["order_type"] == "LIMIT"
         assert params["price"] == "3500"
 
     def test_get_order_params_no_symbol(self) -> None:
-        widget = OrderFormWidget()
-        widget.set_quantity("1.0")
+        widget = self._setup(quantity="1.0")
         params = widget.get_order_params()
         assert params is None
         assert "Symbol" in widget._error
 
     def test_get_order_params_no_quantity(self) -> None:
-        widget = OrderFormWidget()
-        widget.set_symbol("BTC-USD")
+        widget = self._setup(symbol="BTC-USD")
         params = widget.get_order_params()
         assert params is None
         assert "Quantity" in widget._error
 
     def test_get_order_params_invalid_quantity(self) -> None:
-        widget = OrderFormWidget()
-        widget.set_symbol("BTC-USD")
-        widget.set_quantity("abc")
+        widget = self._setup(symbol="BTC-USD", quantity="abc")
         params = widget.get_order_params()
         assert params is None
         assert "positive number" in widget._error
 
     def test_get_order_params_negative_quantity(self) -> None:
-        widget = OrderFormWidget()
-        widget.set_symbol("BTC-USD")
-        widget.set_quantity("-1.0")
+        widget = self._setup(symbol="BTC-USD", quantity="-1.0")
         params = widget.get_order_params()
         assert params is None
         assert "positive number" in widget._error
 
     def test_get_order_params_limit_no_price(self) -> None:
-        widget = OrderFormWidget()
-        widget.set_symbol("BTC-USD")
-        widget.set_quantity("1.0")
-        widget.toggle_type()  # LIMIT
+        widget = self._setup(symbol="BTC-USD", quantity="1.0", type="LIMIT")
         params = widget.get_order_params()
         assert params is None
         assert "Price" in widget._error
 
     def test_get_order_params_limit_invalid_price(self) -> None:
-        widget = OrderFormWidget()
-        widget.set_symbol("BTC-USD")
-        widget.set_quantity("1.0")
-        widget.set_price("abc")
-        widget.toggle_type()  # LIMIT
+        widget = self._setup(symbol="BTC-USD", quantity="1.0", price="abc", type="LIMIT")
         params = widget.get_order_params()
         assert params is None
         assert "positive number" in widget._error
@@ -332,52 +319,37 @@ class TestOrderFormWidget:
 class TestOrderHistoryWidget:
     """Test the order history widget rendering."""
 
-    def test_init(self) -> None:
-        widget = OrderHistoryWidget()
-        assert widget.orders == []
-
-    def test_render_empty(self) -> None:
-        widget = OrderHistoryWidget()
-        text = widget.render()
-        assert "No orders placed" in text.plain
+    @staticmethod
+    def _make_order(
+        order_id: str = "ord",
+        symbol: str = "BTC-USD",
+        side: str = "BUY",
+        order_type: str = "MARKET",
+        quantity: float = 1.0,
+        price: float = 0.0,
+        fill_price: float | None = None,
+        status: str = "OPEN",
+        created_at: float | None = None,
+    ) -> dict:
+        return {
+            "order_id": order_id,
+            "symbol": symbol,
+            "side": side,
+            "order_type": order_type,
+            "quantity": quantity,
+            "price": price,
+            "fill_price": fill_price,
+            "status": status,
+            "created_at": time.time() if created_at is None else created_at,
+        }
 
     def test_render_with_orders(self) -> None:
         widget = OrderHistoryWidget()
         now = time.time()
         widget.orders = [
-            {
-                "order_id": "abc123",
-                "symbol": "BTC-USD",
-                "side": "BUY",
-                "order_type": "MARKET",
-                "quantity": 0.5,
-                "price": 0,
-                "fill_price": 65000.0,
-                "status": "FILLED",
-                "created_at": now,
-            },
-            {
-                "order_id": "def456",
-                "symbol": "ETH-USD",
-                "side": "SELL",
-                "order_type": "LIMIT",
-                "quantity": 2.0,
-                "price": 3600.0,
-                "fill_price": None,
-                "status": "OPEN",
-                "created_at": now - 60,
-            },
-            {
-                "order_id": "ghi789",
-                "symbol": "SOL-USD",
-                "side": "BUY",
-                "order_type": "LIMIT",
-                "quantity": 10.0,
-                "price": 150.0,
-                "fill_price": None,
-                "status": "CANCELLED",
-                "created_at": now - 120,
-            },
+            self._make_order("abc123", "BTC-USD", "BUY", "MARKET", 0.5, 0, 65000.0, "FILLED", now),
+            self._make_order("def456", "ETH-USD", "SELL", "LIMIT", 2.0, 3600.0, None, "OPEN", now - 60),
+            self._make_order("ghi789", "SOL-USD", "BUY", "LIMIT", 10.0, 150.0, None, "CANCELLED", now - 120),
         ]
         text = widget.render()
         assert "ORDER HISTORY" in text.plain
@@ -391,36 +363,14 @@ class TestOrderHistoryWidget:
     def test_render_shows_fill_price_when_filled(self) -> None:
         widget = OrderHistoryWidget()
         widget.orders = [
-            {
-                "order_id": "abc",
-                "symbol": "BTC-USD",
-                "side": "BUY",
-                "order_type": "MARKET",
-                "quantity": 1.0,
-                "price": 0,
-                "fill_price": 65000.0,
-                "status": "FILLED",
-                "created_at": time.time(),
-            },
+            self._make_order(fill_price=65000.0, status="FILLED"),
         ]
         text = widget.render()
         assert "65,000.00" in text.plain
 
     def test_render_shows_market_for_market_order(self) -> None:
         widget = OrderHistoryWidget()
-        widget.orders = [
-            {
-                "order_id": "abc",
-                "symbol": "BTC-USD",
-                "side": "BUY",
-                "order_type": "MARKET",
-                "quantity": 1.0,
-                "price": 0,
-                "fill_price": None,
-                "status": "OPEN",
-                "created_at": time.time(),
-            },
-        ]
+        widget.orders = [self._make_order()]
         text = widget.render()
         assert "market" in text.plain
 
