@@ -8,9 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-__all__ = ["safe_float"]
 from rich.text import Text
-from siglab.utils import safe_float
 # ── Color Constants ──────────────────────────────────────────────────
 # Single source of truth for all Rich Text colors in TUI widgets.
 # Keep in sync with siglab/tui/styles/theme.tcss variables.

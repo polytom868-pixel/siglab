@@ -13,7 +13,6 @@ from siglab.cli.rich_utils import print_json, print_success
 from siglab.config import load_settings
 from siglab.io_utils import write_json
 from siglab.path_utils import resolve_path_from_root
-from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 from siglab.cli.helpers import (
     display_paths,
     latest_path,
@@ -378,20 +377,17 @@ def run_demo_refresh(args: argparse.Namespace) -> None:
     preflight_path = runs_dir / "sodex_preflight_latest.json"
     write_json(preflight_path, preflight)
 
-    from siglab.cli.telemetry import trace_paths_for_telemetry, provider_metric_paths_for_telemetry
+    from siglab.cli.telemetry import (
+        build_telemetry_payload,
+        provider_metric_paths_for_telemetry,
+        trace_paths_for_telemetry,
+    )
 
     trace_paths = trace_paths_for_telemetry(settings=settings, track="all", run_session_id=None)
     provider_metric_paths = provider_metric_paths_for_telemetry(settings=settings, run_session_id=None)
-    telemetry = aggregate_trace_telemetry(trace_paths)
-    telemetry["trace_paths_scanned"] = len(trace_paths)
-    telemetry["provider_metrics"] = aggregate_provider_metrics_artifacts(provider_metric_paths)
-    telemetry["provider_metrics_paths_scanned"] = len(provider_metric_paths)
-    telemetry["provider_metrics_status"] = (
-        "missing"
-        if trace_paths and telemetry["provider_metrics"]["artifact_count"] == 0
-        else "present"
-        if telemetry["provider_metrics"]["artifact_count"] > 0
-        else "not_applicable"
+    telemetry = build_telemetry_payload(
+        trace_paths=trace_paths,
+        provider_metric_paths=provider_metric_paths,
     )
     telemetry_path = runs_dir / "latest_telemetry_report.json"
     write_json(telemetry_path, telemetry)

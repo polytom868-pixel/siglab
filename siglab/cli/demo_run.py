@@ -20,10 +20,10 @@ from siglab.cli.helpers import (
 from siglab.cli.market import build_market_report
 from siglab.cli.rich_utils import get_console, print_json
 from siglab.cli.telemetry import (
+    build_telemetry_payload,
     provider_metric_paths_for_telemetry,
     trace_paths_for_telemetry,
 )
-from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 
 def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the demo-run subparser next to demo-refresh."""
@@ -84,16 +84,9 @@ def run_demo_run(settings: Any, *, json: bool = False) -> dict[str, Any]:
     # 4. telemetry-report
     trace_paths = trace_paths_for_telemetry(settings=settings, track="all", run_session_id=None)
     provider_metric_paths = provider_metric_paths_for_telemetry(settings=settings, run_session_id=None)
-    telemetry = aggregate_trace_telemetry(trace_paths)
-    telemetry["trace_paths_scanned"] = len(trace_paths)
-    telemetry["provider_metrics"] = aggregate_provider_metrics_artifacts(provider_metric_paths)
-    telemetry["provider_metrics_paths_scanned"] = len(provider_metric_paths)
-    telemetry["provider_metrics_status"] = (
-        "missing"
-        if trace_paths and telemetry["provider_metrics"]["artifact_count"] == 0
-        else "present"
-        if telemetry["provider_metrics"]["artifact_count"] > 0
-        else "not_applicable"
+    telemetry = build_telemetry_payload(
+        trace_paths=trace_paths,
+        provider_metric_paths=provider_metric_paths,
     )
     telemetry_summary = {
         "trace_count": telemetry.get("trace_count"),

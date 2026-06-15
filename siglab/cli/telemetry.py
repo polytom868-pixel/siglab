@@ -11,6 +11,30 @@ from siglab.config import load_settings
 from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 
 
+def build_telemetry_payload(
+    *,
+    trace_paths: list[Path],
+    provider_metric_paths: list[Path],
+) -> dict[str, Any]:
+    """Aggregate trace + provider-metrics into one telemetry payload.
+
+    Adds three bookkeeping fields to the aggregated result so callers can see
+    how many artifacts were scanned and whether provider metrics are present.
+    """
+    payload = aggregate_trace_telemetry(trace_paths)
+    payload["trace_paths_scanned"] = len(trace_paths)
+    payload["provider_metrics"] = aggregate_provider_metrics_artifacts(provider_metric_paths)
+    payload["provider_metrics_paths_scanned"] = len(provider_metric_paths)
+    payload["provider_metrics_status"] = (
+        "missing"
+        if trace_paths and payload["provider_metrics"]["artifact_count"] == 0
+        else "present"
+        if payload["provider_metrics"]["artifact_count"] > 0
+        else "not_applicable"
+    )
+    return payload
+
+
 def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "telemetry-report",
@@ -32,16 +56,9 @@ def run_command(args: argparse.Namespace) -> None:
         settings=settings,
         run_session_id=args.run_session_id,
     )
-    payload = aggregate_trace_telemetry(trace_paths)
-    payload["trace_paths_scanned"] = len(trace_paths)
-    payload["provider_metrics"] = aggregate_provider_metrics_artifacts(provider_metric_paths)
-    payload["provider_metrics_paths_scanned"] = len(provider_metric_paths)
-    payload["provider_metrics_status"] = (
-        "missing"
-        if trace_paths and payload["provider_metrics"]["artifact_count"] == 0
-        else "present"
-        if payload["provider_metrics"]["artifact_count"] > 0
-        else "not_applicable"
+    payload = build_telemetry_payload(
+        trace_paths=trace_paths,
+        provider_metric_paths=provider_metric_paths,
     )
     if getattr(args, "json", False):
         print_json(payload)

@@ -10,6 +10,7 @@ from siglab.dashboard.server import DashboardApp
 from siglab.schemas import SignalSpec
 from siglab.search.lineage import LineageStore
 
+_STATIC_DIR = Path(__file__).resolve().parents[1] / "siglab" / "dashboard" / "static"
 
 def _spec(*, family: str, hypothesis: str, features: list[str]) -> SignalSpec:
     return SignalSpec.from_dict(
@@ -37,7 +38,7 @@ class DashboardRunSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             ancestry = LineageStore(root / "ancestry.db")
-            static_dir = Path(__file__).resolve().parents[1] / "siglab" / "dashboard" / "static"
+            static_dir = _STATIC_DIR
 
             benchmark_spec = _spec(
                 family="perp_multi_asset_carry",
@@ -187,7 +188,7 @@ class DashboardRunSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             ancestry = LineageStore(root / "ancestry.db")
-            static_dir = Path(__file__).resolve().parents[1] / "siglab" / "dashboard" / "static"
+            static_dir = _STATIC_DIR
 
             spec = _spec(
                 family="perp_multi_asset_carry",
@@ -453,7 +454,7 @@ class DashboardRunSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             ancestry = LineageStore(root / "ancestry.db")
-            static_dir = Path(__file__).resolve().parents[1] / "siglab" / "dashboard" / "static"
+            static_dir = _STATIC_DIR
 
             state_dir = root / "runs" / "trend_signals" / "workspaces" / "20260317T031125Z" / "current"
             state_dir.mkdir(parents=True, exist_ok=True)
@@ -496,7 +497,7 @@ class DashboardRunSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             ancestry = LineageStore(root / "ancestry.db")
-            static_dir = Path(__file__).resolve().parents[1] / "siglab" / "dashboard" / "static"
+            static_dir = _STATIC_DIR
 
             spec = _spec(
                 family="perp_multi_asset_carry",
