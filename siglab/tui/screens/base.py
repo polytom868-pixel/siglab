@@ -15,8 +15,26 @@ from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Input, Static
 
-from siglab.tui.formatting import friendly_error, safe_query
+from siglab.tui.formatting import (
+    BORDER_DIM,
+    TEXT_PRIMARY,
+    friendly_error,
+    safe_query,
+)
 from siglab.tui.loading import LoadingIndicator
+
+from rich.text import Text
+
+
+def render_header(result: Text, text: str, width: int = 50) -> None:
+    """Append a styled "TITLE" + horizontal-rule header to ``result``.
+
+    Centralizes the pattern shared by telemetry widgets (and similar
+    Static subclasses): a bold uppercase title followed by a
+    ``BORDER_DIM`` rule.  Mutates ``result`` in place — no allocation.
+    """
+    result.append(f" {text}\n", style=f"bold {TEXT_PRIMARY}")
+    result.append("\u2500" * width + "\n", style=BORDER_DIM)
 
 if TYPE_CHECKING:
     from siglab.tui.api_client import TuiApiClient

@@ -48,7 +48,7 @@ from siglab.tui.formatting import (
     truncate,
 )
 from siglab.tui.loading import LoadingIndicator
-from siglab.tui.screens.base import BaseScreen
+from siglab.tui.screens.base import BaseScreen, render_header
 from siglab.tui.widgets.base import ComparisonWidget, FilterableListWidget
 
 logger = logging.getLogger(__name__)
@@ -179,8 +179,7 @@ class ProviderMetricsWidget(Static):
         result = Text()
 
         # Header
-        result.append(" PROVIDER METRICS\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
+        render_header(result, "PROVIDER METRICS")
 
         data = self.telemetry_data
         if not data:
@@ -284,8 +283,7 @@ class ToolUsageWidget(Static):
         result = Text()
 
         # Header
-        result.append(" TOOL USAGE\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
+        render_header(result, "TOOL USAGE")
 
         data = self.telemetry_data
         if not data:
@@ -345,8 +343,7 @@ class RunDetailWidget(Static):
         result = Text()
 
         # Header
-        result.append(" RUN DETAIL\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
+        render_header(result, "RUN DETAIL")
 
         run = self.run
         if not run:
@@ -449,8 +446,7 @@ class ServiceHealthWidget(Static):
         result = Text()
 
         # Header
-        result.append(" SERVICE HEALTH\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("\u2500" * 50 + "\n", style=BORDER_DIM)
+        render_header(result, "SERVICE HEALTH")
 
         health = self.service_health
         if not health:
