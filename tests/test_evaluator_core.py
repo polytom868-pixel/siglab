@@ -551,16 +551,9 @@ class PairPolicySpecsTests(unittest.TestCase):
         self.ev = _make_evaluator()
 
     def test_generates_multiple_policy_variants(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 4,
-        }
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={},
         )
         self.assertGreater(len(policies), 0)
@@ -573,16 +566,9 @@ class PairPolicySpecsTests(unittest.TestCase):
             self.assertIn("min_abs_score", p)
 
     def test_all_policies_have_valid_entry(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 4,
-        }
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={},
         )
         for p in policies:
@@ -590,21 +576,14 @@ class PairPolicySpecsTests(unittest.TestCase):
             self.assertLessEqual(p["entry_abs_score"], 1.5)
 
     def test_narrow_sweep_entry_values_tighter(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 4,
-        }
         wide = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={},
         )
         narrow = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={"narrow_sweep": True},
         )
         wide_entry_range = max(p["entry_abs_score"] for p in wide) - min(p["entry_abs_score"] for p in wide)
@@ -612,13 +591,7 @@ class PairPolicySpecsTests(unittest.TestCase):
         self.assertLessEqual(narrow_entry_range, wide_entry_range)
 
     def test_lock_time_stop_restricts_hold_values(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 0,
-        }
+        base_policy = {**_BASE_POLICY, "cooldown_bars": 0}
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
             base_policy=base_policy,
@@ -630,13 +603,7 @@ class PairPolicySpecsTests(unittest.TestCase):
             self.assertLessEqual(p["max_holding_bars"], 336)
 
     def test_lock_cooldown_restricts_cooldown_values(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 0,
-            "cooldown_bars": 4,
-        }
+        base_policy = {**_BASE_POLICY, "max_holding_bars": 0}
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
             base_policy=base_policy,
@@ -647,32 +614,18 @@ class PairPolicySpecsTests(unittest.TestCase):
             self.assertLessEqual(p["cooldown_bars"], 168)
 
     def test_respects_max_trials(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 4,
-        }
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={},
             max_trials=10,
         )
         self.assertLessEqual(len(policies), 10)
 
     def test_no_duplicate_policies(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 4,
-        }
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={},
         )
         seen: set[tuple[float, float, float, int, int]] = set()
@@ -688,32 +641,18 @@ class PairPolicySpecsTests(unittest.TestCase):
             seen.add(key)
 
     def test_exit_abs_score_never_exceeds_entry(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 4,
-        }
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={},
         )
         for p in policies:
             self.assertLessEqual(p["exit_abs_score"], p["entry_abs_score"] + 1e-9)
 
     def test_flip_abs_score_never_below_entry(self) -> None:
-        base_policy = {
-            "entry_abs_score": 0.3,
-            "exit_abs_score": 0.15,
-            "flip_abs_score": 0.3,
-            "max_holding_bars": 48,
-            "cooldown_bars": 4,
-        }
         policies = self.ev._pair_policy_specs(
             family="perp_pair_trade_unlevered",
-            base_policy=base_policy,
+            base_policy=_BASE_POLICY,
             intent_locks={},
         )
         for p in policies:
