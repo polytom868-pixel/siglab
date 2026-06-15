@@ -12,9 +12,10 @@ from typing import Any
 from siglab.cli.rich_utils import print_json, print_success
 from siglab.config import load_settings
 from siglab.io_utils import write_json
-from siglab.path_utils import display_path, resolve_path_from_root
+from siglab.path_utils import resolve_path_from_root
 from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 from siglab.cli.helpers import (
+    display_paths,
     latest_path,
     load_json_if_exists,
     split_cli_list,
@@ -237,8 +238,8 @@ def run_demo_manifest(args: argparse.Namespace) -> None:
     if getattr(args, "json", False):
         print_json(manifest)
         return
-    print_success(f"demo_manifest: {display_path(output, root_dir=settings.root_dir)}")
-    print_success(f"demo_manifest_html: {display_path(html_output, root_dir=settings.root_dir)}")
+    print_success(f"demo_manifest: {display_paths([output], root_dir=settings.root_dir)[0]}")
+    print_success(f"demo_manifest_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}")
 
 
 def _build_demo_manifest(settings: Any) -> dict[str, Any]:
@@ -437,14 +438,14 @@ def run_demo_refresh(args: argparse.Namespace) -> None:
     payload = {
         "generated_at": datetime.now(UTC).isoformat(),
         "artifacts": {
-            "sodex_preflight": display_path(preflight_path, root_dir=settings.root_dir),
-            "telemetry": display_path(telemetry_path, root_dir=settings.root_dir),
-            "market_report": display_path(market_path, root_dir=settings.root_dir),
-            "market_report_html": display_path(market_html_path, root_dir=settings.root_dir),
-            "demo_report": display_path(demo_report_path, root_dir=settings.root_dir),
-            "demo_manifest": display_path(manifest_path, root_dir=settings.root_dir),
-            "demo_manifest_html": display_path(manifest_html_path, root_dir=settings.root_dir),
-            "wave_status": display_path(wave_path, root_dir=settings.root_dir),
+            "sodex_preflight": display_paths([preflight_path], root_dir=settings.root_dir)[0],
+            "telemetry": display_paths([telemetry_path], root_dir=settings.root_dir)[0],
+            "market_report": display_paths([market_path], root_dir=settings.root_dir)[0],
+            "market_report_html": display_paths([market_html_path], root_dir=settings.root_dir)[0],
+            "demo_report": display_paths([demo_report_path], root_dir=settings.root_dir)[0],
+            "demo_manifest": display_paths([manifest_path], root_dir=settings.root_dir)[0],
+            "demo_manifest_html": display_paths([manifest_html_path], root_dir=settings.root_dir)[0],
+            "wave_status": display_paths([wave_path], root_dir=settings.root_dir)[0],
         },
         "readiness": manifest.get("readiness"),
         "market_report_status": market.get("status"),
@@ -473,8 +474,7 @@ def run_wave_status(args: argparse.Namespace) -> None:
     write_json(output, payload)
     if getattr(args, "json", False):
         print_json(payload)
-        return
-    print_success(f"wave_status: {display_path(output, root_dir=settings.root_dir)}")
+    print_success(f"wave_status: {display_paths([output], root_dir=settings.root_dir)[0]}")
 
 
 def _build_wave_status_payload(args: argparse.Namespace) -> dict[str, Any]:

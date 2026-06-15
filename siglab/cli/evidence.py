@@ -13,9 +13,9 @@ from siglab.cli.rich_utils import print_json, print_success
 from siglab.config import load_settings
 from siglab.data import EvidenceStore, etf_inflow_evidence, news_evidence
 from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
-from siglab.path_utils import display_path, resolve_path_from_root
+from siglab.path_utils import resolve_path_from_root
 from siglab.visualization import write_evidence_graph_html
-from siglab.cli.helpers import sosovalue_currency_id, require_sosovalue_config
+from siglab.cli.helpers import display_paths, sosovalue_currency_id, require_sosovalue_config
 
 
 def add_subparser(subparsers) -> None:
@@ -116,8 +116,8 @@ async def run_evidence_build(args: argparse.Namespace) -> None:
     summary = store.write_summary(summary_output, max_day_gap=1, top_links=int(args.summary_top_links))
     print_json(
         {
-            "output": display_path(output, root_dir=settings.root_dir),
-            "summary_output": display_path(summary_output, root_dir=settings.root_dir),
+            "output": display_paths([output], root_dir=settings.root_dir)[0],
+            "summary_output": display_paths([summary_output], root_dir=settings.root_dir)[0],
             "records_appended": appended,
             "cross_module_links": len(links),
             "currency": str(args.currency).upper(),

@@ -6,6 +6,7 @@ import argparse
 from typing import Any
 
 from siglab.cli.rich_utils import get_console, make_table, print_json, status_style
+from siglab.cli.helpers import add_json_flag, maybe_print_json
 from siglab.config import load_settings
 
 
@@ -14,7 +15,7 @@ def add_subparser(subparsers) -> None:
         "api-surface",
         help="Summarize source-of-truth SoSoValue/SoDEX API surface maps.",
     )
-    parser.add_argument("--json", action="store_true")
+    add_json_flag(parser)
 
 
 def run_command(args: argparse.Namespace) -> None:
@@ -38,8 +39,8 @@ def run_command(args: argparse.Namespace) -> None:
             "missing_mentions": text.count("missing"),
             "blocked_mentions": text.count("blocked"),
         }
-    if getattr(args, "json", False):
-        print_json(report)
+    if args.as_json:
+        maybe_print_json(report, as_json=True)
         return
     from rich.text import Text
     table = make_table(title="API Surface")

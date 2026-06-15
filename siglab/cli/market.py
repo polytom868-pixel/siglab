@@ -13,6 +13,7 @@ from siglab.cli.rich_utils import print_json
 from siglab.config import load_settings
 from siglab.path_utils import resolve_path_from_root
 from siglab.cli.helpers import (
+    add_json_flag,
     latest_path,
     read_jsonl_with_stats,
     latest_record,
@@ -31,7 +32,7 @@ def add_subparser(subparsers) -> None:
     parser.add_argument("--sodex-evidence", default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--html-output", default=None)
-    parser.add_argument("--json", action="store_true")
+    add_json_flag(parser)
 
 
 def run_command(args: argparse.Namespace) -> None:
@@ -73,7 +74,7 @@ def run_command(args: argparse.Namespace) -> None:
         "status": report["status"],
         "warnings": report["warnings"],
     }
-    if getattr(args, "json", False):
+    if getattr(args, "as_json", False):
         print_json(payload)
         return
     print_json(payload)

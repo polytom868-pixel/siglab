@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from siglab.cli.rich_utils import get_console, make_table, print_json, status_style
+from siglab.cli.helpers import add_json_flag, maybe_print_json
 from siglab.config import load_settings
 from siglab.search import LineageStore
 from siglab.track_registry import TRACK_CLI_CHOICES, canonical_track_name, resolve_track
@@ -19,7 +20,7 @@ def add_subparser(subparsers) -> None:
         default=None,
     )
     ancestry_parser.add_argument("--limit", type=int, default=10)
-    ancestry_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    add_json_flag(ancestry_parser)
 
     # clear-passed
     clear_parser = subparsers.add_parser("clear-passed")
@@ -37,8 +38,8 @@ def run_ancestry(args: argparse.Namespace) -> None:
         track=resolve_track(args.track),
         limit=args.limit,
     )
-    if args.json:
-        print_json(rows)
+    if args.as_json:
+        maybe_print_json(rows, as_json=True)
         return
     from rich.text import Text
     table = make_table(title="Ancestry")

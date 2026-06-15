@@ -20,6 +20,7 @@ from siglab.orchestration import (
     SpecWriterRunner,
     WorkspaceHooks,
 )
+from siglab.orchestration.run_context import build_run_context
 from siglab.orchestration.trials import (
     summarize_generalization,
     summarize_patch,
@@ -237,11 +238,11 @@ async def _run_iterations(
     population_size: int | None,
     max_runtime_timestamp: float | None,
 ) -> None:
-    lake = ParquetLake(settings.data_lake_dir)
-    provider = MarketDataProvider(settings, lake)
-    claude = ClaudeClient(settings)
-    web_researcher = WebResearcher(settings, lake)
-    ancestry = LineageStore(settings.ancestry_db_path)
+    ctx = build_run_context(settings)
+    provider = MarketDataProvider(settings, ctx.lake)
+    claude = ctx.claude
+    web_researcher = WebResearcher(settings, ctx.lake)
+    ancestry = ctx.ancestry
     mutator = SpecMutator(settings, claude)
     planner = ResearchPlannerRunner(settings, claude, web_researcher)
     writer = SpecWriterRunner(settings, claude)
@@ -843,12 +844,12 @@ async def inspect_command(args: argparse.Namespace) -> None:
     settings = load_settings()
     require_sosovalue_config(settings)
     settings.ensure_runtime_directories()
-    lake = ParquetLake(settings.data_lake_dir)
-    provider = MarketDataProvider(settings, lake)
-    claude = ClaudeClient(settings)
-    web_researcher = WebResearcher(settings, lake)
+    ctx = build_run_context(settings)
+    provider = MarketDataProvider(settings, ctx.lake)
+    claude = ctx.claude
+    web_researcher = WebResearcher(settings, ctx.lake)
     mutator = SpecMutator(settings, claude)
-    ancestry = LineageStore(settings.ancestry_db_path)
+    ancestry = ctx.ancestry
 
     tracks = (
         list(settings.tracks)
