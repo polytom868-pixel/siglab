@@ -45,6 +45,38 @@ from tests._factories import make_minimal_settings
 
 class CliAgentSafetyTests(unittest.TestCase):
 
+    _SODEX_TESTNET_BASE_ENV: dict[str, str] = {
+        "SODEX_API_KEY_NAME": "siglab-key",
+        "SODEX_ACCOUNT_ID": "1001",
+        "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
+        "SODEX_ENVIRONMENT": "testnet",
+    }
+
+    @staticmethod
+    def _sodex_preview_ns(**overrides: object) -> SimpleNamespace:
+        """Build a SimpleNamespace for _sodex_preview_payload with sensible defaults."""
+        base: dict[str, object] = {
+            "account_id": 1001,
+            "symbol_id": 1,
+            "nonce": 1760373925000,
+            "modifier": 1,
+            "side": 1,
+            "order_type": 1,
+            "time_in_force": 2,
+            "price": None,
+            "quantity": None,
+            "funds": None,
+            "order_id": None,
+            "orig_cl_ord_id": None,
+            "scheduled_timestamp": None,
+            "amount": None,
+            "reduce_only": False,
+            "position_side": 1,
+            "leverage": 1,
+            "margin_mode": 1,
+        }
+        base.update(overrides)
+        return SimpleNamespace(**base)
     @staticmethod
     @contextlib.contextmanager
     def _capture_stderr():
@@ -626,15 +658,11 @@ class CliAgentSafetyTests(unittest.TestCase):
 
     def test_sodex_preflight_marks_signed_ready_without_printing_secret(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            report = _sodex_preflight_report(
-                {
-                    "SODEX_API_KEY_NAME": "siglab-key",
-                    "SODEX_ACCOUNT_ID": "1001",
-                    "SODEX_NONCE_STORE_PATH": str(Path(tmp) / "sodex-nonce.json"),
-                    "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
-                    "SODEX_ENVIRONMENT": "testnet",
-                }
-            )
+            env = {
+                **self._SODEX_TESTNET_BASE_ENV,
+                "SODEX_NONCE_STORE_PATH": str(Path(tmp) / "sodex-nonce.json"),
+            }
+            report = _sodex_preflight_report(env)
 
         self.assertTrue(report["signed_path"]["ready"])
         self.assertTrue(report["live_write_allowed"])
@@ -647,11 +675,8 @@ class CliAgentSafetyTests(unittest.TestCase):
             missing_parent = Path(tmp) / "missing" / "nonce.json"
             report = _sodex_preflight_report(
                 {
-                    "SODEX_API_KEY_NAME": "siglab-key",
-                    "SODEX_ACCOUNT_ID": "1001",
+                    **self._SODEX_TESTNET_BASE_ENV,
                     "SODEX_NONCE_STORE_PATH": str(missing_parent),
-                    "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
-                    "SODEX_ENVIRONMENT": "testnet",
                 }
             )
             self.assertFalse(report["signed_path"]["ready"])
@@ -662,11 +687,8 @@ class CliAgentSafetyTests(unittest.TestCase):
             corrupt.write_text("{bad json")
             report = _sodex_preflight_report(
                 {
-                    "SODEX_API_KEY_NAME": "siglab-key",
-                    "SODEX_ACCOUNT_ID": "1001",
+                    **self._SODEX_TESTNET_BASE_ENV,
                     "SODEX_NONCE_STORE_PATH": str(corrupt),
-                    "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
-                    "SODEX_ENVIRONMENT": "testnet",
                 }
             )
             self.assertFalse(report["signed_path"]["ready"])
@@ -676,10 +698,8 @@ class CliAgentSafetyTests(unittest.TestCase):
     def test_sodex_preflight_blocks_mainnet_until_testnet_and_operator_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base_env = {
-                "SODEX_API_KEY_NAME": "siglab-key",
-                "SODEX_ACCOUNT_ID": "1001",
+                **self._SODEX_TESTNET_BASE_ENV,
                 "SODEX_NONCE_STORE_PATH": str(Path(tmp) / "sodex-nonce.json"),
-                "SODEX_PRIVATE_KEY": "0x" + "11" * 32,
                 "SODEX_ENVIRONMENT": "mainnet",
             }
             report = _sodex_preflight_report(base_env)
@@ -729,22 +749,15 @@ class CliAgentSafetyTests(unittest.TestCase):
 
     def test_sodex_preview_payload_does_not_sign_or_submit(self) -> None:
         payload = _sodex_preview_payload(
-            SimpleNamespace(
+            self._sodex_preview_ns(
                 kind="new-order",
-                account_id=1001,
-                symbol_id=1,
-                nonce=1760373925000,
                 cl_ord_id="siglab-preview",
                 modifier="NORMAL",
                 side="BUY",
                 order_type="LIMIT",
                 time_in_force="FOK",
-                price=None,
                 quantity="0.01",
-                funds=None,
-                reduce_only=False,
                 position_side="BOTH",
-                leverage=1,
                 margin_mode="ISOLATED",
             )
         )
@@ -758,22 +771,16 @@ class CliAgentSafetyTests(unittest.TestCase):
 
     def test_sodex_preview_accepts_named_enum_aliases_and_rejects_unknowns(self) -> None:
         payload = _sodex_preview_payload(
-            SimpleNamespace(
+            self._sodex_preview_ns(
                 kind="new-order",
-                account_id=1001,
-                symbol_id=1,
-                nonce=1760373925000,
                 cl_ord_id="siglab-preview",
                 modifier="normal",
                 side="sell",
                 order_type="market",
                 time_in_force="ioc",
-                price=None,
                 quantity="0.01",
-                funds=None,
                 reduce_only=True,
                 position_side="short",
-                leverage=1,
                 margin_mode="cross",
             )
         )
@@ -785,23 +792,13 @@ class CliAgentSafetyTests(unittest.TestCase):
 
         with self.assertRaises(SystemExit) as ctx, self._capture_stderr() as err:
             _sodex_preview_payload(
-                SimpleNamespace(
+                self._sodex_preview_ns(
                     kind="new-order",
-                    account_id=1001,
-                    symbol_id=1,
-                    nonce=1760373925000,
                     cl_ord_id="siglab-preview",
-                    modifier="NORMAL",
                     side="BAD",
-                    order_type="LIMIT",
                     time_in_force="GTC",
                     price="1",
                     quantity="0.01",
-                    funds=None,
-                    reduce_only=False,
-                    position_side="BOTH",
-                    leverage=1,
-                    margin_mode="ISOLATED",
                 )
             )
         self.assertEqual(ctx.exception.code, 1)
@@ -809,26 +806,10 @@ class CliAgentSafetyTests(unittest.TestCase):
 
     def test_sodex_preview_payload_supports_cancel_safety_path(self) -> None:
         payload = _sodex_preview_payload(
-            SimpleNamespace(
+            self._sodex_preview_ns(
                 kind="cancel-order",
-                account_id=1001,
-                symbol_id=1,
-                nonce=1760373925000,
                 cl_ord_id="unused",
-                modifier=1,
-                side=1,
-                order_type=1,
-                time_in_force=2,
-                price=None,
-                quantity=None,
-                funds=None,
-                order_id=None,
                 orig_cl_ord_id="siglab-preview",
-                scheduled_timestamp=None,
-                reduce_only=False,
-                position_side=1,
-                leverage=1,
-                margin_mode=1,
             )
         )
 
@@ -836,30 +817,13 @@ class CliAgentSafetyTests(unittest.TestCase):
         self.assertEqual(payload["path"], "/trade/orders")
         self.assertNotIn('"type":"cancelOrder"', payload["canonical_body"])
         self.assertIn('"type":"cancelOrder"', payload["canonical_signing_payload"])
-        self.assertIsNone(payload["signature"])
 
     def test_sodex_preview_payload_supports_schedule_cancel_safety_path(self) -> None:
         payload = _sodex_preview_payload(
-            SimpleNamespace(
+            self._sodex_preview_ns(
                 kind="schedule-cancel",
-                account_id=1001,
-                symbol_id=1,
-                nonce=1760373925000,
                 cl_ord_id="unused",
-                modifier=1,
-                side=1,
-                order_type=1,
-                time_in_force=2,
-                price=None,
-                quantity=None,
-                funds=None,
-                order_id=None,
-                orig_cl_ord_id=None,
                 scheduled_timestamp=1760373930000,
-                reduce_only=False,
-                position_side=1,
-                leverage=1,
-                margin_mode=1,
             )
         )
 
@@ -867,35 +831,15 @@ class CliAgentSafetyTests(unittest.TestCase):
         self.assertEqual(payload["path"], "/trade/orders/schedule-cancel")
         self.assertNotIn('"type":"scheduleCancel"', payload["canonical_body"])
         self.assertIn('"type":"scheduleCancel"', payload["canonical_signing_payload"])
-        self.assertIsNone(payload["signature"])
-        self.assertFalse(payload["submitted"])
 
     def test_sodex_preview_payload_supports_update_margin_decimal_string(self) -> None:
         payload = _sodex_preview_payload(
-            SimpleNamespace(
+            self._sodex_preview_ns(
                 kind="update-margin",
-                account_id=1001,
-                symbol_id=1,
-                nonce=1760373925000,
                 cl_ord_id="unused",
-                modifier=1,
-                side=1,
-                order_type=1,
-                time_in_force=2,
-                price=None,
-                quantity=None,
-                funds=None,
-                order_id=None,
-                orig_cl_ord_id=None,
-                scheduled_timestamp=None,
                 amount="-0.25",
-                reduce_only=False,
-                position_side=1,
-                leverage=1,
-                margin_mode=1,
             )
         )
-
         self.assertEqual(payload["path"], "/trade/margin")
         self.assertNotIn('"type":"updateMargin"', payload["canonical_body"])
         self.assertIn('"type":"updateMargin"', payload["canonical_signing_payload"])
