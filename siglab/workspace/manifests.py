@@ -28,8 +28,7 @@ from siglab.search.mutate import (
 
 
 def _join_block(lines: list[str]) -> str:
-    return _join_block(lines)
-
+    return "\n".join(lines).strip() + "\n"
 
 def _feature_kind(name: str, formula: str) -> tuple[str, str]:
     roles = feature_roles_for_formula(name) | feature_roles_for_formula(formula)
