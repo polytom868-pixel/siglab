@@ -12,6 +12,13 @@ from siglab.evaluator.events import (
 )
 
 
+_DEFAULT_THRESHOLDS: dict = {
+    "roll_days_before_expiry": 7,
+    "min_days_to_expiry": 5,
+    "max_days_to_expiry": 100,
+}
+
+
 class ClassifyPtMarketStateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.index = pd.date_range("2026-01-01", periods=10, freq="D")
@@ -44,9 +51,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=self.prices,
             days_to_expiry=self.days_to_expiry,
             required_frames=self.required,
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertIn("availability", result)
         self.assertIn("eligible", result)
@@ -59,9 +64,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=self.prices,
             days_to_expiry=self.days_to_expiry,
             required_frames=self.required,
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["availability"].all().all())
 
@@ -72,9 +75,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=self.days_to_expiry,
             required_frames=self.required,
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertFalse(result["availability"].iloc[3, 0])
 
@@ -85,9 +86,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=self.prices,
             days_to_expiry=self.days_to_expiry,
             required_frames=[req],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertFalse(result["availability"].iloc[2, 1])
 
@@ -96,9 +95,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=self.prices,
             days_to_expiry=self.days_to_expiry,
             required_frames=self.required,
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertFalse(result["inside_roll_window"].any().any())
 
@@ -114,9 +111,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=days,
             required_frames=[prices],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["inside_roll_window"].iloc[7, 0])
         self.assertTrue(result["inside_roll_window"].iloc[8, 0])
@@ -127,9 +122,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=self.prices,
             days_to_expiry=self.days_to_expiry,
             required_frames=self.required,
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["expired_or_untradable"].iloc[9].all())
         self.assertFalse(result["expired_or_untradable"].iloc[0].any())
@@ -139,9 +132,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=self.prices,
             days_to_expiry=self.days_to_expiry,
             required_frames=self.required,
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["eligible"].iloc[0].all())
         self.assertFalse(result["eligible"].iloc[9].any())
@@ -156,9 +147,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=days,
             required_frames=[prices],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=1,
-            max_days_to_expiry=100,
+            **{**_DEFAULT_THRESHOLDS, "min_days_to_expiry": 1},
         )
         self.assertFalse(result["eligible"].iloc[0, 0])
 
@@ -172,9 +161,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=days,
             required_frames=[prices],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=1,
-            max_days_to_expiry=100,
+            **{**_DEFAULT_THRESHOLDS, "min_days_to_expiry": 1},
         )
         self.assertFalse(result["eligible"].iloc[0, 0])
 
@@ -184,9 +171,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=empty,
             days_to_expiry=empty,
             required_frames=[],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["availability"].empty)
         self.assertTrue(result["eligible"].empty)
@@ -198,9 +183,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=days,
             required_frames=[prices],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["eligible"].iloc[0, 0])
         self.assertFalse(result["eligible"].iloc[1, 0])
@@ -216,9 +199,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=days,
             required_frames=[prices],
-            roll_days_before_expiry=2,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **{**_DEFAULT_THRESHOLDS, "roll_days_before_expiry": 2},
         )
         self.assertFalse(result["eligible"].iloc[0, 0])
         self.assertTrue(result["eligible"].iloc[1, 0])
@@ -233,9 +214,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=days,
             required_frames=[prices],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertFalse(result["eligible"].iloc[0, 0])
         self.assertTrue(result["eligible"].iloc[1, 0])
@@ -253,9 +232,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=pd.DataFrame({"PT-A": [50.0, 50.0]}, index=prices.index),
             required_frames=[req1],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["availability"].iloc[0, 0])
         self.assertFalse(result["availability"].iloc[1, 0])
@@ -277,9 +254,7 @@ class ClassifyPtMarketStateTests(unittest.TestCase):
             prices=prices,
             days_to_expiry=pd.DataFrame({"PT-A": [50.0, 50.0, 50.0]}, index=prices.index),
             required_frames=[req1, req2],
-            roll_days_before_expiry=7,
-            min_days_to_expiry=5,
-            max_days_to_expiry=100,
+            **_DEFAULT_THRESHOLDS,
         )
         self.assertTrue(result["availability"].iloc[0, 0])
         self.assertFalse(result["availability"].iloc[1, 0])
