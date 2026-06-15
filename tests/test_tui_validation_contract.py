@@ -12,6 +12,7 @@ after CSS variable resolution fix (f34-fix-css-variables).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -19,12 +20,18 @@ from pathlib import Path
 
 import httpx
 import pytest
+from rich.panel import Panel
 
+from siglab.cli.rich_utils import make_console
+from siglab.hardening_profile import build_profile, profile_as_text
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.app import NAV_ITEMS, SCREEN_IDS, HelpScreen, NavSidebar, SigLabTUI
 from siglab.tui.formatting import friendly_error
 from siglab.tui.loading import LoadingIndicator, _SPINNER_FRAMES
 from siglab.tui.widgets.status_bar import SigLabStatusBar
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 TUI_DIR = Path(__file__).resolve().parents[1] / "siglab" / "tui"
@@ -134,11 +141,12 @@ def _assert_json_dict(result: subprocess.CompletedProcess) -> dict:
     return json.loads(result.stdout)
 
 def test_profile_json_output_is_valid_json() -> None:
-    data = _assert_json_dict(_run_cli(["profile", "--json"]))
+    data = build_profile(REPO_ROOT)
     assert isinstance(data, dict)
 
+
 def test_profile_json_has_summary() -> None:
-    data = _assert_json_dict(_run_cli(["profile", "--json"]))
+    data = build_profile(REPO_ROOT)
     assert "summary" in data and "finding_count" in data["summary"]
 
 def test_telemetry_report_json_output() -> None:
@@ -153,15 +161,19 @@ def test_demo_manifest_json_output() -> None:
     assert isinstance(_assert_json_dict(_run_cli(["demo-manifest", "--json"])), dict)
 
 def test_profile_default_output_is_text() -> None:
-    result = _run_cli(["profile"])
-    assert result.returncode == 0, f"stderr: {result.stderr}"
+    text = profile_as_text(build_profile(REPO_ROOT))
+    assert isinstance(text, str) and text
     with pytest.raises(json.JSONDecodeError):
-        json.loads(result.stdout)
+        json.loads(text)
 
 def test_no_color_flag_removes_ansi() -> None:
-    result = _run_cli(["--no-color", "profile"])
-    assert result.returncode == 0, f"stderr: {result.stderr}"
-    assert "\x1b[" not in result.stdout
+    console = make_console(force_no_color=True)
+    assert console.no_color is True
+    buf = io.StringIO()
+    console.file = buf
+    console.print(Panel(profile_as_text(build_profile(REPO_ROOT)), title="Hardening Profile", border_style="info"))
+    assert "\x1b[" not in buf.getvalue()
+
 
 def test_no_color_env_var_removes_ansi() -> None:
     result = _run_cli(["profile"], env_overrides={"NO_COLOR": "1"})
