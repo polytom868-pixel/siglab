@@ -98,10 +98,8 @@ def _record_timestamp(row: dict[str, Any]) -> datetime | None:
 
 
 def float_or_none(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from siglab.utils import safe_float
+    return safe_float(value)
 
 
 def load_json_if_exists(path: Path | None) -> dict[str, Any] | None:
@@ -661,3 +659,41 @@ def external_research_from_llm_trace(
         payload["queries"] = queries
         payload["reports"] = reports
     return payload
+
+def add_json_flag(parser: Any, *, dest: str = "as_json", default: bool = False, help_text: str | None = None) -> None:
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest=dest,
+        default=default,
+        help=help_text or "Emit machine-readable JSON to stdout.",
+    )
+
+
+def maybe_print_json(payload: Any, *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(payload, indent=2, default=str))
+
+
+def write_json_and_maybe_print(
+    path: Path,
+    payload: Any,
+    *,
+    as_json: bool,
+    writer: Any = None,
+) -> Path:
+    if writer is None:
+        from siglab.io_utils import write_json as _write_json
+        writer = _write_json
+    written = writer(path, payload)
+    maybe_print_json(payload, as_json=as_json)
+    return written if isinstance(written, Path) else path
+
+
+def display_paths(values: Any, *, root_dir: Path | None) -> list[str | None]:
+    from siglab.path_utils import display_path as _dp
+    if values is None:
+        return []
+    if not isinstance(values, list):
+        return [_dp(values, root_dir=root_dir)]
+    return [_dp(item, root_dir=root_dir) for item in values]

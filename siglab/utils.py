@@ -101,3 +101,40 @@ async def async_limiter_call(callable, *, rate_limit: int = 20) -> Any:
     sem = asyncio.Semaphore(rate_limit)
     async with sem:
         return await callable()
+
+def decode_status_error(response: Any) -> str | None:
+    try:
+        status = int(getattr(response, "status", 0) or 0)
+    except (TypeError, ValueError):
+        status = 0
+    if 200 <= status < 300:
+        return None
+    try:
+        body = response.text()
+    except Exception:
+        return f"HTTP {status}"
+    if not body:
+        return f"HTTP {status}"
+    try:
+        import json as _json
+        parsed = _json.loads(body)
+    except Exception:
+        return f"HTTP {status}: {body[:200]}"
+    if isinstance(parsed, dict):
+        for key in ("error", "message", "msg", "detail"):
+            value = parsed.get(key)
+            if value:
+                return f"HTTP {status}: {value}"
+    return f"HTTP {status}: {body[:200]}"
+
+
+def decode_json_envelope(response: Any) -> Any:
+    try:
+        body = response.text()
+    except Exception as exc:
+        raise RuntimeError(f"failed to read response body: {exc}") from exc
+    try:
+        import json as _json
+        return _json.loads(body)
+    except Exception as exc:
+        raise RuntimeError(f"failed to decode JSON envelope: {exc}; body={body[:200]}") from exc

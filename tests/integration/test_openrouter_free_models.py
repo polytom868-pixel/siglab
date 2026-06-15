@@ -22,12 +22,15 @@ the surface small; conversion to httpx is a future refactor.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
 import unittest
 import urllib.request
 from typing import Any
+
+from siglab.utils import async_limiter_call
 
 OPENROUTER_API_KEY = "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"
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -82,25 +85,26 @@ def _fetch_models_catalog() -> dict[str, Any]:
     global _MODELS_CACHE
     if _MODELS_CACHE is not None:
         return _MODELS_CACHE
-    request = urllib.request.Request(
-        OPENROUTER_MODELS_URL,
-        method="GET",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "HTTP-Referer": "https://github.com/siglab/siglab",
-            "X-Title": "SigLab OpenRouter Integration Test",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
-            _MODELS_CACHE = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
-            _MODELS_CACHE = {}
-            return _MODELS_CACHE
-        raise AssertionError(
-            f"OpenRouter HTTP {exc.code} on GET /models: {exc.read().decode('utf-8', errors='replace')[:500]}"
-        ) from exc
+    def _do_fetch() -> Any:
+        request = urllib.request.Request(
+            OPENROUTER_MODELS_URL,
+            method="GET",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://github.com/siglab/siglab",
+                "X-Title": "SigLab OpenRouter Integration Test",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                return {}
+            raise AssertionError(
+                f"OpenRouter HTTP {exc.code} on GET /models: {exc.read().decode('utf-8', errors='replace')[:500]}"
+            ) from exc
+    _MODELS_CACHE = asyncio.run(async_limiter_call(lambda: asyncio.to_thread(_do_fetch)))
     return _MODELS_CACHE
 
 def _skip_if_disabled() -> None:
@@ -141,7 +145,7 @@ class _LiveBase(unittest.TestCase):
             payload["tool_choice"] = tool_choice
         if extra_body:
             payload.update(extra_body)
-        return _post_chat_completion(payload)
+        return asyncio.run(async_limiter_call(lambda: asyncio.to_thread(_post_chat_completion, payload)))
 
 
 class OpenRouterBasicChatTests(_LiveBase):

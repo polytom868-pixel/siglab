@@ -16,6 +16,7 @@ contract: skip on rate-limit, hard-fail only on structural breakage).
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import gzip
 import json
@@ -25,6 +26,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+
+from siglab.utils import async_limiter_call
 
 
 OPENROUTER_API_KEY = "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"
@@ -85,107 +88,112 @@ def _openrouter_headers() -> dict[str, str]:
 
 
 def _post_openrouter(payload: dict[str, Any]) -> dict[str, Any]:
-    body = json.dumps(payload).encode("utf-8")
-    headers = _openrouter_headers()
-    headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(
-        OPENROUTER_CHAT_URL,
-        data=body,
-        method="POST",
-        headers=headers,
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=OPENROUTER_TIMEOUT_S) as response:
-            raw = response.read()
-            if response.headers.get("Content-Encoding") == "gzip":
-                raw = gzip.decompress(raw)
-            return json.loads(raw.decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:500]
-        if exc.code == 429:
-            raise unittest.SkipTest(
-                f"OpenRouter rate-limited on {payload.get('model')} (HTTP 429): {body_text}"
-            )
-        raise AssertionError(
-            f"OpenRouter HTTP {exc.code} on {payload.get('model')}: {body_text}"
-        ) from exc
-
+    def _do_post() -> dict[str, Any]:
+        body = json.dumps(payload).encode("utf-8")
+        headers = _openrouter_headers()
+        headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(
+            OPENROUTER_CHAT_URL,
+            data=body,
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=OPENROUTER_TIMEOUT_S) as response:
+                raw = response.read()
+                if response.headers.get("Content-Encoding") == "gzip":
+                    raw = gzip.decompress(raw)
+                return json.loads(raw.decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")[:500]
+            if exc.code == 429:
+                raise unittest.SkipTest(
+                    f"OpenRouter rate-limited on {payload.get('model')} (HTTP 429): {body_text}"
+                )
+            raise AssertionError(
+                f"OpenRouter HTTP {exc.code} on {payload.get('model')}: {body_text}"
+            ) from exc
+    return asyncio.run(async_limiter_call(lambda: asyncio.to_thread(_do_post)))
 
 def _post_openrouter_gzip(payload: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
-    body = json.dumps(payload).encode("utf-8")
-    headers = _openrouter_headers()
-    headers["Content-Type"] = "application/json"
-    headers["Accept-Encoding"] = "gzip"
-    request = urllib.request.Request(
-        OPENROUTER_CHAT_URL,
-        data=body,
-        method="POST",
-        headers=headers,
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=OPENROUTER_TIMEOUT_S) as response:
-            raw = response.read()
-            encoding = response.headers.get("Content-Encoding")
-            if encoding == "gzip":
-                raw = gzip.decompress(raw)
-            return json.loads(raw.decode("utf-8")), encoding
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:500]
-        if exc.code == 429:
-            raise unittest.SkipTest(
-                f"OpenRouter gzip rate-limited on {payload.get('model')} (HTTP 429): {body_text}"
-            )
-        raise AssertionError(
-            f"OpenRouter gzip HTTP {exc.code} on {payload.get('model')}: {body_text}"
-        ) from exc
-
+    def _do_post() -> tuple[dict[str, Any], str | None]:
+        body = json.dumps(payload).encode("utf-8")
+        headers = _openrouter_headers()
+        headers["Content-Type"] = "application/json"
+        headers["Accept-Encoding"] = "gzip"
+        request = urllib.request.Request(
+            OPENROUTER_CHAT_URL,
+            data=body,
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=OPENROUTER_TIMEOUT_S) as response:
+                raw = response.read()
+                encoding = response.headers.get("Content-Encoding")
+                if encoding == "gzip":
+                    raw = gzip.decompress(raw)
+                return json.loads(raw.decode("utf-8")), encoding
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")[:500]
+            if exc.code == 429:
+                raise unittest.SkipTest(
+                    f"OpenRouter gzip rate-limited on {payload.get('model')} (HTTP 429): {body_text}"
+                )
+            raise AssertionError(
+                f"OpenRouter gzip HTTP {exc.code} on {payload.get('model')}: {body_text}"
+            ) from exc
+    return asyncio.run(async_limiter_call(lambda: asyncio.to_thread(_do_post)))
 
 def _get_openrouter_models() -> dict[str, Any]:
-    request = urllib.request.Request(
-        OPENROUTER_MODELS_URL, method="GET", headers=_openrouter_headers()
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=OPENROUTER_TIMEOUT_S) as response:
-            raw = response.read()
-            if response.headers.get("Content-Encoding") == "gzip":
-                raw = gzip.decompress(raw)
-            return json.loads(raw.decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:500]
-        if exc.code == 429:
-            raise unittest.SkipTest(f"OpenRouter /models rate-limited (HTTP 429): {body_text}")
-        raise AssertionError(f"OpenRouter /models HTTP {exc.code}: {body_text}") from exc
-
+    def _do_get() -> dict[str, Any]:
+        request = urllib.request.Request(
+            OPENROUTER_MODELS_URL, method="GET", headers=_openrouter_headers()
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=OPENROUTER_TIMEOUT_S) as response:
+                raw = response.read()
+                if response.headers.get("Content-Encoding") == "gzip":
+                    raw = gzip.decompress(raw)
+                return json.loads(raw.decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")[:500]
+            if exc.code == 429:
+                raise unittest.SkipTest(f"OpenRouter /models rate-limited (HTTP 429): {body_text}")
+            raise AssertionError(f"OpenRouter /models HTTP {exc.code}: {body_text}") from exc
+    return asyncio.run(async_limiter_call(lambda: asyncio.to_thread(_do_get)))
 
 def _get_sosovalue(path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any] | list[Any]:
     api_key = os.environ.get(SOSOVALUE_KEY_ENV)
     if not api_key:
         raise unittest.SkipTest(f"{SOSOVALUE_KEY_ENV} not set")
-    query = ""
-    if params:
-        query = "?" + urllib.parse.urlencode(params)
-    url = f"{SOSOVALUE_BASE_URL}{path}{query}"
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "x-soso-api-key": api_key,
-            "Accept": "application/json",
-            "User-Agent": "SigLab-Advanced-Integration-Test/1.0",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=SOSOVALUE_TIMEOUT_S) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:500]
-        if exc.code in (401, 403, 404, 422):
-            raise unittest.SkipTest(
-                f"SoSoValue {path} returned HTTP {exc.code} (gated/unknown path): {body_text}"
-            )
-        if exc.code == 429:
-            raise unittest.SkipTest(f"SoSoValue rate-limited on {path} (HTTP 429): {body_text}")
-        raise AssertionError(f"SoSoValue HTTP {exc.code} on {path}: {body_text}") from exc
+    def _do_get() -> dict[str, Any] | list[Any]:
+        query = ""
+        if params:
+            query = "?" + urllib.parse.urlencode(params)
+        url = f"{SOSOVALUE_BASE_URL}{path}{query}"
+        request = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                "x-soso-api-key": api_key,
+                "Accept": "application/json",
+                "User-Agent": "SigLab-Advanced-Integration-Test/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=SOSOVALUE_TIMEOUT_S) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")[:500]
+            if exc.code in (401, 403, 404, 422):
+                raise unittest.SkipTest(
+                    f"SoSoValue {path} returned HTTP {exc.code} (gated/unknown path): {body_text}"
+                )
+            if exc.code == 429:
+                raise unittest.SkipTest(f"SoSoValue rate-limited on {path} (HTTP 429): {body_text}")
+            raise AssertionError(f"SoSoValue HTTP {exc.code} on {path}: {body_text}") from exc
+    return asyncio.run(async_limiter_call(lambda: asyncio.to_thread(_do_get)))
 
 
 def _sodex_get(path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any] | list[Any]:

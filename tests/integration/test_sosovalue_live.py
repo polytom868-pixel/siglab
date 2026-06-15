@@ -24,6 +24,7 @@ disable even if the env var is set.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -32,6 +33,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+
+from siglab.utils import async_limiter_call
 
 
 SKIP_ENV_VAR = "SIGLAB_SKIP_SOSOVALUE"
@@ -66,34 +69,36 @@ def _get_so_sovalue(path: str, *, params: dict[str, Any] | None = None) -> dict[
     if not api_key:
         raise unittest.SkipTest(f"{API_KEY_ENV_VAR} not set")
 
-    query = ""
-    if params:
-        query = "?" + urllib.parse.urlencode(params)
-    url = f"{SOSOVALUE_BASE_URL}{path}{query}"
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "x-soso-api-key": api_key,
-            "Accept": "application/json",
-            "User-Agent": "SigLab-Integration-Test/1.0",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")[:500]
-        # 401/403/404: skip (means our truth-table claim is wrong: endpoint is
-        # gated or the path is wrong); don't fail the suite.
-        if exc.code in (401, 403, 404, 422):
-            raise unittest.SkipTest(
-                f"SoSoValue {path} returned HTTP {exc.code} (truth-table mismatch?): {body}"
-            )
-        # 429: rate-limited
-        if exc.code == 429:
-            raise unittest.SkipTest(f"SoSoValue rate-limited on {path} (HTTP 429)")
-        raise AssertionError(f"SoSoValue HTTP {exc.code} on {path}: {body}") from exc
+    def _do_get() -> dict[str, Any] | list[Any]:
+        query = ""
+        if params:
+            query = "?" + urllib.parse.urlencode(params)
+        url = f"{SOSOVALUE_BASE_URL}{path}{query}"
+        request = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                "x-soso-api-key": api_key,
+                "Accept": "application/json",
+                "User-Agent": "SigLab-Integration-Test/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")[:500]
+            # 401/403/404: skip (means our truth-table claim is wrong: endpoint is
+            # gated or the path is wrong); don't fail the suite.
+            if exc.code in (401, 403, 404, 422):
+                raise unittest.SkipTest(
+                    f"SoSoValue {path} returned HTTP {exc.code} (truth-table mismatch?): {body}"
+                )
+            # 429: rate-limited
+            if exc.code == 429:
+                raise unittest.SkipTest(f"SoSoValue rate-limited on {path} (HTTP 429)")
+            raise AssertionError(f"SoSoValue HTTP {exc.code} on {path}: {body}") from exc
+    return asyncio.run(async_limiter_call(lambda: asyncio.to_thread(_do_get)))
 
 class _LiveBase(unittest.TestCase):
     @classmethod
