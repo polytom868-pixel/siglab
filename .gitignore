@@ -57,23 +57,26 @@ new_empty_check.db
 # ----- SigLab runtime artefacts (state, snapshots, etc.) -----
 runs/
 backups/
-artifacts/
-artifacts.bak.*/
-sessions/
-data/lake/
-data/lake.bak.*/
-data/cache/
-mutable/
-challenges/
-tracks/
 
-# ----- Benchmarks: state + results but keep source of truth -----
-benchmarks/*/state.json
-benchmarks/*/results.tsv
-benchmarks/*/observation.md
-!benchmarks/trend_signals_external/state.json
-!benchmarks/trend_signals_external/results.tsv
-!benchmarks/trend_signals_external/observation.md
+# ----- ALL TESTS, scratch notes, agent work — keep repo CORE only -----
+tests/
+agent_workspace/
+tmp/
+scratch/
+oneoff/
+one_offs/
+junk/
+logs/
+benchmarks/
+scripts/
+.agents/
+.claude/
+.cursor/
+.idea/
+.vscode/
+.mcp.json
+.env
+.env.*
 
 # ----- Reports, audits, plans, scratch work -----
 reports/

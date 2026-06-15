@@ -1,0 +1,18 @@
+{
+  "bundle_id": "5e87b787f7c1d078",
+  "as_of": "2026-05-12T21:37:45+00:00",
+  "track": "trend_signals",
+  "parent_hash": "2da563b7063ee0a4",
+  "components": [
+    {
+      "namespace": "market_bundle_prices",
+      "cache_key": "827ade93466dd102ff26",
+      "kind": "frame"
+    },
+    {
+      "namespace": "market_bundle_funding",
+      "cache_key": "827ade93466dd102ff26",
+      "kind": "frame"
+    }
+  ]
+}
