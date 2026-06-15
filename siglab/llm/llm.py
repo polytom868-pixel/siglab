@@ -20,7 +20,7 @@ from siglab.llm_metadata import (
 from siglab.llm.policy import LLMRoutingPolicy
 from siglab.io_utils import json_clone
 from siglab.config import SiglabConfig
-from siglab.utils import int_or_zero, percentile as _percentile
+from siglab.utils import int_or_zero, safe_float, percentile as _percentile
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -126,12 +126,8 @@ def _openrouter_refuse_if_over_budget(
 def _parse_usd_string(value: Any) -> float:
     if value is None:
         return 0.0
-    if isinstance(value, (int, float)):
-        return max(0.0, float(value))
-    try:
-        return max(0.0, float(str(value).strip()))
-    except (TypeError, ValueError):
-        return 0.0
+    coerced = safe_float(value, default=0.0)
+    return max(0.0, coerced) if coerced is not None else 0.0
 
 
 @dataclass
@@ -909,7 +905,7 @@ class ClaudeClient:
             )
         if cost_value is not None:
             try:
-                cost_float = float(cost_value)
+                cost_float = safe_float(cost_value, default=0.0)
             except (TypeError, ValueError):
                 cost_float = 0.0
         else:
