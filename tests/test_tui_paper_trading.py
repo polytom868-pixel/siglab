@@ -437,18 +437,22 @@ class TestTextInputScreen:
 
 # ── Integration Tests ────────────────────────────────────────────────
 
-
 class TestPaperScreenIntegration:
     """Test PaperScreen integration with CLI bridge."""
+
+    @staticmethod
+    def _patch_run_cli(returncode: int, stdout: str, stderr: str = "") -> MagicMock:
+        mock_result = MagicMock()
+        mock_result.returncode = returncode
+        mock_result.stdout = stdout
+        mock_result.stderr = stderr
+        return mock_result
 
     @pytest.mark.asyncio
     async def test_init_session_success(self) -> None:
         """Test that _init_session creates a session via CLI bridge."""
         screen = PaperScreen()
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = '{"session_id": "test123", "name": "tui-session"}'
-        mock_result.stderr = ""
+        mock_result = self._patch_run_cli(0, '{"session_id": "test123", "name": "tui-session"}')
 
         with patch("siglab.tui.screens.paper.run_cli", new_callable=AsyncMock, return_value=mock_result):
             # Mock _find_existing_session to prevent real session reuse
@@ -463,10 +467,7 @@ class TestPaperScreenIntegration:
     async def test_init_session_failure(self) -> None:
         """Test that _init_session handles CLI failures gracefully."""
         screen = PaperScreen()
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
-        mock_result.stderr = "Session creation failed"
+        mock_result = self._patch_run_cli(1, "", "Session creation failed")
 
         with patch("siglab.tui.screens.paper.run_cli", new_callable=AsyncMock, return_value=mock_result):
             # Mock _find_existing_session to prevent real session reuse
@@ -519,17 +520,14 @@ class TestPaperScreenIntegration:
             assert "updated" in screen.status_text.lower() or "test123" in screen.status_text
 
 
-# ── CSS Integration Tests ────────────────────────────────────────────
-
-
-class TestPaperScreenCSS:
-    """Test that paper screen CSS rules exist (consolidated in app.tcss)."""
+    @staticmethod
+    def _read_tcss() -> str:
+        from pathlib import Path
+        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
+        return tcss_path.read_text()
 
     def test_app_tcss_has_paper_styles(self) -> None:
-        from pathlib import Path
-
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
-        content = tcss_path.read_text()
+        content = self._read_tcss()
         assert "PaperScreen" in content
         assert "#paper-layout" in content
         assert "#paper-main" in content
@@ -543,12 +541,8 @@ class TestPaperScreenCSS:
         assert "#paper-status" in content
 
     def test_app_tcss_paper_left_width(self) -> None:
-        from pathlib import Path
-
-        tcss_path = Path(__file__).resolve().parents[1] / "siglab" / "tui" / "styles" / "app.tcss"
-        content = tcss_path.read_text()
         # Left column should be fixed width
-        assert "width: 40" in content
+        assert "width: 40" in self._read_tcss()
 
 
 # ── Module Export Tests ──────────────────────────────────────────────
