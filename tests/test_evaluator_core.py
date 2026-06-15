@@ -13,21 +13,7 @@ from siglab.evaluator.core import (
     _unique_float_values,
     _unique_int_values,
 )
-
-
-def _make_mock_settings() -> MagicMock:
-    """Build a mock SiglabConfig with required fields."""
-    settings = MagicMock()
-    settings.root_dir = "/tmp"
-    settings.sosovalue_config_path = "/tmp/soso.json"
-    settings.generated_strategy_dir = "/tmp/strategies"
-    settings.data_lake_dir = "/tmp/lake"
-    settings.artifact_dir = "/tmp/artifacts"
-    settings.live_dir = "/tmp/live"
-    settings.ancestry_db_path = "/tmp/ancestry.db"
-    settings.sosovalue_api_key_override = None
-    return settings
-
+from tests._factories import make_mock_settings
 
 def _make_mock_provider() -> MagicMock:
     """Build a mock MarketDataProvider."""
@@ -39,7 +25,7 @@ def _make_evaluator(
     provider: MagicMock | None = None,
 ) -> ResearchEvaluator:
     return ResearchEvaluator(
-        settings=settings or _make_mock_settings(),
+        settings=settings or make_mock_settings(),
         provider=provider or _make_mock_provider(),
     )
 
@@ -48,7 +34,7 @@ class ResearchEvaluatorConstructionTests(unittest.TestCase):
     """ResearchEvaluator __init__ stores settings and provider."""
 
     def test_construction_with_settings_and_provider(self) -> None:
-        settings = _make_mock_settings()
+        settings = make_mock_settings()
         provider = _make_mock_provider()
         ev = ResearchEvaluator(settings=settings, provider=provider)
         self.assertIs(ev.settings, settings)

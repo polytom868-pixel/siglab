@@ -1003,54 +1003,12 @@ class WorkspaceFlowTests(unittest.TestCase):
             settings.claude_max_tool_rounds = 5
             ancestry, mutator, builder = make_workspace_triple(settings=settings)
 
-            class FakeClaude:
-                def __init__(self) -> None:
-                    self.last_trace = {"ok": True}
-                    self.last_exchange = {"ok": True}
-
-                async def complete_text_with_tools(self, **_kwargs: object) -> str:
-                    return """---
-decision: refine_current_family
-search_mode: branch_same_family
-target_family: perp_multi_asset_carry
-target_universe: [BTC, ETH, SOL, HYPE]
-core_hypothesis: generic top-level note
-informative_test: generic top-level test
-expected_success: [better validation robustness]
-expected_failure: [no measurable change]
-evidence_paths: []
-tools_used: []
-tracking_tags: [perp_multi_asset_carry]
-must_answer: Does one concrete regime discriminator improve pre-audit return without making validation negative for `perp_multi_asset_carry`?
-required_feature_roles: [one core_carry feature, one orthogonal_regime feature]
-forbidden_motifs: [second pure trend overlay]
-gate_intent: {}
-writer_inputs: [manifests/family/perp_multi_asset_carry.md]
----
-
-```yaml
----
-target_family: perp_multi_asset_carry
-must_answer: Does adding a market_volatility_168h gate improve pre-audit return above 0.336 while keeping validation positive for `perp_multi_asset_carry`?
-required_features:
-  - funding_carry_to_vol
-  - market_volatility_168h
-required_gate_dimensions:
-  - market_volatility_168h
-forbidden_motifs:
-  - perp_multi_asset_carry|unspecified|core_carry+funding+orthogonal_regime|funding_dispersion_72h
----
-```
-
-## Diagnosis
-Use the embedded spec, not the generic one.
-"""
+            claude = make_fake_claude()
 
             class FakeHypothesisSandbox:
                 def claude_tools(self, **_kwargs: object) -> list[object]:
                     return []
 
-            claude = FakeClaude()
             mutator = SpecMutator(settings, claude=claude)  # type: ignore[arg-type]
             builder = WorkspaceBuilder(
                 settings=settings,
@@ -1192,25 +1150,20 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
             settings.claude_max_tool_rounds = 5
             ancestry, mutator, builder = make_workspace_triple(settings=settings)
 
-            class FakeClaude:
-                def __init__(self) -> None:
-                    self.last_trace = {"ok": True}
-                    self.last_exchange = {"ok": True}
-
-                async def complete_text_with_tools(self, **_kwargs: object) -> str:
-                    return """## Diagnosis
+            claude = make_fake_claude(
+                text_return="""## Diagnosis
 Stay in carry but tilt toward a momentum-flavored ranking.
 
 ## Proposed next experiment
 Stay in `perp_multi_asset_carry`.
 trade_style: continuation
 """
+            )
 
             class FakeHypothesisSandbox:
                 def claude_tools(self, **_kwargs: object) -> list[object]:
                     return []
 
-            claude = FakeClaude()
             mutator = SpecMutator(settings, claude=claude)  # type: ignore[arg-type]
             builder = WorkspaceBuilder(
                 settings=settings,
