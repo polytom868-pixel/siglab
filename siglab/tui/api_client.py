@@ -432,6 +432,10 @@ class TuiApiClient:
                     elif msg_type == "ping":
                         await ws.send(json.dumps({"action": "pong"}))
             finally:
-                await ws.close()
+                try:
+                    await ws.close()
+                except Exception as close_exc:
+                    logger.debug("WS close after failure: %s", close_exc)
         except Exception as exc:
             logger.warning("WS risk subscription failed: %s", exc)
+            raise

@@ -402,14 +402,18 @@ class RiskScreen(BaseScreen):
         await super().on_unmount()
 
     async def _ws_risk_loop(self) -> None:
-        """Subscribe to risk_score WebSocket updates in background."""
+        """Subscribe to risk_score WebSocket updates in background.
+
+        Reconnects with exponential backoff (capped at 30s) when the
+        subscription drops. Backoff only doubles — it does NOT reset
+        between iterations, so a sustained outage throttles retries.
+        """
         if self._api is None:
             return
         backoff = 1.0
         max_backoff = 30.0
         while True:
             try:
-                backoff = 1.0  # Reset on successful connection
                 await self._api.ws_subscribe_risk(self._on_ws_risk_update)
             except asyncio.CancelledError:
                 return
