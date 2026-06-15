@@ -139,6 +139,32 @@ def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Comple
     return result
 
 
+def _make_paper_feeds(
+    *,
+    base_price: float = 50000.0,
+    n: int = 100,
+    seed: int = 42,
+) -> MagicMock:
+    """Build a MagicMock(spec=SoDEXFeeds) with deterministic kline data."""
+    feeds = MagicMock(spec=SoDEXFeeds)
+    feeds.fetch_klines = AsyncMock(return_value=_make_kline_data(base_price=base_price, n=n, seed=seed))
+    feeds.fetch_mark_prices = AsyncMock(return_value=[])
+    feeds.fetch_funding_rates = AsyncMock(return_value=[])
+    return feeds
+
+@contextlib.contextmanager
+def _tmp_sessions_dir_ctx():
+    """Yield a fresh ``sessions_dir`` Path inside a tempdir.
+
+    Replaces the 4 inline ``with tempfile.TemporaryDirectory() as tmp:
+        sessions_dir = Path(tmp) / "sessions"
+        sessions_dir.mkdir()`` patterns in this file.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        sessions_dir = Path(tmp) / "sessions"
+        sessions_dir.mkdir()
+        yield sessions_dir
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -219,9 +245,7 @@ class TestCross001FullLifecycle:
             sessions_dir.mkdir()
 
             # Create mock feeds returning deterministic kline data
-            feeds = MagicMock(spec=SoDEXFeeds)
-            klines = _make_kline_data(base_price=50000.0, n=200, seed=42)
-            feeds.fetch_klines = AsyncMock(return_value=klines)
+            feeds = _make_paper_feeds(base_price=50000.0, n=200, seed=42)
 
             # Create paper client and session
             client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
@@ -260,9 +284,7 @@ class TestCross001FullLifecycle:
             sessions_dir = tmp_dir / "sessions"
             sessions_dir.mkdir()
 
-            feeds = MagicMock(spec=SoDEXFeeds)
-            klines = _make_kline_data(base_price=50000.0, n=200, seed=42)
-            feeds.fetch_klines = AsyncMock(return_value=klines)
+            feeds = _make_paper_feeds(base_price=50000.0, n=200, seed=42)
 
             client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
             session_id = client.create_session(name="status_test")
@@ -426,9 +448,7 @@ class TestCross002SoSoValueToDashboard:
             sessions_dir = tmp_dir / "sessions"
             sessions_dir.mkdir()
 
-            feeds = MagicMock(spec=SoDEXFeeds)
-            klines = _make_kline_data(base_price=50000.0, n=200, seed=42)
-            feeds.fetch_klines = AsyncMock(return_value=klines)
+            feeds = _make_paper_feeds(base_price=50000.0, n=200, seed=42)
 
             # Use evaluation-derived params to place an informed paper trade
             client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
@@ -518,9 +538,7 @@ class TestCross003CliToDashboard:
         """
         paper-start CLI command creates a new session and returns session ID.
         """
-        with tempfile.TemporaryDirectory() as tmp:
-            sessions_dir = Path(tmp) / "sessions"
-            sessions_dir.mkdir()
+        with _tmp_sessions_dir_ctx() as sessions_dir:
 
             result = _run_cli(
                 "paper-start",
@@ -875,9 +893,7 @@ class TestCross007ResearchEvaluatePaper:
             sessions_dir = tmp_dir / "sessions"
             sessions_dir.mkdir()
 
-            feeds_mock = MagicMock(spec=SoDEXFeeds)
-            klines = _make_kline_data(base_price=50000.0, seed=42)
-            feeds_mock.fetch_klines = AsyncMock(return_value=klines)
+            feeds_mock = _make_paper_feeds(base_price=50000.0, seed=42)
 
             # Create paper session for the evaluated strategy
             client = SoDEXPaperPerpsClient(feeds=feeds_mock, sessions_dir=sessions_dir)
@@ -913,9 +929,7 @@ class TestCross007ResearchEvaluatePaper:
             sessions_dir = tmp_dir / "sessions"
             sessions_dir.mkdir()
 
-            feeds_mock = MagicMock(spec=SoDEXFeeds)
-            klines = _make_kline_data(base_price=50000.0, seed=42)
-            feeds_mock.fetch_klines = AsyncMock(return_value=klines)
+            feeds_mock = _make_paper_feeds(base_price=50000.0, seed=42)
 
             client = SoDEXPaperPerpsClient(feeds=feeds_mock, sessions_dir=sessions_dir)
 
@@ -1269,12 +1283,9 @@ class TestCrossAllCommon:
             sessions_dir.mkdir()
 
             # Create a session with minimal trading data
-            from siglab.data.sodex_feeds import SoDEXFeeds
 
-            feeds = MagicMock(spec=SoDEXFeeds)
-            klines = _make_kline_data(base_price=50000.0, n=200, seed=42)
-            feeds.fetch_klines = AsyncMock(return_value=klines)
-            feeds.fetch_mark_prices = AsyncMock(return_value=[])
+
+            feeds = _make_paper_feeds(base_price=50000.0, n=200, seed=42)
 
             client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
             session_id = client.create_session(name="poor_performer")
