@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from hashlib import sha256
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -26,6 +27,19 @@ from siglab.evaluator.compile import (
     _weighted_component_frames,
     _weighted_score,
 )
+
+def _make_weighted_test_frames(index: pd.DatetimeIndex) -> dict[str, pd.DataFrame]:
+    """Shared fixture for WeightedScoreTests and WeightedComponentFramesTests."""
+    return {
+        "momentum": pd.DataFrame(
+            {"BTC": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "ETH": [2.0, 3.0, 4.0, 5.0, 6.0, 7.0]},
+            index=index,
+        ),
+        "carry": pd.DataFrame(
+            {"BTC": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], "ETH": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]},
+            index=index,
+        ),
+    }
 
 
 class CompileConstantsTests(unittest.TestCase):
@@ -174,16 +188,7 @@ class WeightedScoreTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.index = pd.date_range("2026-01-01", periods=6, freq="h")
-        self.feature_frames = {
-            "momentum": pd.DataFrame(
-                {"BTC": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "ETH": [2.0, 3.0, 4.0, 5.0, 6.0, 7.0]},
-                index=self.index,
-            ),
-            "carry": pd.DataFrame(
-                {"BTC": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], "ETH": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]},
-                index=self.index,
-            ),
-        }
+        self.feature_frames = _make_weighted_test_frames(self.index)
 
     def test_basic_weighted_score(self) -> None:
         result = _weighted_score(
@@ -274,16 +279,7 @@ class WeightedComponentFramesTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.index = pd.date_range("2026-01-01", periods=6, freq="h")
-        self.feature_frames = {
-            "momentum": pd.DataFrame(
-                {"BTC": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "ETH": [2.0, 3.0, 4.0, 5.0, 6.0, 7.0]},
-                index=self.index,
-            ),
-            "carry": pd.DataFrame(
-                {"BTC": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], "ETH": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]},
-                index=self.index,
-            ),
-        }
+        self.feature_frames = _make_weighted_test_frames(self.index)
 
     def test_returns_component_frames(self) -> None:
         components = _weighted_component_frames(
@@ -613,23 +609,27 @@ class BuildPairTradePositionsTests(unittest.TestCase):
         self.asset_1 = "BTC"
         self.asset_2 = "ETH"
 
+    def _build(self, score: pd.DataFrame, **overrides: Any) -> Any:
+        kwargs: dict[str, Any] = {
+            "asset_1_symbol": self.asset_1,
+            "asset_2_symbol": self.asset_2,
+            "gross_target": 1.0,
+            "max_gross_target": 1.0,
+            "max_asset_weight": 1.0,
+            "entry_abs_score": 1.5,
+            "exit_abs_score": 0.5,
+            "flip_abs_score": 2.0,
+            "max_holding_bars": 0,
+            "cooldown_bars": 0,
+            "signal_leverage_scale": 0.75,
+        }
+        kwargs.update(overrides)
+        return _build_pair_trade_positions(score, **kwargs)
+
     def test_entry_on_strong_signal(self) -> None:
         values = [0.0] * 5 + [2.0] + [0.0] * 14
         score = pd.DataFrame({"pair": values}, index=self.index)
-        result = _build_pair_trade_positions(
-            score,
-            asset_1_symbol=self.asset_1,
-            asset_2_symbol=self.asset_2,
-            gross_target=1.0,
-            max_gross_target=1.0,
-            max_asset_weight=1.0,
-            entry_abs_score=1.5,
-            exit_abs_score=0.5,
-            flip_abs_score=2.0,
-            max_holding_bars=0,
-            cooldown_bars=0,
-            signal_leverage_scale=0.75,
-        )
+        result = self._build(score)
         self.assertTrue((result.iloc[:5] == 0.0).all().all())
         self.assertAlmostEqual(float(result.iloc[5, 0]), 0.5)  # BTC = leg_weight
         self.assertAlmostEqual(float(result.iloc[5, 1]), -0.5)  # ETH = -leg_weight
@@ -637,20 +637,7 @@ class BuildPairTradePositionsTests(unittest.TestCase):
     def test_exit_when_signal_decays(self) -> None:
         values = [2.0] + [0.4] + [0.0] * 18
         score = pd.DataFrame({"pair": values}, index=self.index)
-        result = _build_pair_trade_positions(
-            score=score,
-            asset_1_symbol=self.asset_1,
-            asset_2_symbol=self.asset_2,
-            gross_target=1.0,
-            max_gross_target=1.0,
-            max_asset_weight=1.0,
-            entry_abs_score=1.5,
-            exit_abs_score=0.5,
-            flip_abs_score=2.0,
-            max_holding_bars=0,
-            cooldown_bars=0,
-            signal_leverage_scale=0.75,
-        )
+        result = self._build(score)
         self.assertAlmostEqual(float(result.iloc[0, 0]), 0.5)
         self.assertTrue((result.iloc[1] == 0.0).all().all())
         self.assertTrue((result.iloc[2] == 0.0).all().all())
@@ -658,20 +645,7 @@ class BuildPairTradePositionsTests(unittest.TestCase):
     def test_flip_signal_reverses_position(self) -> None:
         values = [0.0] * 3 + [2.0] + [1.0] * 2 + [-3.0] + [0.0] * 13
         score = pd.DataFrame({"pair": values}, index=self.index)
-        result = _build_pair_trade_positions(
-            score,
-            asset_1_symbol=self.asset_1,
-            asset_2_symbol=self.asset_2,
-            gross_target=1.0,
-            max_gross_target=1.0,
-            max_asset_weight=1.0,
-            entry_abs_score=1.5,
-            exit_abs_score=0.5,
-            flip_abs_score=2.5,
-            max_holding_bars=0,
-            cooldown_bars=0,
-            signal_leverage_scale=0.75,
-        )
+        result = self._build(score, flip_abs_score=2.5)
         self.assertAlmostEqual(float(result.iloc[3, 0]), 0.5)
         self.assertAlmostEqual(float(result.iloc[6, 0]), -0.5)
         self.assertAlmostEqual(float(result.iloc[6, 1]), 0.5)
@@ -679,44 +653,17 @@ class BuildPairTradePositionsTests(unittest.TestCase):
     def test_cooldown_prevents_reentry(self) -> None:
         values = [0.0] * 3 + [2.0] + [0.0] + [2.0] + [0.0] * 14
         score = pd.DataFrame({"pair": values}, index=self.index)
-        result = _build_pair_trade_positions(
-            score,
-            asset_1_symbol=self.asset_1,
-            asset_2_symbol=self.asset_2,
-            gross_target=1.0,
-            max_gross_target=1.0,
-            max_asset_weight=1.0,
-            entry_abs_score=1.5,
-            exit_abs_score=0.5,
-            flip_abs_score=2.0,
-            max_holding_bars=0,
-            cooldown_bars=3,
-            signal_leverage_scale=0.75,
-        )
+        result = self._build(score, cooldown_bars=3)
         self.assertAlmostEqual(float(result.iloc[3, 0]), 0.5)
         self.assertTrue((result.iloc[4] == 0.0).all().all())
-        self.assertTrue((result.iloc[5] == 0.0).all().all())
         self.assertTrue((result.iloc[5] == 0.0).all().all())
 
     def test_regime_gate_exit_after_entry(self) -> None:
         values = [2.0] * 10 + [0.0] * 10
         score = pd.DataFrame({"pair": values}, index=self.index)
         reg_mask = pd.Series([True] * 5 + [False] * 15, index=self.index)
-        result = _build_pair_trade_positions(
-            score,
-            asset_1_symbol=self.asset_1,
-            asset_2_symbol=self.asset_2,
-            gross_target=1.0,
-            max_gross_target=1.0,
-            max_asset_weight=1.0,
-            entry_abs_score=1.5,
-            exit_abs_score=0.5,
-            flip_abs_score=2.0,
-            max_holding_bars=0,
-            cooldown_bars=0,
-            signal_leverage_scale=0.75,
-            regime_gate_mask=reg_mask,
-            exit_on_regime_break=True,
+        result = self._build(
+            score, regime_gate_mask=reg_mask, exit_on_regime_break=True,
         )
         self.assertAlmostEqual(float(result.iloc[0, 0]), 0.5)
         self.assertTrue((result.iloc[5] == 0.0).all().all())
@@ -724,20 +671,7 @@ class BuildPairTradePositionsTests(unittest.TestCase):
     def test_max_holding_bars_exits_position(self) -> None:
         values = [2.0] * 3 + [0.0] * 17
         score = pd.DataFrame({"pair": values}, index=self.index)
-        result = _build_pair_trade_positions(
-            score=score,
-            asset_1_symbol=self.asset_1,
-            asset_2_symbol=self.asset_2,
-            gross_target=1.0,
-            max_gross_target=1.0,
-            max_asset_weight=1.0,
-            entry_abs_score=1.5,
-            exit_abs_score=0.5,
-            flip_abs_score=2.0,
-            max_holding_bars=3,
-            cooldown_bars=0,
-            signal_leverage_scale=0.75,
-        )
+        result = self._build(score, max_holding_bars=3)
         self.assertAlmostEqual(float(result.iloc[0, 0]), 0.5)
         self.assertAlmostEqual(float(result.iloc[1, 0]), 0.5)
         self.assertAlmostEqual(float(result.iloc[2, 0]), 0.5)
@@ -746,23 +680,9 @@ class BuildPairTradePositionsTests(unittest.TestCase):
 
     def test_negative_entry_enters_short(self) -> None:
         score = pd.DataFrame({"pair": [0.0] * 3 + [-2.0] + [0.0] * 16}, index=self.index)
-        result = _build_pair_trade_positions(
-            score,
-            asset_1_symbol=self.asset_1,
-            asset_2_symbol=self.asset_2,
-            gross_target=1.0,
-            max_gross_target=1.0,
-            max_asset_weight=1.0,
-            entry_abs_score=1.5,
-            exit_abs_score=0.5,
-            flip_abs_score=2.0,
-            max_holding_bars=0,
-            cooldown_bars=0,
-            signal_leverage_scale=0.75,
-        )
+        result = self._build(score)
         self.assertAlmostEqual(float(result.iloc[3, 0]), -0.5)
         self.assertAlmostEqual(float(result.iloc[3, 1]), 0.5)
-
 
 class PairPolicyParametersTests(unittest.TestCase):
 
