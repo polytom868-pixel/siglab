@@ -1,54 +1,106 @@
-.venv/
+# SigLab core-code .gitignore
+# Tracks: siglab/ + docs/ + .agents/ + scripts/ + config files
+# Ignores: tests/ (junk), agent_workspace/ (junk), temp, one-off, logs
+
+# ----- Python -----
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+*.so
+*.egg-info/
+*.egg
+
+# ----- Virtual envs -----
+.venv/
+venv/
+env/
+
+# ----- Test/cache/runtime junk -----
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.prof
+*.lprof
+*.npy
+
+# ----- OS -----
 .DS_Store
+Thumbs.db
+
+# ----- Tooling -----
+.omc/
 .claude/
+.wayfinder/
+.cursor/
+.idea/
+.vscode/
+
+# ----- Logs -----
+*.log
+dashboard_*.log
+
+# ----- Local env / secrets -----
 .env
+.env.*
 .siglab-provider.env
 config.json
-.wayfinder/
-*.log
+config.local.json
 *.db
 *.db.*
-artifacts/
-artifacts.bak.*/
+lineage.db
+new_empty_check.db
+
+# ----- SigLab runtime artefacts (state, snapshots, etc.) -----
 runs/
 backups/
+artifacts/
+artifacts.bak.*/
+sessions/
 data/lake/
 data/lake.bak.*/
 data/cache/
-lineage.db
-new_empty_check.db
-dashboard_*.log
-/live/
-siglab/live/deployed_agents/*
-!siglab/live/deployed_agents/__init__.py
+mutable/
+challenges/
+tracks/
+
+# ----- Benchmarks: state + results but keep source of truth -----
 benchmarks/*/state.json
 benchmarks/*/results.tsv
 benchmarks/*/observation.md
 !benchmarks/trend_signals_external/state.json
 !benchmarks/trend_signals_external/results.tsv
 !benchmarks/trend_signals_external/observation.md
-.omc/
-sessions/
-.coverage
+
+# ----- Reports, audits, plans, scratch work -----
 reports/
-.mypy_cache/
-.ruff_cache/
-.gitignore
-*.egg-info/
-*.so
-*.npy
-htmlcov/
-*.prof
-*.lprof
-*.pyo
-*.pyd
-mutable/
-challenges/
-tracks/
+
+# ----- Deployed agent credentials / private config (keep __init__) -----
+siglab/live/deployed_agents/*
+!siglab/live/deployed_agents/__init__.py
+
+# ----- ALL TESTS, scratch notes, agent work — keep repo CORE only -----
+tests/
+agent_workspace/
+tmp/
+scratch/
+oneoff/
+one_offs/
+junk/
+logs/
+
+# ----- Auto-generated noise inside docs (overridden by per-file allow) -----
 docs/*gap*
 docs/*audit*.md
 docs/*validation*.md
 docs/refactor-correction-report.md
 docs/*surface*.yaml
+
+# ----- Misc auto-generated -----
+.idea/
+*.swp
+*.bak
+*.tmp
