@@ -19,9 +19,13 @@ from siglab.schemas import SignalSpec
 from siglab.track_registry import matching_track_names, resolve_track
 
 from siglab.search.lineage_types import (
+    _delta,
     _maturity_bucket,
+    _median_value,
+    _parse_timestamp,
     _safe_float,
     _spec_assets,
+    _tokens,
 )
 from siglab.search.lineage_analysis import (
     assemble_memory_packet,
@@ -48,13 +52,6 @@ from siglab.search.lineage_analysis import (
     spec_payload,
     top_similar as _top_similar,
 )
-
-# Re-export for backward compatibility with ``from siglab.search.lineage import ...``
-_safe_float = _safe_float
-_median_value = __import__("siglab.search.lineage_types", fromlist=["_median_value"])._median_value
-_delta = __import__("siglab.search.lineage_types", fromlist=["_delta"])._delta
-_parse_timestamp = __import__("siglab.search.lineage_types", fromlist=["_parse_timestamp"])._parse_timestamp
-_tokens = __import__("siglab.search.lineage_types", fromlist=["_tokens"])._tokens
 
 
 class LineageStore:
