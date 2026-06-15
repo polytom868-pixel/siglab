@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
