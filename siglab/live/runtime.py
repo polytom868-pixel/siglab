@@ -38,22 +38,12 @@ class SoDEXExecutionAdapter:
         )
 
     async def update_leverage(self, **kwargs: Any) -> None:
-        client = self._require_client()
-        method = getattr(client, "update_leverage", None)
-        if method is None:
-            raise RuntimeError("Configured SoDEX client does not provide update_leverage()")
-        result = method(**kwargs)
-        if hasattr(result, "__await__"):
-            await result
+        method = self._resolve_client_method("update_leverage")
+        await _await_if_needed(method(**kwargs))
 
     async def place_market_order(self, **kwargs: Any) -> tuple[bool, str]:
-        client = self._require_client()
-        method = getattr(client, "place_market_order", None)
-        if method is None:
-            raise RuntimeError("Configured SoDEX client does not provide place_market_order()")
-        result = method(**kwargs)
-        if hasattr(result, "__await__"):
-            result = await result
+        method = self._resolve_client_method("place_market_order")
+        result = await _await_if_needed(method(**kwargs))
         if isinstance(result, tuple) and len(result) == 2:
             return bool(result[0]), str(result[1])
         if isinstance(result, dict):
@@ -68,25 +58,15 @@ class SoDEXExecutionAdapter:
         return state
 
     async def get_user_state(self, *args: Any, **kwargs: Any) -> tuple[bool, Any]:
-        client = self._require_client()
-        method = getattr(client, "get_user_state", None) or getattr(client, "get_state", None)
-        if method is None:
-            raise RuntimeError("Configured SoDEX client does not provide get_user_state() or get_state()")
-        result = method(*args, **kwargs)
-        if hasattr(result, "__await__"):
-            result = await result
+        method = self._resolve_client_method("get_user_state", fallback="get_state")
+        result = await _await_if_needed(method(*args, **kwargs))
         if isinstance(result, tuple) and len(result) == 2:
             return bool(result[0]), result[1]
         return True, result
 
     async def all_mids(self) -> dict[str, float]:
-        client = self._require_client()
-        method = getattr(client, "all_mids", None)
-        if method is None:
-            raise RuntimeError("Configured SoDEX client does not provide all_mids()")
-        result = method()
-        if hasattr(result, "__await__"):
-            result = await result
+        method = self._resolve_client_method("all_mids")
+        result = await _await_if_needed(method())
         return {str(symbol).upper(): float(price) for symbol, price in dict(result or {}).items()}
 
     def get_valid_order_size(self, _asset_id: int, size: float) -> float:
@@ -172,6 +152,14 @@ class SoDEXExecutionAdapter:
                 ),
             },
         }
+
+
+def _finite_float(value: Any, default: float = 0.0) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    return numeric if math.isfinite(numeric) else default
 
 
 def _compact_weights(payload: dict[str, float], *, epsilon: float = 1e-9) -> dict[str, float]:
