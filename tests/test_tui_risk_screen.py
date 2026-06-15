@@ -248,21 +248,19 @@ class TestAlertStreamWidget:
         plain = text.plain
         assert "No alerts" in plain
 
+    @staticmethod
+    def _make_alert(severity: str, message: str, metric: str = "drawdown") -> dict:
+        return {
+            "timestamp": "2024-01-15T14:02:32",
+            "severity": severity,
+            "metric": metric,
+            "message": message,
+        }
     def test_with_alerts_renders_entries(self) -> None:
         widget = AlertStreamWidget()
         widget.alerts = [
-            {
-                "timestamp": "2024-01-15T14:02:32",
-                "severity": "warning",
-                "metric": "drawdown",
-                "message": "Drawdown exceeded threshold",
-            },
-            {
-                "timestamp": "2024-01-15T14:01:10",
-                "severity": "info",
-                "metric": "risk_score",
-                "message": "Risk score updated",
-            },
+            self._make_alert("warning", "Drawdown exceeded threshold"),
+            self._make_alert("info", "Risk score updated", metric="risk_score"),
         ]
         text = widget.render()
         plain = text.plain
@@ -274,12 +272,7 @@ class TestAlertStreamWidget:
     def test_critical_alert_renders(self) -> None:
         widget = AlertStreamWidget()
         widget.alerts = [
-            {
-                "timestamp": "2024-01-15T14:02:32",
-                "severity": "critical",
-                "metric": "concentration",
-                "message": "Concentration limit breached",
-            },
+            self._make_alert("critical", "Concentration limit breached", metric="concentration"),
         ]
         text = widget.render()
         plain = text.plain
@@ -358,15 +351,11 @@ async def test_risk_screen_mounts_without_error():
 
         SCREENS = {"risk": RiskScreen}
 
-        def on_mount(self) -> None:
-            self.push_screen("risk")
-
     app = TestApp()
     async with app.run_test(size=(120, 40)) as pilot:
-        await pilot.pause()
+        await pilot.app.push_screen("risk")
         # Verify it mounted and rendered without crashing
         assert app.is_running
-        # Verify the risk screen is the active screen
         assert app.screen is not None
 
 
