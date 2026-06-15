@@ -9,7 +9,8 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from typing import Any, NamedTuple, cast
+from typing import Any, NamedTuple
+
 
 def parse_rows_from_json(stdout: str) -> list[dict[str, Any]]:
     """Parse a JSON document into a list of row dicts.
@@ -20,8 +21,8 @@ def parse_rows_from_json(stdout: str) -> list[dict[str, Any]]:
     data = json.loads(stdout)
     if isinstance(data, list):
         return [r for r in data if isinstance(r, dict)]
-    rows = data.get("rows", data.get("experiments", []))
-    return [r for r in cast(list[dict[str, Any]], rows) if isinstance(r, dict)]
+    rows: list[dict[str, Any]] = data.get("rows", data.get("experiments", []))
+    return [r for r in rows if isinstance(r, dict)]
 
 MAX_COMPARE: int = 4
 
