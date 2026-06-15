@@ -240,16 +240,20 @@ def _validate_symbol(symbol: str) -> str:
     return symbol
 
 
-def _validate_quantity(quantity: float) -> float:
+def _to_positive_float(value: Any, *, name: str) -> float:
     try:
-        qty = float(quantity)
+        v = float(value)
     except (TypeError, ValueError):
-        raise PaperClientError(f"quantity must be a number, got {quantity!r}")
-    if qty <= 0:
-        raise PaperClientError(f"quantity must be positive, got {qty}")
-    if qty > 1e12:
-        raise PaperClientError(f"quantity too large: {qty}")
-    return qty
+        raise PaperClientError(f"{name} must be a number, got {value!r}")
+    if v <= 0:
+        raise PaperClientError(f"{name} must be positive, got {v}")
+    if v > 1e12:
+        raise PaperClientError(f"{name} too large: {v}")
+    return v
+
+
+def _validate_quantity(quantity: float) -> float:
+    return _to_positive_float(quantity, name="quantity")
 
 
 def _validate_price(price: float | None, order_type: PaperOrderType) -> float | None:
@@ -258,15 +262,7 @@ def _validate_price(price: float | None, order_type: PaperOrderType) -> float | 
         return None
     if price is None:
         raise PaperClientError("price is required for LIMIT orders")
-    try:
-        p = float(price)
-    except (TypeError, ValueError):
-        raise PaperClientError(f"price must be a number, got {price!r}")
-    if p <= 0:
-        raise PaperClientError(f"price must be positive, got {p}")
-    if p > 1e12:
-        raise PaperClientError(f"price too large: {p}")
-    return p
+    return _to_positive_float(price, name="price")
 
 
 def _coerce_enum(value: str, enum_cls: type[E], expected: str) -> E:
