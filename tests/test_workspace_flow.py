@@ -33,6 +33,9 @@ from tests._factories import make_fake_claude, make_workspace_triple
 
 
 class WorkspaceFlowTests(unittest.TestCase):
+    _MARKET_SUMMARY = {"market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]}, "perp_snapshot": []}
+    _BUNDLE_PAYLOAD = {"bundle_id": "bundle-1"}
+
     def setUp(self) -> None:
         self.repo_root = Path(__file__).resolve().parents[1]
 
@@ -1027,10 +1030,7 @@ class WorkspaceFlowTests(unittest.TestCase):
                 iteration_number=1,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             runner = ResearchPlannerRunner(
                 settings=settings,
@@ -1044,7 +1044,7 @@ class WorkspaceFlowTests(unittest.TestCase):
                     session=session,
                     iteration_number=1,
                     parent=parent,
-                    market_bundle={"bundle_id": "bundle-1"},
+                    market_bundle=self._BUNDLE_PAYLOAD,
                     iteration_paths=iteration_paths,
                 )
             )
@@ -1106,10 +1106,7 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
                 iteration_number=1,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             runner = ResearchPlannerRunner(
                 settings=settings,
@@ -1123,7 +1120,7 @@ Does a funding_dispersion_72h gate improve pre-audit return without making valid
                     session=session,
                     iteration_number=1,
                     parent=parent,
-                    market_bundle={"bundle_id": "bundle-1"},
+                    market_bundle=self._BUNDLE_PAYLOAD,
                     iteration_paths=iteration_paths,
                 )
             )
@@ -1175,10 +1172,7 @@ trade_style: continuation
                 iteration_number=1,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             runner = ResearchPlannerRunner(
                 settings=settings,
@@ -1192,7 +1186,7 @@ trade_style: continuation
                     session=session,
                     iteration_number=1,
                     parent=parent,
-                    market_bundle={"bundle_id": "bundle-1"},
+                    market_bundle=self._BUNDLE_PAYLOAD,
                     iteration_paths=iteration_paths,
                 )
             )
@@ -1262,10 +1256,7 @@ trade_style: continuation
                 iteration_number=1,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             research_note_path = iteration_paths["research_note_path"]
             research_note_path.write_text(
@@ -1405,10 +1396,7 @@ trade_style: continuation
                 iteration_number=1,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             research_note_path = iteration_paths["research_note_path"]
             research_note_path.write_text(
@@ -1518,10 +1506,7 @@ trade_style: continuation
                 iteration_number=2,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             research_note_path = iteration_paths["research_note_path"]
             research_note_path.write_text(
@@ -1627,10 +1612,7 @@ trade_style: continuation
                 iteration_number=4,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
 
             runner = ResearchPlannerRunner(
@@ -1645,7 +1627,7 @@ trade_style: continuation
                     session=session,
                     iteration_number=4,
                     parent=parent,
-                    market_bundle={"bundle_id": "bundle-1"},
+                    market_bundle=self._BUNDLE_PAYLOAD,
                     iteration_paths=iteration_paths,
                 )
             )
@@ -1782,10 +1764,7 @@ trade_style: continuation
                 iteration_number=4,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
 
             runner = ResearchPlannerRunner(
@@ -1800,7 +1779,7 @@ trade_style: continuation
                     session=session,
                     iteration_number=4,
                     parent=parent,
-                    market_bundle={"bundle_id": "bundle-1"},
+                    market_bundle=self._BUNDLE_PAYLOAD,
                     iteration_paths=iteration_paths,
                 )
             )
@@ -1865,10 +1844,7 @@ trade_style: continuation
                 iteration_number=1,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             runner = ResearchPlannerRunner(
                 settings=settings,
@@ -1884,7 +1860,7 @@ trade_style: continuation
                         session=session,
                         iteration_number=1,
                         parent=parent,
-                        market_bundle={"bundle_id": "bundle-1"},
+                        market_bundle=self._BUNDLE_PAYLOAD,
                         iteration_paths=iteration_paths,
                     )
                 )
@@ -1979,10 +1955,7 @@ trade_style: continuation
                 iteration_number=5,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             research_note_path = iteration_paths["research_note_path"]
             research_note_path.write_text(
@@ -2094,10 +2067,7 @@ trade_style: continuation
                 iteration_number=6,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             iteration_paths["planner_contract_path"].write_text(
                 json.dumps(
@@ -2237,10 +2207,7 @@ trade_style: continuation
                 iteration_number=5,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             research_note_path = iteration_paths["research_note_path"]
             research_note_path.write_text(
@@ -2396,10 +2363,7 @@ trade_style: continuation
                 iteration_number=6,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             research_note_path = iteration_paths["research_note_path"]
             research_note_path.write_text(
@@ -2527,10 +2491,7 @@ trade_style: continuation
                 iteration_number=7,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
             research_note_path = iteration_paths["research_note_path"]
             research_note_path.write_text(
@@ -2609,10 +2570,7 @@ trade_style: continuation
                 iteration_number=8,
                 phase_label="main",
                 force_novelty=False,
-                market_summary={
-                    "market_bundle": {"bundle_id": "bundle-1", "symbols": ["BTC", "ETH", "SOL", "HYPE"]},
-                    "perp_snapshot": [],
-                },
+                market_summary=self._MARKET_SUMMARY,
             )
 
             class FakeClaude:
