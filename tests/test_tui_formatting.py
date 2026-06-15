@@ -100,52 +100,40 @@ class TestSafeFloat:
         assert safe_float("", default=0.0) == 0.0
 
 
-class TestTruncate:
-    def test_basic_truncation(self):
-        assert truncate("hello world", 5) == "hell\u2026"
-
-    def test_no_truncation_needed(self):
-        assert truncate("hi", 10) == "hi"
-
-    def test_exact_width(self):
-        assert truncate("hello", 5) == "hello"
-
-    def test_width_one(self):
-        assert truncate("hello", 1) == "\u2026"
-
-    def test_width_zero(self):
-        assert truncate("hello", 0) == ""
-
-    def test_negative_width(self):
-        assert truncate("hello", -1) == ""
+@pytest.mark.parametrize(
+    "text,width,expected",
+    [
+        ("hello world", 5, "hell\u2026"),
+        ("hi", 10, "hi"),
+        ("hello", 5, "hello"),
+        ("hello", 1, "\u2026"),
+        ("hello", 0, ""),
+        ("hello", -1, ""),
+    ],
+)
+def test_truncate(text: str, width: int, expected: str) -> None:
+    assert truncate(text, width) == expected
 
 
-class TestFormatChange:
-    def test_positive(self):
-        t = format_change(1.5)
-        assert "+1.50%" in t.plain
-
-    def test_negative(self):
-        t = format_change(-2.3)
-        assert "-2.30%" in t.plain
-
-    def test_zero(self):
-        t = format_change(0.0)
-        assert "0.00%" in t.plain
+@pytest.mark.parametrize(
+    "value,fragment",
+    [(1.5, "+1.50%"), (-2.3, "-2.30%"), (0.0, "0.00%")],
+)
+def test_format_change(value: float, fragment: str) -> None:
+    assert fragment in format_change(value).plain
 
 
-class TestFormatVolume:
-    def test_billions(self):
-        assert format_volume(2_500_000_000) == "2.5B"
-
-    def test_millions(self):
-        assert format_volume(3_400_000) == "3.4M"
-
-    def test_thousands(self):
-        assert format_volume(5_600) == "5.6K"
-
-    def test_small(self):
-        assert format_volume(42) == "42"
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (2_500_000_000, "2.5B"),
+        (3_400_000, "3.4M"),
+        (5_600, "5.6K"),
+        (42, "42"),
+    ],
+)
+def test_format_volume(value: float, expected: str) -> None:
+    assert format_volume(value) == expected
 
 
 class TestFormatScore:
@@ -196,15 +184,12 @@ class TestFormatDate:
         assert "01-15" in result
 
 
-class TestGaugeColor:
-    def test_high(self):
-        assert gauge_color(0.9) == "#4ade80"
-
-    def test_mid(self):
-        assert gauge_color(0.5) == "#f0b456"
-
-    def test_low(self):
-        assert gauge_color(0.2) == "#f87171"
+@pytest.mark.parametrize(
+    "value,expected",
+    [(0.9, "#4ade80"), (0.5, "#f0b456"), (0.2, "#f87171")],
+)
+def test_gauge_color(value: float, expected: str) -> None:
+    assert gauge_color(value) == expected
 
 
 class TestBarGauge:
@@ -248,20 +233,21 @@ class TestSanitizeStatusText:
         assert len(result) <= 50
 
 
-class TestSideStyle:
-    def test_buy(self):
-        assert side_style("BUY") == "#4ade80"
+@pytest.mark.parametrize(
+    "value,expected",
+    [("BUY", "#4ade80"), ("SELL", "#f87171")],
+)
+def test_side_style(value: str, expected: str) -> None:
+    assert side_style(value) == expected
 
-    def test_sell(self):
-        assert side_style("SELL") == "#f87171"
 
-
-class TestSeverityColor:
-    def test_critical(self):
-        assert severity_color("critical") == "#f87171"
-
-    def test_warning(self):
-        assert severity_color("warning") == "#f0b456"
-
-    def test_info(self):
-        assert severity_color("info") == "#60a5fa"
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("critical", "#f87171"),
+        ("warning", "#f0b456"),
+        ("info", "#60a5fa"),
+    ],
+)
+def test_severity_color(value: str, expected: str) -> None:
+    assert severity_color(value) == expected
