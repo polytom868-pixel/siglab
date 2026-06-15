@@ -8,6 +8,8 @@ from typing import Any
 
 from typing_extensions import TypedDict
 
+__all__ = ["_safe_float"]
+
 
 # ---------------------------------------------------------------------------
 # Type aliases
