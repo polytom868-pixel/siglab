@@ -12,9 +12,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+def _now_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string."""
+    return datetime.now(UTC).isoformat()
+
 # ---------------------------------------------------------------------------
 # WebSocket endpoint
-# ---------------------------------------------------------------------------
 
 
 @router.websocket("/ws")
@@ -40,7 +44,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await _send_json(websocket, {
             "type": "connected",
             "message": "SigLab WebSocket connected",
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
         })
 
         while True:
@@ -49,7 +53,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             except asyncio.TimeoutError:
                 # Send a periodic keepalive ping
                 try:
-                    await _send_json(websocket, {"type": "ping", "timestamp": datetime.now(UTC).isoformat()})
+                    await _send_json(websocket, {"type": "ping", "timestamp": _now_iso()})
                 except Exception:
                     break
                 continue
@@ -108,7 +112,7 @@ async def _handle_message(
     if action in ("ping", "pong"):
         await _send_json(websocket, {
             "type": "pong" if action == "ping" else "pong",
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
         })
         return
 
@@ -220,7 +224,7 @@ async def _stream_initial_data(
             "bid": 0.0,
             "ask": 0.0,
             "last_price": 0.0,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
         })
     elif sub_type == "positions":
         await _stream_positions(websocket)
@@ -310,7 +314,7 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
         await _send_json(websocket, {
             "type": "risk_score",
             **metrics,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
         })
 
     except ImportError:
