@@ -197,8 +197,6 @@ async def _stream_initial_data(
     if sub_type == "klines":
         # Return a placeholder kline snapshot
         # In production, this would be fetched from SoDEXFeeds
-        from datetime import UTC, datetime
-
         now = datetime.now(UTC)
         timestamp = int(now.timestamp() * 1000)
         await _send_json(websocket, {
