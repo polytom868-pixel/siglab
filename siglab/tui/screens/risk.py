@@ -40,7 +40,7 @@ from siglab.tui.formatting import (
     severity_color,
 )
 from siglab.tui.loading import LoadingIndicator
-from siglab.tui.screens.base import BaseScreen
+from siglab.tui.screens.base import BaseScreen, render_header
 from siglab.tui.widgets.sparkline import sparkline_text
 
 logger = logging.getLogger(__name__)
@@ -93,8 +93,7 @@ class RiskGaugeWidget(Static):
         result = Text()
 
         # Header
-        result.append(" COMPOSITE RISK SCORE\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("─" * 36 + "\n", style=BORDER_DIM)
+        render_header(result, "COMPOSITE RISK SCORE", 36)
 
         if self.composite_score is None:
             result.append("\n  No risk data available\n", style=TEXT_MUTED)
@@ -161,9 +160,7 @@ class DrawdownSparklineWidget(Static):
         result = Text()
 
         # Header
-        result.append(" DRAWDOWN\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("─" * 36 + "\n", style=BORDER_DIM)
-
+        render_header(result, "DRAWDOWN", 36)
         if not self.drawdown_history:
             result.append("\n  Collecting equity data…\n", style=TEXT_MUTED)
             result.append("  ")
@@ -224,8 +221,7 @@ class CorrelationHeatmapWidget(Static):
         result = Text()
 
         # Header
-        result.append(" CORRELATION MATRIX\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("─" * 36 + "\n", style=BORDER_DIM)
+        render_header(result, "CORRELATION MATRIX", 36)
 
         matrix = self.matrix
         names = self.strategy_names
@@ -316,8 +312,7 @@ class AlertStreamWidget(Static):
         result = Text()
 
         # Header
-        result.append(" ALERT STREAM\n", style=f"bold {TEXT_PRIMARY}")
-        result.append("─" * 36 + "\n", style=BORDER_DIM)
+        render_header(result, "ALERT STREAM", 36)
 
         if not self.alerts:
             result.append(
