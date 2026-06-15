@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import numpy as np
 import pandas as pd
@@ -3582,38 +3582,32 @@ def _serialize_window_ranges(
     serialized: list[dict[str, Any]] = []
     if len(full_index) == 0:
         return serialized
+    optional_keys: tuple[tuple[str, Callable[[Any], Any]], ...] = (
+        ("train_start_idx", int),
+        ("train_end_idx", int),
+        ("train_start_timestamp", str),
+        ("train_end_timestamp", str),
+        ("validation_start_timestamp", str),
+        ("validation_end_timestamp", str),
+    )
     for window_spec in windows:
         start_idx = int(window_spec["start_idx"])
         end_idx = int(window_spec["end_idx"])
         if start_idx >= end_idx or start_idx >= len(full_index):
             continue
         end_pos = min(len(full_index) - 1, max(start_idx, end_idx - 1))
-        serialized.append(
-            {
-                "label": str(window_spec["label"]),
-                "role": str(window_spec["role"]),
-                "start_idx": start_idx,
-                "end_idx": end_idx,
-                "start_timestamp": full_index[start_idx].isoformat(),
-                "end_timestamp": full_index[end_pos].isoformat(),
-            }
-        )
-        if "train_start_idx" in window_spec:
-            serialized[-1]["train_start_idx"] = int(window_spec["train_start_idx"])
-        if "train_end_idx" in window_spec:
-            serialized[-1]["train_end_idx"] = int(window_spec["train_end_idx"])
-        if "train_start_timestamp" in window_spec:
-            serialized[-1]["train_start_timestamp"] = str(window_spec["train_start_timestamp"])
-        if "train_end_timestamp" in window_spec:
-            serialized[-1]["train_end_timestamp"] = str(window_spec["train_end_timestamp"])
-        if "validation_start_timestamp" in window_spec:
-            serialized[-1]["validation_start_timestamp"] = str(
-                window_spec["validation_start_timestamp"]
-            )
-        if "validation_end_timestamp" in window_spec:
-            serialized[-1]["validation_end_timestamp"] = str(
-                window_spec["validation_end_timestamp"]
-            )
+        entry: dict[str, Any] = {
+            "label": str(window_spec["label"]),
+            "role": str(window_spec["role"]),
+            "start_idx": start_idx,
+            "end_idx": end_idx,
+            "start_timestamp": full_index[start_idx].isoformat(),
+            "end_timestamp": full_index[end_pos].isoformat(),
+        }
+        for key, coerce in optional_keys:
+            if key in window_spec:
+                entry[key] = coerce(window_spec[key])
+        serialized.append(entry)
     return serialized
 
 
