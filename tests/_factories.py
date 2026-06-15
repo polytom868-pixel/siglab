@@ -182,3 +182,20 @@ def make_fake_claude(
     fake._json_return = json_return if json_return is not None else {}
     fake._metrics = metrics if metrics is not None else FakeClaude()._metrics
     return fake
+
+
+def make_lineage_store() -> LineageStore:
+    """Build a LineageStore rooted at a tempdir / "ancestry.db".
+
+    Helper for tests that previously did::
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ancestry = LineageStore(Path(tmp) / "ancestry.db")
+
+    Can be replaced with::
+
+        ancestry = make_lineage_store()
+    """
+    import tempfile as _tempfile
+    with _tempfile.TemporaryDirectory() as tmp:
+        return LineageStore(Path(tmp) / "ancestry.db")
