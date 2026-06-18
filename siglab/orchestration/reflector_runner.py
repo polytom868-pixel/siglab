@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,13 +10,6 @@ from siglab.orchestration.contracts import ReflectorOutput
 from siglab.evaluation.strategy_semantics import gate_dimensions, motif_signature
 from siglab.workspace.cards import dump_frontmatter, parse_frontmatter
 from siglab.workspace.builder import WorkspaceSession
-
-
-@dataclass
-class ReflectionResult:
-    lesson_card_path: Path
-    trace_path: Path
-    frontmatter: dict[str, Any]
 
 
 class ReflectionRunner:

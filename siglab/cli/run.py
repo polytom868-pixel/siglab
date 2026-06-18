@@ -9,13 +9,14 @@ from collections import Counter
 from datetime import UTC, datetime
 from itertools import count
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from siglab.config import load_settings
-from siglab.data import MarketDataProvider, ParquetLake
+from siglab.data import MarketDataProvider
 from siglab.evaluator import ResearchEvaluator
 from siglab.llm import ClaudeClient
 from siglab.orchestration import (
+    ReflectionRunner,
     ResearchPlannerRunner,
     SpecWriterRunner,
     WorkspaceHooks,
@@ -23,7 +24,6 @@ from siglab.orchestration import (
 from siglab.orchestration.run_context import build_run_context
 from siglab.orchestration.trials import (
     summarize_generalization,
-    summarize_patch,
 )
 from siglab.research import HypothesisSandbox, WebResearcher
 from siglab.run_config import (
@@ -40,7 +40,7 @@ from siglab.search import (
     pick_parent as _pick_parent_lib,
 )
 from siglab.track_registry import TRACK_CLI_CHOICES, resolve_track
-from siglab.workspace import WorkspaceBuilder
+from siglab.workspace import WorkspaceBuilder, WorkspaceSession
 from siglab.io_utils import write_json
 from siglab.cli.helpers import (
     require_sosovalue_config,
@@ -193,13 +193,10 @@ async def run_command(args: argparse.Namespace) -> None:
         else None
     )
 
-    tracks = cast(
-        list[str],
-        (
-            list(settings.tracks)
-            if args.track == "all"
-            else [resolve_track(args.track)]
-        ),
+    tracks = (
+        list(settings.tracks)
+        if args.track == "all"
+        else [resolve_track(args.track)]
     )
     for track in tracks:
         track_iterations = int(getattr(args, "iterations", 1) or 1)
@@ -249,20 +246,42 @@ async def _run_iterations(
     assert claude is not None, "build_run_context must yield a Claude client"
     assert ancestry is not None, "build_run_context must yield a LineageStore"
     mutator = SpecMutator(settings, claude)
-    planner = cast(Any, ResearchPlannerRunner)(cast(Any, settings), cast(Any, claude), cast(Any, web_researcher))
-    writer = cast(Any, SpecWriterRunner)(cast(Any, settings), cast(Any, claude), cast(Any, mutator))
-    sandbox = cast(Any, HypothesisSandbox)(cast(Any, settings), cast(Any, ctx.lake), cast(Any, provider))
-    hooks = cast(Any, WorkspaceHooks)(cast(Any, settings))
-    workspace = cast(Any, WorkspaceBuilder)(cast(Any, settings), cast(Any, ancestry), cast(Any, mutator))
-    evaluator = ResearchEvaluator(settings)
-    run_session_id = (
-        _resolve_resume_run(
-            settings=settings,
-            run_session_id=resume_run_session_id or "default",
-        )["workspace_root"].name
-        if resume_run_session_id
-        else "default"
+    sandbox = HypothesisSandbox(settings, ctx.lake, provider)
+    workspace = WorkspaceBuilder(settings, ancestry, mutator)
+    planner = ResearchPlannerRunner(
+        settings=settings,
+        claude=claude,
+        hypothesis_sandbox=sandbox,
+        web_researcher=web_researcher,
+        workspace_builder=workspace,
     )
+    writer = SpecWriterRunner(settings=settings, claude=claude, mutator=mutator)
+    evaluator = ResearchEvaluator(settings)
+    if resume_run_session_id:
+        resume = _resolve_resume_run(
+            settings=settings,
+            run_session_id=resume_run_session_id,
+        )
+        run_session_id = resume["workspace_root"].name
+        session = workspace.resume_session(
+            track=track,
+            run_session_id=run_session_id,
+            families=list(resume["families"]),
+            memory_scope=str(resume["memory_scope"]),
+            custom_symbols=list(resume["custom_symbols"] or []) or None,
+            use_historical_seeds=bool(resume["use_historical_seeds"]),
+        )
+    else:
+        run_session_id = "default"
+        session = workspace.initialize_session(
+            track=track,
+            run_session_id=run_session_id,
+            family_scope=selected_families,
+            memory_scope=memory_scope,
+            custom_symbols=custom_symbols,
+            use_historical_seeds=use_historical_seeds,
+        )
+    hooks = WorkspaceHooks(builder=workspace, session=session)
     phase_label = "burn_in" if burn_in_iterations > 0 else "main"
     resume_safe_check_enabled = bool(loop_policy.get("resume_safe_check"))
     if resume_safe_check_enabled and resume_run_session_id:
@@ -274,16 +293,13 @@ async def _run_iterations(
             burn_in_iterations=burn_in_iterations,
             run_session_id=run_session_id,
             runner_label=runner_label,
-            run_label=run_label,
             custom_symbols=custom_symbols,
             use_historical_seeds=use_historical_seeds,
-            loop_policy=loop_policy,
             provider=provider,
             claude=claude,
             web_researcher=web_researcher,
             ancestry=ancestry,
             mutator=mutator,
-            workspace=workspace,
             hooks=hooks,
             evaluator=evaluator,
         )
@@ -333,21 +349,27 @@ async def _run_iterations(
                 )
             )
 
-            planner_payload = await cast(Any, planner).plan(
-                track=track,
+            iteration_paths = workspace.update_iteration(
+                session=session,
                 parent=parent,
-                research_summary=research_summary,
-                trial_context=trial_context,
-                ancestry=ancestry,
-                run_session_id=run_session_id,
+                iteration_number=iteration_number,
+                phase_label=phase_label,
+                force_novelty=False,
+                market_summary=research_summary,
             )
-            trial_context = dict(planner_payload.get("trial_context") or {})
-            if planner_payload.get("skip_write"):
-                print_info(f"[{track}] planner skipped write: {planner_payload.get('skip_reason')}")
-                continue
+            market_bundle = dict(research_summary.get("market_bundle") or {})
 
+            planner_result = await planner.run(
+                session=session,
+                iteration_number=iteration_number,
+                parent=parent,
+                market_bundle=market_bundle,
+                iteration_paths=iteration_paths,
+            )
+
+            base_spec_payload: dict[str, Any] | None = None
             if skip_llm:
-                base_payload = base_spec_payload_for_family(
+                base_spec_payload = base_spec_payload_for_family(
                     track=track,
                     family=parent.family,
                     parent=parent,
@@ -356,23 +378,22 @@ async def _run_iterations(
                     custom_symbols=custom_symbols,
                     use_historical_seeds=use_historical_seeds,
                 )
-                if not base_payload:
+                if not base_spec_payload:
                     print_info(f"[{track}] no seed spec payload available, skipping iteration")
                     continue
-                spec_payload = base_payload
+                spec_payload = base_spec_payload
             else:
-                spec_payload = await cast(Any, writer).write(
-                    track=track,
+                writer_output = await writer.run(
+                    session=session,
+                    research_note_path=planner_result.research_note_path,
+                    iteration_paths=iteration_paths,
                     parent=parent,
-                    research_summary=research_summary,
-                    planner_payload=planner_payload,
+                    base_spec_payload=base_spec_payload,
                 )
+                spec_payload = writer_output.get("spec_payload") or {}
             if not spec_payload:
                 print_error(f"[{track}] writer returned no spec payload")
                 continue
-
-            sandbox_audits = cast(Any, sandbox).evaluate(track=track, spec_payload=spec_payload)
-            spec_payload.setdefault("sandbox_audits", sandbox_audits)
 
             evaluation = evaluator.evaluate(
                 track=track,
@@ -394,11 +415,9 @@ async def _run_iterations(
                 evaluation["spec"] = spec_payload
 
             _ = write_artifact(settings, track, evaluation)  # noqa: F841
-            cast(Any, hooks).after_evaluation_hook(
-                track=track,
-                evaluation=evaluation,
-                parent=parent,
-                researcher=web_researcher,
+            hooks.after_experiment(
+                spec_hash=str(evaluation["spec_hash"]),
+                iteration_number=iteration_number,
             )
 
             # Write provider metrics
@@ -432,20 +451,11 @@ async def _run_iterations(
 
             trial_context.setdefault(
                 "structure_spec_path",
-                planner_payload.get("structure_spec_path"),
+                str(iteration_paths.get("structure_spec_path") or ""),
             )
             trial_context.setdefault(
                 "base_spec_path",
-                planner_payload.get("base_spec_path"),
-            )
-            trial_context.setdefault("patch_summary", cast(Any, summarize_patch)(spec_payload, parent))
-            trial_context.setdefault(
-                "optimized_param_summary",
-                planner_payload.get("optimized_param_summary"),
-            )
-            trial_context.setdefault(
-                "score_diagnosis",
-                planner_payload.get("score_diagnosis"),
+                str(iteration_paths.get("base_spec_path") or ""),
             )
             trial_context.setdefault("return_driver", summary.get("return_driver"))
             trial_context.setdefault("return_driver_source", summary.get("return_driver_source"))
@@ -481,7 +491,8 @@ async def _run_iterations(
                 track=track,
                 evaluation=evaluation,
                 ancestry=ancestry,
-                workspace=workspace,
+                session=session,
+                iteration_paths=iteration_paths,
                 trial_context=trial_context,
                 run_session_id=run_session_id,
             )
@@ -510,16 +521,13 @@ async def _run_burn_in_phase(
     burn_in_iterations: int,
     run_session_id: str,
     runner_label: str,
-    run_label: str | None,
     custom_symbols: list[str] | None,
     use_historical_seeds: bool,
-    loop_policy: dict[str, Any],
     provider: MarketDataProvider,
     claude: ClaudeClient,
     web_researcher: WebResearcher,
     ancestry: LineageStore,
     mutator: SpecMutator,
-    workspace: WorkspaceBuilder,
     hooks: WorkspaceHooks,
     evaluator: ResearchEvaluator,
 ) -> None:
@@ -562,10 +570,6 @@ async def _run_burn_in_phase(
                 "deterministic": True,
             }
             spec_payload = _override_seed_spec_symbols(parent, custom_symbols).canonical_dict()
-            sandbox_audits = cast(Any, HypothesisSandbox)(cast(Any, settings), cast(Any, None), cast(Any, provider)).evaluate(
-                track=track, spec_payload=spec_payload
-            )
-            spec_payload.setdefault("sandbox_audits", sandbox_audits)
             evaluation = evaluator.evaluate(
                 track=track,
                 spec=spec_payload,
@@ -577,11 +581,9 @@ async def _run_burn_in_phase(
             summary = dict(evaluation.get("summary") or {})
             evaluation.setdefault("passed", bool(summary.get("passed")))
             write_artifact(settings, track, evaluation)
-            cast(Any, hooks).after_evaluation_hook(
-                track=track,
-                evaluation=evaluation,
-                parent=parent,
-                researcher=web_researcher,
+            hooks.after_experiment(
+                spec_hash=str(evaluation["spec_hash"]),
+                iteration_number=i,
             )
             _write_provider_metrics_artifact_internal(
                 settings=settings,
@@ -608,12 +610,20 @@ async def _external_research_track(
     recent = ancestry.recent(track, limit=1, include_deterministic=False)
     if not recent:
         return tool_only_external_research(web_researcher=web_researcher)
-    trace = await cast(Any, claude).trace_run(
-        track=track,
-        task=f"Research for {track}",
+    tools = web_researcher.claude_tools()
+    if not tools:
+        return tool_only_external_research(web_researcher=web_researcher)
+    await claude.complete_text_with_tools(
+        system_prompt="You are a crypto strategy research assistant. Use the provided web search tools to gather up-to-date market and protocol context for the user's research task.",
+        user_prompt=f"Research context for the {track} strategy track.",
+        tools=tools,
         max_tokens=256,
+        stage="external_research",
     )
-    return external_research_from_llm_trace(llm_trace=trace, web_researcher=web_researcher)
+    return external_research_from_llm_trace(
+        llm_trace=dict(claude.last_trace or {}),
+        web_researcher=web_researcher,
+    )
 
 
 async def _reflect_on_iteration(
@@ -621,7 +631,8 @@ async def _reflect_on_iteration(
     track: str,
     evaluation: dict[str, Any],
     ancestry: LineageStore,
-    workspace: WorkspaceBuilder,
+    session: WorkspaceSession,
+    iteration_paths: dict[str, Any],
     trial_context: dict[str, Any],
     run_session_id: str | None = None,
 ) -> str | None:
@@ -632,48 +643,33 @@ async def _reflect_on_iteration(
     )
     if experiment_card_ref:
         experiment_card_ref = experiment_card_ref.get("spec_hash")
-    workspace_session = cast(Any, workspace).load(track)
-    current_state = workspace_session.current_state()
+    current_state = dict(iteration_paths.get("session_state") or {})
     evaluation_packet = _reflection_evaluation_packet_internal(
         ancestry=ancestry,
         evaluation=evaluation,
         parent_hash=parent_hash,
-        experiment_card_ref=cast(str | None, experiment_card_ref),
-        workspace_session=workspace_session,
+        experiment_card_ref=experiment_card_ref,
+        workspace_session=session,
         current_state=current_state,
         trial_context=trial_context,
         run_session_id=run_session_id,
     )
     from siglab.live import LiveDeploymentManager
-    from siglab.data.sodex_feeds import SoDEXFeeds
-    from siglab.live.paper_client import SoDEXPaperPerpsClient
 
-    lake = ParquetLake(workspace_session.settings.data_lake_dir)
-    feeds = SoDEXFeeds(lake=lake)
-    client = SoDEXPaperPerpsClient(feeds=feeds)
-    try:
-        deployment_manager = cast(Any, LiveDeploymentManager)(
-            settings=workspace_session.settings,
-            client=client,
-        )
-    except Exception:
-        deployment_manager = None
-    from siglab.orchestration import ReflectionRunner as _ReflectionRunner
-
-    reflector = _ReflectionRunner(
-        settings=workspace_session.settings,
-        claude=ClaudeClient(workspace_session.settings),
+    deployment_manager = LiveDeploymentManager(session.settings, ancestry)
+    spec_hash = str(evaluation.get("spec_hash") or "")
+    reflector = ReflectionRunner(
+        settings=session.settings,
+        claude=ClaudeClient(session.settings),
     )
-    reflection = await cast(Any, reflector).reflect(
-        track=track,
+    reflection = await reflector.run(
+        session=session,
+        spec_hash=spec_hash,
+        iteration_paths=iteration_paths,
         evaluation_packet=evaluation_packet,
-        workspace=workspace_session,
-        ancestry=ancestry,
-        deployment_manager=deployment_manager,
-        run_session_id=run_session_id,
     )
     if reflection:
-        summary_path = workspace_session.root / f"{evaluation.get('spec_hash', 'unknown')}_reflection.json"
+        summary_path = session.root / f"{spec_hash or 'unknown'}_reflection.json"
         write_json(summary_path, reflection)
         return str(summary_path)
     return None
@@ -988,7 +984,7 @@ def _write_provider_metrics_artifact_internal(
     jsonl_path = metrics_dir / f"{run_session_id}.jsonl"
     with jsonl_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=True, default=str) + "\n")
-    return cast(Path, jsonl_path)
+    return jsonl_path
 
 
 def _resume_safe_check_internal(*, settings: Any, run_session_id: str) -> None:

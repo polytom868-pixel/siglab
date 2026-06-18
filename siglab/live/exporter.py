@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from siglab.llm import ClaudeClient
+from siglab.llm import ClaudeClient, LLMProviderError
 from siglab.path_utils import resolve_path_from_root
 from siglab.search.lineage import LineageStore
 from siglab.config import SiglabConfig
@@ -101,6 +101,17 @@ def deployment_readiness(detail: dict[str, Any]) -> dict[str, Any]:
 
 
 class LiveDeploymentManager:
+    """Live deployment orchestrator for SigLab experiments.
+
+    This build only supports dry-run package export. Real SoDEX execution and
+    scheduled runner jobs require an operator-provided signed client that is not
+    wired here; ``deploy`` refuses them via ``_preflight_deploy_boundary``.
+
+    The manager never accepts a ``client`` argument: a SoDEX client is not part
+    of this class's contract. Passing ``client=...`` raises ``TypeError``
+    naturally so caller bugs surface instead of being silently swallowed.
+    """
+
     def __init__(
         self,
         settings: SiglabConfig,
@@ -160,19 +171,9 @@ class LiveDeploymentManager:
             llm_notes=notes,
         )
 
-        runner_response: dict[str, Any] | None = None
-        normalized_job_name = job_name or f"{strategy_name}-update"
-        if schedule:
-            assert interval_seconds is not None
-            assert wallet_label is not None
-            runner_response = self._ensure_runner_job(
-                strategy_name=strategy_name,
-                job_name=normalized_job_name,
-                interval_seconds=interval_seconds,
-                wallet_label=wallet_label,
-                config_path=str(resolved_config_path),
-            )
-
+        # _preflight_deploy_boundary refuses schedule=True, so this path is
+        # dry-run only: job_name/interval_seconds/scheduled are always None/False
+        # and no runner job is created.
         record = DeploymentRecord(
             spec_hash=spec_hash,
             strategy_name=strategy_name,
@@ -180,11 +181,11 @@ class LiveDeploymentManager:
             spec_path=str(package_dir / "live_spec.json"),
             manifest_path=str(package_dir / "manifest.yaml"),
             readme_path=str(package_dir / "README.md"),
-            job_name=normalized_job_name if schedule else None,
-            interval_seconds=interval_seconds if schedule else None,
+            job_name=None,
+            interval_seconds=None,
             wallet_label=wallet_label,
             config_path=str(resolved_config_path),
-            scheduled=bool(schedule),
+            scheduled=False,
             dry_run=bool(dry_run),
             llm_finalized=bool(llm_finalize and notes.get("source") == "claude"),
             support_status=readiness["support_status"],
@@ -193,7 +194,7 @@ class LiveDeploymentManager:
                 "track_label": track_label(detail["track"]),
                 "family": detail["family"],
                 "warnings": readiness["warnings"],
-                "runner_response": runner_response,
+                "runner_response": None,
                 "llm_notes": notes,
             },
         )
@@ -269,7 +270,7 @@ class LiveDeploymentManager:
                 user_prompt=json.dumps(prompt, indent=2),
                 max_tokens=900,
             )
-        except Exception:
+        except LLMProviderError:
             return base_notes
 
         return {
@@ -398,18 +399,6 @@ preflight inspection before any live action.
         (package_dir / "README.md").write_text(readme)
         (package_dir / "live_spec.json").write_text(json.dumps(live_spec, indent=2))
 
-    def _ensure_runner_job(
-        self,
-        *,
-        strategy_name: str,
-        job_name: str,
-        interval_seconds: int,
-        wallet_label: str,
-        config_path: str,
-    ) -> dict[str, Any]:
-        raise RuntimeError(
-            "Scheduled SoDEX runner jobs require a configured runner client; none is available in this build"
-        )
 
 
 def _strategy_name(detail: dict[str, Any]) -> str:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,22 +18,6 @@ from siglab.search.mutate import SpecMutator
 from siglab.evaluation.strategy_semantics import motif_signature
 from siglab.workspace.cards import dump_yaml_block
 from siglab.workspace.builder import WorkspaceSession
-
-
-@dataclass
-class WriterResult:
-    spec_payload: dict[str, Any] | None
-    spec_path: Path | None
-    trace_path: Path
-    accepted: bool
-    base_spec_payload: dict[str, Any] | None = None
-    base_spec_path: Path | None = None
-    structure_spec: dict[str, Any] | None = None
-    patch_payload: dict[str, Any] | None = None
-    patch_summary: list[str] | None = None
-    spec_after_patch_path: Path | None = None
-    failure_reason: str | None = None
-    failure_packet: dict[str, Any] | None = None
 
 
 class SpecWriterRunner:

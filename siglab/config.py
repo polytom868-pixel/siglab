@@ -34,7 +34,7 @@ class SiglabConfig:
     ancestry_db_path: Path
     sosovalue_api_key_override: str | None
     sosovalue_openapi_base_url: str = "https://openapi.sosovalue.com/openapi/v1"
-    sosovalue_etf_base_url: str = "https://api.sosovalue.xyz"
+    sosovalue_etf_base_url: str = "https://openapi.sosovalue.com"
     sosovalue_news_base_url: str = "https://openapi.sosovalue.com"
     sosovalue_timeout_s: float = 30.0
     sosovalue_retries: int = 2
@@ -145,7 +145,7 @@ def load_settings() -> SiglabConfig:
         ancestry_db_path=root_dir / "siglab.db",
         sosovalue_api_key_override=_get("SOSOVALUE_API_KEY"),
         sosovalue_openapi_base_url=_get("SOSOVALUE_OPENAPI_BASE_URL", "https://openapi.sosovalue.com/openapi/v1"),
-        sosovalue_etf_base_url=_get("SOSOVALUE_ETF_BASE_URL", "https://api.sosovalue.xyz"),
+        sosovalue_etf_base_url=_get("SOSOVALUE_ETF_BASE_URL", "https://openapi.sosovalue.com"),
         sosovalue_news_base_url=_get("SOSOVALUE_NEWS_BASE_URL", "https://openapi.sosovalue.com"),
         sosovalue_timeout_s=float(_get("SOSOVALUE_TIMEOUT_S", "30")),
         sosovalue_retries=int(_get("SOSOVALUE_RETRIES", "2")),

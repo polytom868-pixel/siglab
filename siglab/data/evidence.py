@@ -128,10 +128,10 @@ def etf_inflow_evidence(
                     entity=etf_type,
                     module="ETF",
                     relation="total_net_inflow",
-                    value=row.get("totalNetInflow"),
+                    value=row.get("total_net_inflow"),
                     confidence=0.95,
                     evidence_path=evidence_path,
-                    attributes={"totalValueTraded": row.get("totalValueTraded")},
+                    attributes={"total_value_traded": row.get("total_value_traded")},
                 ),
                 EvidenceRecord(
                     source="sosovalue.etf_historical_inflow",
@@ -140,10 +140,10 @@ def etf_inflow_evidence(
                     entity=etf_type,
                     module="ETF",
                     relation="total_net_assets",
-                    value=row.get("totalNetAssets"),
+                    value=row.get("total_net_assets"),
                     confidence=0.95,
                     evidence_path=evidence_path,
-                    attributes={"cumNetInflow": row.get("cumNetInflow")},
+                    attributes={"cum_net_inflow": row.get("cum_net_inflow")},
                 ),
             ]
         )

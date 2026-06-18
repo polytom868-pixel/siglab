@@ -1,0 +1,642 @@
+[
+  {
+    "symbol": "1000BONK-USD",
+    "openInterest": "101020",
+    "markPrice": "0.005213",
+    "indexPrice": "0.005216",
+    "fundingRate": "-0.0000155310982907",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "GOOGL-USD",
+    "openInterest": "234.534",
+    "markPrice": "369.99",
+    "indexPrice": "369.67",
+    "fundingRate": "0.0000257222400544",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "SOSO-USD",
+    "openInterest": "0",
+    "markPrice": "0.7269",
+    "indexPrice": "0.7269",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1760774400000
+  },
+  {
+    "symbol": "SKHX-USD",
+    "openInterest": "5.296",
+    "markPrice": "1579.2",
+    "indexPrice": "1578.8",
+    "fundingRate": "0.0000729958703366",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "CHZ-USD",
+    "openInterest": "5283086",
+    "markPrice": "0.03482",
+    "indexPrice": "0.03483",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "DOGE-USD",
+    "openInterest": "68708",
+    "markPrice": "0.09613",
+    "indexPrice": "0.09619",
+    "fundingRate": "-0.0000121838127042",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "WLD-USD",
+    "openInterest": "25704",
+    "markPrice": "0.4077",
+    "indexPrice": "0.4077",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "PLTR-USD",
+    "openInterest": "9.692",
+    "markPrice": "150.13",
+    "indexPrice": "149.94",
+    "fundingRate": "0.0000841018974775",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "DASH-USD",
+    "openInterest": "7",
+    "markPrice": "38.485",
+    "indexPrice": "38.53",
+    "fundingRate": "-0.0000371212351068",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "MU-USD",
+    "openInterest": "455.664",
+    "markPrice": "1040",
+    "indexPrice": "1039.07",
+    "fundingRate": "0.0000675785186184",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "USTECH100-USD",
+    "openInterest": "2.3008",
+    "markPrice": "30594",
+    "indexPrice": "30605",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "LIT-USD",
+    "openInterest": "53803.2",
+    "markPrice": "1.299",
+    "indexPrice": "1.3",
+    "fundingRate": "-0.000007928771702",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "AMD-USD",
+    "openInterest": "2.244",
+    "markPrice": "509.92",
+    "indexPrice": "509.55",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "BTC-USD",
+    "openInterest": "189.73418",
+    "markPrice": "67806",
+    "indexPrice": "67830",
+    "fundingRate": "0.0000106889767408",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "COIN-USD",
+    "openInterest": "0.76",
+    "markPrice": "173.68",
+    "indexPrice": "173.68",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "NEAR-USD",
+    "openInterest": "4666.8",
+    "markPrice": "2.5245",
+    "indexPrice": "2.528",
+    "fundingRate": "0.000003631632635",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "META-USD",
+    "openInterest": "2.38",
+    "markPrice": "608.11",
+    "indexPrice": "607.75",
+    "fundingRate": "0.0000133868235443",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "TAO-USD",
+    "openInterest": "0",
+    "markPrice": "243.37",
+    "indexPrice": "243.4",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "MSTR-USD",
+    "openInterest": "5.584",
+    "markPrice": "136.22",
+    "indexPrice": "136.22",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "VIRTUAL-USD",
+    "openInterest": "45800",
+    "markPrice": "0.71955",
+    "indexPrice": "0.7204",
+    "fundingRate": "-0.0000822283457734",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "NATGAS-USD",
+    "openInterest": "0",
+    "markPrice": "3.141",
+    "indexPrice": "3.141",
+    "fundingRate": "-0.0013076760956936",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "SAMSUNG-USD",
+    "openInterest": "1104.612",
+    "markPrice": "246.26",
+    "indexPrice": "244.89",
+    "fundingRate": "0.0004686251118021",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "TSLA-USD",
+    "openInterest": "17.784",
+    "markPrice": "421.95",
+    "indexPrice": "421.75",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "TRUMP-USD",
+    "openInterest": "4800",
+    "markPrice": "2.0148",
+    "indexPrice": "2.017",
+    "fundingRate": "-0.0000092303222051",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "MSFT-USD",
+    "openInterest": "12.38",
+    "markPrice": "443.21",
+    "indexPrice": "442.93",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "BASED-USD",
+    "openInterest": "2030",
+    "markPrice": "0.0683",
+    "indexPrice": "0.0684",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "AAVE-USD",
+    "openInterest": "3635.88",
+    "markPrice": "75.97",
+    "indexPrice": "75.97",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "XRP-USD",
+    "openInterest": "6236.6",
+    "markPrice": "1.232",
+    "indexPrice": "1.2326",
+    "fundingRate": "-0.0000092756920575",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "FARTCOIN-USD",
+    "openInterest": "20787.2",
+    "markPrice": "0.1472",
+    "indexPrice": "0.1473",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "INTC-USD",
+    "openInterest": "43.252",
+    "markPrice": "108.03",
+    "indexPrice": "107.959",
+    "fundingRate": "0.0000333320852882",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "XLM-USD",
+    "openInterest": "5674",
+    "markPrice": "0.21897",
+    "indexPrice": "0.21902",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ONDO-USD",
+    "openInterest": "30862.4",
+    "markPrice": "0.3606",
+    "indexPrice": "0.3609",
+    "fundingRate": "-0.0000074453424225",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "CL-USD",
+    "openInterest": "22529.608",
+    "markPrice": "91.72",
+    "indexPrice": "91.74",
+    "fundingRate": "0.00000625",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "WIF-USD",
+    "openInterest": "6188",
+    "markPrice": "0.1811",
+    "indexPrice": "0.1811",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "WLFI-USD",
+    "openInterest": "17806",
+    "markPrice": "0.05919",
+    "indexPrice": "0.05919",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "HOOD-USD",
+    "openInterest": "39.022",
+    "markPrice": "87.307",
+    "indexPrice": "87.25",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "PENGU-USD",
+    "openInterest": "52634",
+    "markPrice": "0.007156",
+    "indexPrice": "0.007163",
+    "fundingRate": "-0.0000194489420127",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ARB-USD",
+    "openInterest": "1425.8",
+    "markPrice": "0.09505",
+    "indexPrice": "0.09516",
+    "fundingRate": "-0.0000073195417975",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "BERA-USD",
+    "openInterest": "706.2",
+    "markPrice": "0.3312",
+    "indexPrice": "0.3315",
+    "fundingRate": "-0.0000096984077912",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "APT-USD",
+    "openInterest": "1387.54",
+    "markPrice": "0.8699",
+    "indexPrice": "0.8707",
+    "fundingRate": "-0.0000362350258139",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ZEC-USD",
+    "openInterest": "25.818",
+    "markPrice": "565.31",
+    "indexPrice": "565.45",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "MON-USD",
+    "openInterest": "2202682",
+    "markPrice": "0.02095",
+    "indexPrice": "0.02095",
+    "fundingRate": "-0.0000527129269104",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "HYPE-USD",
+    "openInterest": "30089.6",
+    "markPrice": "71.099",
+    "indexPrice": "71.087",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "TON-USD",
+    "openInterest": "1686",
+    "markPrice": "1.9575",
+    "indexPrice": "1.958",
+    "fundingRate": "-0.0000186491465969",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "SNDK-USD",
+    "openInterest": "247.112",
+    "markPrice": "1728.54",
+    "indexPrice": "1728.54",
+    "fundingRate": "0.0000059633653228",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "LTC-USD",
+    "openInterest": "41.78",
+    "markPrice": "48.25",
+    "indexPrice": "48.28",
+    "fundingRate": "0.0000059684425138",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "FIL-USD",
+    "openInterest": "259.2",
+    "markPrice": "0.9044",
+    "indexPrice": "0.9056",
+    "fundingRate": "-0.0000074509821098",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "SILVER-USD",
+    "openInterest": "735.24",
+    "markPrice": "75.9",
+    "indexPrice": "75.835",
+    "fundingRate": "0.0000432662581315",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "XPL-USD",
+    "openInterest": "3248",
+    "markPrice": "0.091",
+    "indexPrice": "0.091",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "BREV-USD",
+    "openInterest": "0",
+    "markPrice": "0",
+    "indexPrice": "0",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1767697200000
+  },
+  {
+    "symbol": "AVAX-USD",
+    "openInterest": "840",
+    "markPrice": "8.436",
+    "indexPrice": "8.443",
+    "fundingRate": "-0.000023442873775",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "HBAR-USD",
+    "openInterest": "1294",
+    "markPrice": "0.08904",
+    "indexPrice": "0.08909",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "AAPL-USD",
+    "openInterest": "3.876",
+    "markPrice": "312.11",
+    "indexPrice": "312.11",
+    "fundingRate": "-0.0000129321841942",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "1000PEPE-USD",
+    "openInterest": "198066",
+    "markPrice": "0.003233",
+    "indexPrice": "0.003233",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "TRX-USD",
+    "openInterest": "11848",
+    "markPrice": "0.33644",
+    "indexPrice": "0.337",
+    "fundingRate": "-0.0001502656106088",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "LINK-USD",
+    "openInterest": "336.2",
+    "markPrice": "8.655",
+    "indexPrice": "8.662",
+    "fundingRate": "-0.000016116812127",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ADA-USD",
+    "openInterest": "6107.6",
+    "markPrice": "0.21845",
+    "indexPrice": "0.2186",
+    "fundingRate": "0.0000113470050006",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "1000SHIB-USD",
+    "openInterest": "137336",
+    "markPrice": "0.005312",
+    "indexPrice": "0.005315",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "COPPER-USD",
+    "openInterest": "5430.9",
+    "markPrice": "6.6832",
+    "indexPrice": "6.6755",
+    "fundingRate": "0.0000679690701795",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "AMZN-USD",
+    "openInterest": "8.72",
+    "markPrice": "261.08",
+    "indexPrice": "260.82",
+    "fundingRate": "0.0000683193218502",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ENA-USD",
+    "openInterest": "3700",
+    "markPrice": "0.0842",
+    "indexPrice": "0.0843",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "PUMP-USD",
+    "openInterest": "319594",
+    "markPrice": "0.001726",
+    "indexPrice": "0.001728",
+    "fundingRate": "-0.0000307037651081",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "SUI-USD",
+    "openInterest": "16221.6",
+    "markPrice": "0.8323",
+    "indexPrice": "0.8326",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "XMR-USD",
+    "openInterest": "271.892",
+    "markPrice": "337.87",
+    "indexPrice": "337.41",
+    "fundingRate": "0.0001005207420375",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "CRCL-USD",
+    "openInterest": "238.094",
+    "markPrice": "99.452",
+    "indexPrice": "99.388",
+    "fundingRate": "0.0000739062904453",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "EWY-USD",
+    "openInterest": "8.09",
+    "markPrice": "213.02",
+    "indexPrice": "213.02",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "NVDA-USD",
+    "openInterest": "144.316",
+    "markPrice": "226.73",
+    "indexPrice": "226.51",
+    "fundingRate": "0.0000515920591879",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "BNB-USD",
+    "openInterest": "42.306",
+    "markPrice": "670.6",
+    "indexPrice": "670.6",
+    "fundingRate": "0.0000192723239603",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ASTER-USD",
+    "openInterest": "3890",
+    "markPrice": "0.6654",
+    "indexPrice": "0.666",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "AXS-USD",
+    "openInterest": "1131.6",
+    "markPrice": "1.1711",
+    "indexPrice": "1.174",
+    "fundingRate": "-0.0000608790831675",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "UNI-USD",
+    "openInterest": "798.4",
+    "markPrice": "2.8295",
+    "indexPrice": "2.833",
+    "fundingRate": "-0.0000206779767264",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "US500-USD",
+    "openInterest": "263.666",
+    "markPrice": "7616.5",
+    "indexPrice": "7616.5",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "OP-USD",
+    "openInterest": "14495.2",
+    "markPrice": "0.1187",
+    "indexPrice": "0.1189",
+    "fundingRate": "-0.0000152788517263",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "SOL-USD",
+    "openInterest": "53120.138",
+    "markPrice": "77.03",
+    "indexPrice": "77.08",
+    "fundingRate": "-0.0000181383789946",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "XAUT-USD",
+    "openInterest": "1319.2636",
+    "markPrice": "4503.1",
+    "indexPrice": "4503.1",
+    "fundingRate": "-0.0000079830793291",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "BCH-USD",
+    "openInterest": "1.57",
+    "markPrice": "282.55",
+    "indexPrice": "282.7",
+    "fundingRate": "-0.0000140099284942",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ETH-USD",
+    "openInterest": "6174.0688",
+    "markPrice": "1933.2",
+    "indexPrice": "1934.1",
+    "fundingRate": "0.0000125",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ORCL-USD",
+    "openInterest": "5.132",
+    "markPrice": "240.59",
+    "indexPrice": "240.16",
+    "fundingRate": "0.0001149766585778",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "ETC-USD",
+    "openInterest": "180.54",
+    "markPrice": "7.774",
+    "indexPrice": "7.779",
+    "fundingRate": "0.0000116576868528",
+    "nextFundingTime": 1780416000000
+  },
+  {
+    "symbol": "TSM-USD",
+    "openInterest": "1.534",
+    "markPrice": "444.36",
+    "indexPrice": "443.99",
+    "fundingRate": "0.0000339007409084",
+    "nextFundingTime": 1780416000000
+  }
+]

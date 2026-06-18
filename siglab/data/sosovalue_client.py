@@ -56,7 +56,7 @@ class SoSoValueEmptyDataError(SoSoValueApiError):
 @dataclass(frozen=True)
 class SoSoValueEndpoints:
     openapi_base_url: str = "https://openapi.sosovalue.com/openapi/v1"
-    etf_base_url: str = "https://api.sosovalue.xyz"
+    etf_base_url: str = "https://openapi.sosovalue.com"
     news_base_url: str = "https://openapi.sosovalue.com"
 
 
@@ -136,7 +136,7 @@ class SoSoValueClient:
             path="/openapi/v2/etf/historicalInflowChart",
             json_body={"type": etf_type},
             ttl_s=300.0,
-            required_fields=("date", "totalNetInflow", "totalValueTraded", "totalNetAssets", "cumNetInflow"),
+            required_fields=("date", "total_net_inflow", "total_value_traded", "total_net_assets", "cum_net_inflow"),
             require_non_empty=True,
         )
         payload = await self.request(spec)

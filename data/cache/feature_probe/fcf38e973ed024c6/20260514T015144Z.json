@@ -1,0 +1,125 @@
+{
+  "ok": true,
+  "feature": "rsi_centered_14",
+  "family": "perp_multi_asset_decision",
+  "basis_groups": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "HYPE"
+  ],
+  "interval": "1h",
+  "lookback_days": 365,
+  "data_source": "sosovalue_etf_proxy",
+  "analysis_scope": {
+    "mode": "train_only",
+    "selector_scope": "rolling_validation_chunks",
+    "validation_excluded": true,
+    "audit_excluded": true,
+    "train_window_count": 4,
+    "train_windows": [
+      {
+        "label": "chunk_1_train",
+        "start_timestamp": "2025-03-04T00:00:00",
+        "end_timestamp": "2025-07-10T00:00:00"
+      },
+      {
+        "label": "chunk_2_train",
+        "start_timestamp": "2025-05-06T00:00:00",
+        "end_timestamp": "2025-09-11T00:00:00"
+      },
+      {
+        "label": "chunk_3_train",
+        "start_timestamp": "2025-07-10T00:00:00",
+        "end_timestamp": "2025-11-12T00:00:00"
+      },
+      {
+        "label": "chunk_4_train",
+        "start_timestamp": "2025-09-11T00:00:00",
+        "end_timestamp": "2026-01-16T00:00:00"
+      }
+    ],
+    "visual_split_note": "SigLab now scores specs on rolling train-validation chunks across the pre-audit history and preserves the final audit slice as the untouched out-of-sample check."
+  },
+  "feature_profile": {
+    "available": true,
+    "sample_count": 1424,
+    "mean": 0.292952,
+    "std": 0.353065,
+    "median_abs_value": 0.332882,
+    "positive_fraction": 0.775281,
+    "negative_fraction": 0.224719,
+    "zero_fraction": 0.0
+  },
+  "forward_return_predictiveness": [
+    {
+      "available": true,
+      "window_count": 4,
+      "total_rows": 1328,
+      "median_spearman": 0.014874,
+      "median_pearson": 0.008913,
+      "positive_spearman_window_fraction": 0.5,
+      "median_top_bottom_spread": -0.029053,
+      "median_bucket_monotonicity": -0.15,
+      "median_abs_feature_abs_return_spearman": -0.0858,
+      "horizon_bars": 6,
+      "interval": "1h"
+    },
+    {
+      "available": true,
+      "window_count": 4,
+      "total_rows": 1040,
+      "median_spearman": -0.343326,
+      "median_pearson": -0.342473,
+      "positive_spearman_window_fraction": 0.25,
+      "median_top_bottom_spread": -0.366754,
+      "median_bucket_monotonicity": -0.65,
+      "median_abs_feature_abs_return_spearman": -0.266991,
+      "horizon_bars": 24,
+      "interval": "1h"
+    },
+    {
+      "available": true,
+      "window_count": 4,
+      "total_rows": 272,
+      "median_spearman": -0.076996,
+      "median_pearson": -0.121441,
+      "positive_spearman_window_fraction": 0.5,
+      "median_top_bottom_spread": 0.015647,
+      "median_bucket_monotonicity": 0.3,
+      "median_abs_feature_abs_return_spearman": -0.268158,
+      "horizon_bars": 72,
+      "interval": "1h"
+    },
+    {
+      "available": false,
+      "window_count": 0,
+      "total_rows": 0,
+      "median_spearman": null,
+      "median_pearson": null,
+      "positive_spearman_window_fraction": null,
+      "median_top_bottom_spread": null,
+      "median_bucket_monotonicity": null,
+      "median_abs_feature_abs_return_spearman": null,
+      "horizon_bars": 168,
+      "interval": "1h"
+    }
+  ],
+  "best_directional_horizon": {
+    "horizon_bars": 24,
+    "median_spearman": -0.343326,
+    "median_top_bottom_spread": -0.366754
+  },
+  "predictor_correlations": [
+    {
+      "available": true,
+      "window_count": 4,
+      "total_rows": 1424,
+      "median_spearman": 0.86138,
+      "median_pearson": 0.811703,
+      "feature": "donchian_position_20",
+      "redundancy": "high"
+    }
+  ],
+  "invalid_compare_features": []
+}
