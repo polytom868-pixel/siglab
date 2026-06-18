@@ -166,6 +166,7 @@ class ResearchEvaluator:
                 window_results=window_results,
                 summary_prefix="validation",
             )
+        audit_summary = self._empty_window_summary("audit")
         if audit_window is not None:
             audit_summary = self._run_summary_window(
                 window_spec=audit_window,
@@ -373,7 +374,7 @@ class ResearchEvaluator:
         )
         config = BacktestConfig(
             leverage=1.0,
-            funding_rates=funding.to_frame() if funding is not None else None,
+            funding_rates=funding,
             rebalance_threshold=spec.risk.rebalance_threshold,
             enable_liquidation=True,
         )
