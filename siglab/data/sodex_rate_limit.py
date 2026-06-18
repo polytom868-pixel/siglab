@@ -5,7 +5,7 @@ import inspect
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 SODEX_WEIGHT_BUDGET_PER_MINUTE = 1200
 SODEX_DEFAULT_ENDPOINT_WEIGHT = 20
@@ -31,8 +31,17 @@ SODEX_ENDPOINT_WEIGHTS: dict[str, int] = {
 }
 
 
-class SoDEXWeightLimitError(RuntimeError):
-    pass
+class SoDEXError(RuntimeError):
+    """Base class for all SoDEX errors (transport, rate-limit, upstream, weight)."""
+
+    def __init__(self, message: str, *, status_code: int | None = None, payload: Any = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.payload = payload
+
+
+class SoDEXWeightLimitError(SoDEXError):
+    """SoDEX weight budget exhausted or exceeded."""
 
 
 @dataclass

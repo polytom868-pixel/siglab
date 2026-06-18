@@ -66,6 +66,16 @@ _KLINE_FIELDS = {
     "q": "quote_volume",
 }
 
+# Intervals >= 1h: safe to round the kline index to the hour boundary.
+# Sub-hourly intervals (1m/5m/15m/30m) must keep raw per-candle timestamps —
+# rounding them to 1h collapses distinct candles into duplicate indices (H5).
+_HOURLY_OR_LARGER_INTERVALS = frozenset({"1h", "4h", "1d", "1w", "1M"})
+
+
+def _interval_rounds_to_hour(interval: str | None) -> bool:
+    """Return True when the kline interval is >= 1h and should be 1h-rounded."""
+    return interval is not None and interval in _HOURLY_OR_LARGER_INTERVALS
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -237,7 +247,7 @@ class SoDEXFeeds:
             self.lake.write_frame("sodex_klines", cache_key, empty)
             return empty
 
-        frame = self._klines_to_frame(rows)
+        frame = self._klines_to_frame(rows, interval=interval)
 
         # Write to cache even if empty (negative cache)
         self.lake.write_frame("sodex_klines", cache_key, frame)
@@ -270,8 +280,14 @@ class SoDEXFeeds:
         return frame
 
     @staticmethod
-    def _klines_to_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
-        """Convert raw SoDEX kline dicts to a typed DataFrame."""
+    def _klines_to_frame(rows: list[dict[str, Any]], *, interval: str | None = None) -> pd.DataFrame:
+        """Convert raw SoDEX kline dicts to a typed DataFrame.
+
+        The timestamp index is rounded to the candle boundary only when the
+        interval is >= 1h.  Sub-hourly intervals (1m/5m/15m/30m) keep their
+        raw per-candle timestamps — rounding them to 1h collapsed distinct
+        candles into duplicate indices (H5).
+        """
         if not rows:
             return SoDEXFeeds._empty_klines_frame()
 
@@ -294,9 +310,8 @@ class SoDEXFeeds:
             frame["timestamp"] = pd.to_numeric(frame["timestamp"], errors="coerce")
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], unit="ms", utc=True)
             frame = frame.set_index("timestamp").sort_index()
-            if not frame.empty:
-                rounded = cast(pd.DatetimeIndex, frame.index).round("1h")
-                frame.index = rounded
+            if not frame.empty and _interval_rounds_to_hour(interval):
+                frame.index = cast(pd.DatetimeIndex, frame.index).round("1h")
 
         return frame
 

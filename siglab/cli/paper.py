@@ -64,22 +64,26 @@ async def run_paper_status(args: argparse.Namespace) -> None:
         # Process open orders against latest klines
         try:
             open_orders = client.get_orders(args.session, status="OPEN") if hasattr(client, 'get_orders') else []
-            open_symbols = {o["symbol"] for o in open_orders}
-            settings = load_settings()
-            lake = ParquetLake(settings.root_dir / "data" / "cache")
-            feeds = SoDEXFeeds(lake=lake)
-            results = await asyncio.gather(*(feeds.fetch_klines(sym, "1m", limit=5) for sym in open_symbols), return_exceptions=True)
-            for klines in results:
-                if isinstance(klines, BaseException):
-                    continue
-                if not klines.empty:
-                    try:
-                        await client.process_klines(args.session, klines)
-                    except Exception:
-                        pass
+            open_symbols = sorted({o["symbol"] for o in open_orders})
+            if open_symbols:
+                settings = load_settings()
+                lake = ParquetLake(settings.root_dir / "data" / "cache")
+                feeds = SoDEXFeeds(lake=lake)
+                results = await asyncio.gather(
+                    *(feeds.fetch_klines(sym, "1m", limit=5) for sym in open_symbols),
+                    return_exceptions=True,
+                )
+                for sym, klines in zip(open_symbols, results):
+                    if isinstance(klines, BaseException):
+                        continue
+                    if not klines.empty:
+                        try:
+                            await client.process_klines(args.session, klines, symbol=sym)
+                        except Exception:
+                            pass
+
         except Exception:
             pass
-
         status = client.get_session_status(args.session)
 
         # Add mark prices for unrealized PnL

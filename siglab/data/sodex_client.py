@@ -1,21 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
-from siglab.data.sodex_rate_limit import SoDEXWeightScheduler
+from siglab.data.sodex_rate_limit import SoDEXError, SoDEXWeightScheduler
 from siglab.utils import percentile as _percentile
 
+_logger = logging.getLogger(__name__)
 
-class SoDEXError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None, payload: Any = None) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.payload = payload
 
 
 class SoDEXRateLimitError(SoDEXError):
@@ -50,7 +47,7 @@ class SoDEXPublicPerpsClient:
         *,
         base_url: str = "https://mainnet-gw.sodex.dev/api/v1/perps",
         timeout_s: float = 10.0,
-        retries: int = 1,
+        retries: int = 3,
         client: httpx.AsyncClient | None = None,
         weight_scheduler: SoDEXWeightScheduler | None = None,
     ) -> None:
@@ -66,83 +63,40 @@ class SoDEXPublicPerpsClient:
         if self._owns_client and self._client is not None:
             await self._client.aclose()
 
-    async def symbols(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
-        params = {"symbol": symbol} if symbol else None
+    async def _list(
+        self,
+        path: str,
+        endpoint: str,
+        *,
+        param_key: str | None = None,
+        param_value: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = {param_key: param_value} if param_key and param_value else None
         return self._rows(
             await self._request(
-                "GET",
-                "/markets/symbols",
-                endpoint="perps.symbols",
-                params=params,
-                weight=SoDEXWeightScheduler.documented_weight("perps.symbols"),
+                "GET", path, endpoint=endpoint, params=params,
+                weight=SoDEXWeightScheduler.documented_weight(endpoint),
             ),
-            "perps.symbols",
+            endpoint,
         )
+
+    async def symbols(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
+        return await self._list("/markets/symbols", "perps.symbols", param_key="symbol", param_value=symbol)
 
     async def coins(self, *, coin: str | None = None) -> list[dict[str, Any]]:
-        params = {"coin": coin} if coin else None
-        return self._rows(
-            await self._request(
-                "GET",
-                "/markets/coins",
-                endpoint="perps.coins",
-                params=params,
-                weight=SoDEXWeightScheduler.documented_weight("perps.coins"),
-            ),
-            "perps.coins",
-        )
+        return await self._list("/markets/coins", "perps.coins", param_key="coin", param_value=coin)
 
     async def tickers(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
-        params = {"symbol": symbol} if symbol else None
-        return self._rows(
-            await self._request(
-                "GET",
-                "/markets/tickers",
-                endpoint="perps.tickers",
-                params=params,
-                weight=SoDEXWeightScheduler.documented_weight("perps.tickers"),
-            ),
-            "perps.tickers",
-        )
+        return await self._list("/markets/tickers", "perps.tickers", param_key="symbol", param_value=symbol)
 
     async def mini_tickers(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
-        params = {"symbol": symbol} if symbol else None
-        return self._rows(
-            await self._request(
-                "GET",
-                "/markets/miniTickers",
-                endpoint="perps.mini_tickers",
-                params=params,
-                weight=SoDEXWeightScheduler.documented_weight("perps.mini_tickers"),
-            ),
-            "perps.mini_tickers",
-        )
+        return await self._list("/markets/miniTickers", "perps.mini_tickers", param_key="symbol", param_value=symbol)
 
     async def mark_prices(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
-        params = {"symbol": symbol} if symbol else None
-        return self._rows(
-            await self._request(
-                "GET",
-                "/markets/mark-prices",
-                endpoint="perps.mark_prices",
-                params=params,
-                weight=SoDEXWeightScheduler.documented_weight("perps.mark_prices"),
-            ),
-            "perps.mark_prices",
-        )
+        return await self._list("/markets/mark-prices", "perps.mark_prices", param_key="symbol", param_value=symbol)
 
     async def book_tickers(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
-        params = {"symbol": symbol} if symbol else None
-        return self._rows(
-            await self._request(
-                "GET",
-                "/markets/bookTickers",
-                endpoint="perps.book_tickers",
-                params=params,
-                weight=SoDEXWeightScheduler.documented_weight("perps.book_tickers"),
-            ),
-            "perps.book_tickers",
-        )
+        return await self._list("/markets/bookTickers", "perps.book_tickers", param_key="symbol", param_value=symbol)
 
     async def orderbook(self, *, symbol: str, limit: int | None = None) -> dict[str, Any]:
         params = {"limit": int(limit)} if limit is not None else None
@@ -156,17 +110,24 @@ class SoDEXPublicPerpsClient:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise SoDEXFormatError("perps.orderbook data was not an object", payload=payload)
+        result = dict(data)
         bids = data.get("bids", [])
         asks = data.get("asks", [])
         if bids and asks:
-            best_bid = float(bids[0][0])
-            best_ask = float(asks[0][0])
+            try:
+                best_bid = float(bids[0][0])
+                best_ask = float(asks[0][0])
+            except (TypeError, IndexError, ValueError) as exc:
+                raise SoDEXFormatError("perps.orderbook bid/ask price was not numeric", payload=payload) from exc
             mid = (best_bid + best_ask) / 2.0
             if mid > 0:
                 spread_pct = (best_ask - best_bid) / mid
+                if not (0.0 <= spread_pct <= 1.0):
+                    raise SoDEXFormatError(f"perps.orderbook invalid spread {spread_pct:.2%}", payload=payload)
                 if spread_pct > 0.05:
-                    raise SoDEXFormatError(f"orderbook spread {spread_pct:.2%} exceeds 5% threshold")
-        return dict(data)
+                    _logger.warning("perps.orderbook wide spread for %s: %.2f%%", symbol, spread_pct * 100.0)
+                result["spread_pct"] = spread_pct
+        return result
 
     async def klines(
         self,
@@ -314,17 +275,17 @@ class SoDEXPublicPerpsClient:
             else:
                 metrics.latencies_ms.append((time.perf_counter() - started) * 1000.0)
                 status = int(response.status_code)
-                if status == 429:
-                    metrics.rate_limits += 1
-                    last_error = SoDEXRateLimitError(f"{endpoint} rate limited", status_code=status)
-                elif status >= 500 or status == 408:
-                    last_error = SoDEXUpstreamError(f"{endpoint} retryable HTTP {status}", status_code=status)
-                elif status >= 400:
-                    raise SoDEXUpstreamError(f"{endpoint} HTTP {status}", status_code=status)
-                else:
+                err, retryable = self._classify_status(status, endpoint)
+                if err is None:
                     payload = self._checked_payload(response, endpoint)
                     metrics.successes += 1
                     return payload
+                if status == 429:
+                    metrics.rate_limits += 1
+                if retryable:
+                    last_error = err
+                else:
+                    raise err
             if attempt >= self.retries:
                 break
             metrics.retries += 1
@@ -363,12 +324,21 @@ class SoDEXPublicPerpsClient:
             raise SoDEXFormatError(f"{endpoint} response envelope missing code/timestamp", status_code=response.status_code, payload=payload)
         return payload
 
+    def _classify_status(self, status: int, endpoint: str) -> tuple[SoDEXError | None, bool]:
+        """Return (error, retryable) for an HTTP status; (None, False) on success."""
+        if status == 429:
+            return SoDEXRateLimitError(f"{endpoint} rate limited", status_code=status), True
+        if status == 408 or status >= 500:
+            return SoDEXUpstreamError(f"{endpoint} retryable HTTP {status}", status_code=status), True
+        if status >= 400:
+            return SoDEXUpstreamError(f"{endpoint} HTTP {status}", status_code=status), False
+        return None, False
+
     def _checked_payload(self, response: httpx.Response, endpoint: str) -> dict[str, Any]:
         status = int(response.status_code)
-        if status == 429:
-            raise SoDEXRateLimitError(f"{endpoint} rate limited", status_code=status)
-        if status >= 400:
-            raise SoDEXUpstreamError(f"{endpoint} HTTP {status}", status_code=status)
+        err, _ = self._classify_status(status, endpoint)
+        if err is not None:
+            raise err
         payload = self._parse_json(response, endpoint)
         code = payload.get("code")
         if code not in (0, "0"):

@@ -5,8 +5,8 @@ Provides ``SoDEXPaperPerpsClient``, a paper trading engine that uses
 real SoDEX market data (klines, funding rates) to simulate order
 execution without submitting live trades.
 
-Session state is persisted as ``.npy`` files for survivability across
-process restarts.
+Session state is persisted as JSON files (atomic write) for survivability
+across process restarts.
 
 Order lifecycle
 ---------------
@@ -349,7 +349,7 @@ class SoDEXPaperPerpsClient:
     Paper trading simulator using real SoDEX market data.
 
     Uses ``SoDEXFeeds`` for live kline prices and funding rates.
-    Session state is persisted as ``.npy`` files.
+    Session state is persisted as JSON files (atomic temp-file replace).
 
     Parameters
     ----------
@@ -358,7 +358,7 @@ class SoDEXPaperPerpsClient:
         If ``None``, funding processing and feed-dependent operations
         are skipped gracefully.
     sessions_dir : str or Path
-        Directory for ``.npy`` session files (default: ``sessions/``).
+        Directory for ``.json`` session files (default: ``sessions/``).
     """
 
     def __init__(
@@ -739,6 +739,8 @@ class SoDEXPaperPerpsClient:
         self,
         session_id: str,
         klines: pd.DataFrame | list[dict[str, Any]],
+        *,
+        symbol: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Process new klines for a session, matching open orders.
@@ -750,6 +752,13 @@ class SoDEXPaperPerpsClient:
         klines : pd.DataFrame or list[dict]
             Kline data. Can be a DataFrame (from SoDEXFeeds) or raw kline
             dicts (with keys like o, h, l, c, t).
+        symbol : str, optional
+            Perp symbol these klines belong to (e.g. ``"BTC-USD"``). When
+            provided, it is stamped onto each kline so :meth:`_match_orders`
+            only fills orders whose symbol matches. DataFrames from
+            :meth:`SoDEXFeeds.fetch_klines` carry no symbol column, so the
+            caller must supply it. If omitted, klines keep any existing ``s``
+            field (symbol-less klines match orders on any symbol).
 
         Returns
         -------
@@ -772,7 +781,7 @@ class SoDEXPaperPerpsClient:
                     session_id,
                 )
                 return fills
-            kline_dicts = self._df_to_kline_dicts(klines)
+            kline_dicts = self._df_to_kline_dicts(klines, symbol=symbol)
         elif isinstance(klines, list):
             if not klines:
                 logger.warning(
@@ -781,6 +790,11 @@ class SoDEXPaperPerpsClient:
                 )
                 return fills
             kline_dicts = list(klines)
+            if symbol:
+                # Stamp the symbol onto raw dicts that lack it so orders are
+                # matched per-symbol rather than against every open order.
+                for kline in kline_dicts:
+                    kline.setdefault("s", symbol)
         else:
             raise PaperClientError(
                 f"klines must be DataFrame or list, got {type(klines).__name__}"
@@ -816,8 +830,21 @@ class SoDEXPaperPerpsClient:
 
         return fills
 
-    def _df_to_kline_dicts(self, df: pd.DataFrame) -> list[dict[str, Any]]:
-        """Convert a klines DataFrame to a list of raw-style kline dicts."""
+    def _df_to_kline_dicts(
+        self,
+        df: pd.DataFrame,
+        *,
+        symbol: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Convert a klines DataFrame to a list of raw-style kline dicts.
+
+        The SoDEXFeeds frame has no symbol column (klines are fetched
+        per-symbol), so *symbol* is stamped onto every dict as ``"s"`` when
+        provided — letting :meth:`_match_orders` skip orders on other symbols.
+        The index is a UTC ``DatetimeIndex`` (raw per-candle timestamps for
+        sub-hourly intervals, hour-rounded otherwise); each is converted to
+        epoch-ms under the ``"t"`` key.
+        """
         kline_dicts: list[dict[str, Any]] = []
         for idx, row in df.iterrows():
             ts = int(pd.Timestamp(idx).timestamp() * 1000) if isinstance(idx, pd.Timestamp) else 0
@@ -829,6 +856,7 @@ class SoDEXPaperPerpsClient:
                 "c": float(row.get("close", 0)),
                 "v": float(row.get("volume", 0)),
                 "q": float(row.get("quote_volume", 0)),
+                "s": symbol or "",
             })
         return kline_dicts
 
@@ -925,55 +953,55 @@ class SoDEXPaperPerpsClient:
             pos = PaperPosition(symbol=order.symbol)
             session.positions[order.symbol] = pos
 
-        # Calculate PnL from this fill
-        if pos.quantity != 0:
-            # Reducing or increasing position
-            if (pos.quantity > 0 and order.side == PaperOrderSide.SELL) or \
-               (pos.quantity < 0 and order.side == PaperOrderSide.BUY):
-                # Reducing position → realize PnL
-                if pos.quantity > 0:  # Long, selling to reduce
-                    pnl_realized = order.quantity * (fill_price - pos.entry_price)
-                else:  # Short, buying to reduce
-                    pnl_realized = order.quantity * (pos.entry_price - fill_price)
+        # Update position, realizing PnL on any reducing portion.
+        #
+        # A fill can (a) open a new position, (b) increase it, (c) reduce it,
+        # or (d) reduce it to zero and flip to the opposite side. For a flip
+        # the order is split into two legs: the closing leg realizes PnL at
+        # the old entry price up to the flat point, and the flip leg opens a
+        # fresh position at the fill price. Booking the whole order quantity
+        # against the old entry (the previous behaviour) over-realized PnL and
+        # left a stale entry price on the flipped position.
+        if pos.quantity == 0:
+            # Open new position at the fill price.
+            pos.quantity = order.quantity if order.side == PaperOrderSide.BUY else -order.quantity
+            pos.entry_price = fill_price
+        else:
+            long_pos = pos.quantity > 0
+            reducing = (long_pos and order.side == PaperOrderSide.SELL) or \
+                (not long_pos and order.side == PaperOrderSide.BUY)
+            if reducing:
+                close_qty = min(order.quantity, abs(pos.quantity))
+                # Realize PnL only on the portion that closes the position.
+                if long_pos:
+                    pnl_realized = close_qty * (fill_price - pos.entry_price)
+                else:
+                    pnl_realized = close_qty * (pos.entry_price - fill_price)
                 session.pnl += pnl_realized
                 pos.realized_pnl += pnl_realized
 
-        # Update position quantity and entry price
-        if order.side == PaperOrderSide.BUY:
-            if pos.quantity >= 0:
-                # Increasing long or flipping from short
-                new_qty = pos.quantity + order.quantity
-                if pos.quantity != 0:
-                    # Average entry price
-                    pos.entry_price = (
-                        (pos.quantity * pos.entry_price + order.quantity * fill_price)
-                        / new_qty
-                    )
-                else:
+                remaining = order.quantity - close_qty  # flip portion, if any
+                if remaining > 0:
+                    # Flipped to the opposite side: open a fresh position at
+                    # the fill price for the flip portion.
+                    pos.quantity = remaining if order.side == PaperOrderSide.BUY else -remaining
                     pos.entry_price = fill_price
-                pos.quantity = new_qty
-            else:
-                # Reducing short
-                pos.quantity += order.quantity
-                if pos.quantity == 0:
-                    pos.entry_price = 0.0
-        else:  # SELL
-            if pos.quantity <= 0:
-                # Increasing short or flipping from long
-                new_qty = pos.quantity - order.quantity
-                if pos.quantity != 0:
-                    pos.entry_price = (
-                        (abs(pos.quantity) * pos.entry_price + order.quantity * fill_price)
-                        / abs(new_qty)
-                    )
                 else:
-                    pos.entry_price = fill_price
-                pos.quantity = new_qty
+                    # Pure reduction (possibly to flat).
+                    if long_pos:
+                        pos.quantity -= order.quantity
+                    else:
+                        pos.quantity += order.quantity
+                    if pos.quantity == 0:
+                        pos.entry_price = 0.0
             else:
-                # Reducing long
-                pos.quantity -= order.quantity
-                if pos.quantity == 0:
-                    pos.entry_price = 0.0
+                # Increasing the position: average the entry price.
+                new_qty = pos.quantity + (order.quantity if order.side == PaperOrderSide.BUY else -order.quantity)
+                pos.entry_price = (
+                    (abs(pos.quantity) * pos.entry_price + order.quantity * fill_price)
+                    / abs(new_qty)
+                )
+                pos.quantity = new_qty
 
         # Mark positions with zero quantity for cleanup
         if pos.quantity == 0:
@@ -1148,40 +1176,20 @@ class SoDEXPaperPerpsClient:
     # ------------------------------------------------------------------
 
     def _save_session_to_disk(self, session: PaperSession) -> None:
-        """Persist session state to a JSON file (atomic write with retry)."""
+        """Persist session state to a JSON file via an atomic temp-file replace."""
         path = self.session_path(session.session_id)
         data = session.to_dict()
-        last_exc: Exception | None = None
-        for attempt in range(2):
+        fd, tmp_path = tempfile.mkstemp(dir=str(self.sessions_dir), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f)
+            os.replace(tmp_path, str(path))
+        except BaseException:
             try:
-                fd, tmp_path = tempfile.mkstemp(
-                    dir=str(self.sessions_dir), suffix=".tmp"
-                )
-                try:
-                    with os.fdopen(fd, "w") as f:
-                        json.dump(data, f)
-                    os.replace(tmp_path, str(path))
-                    npy_path = path.with_suffix(".npy")
-                    np.save(str(npy_path), np.array(data, dtype=object), allow_pickle=True)
-                except BaseException:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-                    raise
-                return  # success
-            except Exception as exc:
-                last_exc = exc
-                if attempt == 0:
-                    logger.warning(
-                        "Session %s save attempt %d failed, retrying: %s",
-                        session.session_id,
-                        attempt + 1,
-                        exc,
-                    )
-        assert last_exc is not None
-        logger.error("Failed to save session %s: %s", session.session_id, last_exc)
-        raise last_exc
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def _load_session_from_disk(self, session_id: str) -> PaperSession:
         """Load session state from a JSON file (with npy fallback)."""
