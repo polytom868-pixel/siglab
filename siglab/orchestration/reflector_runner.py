@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
-from siglab.io_utils import write_json
 from siglab.llm import ClaudeClient
+from siglab.orchestration.base import BaseRunner
 from siglab.orchestration.contracts import ReflectorOutput
 from siglab.evaluation.strategy_semantics import gate_dimensions, motif_signature
 from siglab.workspace.cards import dump_frontmatter, parse_frontmatter
 from siglab.workspace.builder import WorkspaceSession
 
 
-class ReflectionRunner:
+class ReflectionRunner(BaseRunner):
     REQUIRED_FIELDS = {
         "family",
         "verdict",
@@ -34,8 +33,7 @@ class ReflectionRunner:
         settings: Any,
         claude: ClaudeClient,
     ) -> None:
-        self.settings = settings
-        self.claude = claude
+        super().__init__(settings=settings, claude=claude)
 
     async def run(
         self,
@@ -45,14 +43,10 @@ class ReflectionRunner:
         iteration_paths: dict[str, Any],
         evaluation_packet: dict[str, Any],
     ) -> ReflectorOutput:
-        skill_path = (
-            self.settings.root_dir
-            / ".agents"
-            / "skills"
-            / "siglab-post-run-reflector"
-            / "SKILL.md"
+        system_prompt, skill_path = self.load_skill(
+            "siglab-post-run-reflector",
+            fallback=self._fallback_system_prompt(),
         )
-        system_prompt = skill_path.read_text() if skill_path.exists() else self._fallback_system_prompt()
         user_prompt = self._build_user_prompt(evaluation_packet=evaluation_packet)
         content = await self.claude.complete_text(
             system_prompt=system_prompt,
@@ -74,19 +68,19 @@ class ReflectionRunner:
         lesson_card_path = session.cards_dir / "reflections" / f"{spec_hash}.md"
         lesson_card_path.write_text(content)
         trace_path = iteration_paths["reflector_trace_path"]
-        write_json(
+        self.write_trace(
             trace_path,
             {
                 "stage": "reflector",
-                "system_prompt_path": str(
-                    (skill_path.relative_to(self.settings.root_dir) if skill_path.exists() else Path("embedded/fallback-reflector-prompt.md"))
+                "system_prompt_path": (
+                    self.relative_skill_path(skill_path)
+                    if skill_path.exists()
+                    else "embedded/fallback-reflector-prompt.md"
                 ),
                 "raw_reflection": raw_content,
                 "frontmatter_parse_error": parse_error,
                 "saved_frontmatter": frontmatter,
                 "saved_body": body,
-                "claude_trace": dict(self.claude.last_trace or {}),
-                "claude_exchange": dict(self.claude.last_exchange or {}),
             },
         )
         return {
@@ -145,16 +139,6 @@ class ReflectionRunner:
         if raw_content.strip():
             return raw_content.strip()
         return self._fallback_body(evaluation_packet)
-
-    def _string_list(self, value: Any) -> list[str]:
-        if isinstance(value, list):
-            return [str(item) for item in value if str(item).strip()]
-        if self._is_missing_value(value):
-            return []
-        return [str(value)]
-
-    def _is_missing_value(self, value: Any) -> bool:
-        return value is None or value == ""
 
     def _build_user_prompt(self, *, evaluation_packet: dict[str, Any]) -> str:
         return "\n".join(
@@ -243,5 +227,3 @@ class ReflectionRunner:
                 f"Next test: {next_move}",
             ]
         )
-
-

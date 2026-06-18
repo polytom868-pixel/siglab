@@ -472,9 +472,6 @@ def _format_patch_value(value: Any) -> str:
     return str(value)
 
 
-_float_or_none = safe_float
-
-
 def _component_brief(component: dict[str, Any] | None) -> dict[str, Any] | None:
     if component is None:
         return None

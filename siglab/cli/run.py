@@ -16,6 +16,7 @@ from siglab.data import MarketDataProvider
 from siglab.evaluator import ResearchEvaluator
 from siglab.llm import ClaudeClient
 from siglab.orchestration import (
+    OptunaOptimizerRunner,
     ReflectionRunner,
     ResearchPlannerRunner,
     SpecWriterRunner,
@@ -136,6 +137,11 @@ def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser
         help="Opt in to replacing static family seeds with the best historical artifact-backed family seeds.",
     )
     run_parser.add_argument("--skip-llm", action="store_true")
+    run_parser.add_argument(
+        "--skip-optimizer",
+        action="store_true",
+        help="Skip the Optuna parameter-optimization stage between writer and evaluator for fast iteration.",
+    )
     run_parser.add_argument("--agent-label", default="siglab_harness")
     run_parser.add_argument("--run-label", default=None)
 
@@ -187,6 +193,7 @@ async def run_command(args: argparse.Namespace) -> None:
     use_historical_seeds = bool(getattr(args, "use_historical_seeds", False))
     memory_scope = getattr(args, "memory_scope", None) or "session_local"
     skip_llm = bool(getattr(args, "skip_llm", False))
+    skip_optimizer = bool(getattr(args, "skip_optimizer", False))
     max_runtime_timestamp = (
         (datetime.now(UTC).timestamp() + max_runtime_seconds)
         if max_runtime_seconds and max_runtime_seconds > 0
@@ -214,6 +221,7 @@ async def run_command(args: argparse.Namespace) -> None:
             use_historical_seeds=use_historical_seeds,
             memory_scope=memory_scope,
             skip_llm=skip_llm,
+            skip_optimizer=skip_optimizer,
             resume_run_session_id=getattr(args, "resume_run", None),
             population_size=int(args.population_size) if args.population_size else None,
             max_runtime_timestamp=max_runtime_timestamp,
@@ -234,6 +242,7 @@ async def _run_iterations(
     use_historical_seeds: bool,
     memory_scope: str,
     skip_llm: bool,
+    skip_optimizer: bool,
     resume_run_session_id: str | None,
     population_size: int | None,
     max_runtime_timestamp: float | None,
@@ -257,6 +266,12 @@ async def _run_iterations(
     )
     writer = SpecWriterRunner(settings=settings, claude=claude, mutator=mutator)
     evaluator = ResearchEvaluator(settings)
+    optimizer = OptunaOptimizerRunner(
+        settings=settings,
+        evaluator=evaluator,
+        mutator=mutator,
+        ancestry=ancestry,
+    )
     if resume_run_session_id:
         resume = _resolve_resume_run(
             settings=settings,
@@ -394,6 +409,35 @@ async def _run_iterations(
             if not spec_payload:
                 print_error(f"[{track}] writer returned no spec payload")
                 continue
+            if not skip_optimizer:
+                optimization = await optimizer.run(
+                    session=session,
+                    base_payload=spec_payload,
+                    spec_payload=spec_payload,
+                    iteration_paths=iteration_paths,
+                    incumbent_summary=trial_context.get("optimizer_output"),
+                )
+                spec_payload = optimization.spec_payload
+                trial_context["optimizer_output"] = {
+                    "spec_payload": optimization.spec_payload,
+                    "best_summary": optimization.best_summary,
+                    "best_params": optimization.best_params,
+                    "optuna_space": optimization.optuna_space,
+                    "score_diagnosis": optimization.score_diagnosis,
+                    "trial_count": optimization.trial_count,
+                    "objective_value": optimization.objective_value,
+                    "fragility_penalty": optimization.fragility_penalty,
+                    "deployment_score": optimization.deployment_score,
+                    "fragility_pack": optimization.fragility_pack,
+                    "stability_pack": optimization.stability_pack,
+                }
+                trial_context["optimized_param_summary"] = list(optimization.best_params.items())
+                trial_context["score_diagnosis"] = optimization.score_diagnosis
+                trial_context["objective_value"] = optimization.objective_value
+                trial_context["fragility_penalty"] = optimization.fragility_penalty
+                trial_context["deployment_score"] = optimization.deployment_score
+                trial_context["fragility_pack"] = optimization.fragility_pack
+                trial_context["stability_pack"] = optimization.stability_pack
 
             evaluation = evaluator.evaluate(
                 track=track,

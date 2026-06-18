@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from siglab.workspace.builder import WorkspaceBuilder, WorkspaceSession
+if TYPE_CHECKING:
+    from siglab.workspace.builder import WorkspaceBuilder, WorkspaceSession
 
 
 @dataclass

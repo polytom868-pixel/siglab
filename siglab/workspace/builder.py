@@ -20,7 +20,9 @@ from siglab.evaluation.strategy_semantics import (
     motif_signature,
 )
 from siglab.workspace.cards import (
+    dump_frontmatter,
     dump_yaml_block,
+    parse_frontmatter,
     relative_path,
     render_experiment_card,
     render_experiment_view_card,
@@ -1023,8 +1025,6 @@ class WorkspaceBuilder:
                 f"Open question: {open_question}",
             ]
         )
-        from siglab.workspace.cards import dump_frontmatter
-
         return dump_frontmatter(frontmatter, body)
 
     def _render_incumbent_spec(self, *, session: WorkspaceSession) -> str:
@@ -1396,8 +1396,6 @@ class WorkspaceBuilder:
         if not path.exists():
             return ""
         try:
-            from siglab.workspace.cards import parse_frontmatter
-
             _frontmatter, body = parse_frontmatter(path.read_text())
         except Exception:  # noqa: BLE001
             body = path.read_text()
@@ -1716,8 +1714,6 @@ class WorkspaceBuilder:
         for path in (session.cards_dir / "reflections").glob("*.md"):
             if path.stem == spec_hash:
                 continue
-            from siglab.workspace.cards import parse_frontmatter, dump_frontmatter
-
             frontmatter, body = parse_frontmatter(path.read_text())
             if str(frontmatter.get("family") or "") != family:
                 continue
@@ -1729,8 +1725,6 @@ class WorkspaceBuilder:
             path.write_text(dump_frontmatter(frontmatter, body))
 
     def _read_frontmatter(self, path: Path) -> dict[str, Any]:
-        from siglab.workspace.cards import parse_frontmatter
-
         frontmatter, _body = parse_frontmatter(path.read_text())
         return frontmatter
 

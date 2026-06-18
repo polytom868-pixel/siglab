@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import json
 import random
 import ssl
@@ -12,6 +13,8 @@ from typing import Any, cast
 
 import httpx
 from siglab.utils import percentile as _percentile
+
+logger = logging.getLogger(__name__)
 
 
 class SoSoValueApiError(RuntimeError):
@@ -70,6 +73,7 @@ class SoSoValueRequestSpec:
     json_body: dict[str, Any] | None = None
     ttl_s: float = 0.0
     required_fields: tuple[str, ...] = ()
+    identity_fields: tuple[str, ...] = ()
     require_non_empty: bool = False
 
 
@@ -137,6 +141,7 @@ class SoSoValueClient:
             json_body={"type": etf_type},
             ttl_s=300.0,
             required_fields=("date", "total_net_inflow", "total_value_traded", "total_net_assets", "cum_net_inflow"),
+            identity_fields=("date",),
             require_non_empty=True,
         )
         payload = await self.request(spec)
@@ -269,6 +274,7 @@ class SoSoValueClient:
             params=params,
             ttl_s=60.0,
             required_fields=("date", "total_net_inflow", "total_value_traded", "total_net_assets", "cum_net_inflow"),
+            identity_fields=("date",),
             require_non_empty=True,
         )
         payload = await self.request(spec)
@@ -495,11 +501,10 @@ class SoSoValueClient:
         return payload
 
     def _rows_from_data(self, data: Any, spec: SoSoValueRequestSpec) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]]
         if isinstance(data, list):
-            rows = [dict(row) for row in data if isinstance(row, dict)]
+            rows = [dict(r) for r in data if isinstance(r, dict)]
         elif isinstance(data, dict) and isinstance(data.get("list"), list):
-            rows = [dict(row) for row in data["list"] if isinstance(row, dict)]
+            rows = [dict(r) for r in data["list"] if isinstance(r, dict)]
         elif isinstance(data, dict):
             rows = [dict(data)]
         elif data in (None, ""):
@@ -508,14 +513,14 @@ class SoSoValueClient:
             raise SoSoValueUpstreamFormatError(f"{spec.name} data had unsupported shape", payload=data)
         if spec.require_non_empty and not rows:
             raise SoSoValueEmptyDataError(f"{spec.name} returned empty data", payload=data)
-        if spec.required_fields:
+        if spec.identity_fields or spec.required_fields:
+            optional = tuple(f for f in spec.required_fields if f not in spec.identity_fields)
             for idx, row in enumerate(rows):
-                missing = [field for field in spec.required_fields if field not in row]
-                if missing:
+                missing_id = [f for f in spec.identity_fields if f not in row]
+                if missing_id:
                     raise SoSoValueUpstreamFormatError(
-                        f"{spec.name} row {idx} missing required fields: {', '.join(missing)}",
-                        payload=row,
-                    )
+                        f"{spec.name} row {idx} missing identity fields: {', '.join(missing_id)}", payload=row)
+                self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
         return rows
 
     def metrics_snapshot(self) -> dict[str, Any]:
@@ -605,61 +610,38 @@ class SoSoValueClient:
         if int(page_size) < 1 or int(page_size) > 100:
             raise SoSoValueConfigError("SoSoValue news pageSize must be between 1 and 100")
 
+    def _fill_optional_fields(self, row: dict[str, Any], fields: tuple[str, ...], label: str) -> None:
+        missing = [f for f in fields if f not in row]
+        if missing:
+            logger.warning("%s missing optional fields: %s; filling with None", label, ", ".join(missing))
+            for f in missing:
+                row.setdefault(f, None)
+
     def _validate_etf_current_metrics(self, data: dict[str, Any]) -> None:
-        aggregate_fields = (
-            "totalNetAssets",
-            "totalNetAssetsPercentage",
-            "dailyNetInflow",
-            "cumNetInflow",
-            "dailyTotalValueTraded",
-            "totalTokenHoldings",
-        )
-        missing_aggregates = [field for field in aggregate_fields if field not in data]
-        if missing_aggregates:
-            raise SoSoValueUpstreamFormatError(
-                "etf.current_metrics missing aggregate fields: " + ", ".join(missing_aggregates),
-                payload=data,
-            )
-        for agg_field in aggregate_fields:
-            value = data.get(agg_field)
+        # Aggregates and most row fields are optional; only `ticker` and a
+        # non-empty `list` remain strict. Missing fields degrade to None.
+        for agg in ("totalNetAssets", "totalNetAssetsPercentage", "dailyNetInflow",
+                    "cumNetInflow", "dailyTotalValueTraded", "totalTokenHoldings"):
+            value = data.get(agg)
             if not isinstance(value, dict):
-                raise SoSoValueUpstreamFormatError(
-                    f"etf.current_metrics aggregate `{agg_field}` was not an object",
-                    payload=value,
-                )
-            for child in ("value", "lastUpdateDate", "status"):
-                if child not in value:
-                    raise SoSoValueUpstreamFormatError(
-                        f"etf.current_metrics aggregate `{agg_field}` missing `{child}`",
-                        payload=value,
-                    )
+                if value is not None:
+                    logger.warning("etf.current_metrics aggregate `%s` was not an object; defaulting to None", agg)
+                data[agg] = None
+            else:
+                self._fill_optional_fields(value, ("value", "lastUpdateDate", "status"),
+                                           f"etf.current_metrics aggregate `{agg}`")
         rows = data.get("list")
         if not isinstance(rows, list) or not rows:
             raise SoSoValueEmptyDataError("etf.current_metrics returned no ETF rows", payload=data)
-        row_required = (
-            "id",
-            "ticker",
-            "institute",
-            "netAssets",
-            "netAssetsPercentage",
-            "dailyNetInflow",
-            "cumNetInflow",
-            "dailyValueTraded",
-            "fee",
-            "discountPremiumRate",
-        )
+        row_optional = ("id", "institute", "netAssets", "netAssetsPercentage", "dailyNetInflow",
+                        "cumNetInflow", "dailyValueTraded", "fee", "discountPremiumRate")
         for idx, row in enumerate(rows):
             if not isinstance(row, dict):
+                raise SoSoValueUpstreamFormatError(f"etf.current_metrics row {idx} was not an object", payload=row)
+            if "ticker" not in row:
                 raise SoSoValueUpstreamFormatError(
-                    f"etf.current_metrics row {idx} was not an object",
-                    payload=row,
-                )
-            missing = [field for field in row_required if field not in row]
-            if missing:
-                raise SoSoValueUpstreamFormatError(
-                    f"etf.current_metrics row {idx} missing required fields: {', '.join(missing)}",
-                    payload=row,
-                )
+                    f"etf.current_metrics row {idx} missing identity field: ticker", payload=row)
+            self._fill_optional_fields(row, row_optional, f"etf.current_metrics row {idx}")
 
     def _endpoint_metrics(self, name: str) -> _EndpointMetrics:
         metrics = self._metrics.get(name)
@@ -669,6 +651,12 @@ class SoSoValueClient:
         return metrics
 
     async def _acquire_rate_slot(self) -> None:
+        """Throttle to the conservative per-minute request cap.
+
+        Process-local: coordinates calls within a single client/process only;
+        the upstream API-key quota (20 req/min) can still be exceeded when
+        multiple processes share one key. The cap is conservative on purpose.
+        """
         limit = int(self.conservative_rate_limit_per_minute)
         if limit <= 0:
             return

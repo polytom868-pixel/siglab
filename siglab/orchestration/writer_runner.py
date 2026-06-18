@@ -12,6 +12,7 @@ from siglab.io_utils import json_clone, write_json
 from siglab.llm import ClaudeClient, LLMProviderError
 from siglab.schemas import SignalSpec
 from siglab.orchestration.contracts import PlannerOutput, PreflightResult, WriterOutput, conformance_violations
+from siglab.orchestration.base import BaseRunner
 from siglab.orchestration.trials import build_spec_patch, summarize_patch
 from siglab.research import HypothesisSandbox
 from siglab.search.mutate import SpecMutator
@@ -20,7 +21,7 @@ from siglab.workspace.cards import dump_yaml_block
 from siglab.workspace.builder import WorkspaceSession
 
 
-class SpecWriterRunner:
+class SpecWriterRunner(BaseRunner):
     MAX_ATTEMPTS = 2
     TOP_LEVEL_KEYS = {
         "track",
@@ -53,13 +54,9 @@ class SpecWriterRunner:
         mutator: SpecMutator,
         hypothesis_sandbox: HypothesisSandbox | None = None,
     ) -> None:
-        self.settings = settings
-        self.claude = claude
+        super().__init__(settings=settings, claude=claude)
         self.mutator = mutator
         self.hypothesis_sandbox = hypothesis_sandbox
-
-    def _dict_or_empty(self, value: Any) -> dict[str, Any]:
-        return dict(value) if isinstance(value, dict) else {}
 
     async def run(
         self,
@@ -98,21 +95,8 @@ class SpecWriterRunner:
         regime_catalog_path = session.manifests_dir / "regime_catalog.md"
         policy_surface_path = session.manifests_dir / "policy_surface.md"
         cookbook_paths = self._cookbook_paths(session=session, family=family)
-        spec_schema_path = (
-            self.settings.root_dir
-            / ".agents"
-            / "skills"
-            / "siglab-spec-writer"
-            / "templates"
-            / "spec_schema.json"
-        )
-        system_prompt = (
-            self.settings.root_dir
-            / ".agents"
-            / "skills"
-            / "siglab-spec-writer"
-            / "SKILL.md"
-        ).read_text()
+        spec_schema_path = self.skill_dir("siglab-spec-writer") / "templates" / "spec_schema.json"
+        system_prompt = self.skill_path("siglab-spec-writer").read_text()
         user_prompt = self._build_user_prompt(
             research_note_text=research_note_text,
             research_note_path=research_note_path,
@@ -272,19 +256,11 @@ class SpecWriterRunner:
             latest_repair_packet = None
         trace_path = iteration_paths["writer_trace_path"]
         parent_card_path = session.current_dir / "parent_card.md"
-        write_json(
+        self.write_trace(
             trace_path,
             {
                 "stage": "writer",
-                "system_prompt_path": str(
-                    (
-                        self.settings.root_dir
-                        / ".agents"
-                        / "skills"
-                        / "siglab-spec-writer"
-                        / "SKILL.md"
-                    ).relative_to(self.settings.root_dir)
-                ),
+                "system_prompt_path": self.relative_skill_path(self.skill_path("siglab-spec-writer")),
                 "inputs": {
                     "system_prompt": system_prompt,
                     "initial_user_prompt": user_prompt,
@@ -328,8 +304,6 @@ class SpecWriterRunner:
                 "attempt_count": len(attempt_log),
                 "attempts": attempt_log,
                 "conversation_messages": messages,
-                "claude_trace": dict(self.claude.last_trace or {}),
-                "claude_exchange": dict(self.claude.last_exchange or {}),
             },
         )
         return {
@@ -726,16 +700,10 @@ class SpecWriterRunner:
         return dict(parsed) if isinstance(parsed, dict) else {}
 
     def _writer_max_tokens(self) -> int:
-        provider = str(getattr(self.settings, "llm_provider", "") or "").strip().lower()
-        if provider == "bai":
-            return 2200
-        return 1200
+        return 2200 if self._is_bai else 1200
 
     def _max_attempts(self) -> int:
-        provider = str(getattr(self.settings, "llm_provider", "") or "").strip().lower()
-        if provider == "bai":
-            return 3
-        return self.MAX_ATTEMPTS
+        return 3 if self._is_bai else self.MAX_ATTEMPTS
 
     def _clone_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         return cast(dict[str, Any], json_clone(payload))

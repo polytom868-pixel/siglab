@@ -11,6 +11,7 @@ import yaml
 from siglab.io_utils import read_json_if_exists, write_json
 from siglab.llm import ClaudeClient, ClaudeTool
 from siglab.orchestration.contracts import PlannerOutput, extract_embedded_yaml_block
+from siglab.orchestration.base import BaseRunner
 from siglab.research import HypothesisSandbox, WebResearcher
 from siglab.workspace.cards import parse_frontmatter
 from siglab.workspace.builder import WorkspaceBuilder, WorkspaceSession
@@ -21,7 +22,7 @@ from .planner_types import DEFAULT_FILES, MAX_REPAIR_ATTEMPTS, PlannerResult, un
 from .planner_validation import merge_trace_tool_usage, planner_semantic_issues, should_disable_tools_for_repair
 
 
-class ResearchPlannerRunner:
+class ResearchPlannerRunner(BaseRunner):
 
     def __init__(
         self,
@@ -32,8 +33,7 @@ class ResearchPlannerRunner:
         web_researcher: WebResearcher,
         workspace_builder: WorkspaceBuilder,
     ) -> None:
-        self.settings = settings
-        self.claude = claude
+        super().__init__(settings=settings, claude=claude)
         self.hypothesis_sandbox = hypothesis_sandbox
         self.web_researcher = web_researcher
         self.workspace_builder = workspace_builder
@@ -49,8 +49,10 @@ class ResearchPlannerRunner:
         repair_feedback: dict[str, Any] | None = None,
         previous_note_path: Path | None = None,
     ) -> PlannerResult:
-        skill_path = self.settings.root_dir / ".agents" / "skills" / "siglab-research-planner" / "SKILL.md"
-        system_prompt = skill_path.read_text() if skill_path.exists() else self._fallback_system_prompt()
+        system_prompt, skill_path = self.load_skill(
+            "siglab-research-planner",
+            fallback=self._fallback_system_prompt(),
+        )
         current_state = read_json_if_exists(session.current_dir / "SESSION_STATE.json")
         default_context_files = [
             *DEFAULT_FILES,
@@ -397,14 +399,11 @@ class ResearchPlannerRunner:
 
     def _planner_max_tool_rounds(self) -> int:
         configured = int(getattr(self.settings, "claude_max_tool_rounds", 8))
-        if str(getattr(self.settings, "llm_provider", "") or "").lower() == "bai":
-            return max(1, min(configured, 4))
-        return max(1, min(configured, 8))
+        cap = 4 if self._is_bai else 8
+        return max(1, min(configured, cap))
 
     def _planner_max_tokens(self) -> int:
-        if str(getattr(self.settings, "llm_provider", "") or "").lower() == "bai":
-            return 2600
-        return 1800
+        return 2600 if self._is_bai else 1800
 
     def _safe_parse_frontmatter(self, text: str) -> tuple[dict[str, Any], str]:
         try:
@@ -456,8 +455,7 @@ class ResearchPlannerRunner:
         return unique_strings(dims)
 
     def _requires_planner_tool_use(self) -> bool:
-        provider = str(getattr(self.settings, "llm_provider", "") or "").strip().lower()
-        return provider in {"bai", "openrouter", "deepseek", "kimi", "claude"}
+        return self._provider in {"bai", "openrouter", "deepseek", "kimi", "claude"}
 
     def _fallback_note(self, *, parent: Any, current_state: dict[str, Any]) -> str:
         family = parent.family
@@ -524,7 +522,7 @@ class ResearchPlannerRunner:
     ) -> None:
         payload = {
             "stage": "planner",
-            "system_prompt_path": str(skill_path.relative_to(self.settings.root_dir)),
+            "system_prompt_path": self.relative_skill_path(skill_path),
             "inputs": {
                 "system_prompt": system_prompt,
                 "default_context_files": default_context_files,
@@ -547,10 +545,8 @@ class ResearchPlannerRunner:
             "repair_attempts": [
                 attempt for attempt in attempts if dict(attempt.get("repair_feedback") or {})
             ],
-            "claude_trace": dict(self.claude.last_trace or {}),
-            "claude_exchange": dict(self.claude.last_exchange or {}),
         }
-        write_json(trace_path, payload)
+        self.write_trace(trace_path, payload)
 
 
 
