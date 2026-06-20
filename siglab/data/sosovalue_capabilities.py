@@ -55,30 +55,6 @@ CAPABILITIES: tuple[SoSoValueCapability, ...] = (
         "Official current docs expose historical daily klines endpoint (1d interval, 3-month range).",
     ),
     SoSoValueCapability(
-        "Currency & Pairs",
-        "GET /currencies/{id}",
-        None,
-        False,
-        False,
-        False,
-        False,
-        False,
-        "BLOCKED",
-        "Not implemented in SigLab; available in API docs but no wrapper yet.",
-    ),
-    SoSoValueCapability(
-        "Currency & Pairs",
-        "GET /currencies/{id}/token-economics / supply / pairs / sector-spotlight / fundraising",
-        None,
-        False,
-        False,
-        False,
-        False,
-        False,
-        "BLOCKED",
-        "Not implemented in SigLab; available in API docs but no wrapper yet.",
-    ),
-    SoSoValueCapability(
         "Feeds",
         "GET /api/v1/news/featured",
         "SoSoValueClient.featured_news / featured_news_pages",
@@ -277,3 +253,17 @@ def capability_matrix() -> list[dict[str, object]]:
         }
         for item in CAPABILITIES
     ]
+
+# Confirmed multi-chain / multi-asset coverage (web-search verified 2026-06-18).
+# SoSoValue research surface covers BTC/ETH/SOL (+ XRP/DOGE/LINK spot ETFs).
+# SoDEX perps settle on ValueChain L1; confirmed pairs: BTC-USD, ETH-USD, SOL-USD.
+MULTICHAIN_COVERAGE: tuple[dict[str, str], ...] = (
+    {"asset": "BTC", "sosovalue_slug": "bitcoin", "sodex_perp": "BTC-USD", "etf": "spot+futures"},
+    {"asset": "ETH", "sosovalue_slug": "ethereum", "sodex_perp": "ETH-USD", "etf": "spot+futures"},
+    {"asset": "SOL", "sosovalue_slug": "solana", "sodex_perp": "SOL-USD", "etf": "spot"},
+)
+
+
+def multichain_coverage() -> list[dict[str, str]]:
+    """Confirmed SoSoValue->SoDEX asset coverage for multi-chain evidence flow."""
+    return [dict(row) for row in MULTICHAIN_COVERAGE]

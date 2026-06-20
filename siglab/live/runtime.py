@@ -9,6 +9,13 @@ from siglab.data import MarketDataProvider, ParquetLake
 from siglab.evaluator.compile import compile_spec
 from siglab.schemas import SignalSpec
 from siglab.config import load_settings
+from siglab.live.sodex_client import SoDEXSignedPerpsClient
+from siglab.live.sodex_signing import (
+    SoDEXNonceManager,
+    SoDEXPrivateKeySigner,
+    SoDEXSigner,
+    validate_account_id,
+)
 
 StatusDict = dict[str, Any]
 StatusTuple = tuple[bool, str]
@@ -19,8 +26,6 @@ class Strategy:
         self.config = kwargs.get("config", {})
         self.name = kwargs.get("name", self.__class__.__name__)
 
-    async def strategy_wallet_signing_callback(self, *args: Any, **kwargs: Any) -> Any:
-        raise RuntimeError("SoDEX signing is not configured in this build")
 
 
 class SoDEXExecutionAdapter:
@@ -29,13 +34,60 @@ class SoDEXExecutionAdapter:
     def __init__(self, config: dict[str, Any] | None = None, **kwargs: Any) -> None:
         self.config = dict(config or {})
         self.client = self.config.get("sodex_client")
-        self.sign_callback = kwargs.get("sign_callback")
         self.wallet_address = kwargs.get("wallet_address")
         self.coin_to_asset = dict(
             self.config.get("coin_to_asset")
             or getattr(self.client, "coin_to_asset", {})
             or {}
         )
+
+    def setup(self) -> dict[str, Any]:
+        """Wire a real ``SoDEXSignedPerpsClient`` from signing config.
+
+        When signing credentials are present in ``config["sodex_signing"]`` and no
+        client was pre-injected, construct a ``SoDEXSignedPerpsClient`` with a
+        matching nonce manager and assign it to ``self.client``. When credentials
+        are absent, leave the client unset so ``_require_client`` gates live use.
+        Returns the post-setup ``dependency_report()``.
+        """
+        if self.client is not None:
+            return self.dependency_report()
+
+        signing = dict(self.config.get("sodex_signing") or {})
+        api_key_name = signing.get("api_key_name") or self.config.get("sodex_api_key_name")
+        account_id_raw = (
+            signing.get("accountID")
+            or signing.get("account_id")
+            or self.config.get("sodex_account_id")
+        )
+        environment = signing.get("environment") or self.config.get("sodex_environment") or "mainnet"
+        nonce_store_path = signing.get("nonce_store_path") or self.config.get("sodex_nonce_store_path")
+        private_key = signing.get("private_key") or self.config.get("sodex_private_key")
+        signer: SoDEXSigner | None = signing.get("signer")
+        if signer is None and private_key:
+            signer = SoDEXPrivateKeySigner(private_key=private_key, environment=environment)
+
+        has_credentials = bool(api_key_name) and account_id_raw is not None and signer is not None
+        if not has_credentials:
+            return self.dependency_report()
+
+        account_id = validate_account_id(account_id_raw)
+        store_path = Path(nonce_store_path) if nonce_store_path else None
+        nonce_manager = SoDEXNonceManager(store_path=store_path)
+        dry_run = bool(signing.get("dry_run", self.config.get("sodex_dry_run", True)))
+        signing["signer"] = signer
+        self.config["sodex_signing"] = signing
+        self.client = SoDEXSignedPerpsClient(
+            api_key_name=str(api_key_name),
+            account_id=account_id,
+            signer=signer,
+            nonce_manager=nonce_manager,
+            environment=str(environment),
+            dry_run=dry_run,
+        )
+        if not self.coin_to_asset:
+            self.coin_to_asset = dict(getattr(self.client, "coin_to_asset", {}) or {})
+        return self.dependency_report()
 
     async def update_leverage(self, **kwargs: Any) -> None:
         method = self._resolve_client_method("update_leverage")
@@ -99,12 +151,26 @@ class SoDEXExecutionAdapter:
         account_id = signing.get("accountID") or signing.get("account_id") or self.config.get("sodex_account_id")
         environment = signing.get("environment") or self.config.get("sodex_environment") or "mainnet"
         nonce_store = signing.get("nonce_store_path") or self.config.get("sodex_nonce_store_path")
-        signer = signing.get("signer") or self.sign_callback
+        signer = signing.get("signer")
         required = {
-            "get_user_state": bool(getattr(client, "get_user_state", None) or getattr(client, "get_state", None)),
-            "update_leverage": bool(getattr(client, "update_leverage", None)),
-            "place_market_order": bool(getattr(client, "place_market_order", None)),
-            "all_mids": bool(getattr(client, "all_mids", None)),
+            "get_user_state": bool(
+                getattr(client, "get_user_state", None)
+                or getattr(client, "get_state", None)
+                or getattr(client, "account_state", None)
+            ),
+            "update_leverage": bool(
+                getattr(client, "update_leverage", None)
+                or getattr(client, "update_leverage_request", None)
+            ),
+            "place_market_order": bool(
+                getattr(client, "place_market_order", None)
+                or (getattr(client, "new_order_request", None) and getattr(client, "send_signed_request", None))
+            ),
+            "all_mids": bool(
+                getattr(client, "all_mids", None)
+                or getattr(client, "mark_prices", None)
+                or getattr(client, "tickers", None)
+            ),
         }
         signed_ready = all(
             [
@@ -130,7 +196,6 @@ class SoDEXExecutionAdapter:
             "client_configured": client is not None,
             "required_methods": required,
             "missing_methods": [name for name, present in required.items() if not present],
-            "sign_callback_configured": self.sign_callback is not None,
             "wallet_address_configured": bool(self.wallet_address),
             "signed_path": {
                 "ready": signed_ready,
@@ -197,13 +262,13 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         self.name = str(self.live_spec.get("strategy_name") or self.spec.strategy_hash())
         self.sodex_adapter = SoDEXExecutionAdapter(
             self.config if isinstance(self.config, dict) else {},
-            sign_callback=self.strategy_wallet_signing_callback,
             wallet_address=self._get_strategy_wallet_address(),
         )
         runtime = dict(self.live_spec.get("runtime") or {})
+        report = self.sodex_adapter.setup()
         if not bool(runtime.get("dry_run", True)):
-            report = self.sodex_adapter.dependency_report()
-            if not report["client_configured"] or report["missing_methods"]:
+            signed_path = report.get("signed_path") or {}
+            if not report["client_configured"] or report["missing_methods"] or not signed_path.get("ready"):
                 raise RuntimeError(f"Live SoDEX dependencies are incomplete: {report}")
 
     async def deposit(self, **kwargs: Any) -> StatusTuple:

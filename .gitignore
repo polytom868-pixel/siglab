@@ -7,7 +7,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*$py.class
+*$py*.class
 *.so
 *.egg-info/
 *.egg
@@ -80,6 +80,18 @@ scripts/
 
 # ----- Reports, audits, plans, scratch work -----
 reports/
+
+# ----- Cache / runtime artifacts -----
+data/cache/
+sessions/
+
+# ----- Local experiment config -----
+mutable/
+
+# ----- Wallet / key material -----
+*.key
+*_key*
+wallet*
 
 # ----- Deployed agent credentials / private config (keep __init__) -----
 siglab/live/deployed_agents/*

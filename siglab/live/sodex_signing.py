@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass
@@ -145,7 +147,22 @@ class SoDEXNonceManager:
             return
         self.store_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {key: list(values) for key, values in self._seen.items()}
-        self.store_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True))
+        data = json.dumps(payload, indent=2, ensure_ascii=True)
+        # Atomic write: stage in a temp file in the same directory, then os.replace
+        # so a crash mid-write cannot corrupt the nonce store.
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".nonce-", suffix=".tmp", dir=str(self.store_path.parent)
+        )
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(data)
+            os.replace(tmp_path, self.store_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 def validate_account_id(account_id: Any) -> int:

@@ -7,6 +7,7 @@ from the data-layer public client.
 """
 from __future__ import annotations
 
+import logging
 import time
 from collections import OrderedDict
 from typing import Any
@@ -47,6 +48,8 @@ __all__ = [
     "SoDEXTransportError",
     "SoDEXUpstreamError",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
@@ -177,7 +180,13 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
     async def send_signed_request(self, request: SoDEXSignedRequest) -> dict[str, Any]:
         prepared = self.prepare_signed_request(request)
         if self.dry_run:
-            raise SoDEXNotReadyError("SoDEX signed client is in dry-run mode; refusing to submit live write")
+            logger.warning(
+                "SoDEX signed client is in dry-run mode; skipping live write to %s %s "
+                "(set dry_run=False to enable real writes)",
+                prepared["method"],
+                prepared["url"],
+            )
+            return {"dry_run": True, "method": prepared["method"], "url": prepared["url"]}
         metrics = self._metrics_for("signed.write")
         await self.weight_scheduler.acquire(int(prepared["weight"]))
         metrics.attempts += 1
