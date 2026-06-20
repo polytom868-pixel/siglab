@@ -13,11 +13,12 @@ helpers bridge the engine to ``SoDEXPaperPerpsClient`` sessions.
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
-from siglab.live.paper_client import PaperOrderSide, SoDEXPaperPerpsClient
+from siglab.live.paper_client import SoDEXPaperPerpsClient
+from siglab.live.position_ledger import compute_trade_pnl, update_position
 
 logger = logging.getLogger(__name__)
 
@@ -230,61 +231,7 @@ def _ts_to_day_key(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, tz=UTC).strftime("%Y-%m-%d")
 
 
-def _compute_trade_pnl(order: Any, prior_position: float, prior_entry: float) -> float:
-    """Compute realised PnL contribution of a single filled order.
 
-    Parameters
-    ----------
-    order : PaperOrder
-        A filled order.
-    prior_position : float
-        Position quantity *before* this fill.
-    prior_entry : float
-        Position entry price *before* this fill.
-
-    Returns
-    -------
-    float
-        Realised PnL contributed by this fill.
-    """
-    from siglab.live.paper_client import PaperOrderSide
-
-    fill_price = order.fill_price if order.fill_price is not None else order.price
-    qty = order.quantity
-
-    if prior_position == 0:
-        return 0.0  # Opening a new position — no PnL realised yet
-
-    if prior_position > 0 and order.side == PaperOrderSide.SELL:
-        # Reducing long
-        close_qty = min(qty, prior_position)
-        return cast(float, close_qty * (fill_price - prior_entry))
-    elif prior_position < 0 and order.side == PaperOrderSide.BUY:
-        # Reducing short
-        close_qty = min(qty, abs(prior_position))
-    return 0.0
-
-
-def _update_position(
-    order: Any,
-    prior_qty: float,
-    prior_entry: float,
-) -> tuple[float, float]:
-    """Return ``(new_qty, new_entry)`` after applying *order*'s fill."""
-    if order.side == PaperOrderSide.BUY:
-        new_qty = prior_qty + order.quantity
-    else:
-        new_qty = prior_qty - order.quantity
-    fill_price = order.fill_price if order.fill_price is not None else order.price
-    if prior_qty == 0:
-        new_entry = fill_price
-    elif prior_qty * new_qty > 0:
-        new_entry = (
-            (abs(prior_qty) * prior_entry + order.quantity * fill_price) / abs(new_qty)
-        )
-    else:
-        new_entry = fill_price if new_qty != 0 else 0.0
-    return new_qty, new_entry if new_qty != 0 else 0.0
 
 
 
@@ -336,11 +283,13 @@ def extract_session_metrics(
 
         prior_qty = pos_qty.get(sym, 0.0)
         prior_entry = pos_entry.get(sym, 0.0)
-        trade_pnl = _compute_trade_pnl(order, prior_qty, prior_entry)
+        _fill_price = order.fill_price if order.fill_price is not None else order.price
+        trade_pnl = compute_trade_pnl(_fill_price, order.quantity, prior_qty, prior_entry, order.side.value)
         daily_pnl[day] = daily_pnl.get(day, 0.0) + trade_pnl
 
         # Update simulated position after this fill
-        new_qty, new_entry = _update_position(order, prior_qty, prior_entry)
+        _fill_price = order.fill_price if order.fill_price is not None else order.price
+        new_qty, new_entry = update_position(order.side.value, order.quantity, _fill_price, prior_qty, prior_entry)
         pos_qty[sym] = new_qty
         pos_entry[sym] = new_entry
 
@@ -367,10 +316,12 @@ def extract_session_metrics(
         sym = order.symbol
         prior_qty = pos_qty_wr.get(sym, 0.0)
         prior_entry = pos_entry_wr.get(sym, 0.0)
-        tp = _compute_trade_pnl(order, prior_qty, prior_entry)
+        _fill_price = order.fill_price if order.fill_price is not None else order.price
+        tp = compute_trade_pnl(_fill_price, order.quantity, prior_qty, prior_entry, order.side.value)
         trade_pnls.append(tp)
 
-        new_qty, new_entry = _update_position(order, prior_qty, prior_entry)
+        _fill_price = order.fill_price if order.fill_price is not None else order.price
+        new_qty, new_entry = update_position(order.side.value, order.quantity, _fill_price, prior_qty, prior_entry)
         pos_qty_wr[sym] = new_qty
         pos_entry_wr[sym] = new_entry
 
@@ -454,11 +405,12 @@ def extract_daily_metrics(
             sym = order.symbol
             prior_qty = running_pos_qty.get(sym, 0.0)
             prior_entry = running_pos_entry.get(sym, 0.0)
-            tp = _compute_trade_pnl(order, prior_qty, prior_entry)
+            _fill_price = order.fill_price if order.fill_price is not None else order.price
+            tp = compute_trade_pnl(_fill_price, order.quantity, prior_qty, prior_entry, order.side.value)
             trade_pnls_day.append(tp)
             day_pnl += tp
 
-            new_qty, new_entry = _update_position(order, prior_qty, prior_entry)
+            new_qty, new_entry = update_position(order.side.value, order.quantity, _fill_price, prior_qty, prior_entry)
             running_pos_qty[sym] = new_qty
             running_pos_entry[sym] = new_entry
 

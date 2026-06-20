@@ -33,6 +33,13 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 import numpy as np
 import pandas as pd
 
+from siglab.live.position_ledger import (
+    calculate_fill_price,
+    compute_avg_entry,
+    compute_funding_cost,
+    compute_trade_pnl,
+    update_position,
+)
 from siglab.live.sodex_client import SoDEXTransportError, SoDEXUpstreamError
 
 if TYPE_CHECKING:
@@ -282,61 +289,6 @@ def _validate_order_type(order_type: str) -> PaperOrderType:
 
 def _validate_time_in_force(tif: str) -> PaperTimeInForce:
     return _coerce_enum(tif, PaperTimeInForce, "time_in_force; expected GTC, IOC, FOK, or GTX")
-
-
-def _compute_fill_price(
-    kline: dict[str, Any],
-    side: PaperOrderSide,
-    limit_price: float,
-    order_type: PaperOrderType = PaperOrderType.LIMIT,
-) -> tuple[float, bool]:
-    """
-    Determine if a kline crosses the order and compute fill price.
-
-    For MARKET orders: always fills at the kline close price.
-    For LIMIT orders:
-      BUY: fills when low <= limit_price. Fill at min(limit_price, open).
-      SELL: fills when high >= limit_price. Fill at max(limit_price, open).
-
-    Returns (fill_price, did_fill).
-    """
-    close = float(kline.get("c", 0))
-
-    # MARKET orders always fill at the kline close price
-    if order_type == PaperOrderType.MARKET:
-        return close, True
-
-    high = float(kline.get("h", 0))
-    low = float(kline.get("l", 0))
-    open_price = float(kline.get("o", 0))
-
-    if side == PaperOrderSide.BUY and low <= limit_price:
-        # Fill at the higher of limit price or open price (conservative for buyer)
-        fill_price = min(limit_price, max(open_price, low))
-        return fill_price, True
-    elif side == PaperOrderSide.SELL and high >= limit_price:
-        # Fill at the lower of limit price or open price (conservative for seller)
-        fill_price = max(limit_price, min(open_price, high))
-        return fill_price, True
-    return 0.0, False
-
-
-def _compute_funding_cost(
-    position: PaperPosition,
-    mark_price: float,
-    funding_rate: float,
-) -> float:
-    """
-    Compute funding cost for a position.
-
-    Funding cost = position_value * funding_rate.
-    Positive funding_rate means longs pay shorts.
-    """
-    position_value = abs(position.quantity) * mark_price
-    if position.quantity > 0:  # Long pays funding
-        return -position_value * funding_rate
-    else:  # Short receives funding
-        return position_value * funding_rate
 
 
 # ---------------------------------------------------------------------------
@@ -875,8 +827,14 @@ class SoDEXPaperPerpsClient:
             if kline_symbol and order.symbol != kline_symbol:
                 continue
 
-            fill_price, did_fill = _compute_fill_price(
-                kline, order.side, order.price, order.order_type
+            fill_price, did_fill = calculate_fill_price(
+                float(kline.get("c", 0)),
+                float(kline.get("h", 0)),
+                float(kline.get("l", 0)),
+                float(kline.get("o", 0)),
+                order.side.value,
+                order.price,
+                order.order_type.value,
             )
             if did_fill:
                 # Cap fill quantity based on kline volume (10% participation)
@@ -959,9 +917,7 @@ class SoDEXPaperPerpsClient:
         # or (d) reduce it to zero and flip to the opposite side. For a flip
         # the order is split into two legs: the closing leg realizes PnL at
         # the old entry price up to the flat point, and the flip leg opens a
-        # fresh position at the fill price. Booking the whole order quantity
-        # against the old entry (the previous behaviour) over-realized PnL and
-        # left a stale entry price on the flipped position.
+        # fresh position at the fill price.
         if pos.quantity == 0:
             # Open new position at the fill price.
             pos.quantity = order.quantity if order.side == PaperOrderSide.BUY else -order.quantity
@@ -973,17 +929,15 @@ class SoDEXPaperPerpsClient:
             if reducing:
                 close_qty = min(order.quantity, abs(pos.quantity))
                 # Realize PnL only on the portion that closes the position.
-                if long_pos:
-                    pnl_realized = close_qty * (fill_price - pos.entry_price)
-                else:
-                    pnl_realized = close_qty * (pos.entry_price - fill_price)
+                pnl_realized = compute_trade_pnl(
+                    fill_price, close_qty, pos.quantity, pos.entry_price, order.side.value,
+                )
                 session.pnl += pnl_realized
                 pos.realized_pnl += pnl_realized
 
                 remaining = order.quantity - close_qty  # flip portion, if any
                 if remaining > 0:
-                    # Flipped to the opposite side: open a fresh position at
-                    # the fill price for the flip portion.
+                    # Flipped to the opposite side: open a fresh position.
                     pos.quantity = remaining if order.side == PaperOrderSide.BUY else -remaining
                     pos.entry_price = fill_price
                 else:
@@ -996,10 +950,10 @@ class SoDEXPaperPerpsClient:
                         pos.entry_price = 0.0
             else:
                 # Increasing the position: average the entry price.
-                new_qty = pos.quantity + (order.quantity if order.side == PaperOrderSide.BUY else -order.quantity)
-                pos.entry_price = (
-                    (abs(pos.quantity) * pos.entry_price + order.quantity * fill_price)
-                    / abs(new_qty)
+                add_qty = order.quantity if order.side == PaperOrderSide.BUY else -order.quantity
+                new_qty = pos.quantity + add_qty
+                pos.entry_price = compute_avg_entry(
+                    pos.quantity, pos.entry_price, add_qty, fill_price,
                 )
                 pos.quantity = new_qty
 
@@ -1125,7 +1079,7 @@ class SoDEXPaperPerpsClient:
             mark_price = price_map.get(sym, pos.entry_price or 0.0)
             if mark_price <= 0 or funding_rate == 0.0:
                 continue
-            cost = _compute_funding_cost(pos, mark_price, funding_rate)
+            cost = compute_funding_cost(pos.quantity, mark_price, funding_rate)
             pos.accumulated_funding += cost
             session.pnl += cost
             funding_events.append({
