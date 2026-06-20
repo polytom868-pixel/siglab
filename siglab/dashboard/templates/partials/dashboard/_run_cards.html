@@ -37,22 +37,32 @@
     </div>
     {% if has_finite %}
     {% set values = series|map(attribute='aggregate_score')|select('number')|list %}
+    {% if values|length < 2 %}
+    <svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline">
+      <rect x="0" y="0" width="360" height="110" fill="transparent"></rect>
+      <text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">Insufficient data</text>
+    </svg>
+    {% else %}
     {% set y_min = values|min %}
     {% set y_max = values|max %}
-    {% set y_padding = ((y_max|float - y_min|float) * 0.16) if (y_max|float - y_min|float) > 0 else 1 %}
+    {% set y_range = y_max|float - y_min|float %}
+    {% set y_padding = (y_range * 0.16) if y_range > 0 else 1 %}
     {% set y_lo = y_min|float - y_padding %}
     {% set y_hi = y_max|float + y_padding %}
+    {% if y_hi == y_lo %}{% set y_hi = y_lo + 1 %}{% endif %}
     <svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline">
       <rect x="0" y="0" width="360" height="110" fill="transparent"></rect>
       <line x1="10" y1="92" x2="350" y2="92" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
       {% set max_idx = [values|length - 1, 1]|max %}
+      {% set yrange = y_hi - y_lo %}
+      {% if yrange <= 0 %}{% set yrange = 1 %}{% endif %}
       <polyline fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
-        points="{% for i in range(values|length) %}{{ 10 + (i / max_idx) * 340 }},{{ 10 + 82 - ((values[i]|float - y_lo) / (y_hi - y_lo)) * 82 }}{% if not loop.last %} {% endif %}{% endfor %}"></polyline>
+        points="{% for i in range(values|length) %}{{ 10 + (i / max_idx) * 340 }},{{ 10 + 82 - ((values[i]|float - y_lo) / yrange) * 82 }}{% if not loop.last %} {% endif %}{% endfor %}"></polyline>
       {% set best_val = values|max %}
       {% set best_idx = values.index(best_val) %}
       {% for i in range(values|length) %}
       {% set cx = 10 + (i / max_idx) * 340 %}
-      {% set cy = 10 + 82 - ((values[i]|float - y_lo) / (y_hi - y_lo)) * 82 %}
+      {% set cy = 10 + 82 - ((values[i]|float - y_lo) / yrange) * 82 %}
       {% set is_deployd = series[i].get('deployd') %}
       {% set is_passed = series[i].get('passed') %}
       {% set fill = '#ffffff' if is_deployd else ('#4ade80' if is_passed else 'rgba(255,255,255,0.22)') %}
@@ -61,9 +71,10 @@
       <circle cx="{{ cx }}" cy="{{ cy }}" r="{{ radius }}" fill="{{ fill }}" stroke="{{ stroke }}" stroke-width="1.4"></circle>
       {% endfor %}
       {% set best_cx = 10 + (best_idx / max_idx) * 340 %}
-      {% set best_cy = 10 + 82 - ((best_val|float - y_lo) / (y_hi - y_lo)) * 82 %}
+      {% set best_cy = 10 + 82 - ((best_val|float - y_lo) / yrange) * 82 %}
       <circle cx="{{ best_cx }}" cy="{{ best_cy }}" r="5.4" fill="none" stroke="#f0b456" stroke-width="1.6"></circle>
     </svg>
+    {% endif %}
     {% else %}
     <div class="waiting-card waiting-card-compact">
       <div class="waiting-card-title">No experiments recorded yet</div>

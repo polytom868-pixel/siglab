@@ -20,6 +20,6 @@
 {% if demo_artifacts|length > 0 %}
 <div class="ops-line"><span class="key">Demo Artifacts</span></div>
 {% for art in demo_artifacts %}
-<div class="ops-line ops-indent"><span class="mono">{{ art.get('label') or '' }}: {{ art.get('path') or '' }}</span></div>
+<div class="ops-line ops-indent"><span class="mono">{{ art }}</span></div>
 {% endfor %}
 {% endif %}

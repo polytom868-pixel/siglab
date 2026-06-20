@@ -12,8 +12,10 @@
 {{ m.ops_line('Estimated Credits', telemetry_data.get('estimated_credits') or 0) }}
 {{ m.ops_line('Input Tokens', telemetry_data.get('returned_input_tokens') or 0) }}
 {{ m.ops_line('Output Tokens', telemetry_data.get('returned_output_tokens') or 0) }}
-<div class="ops-line"><span class="key">Context Pressure</span><span class="{% if telemetry_data.get('context_pressure_events', 0) > 0 %}status-fail{% else %}status-pass{% endif %}">{{ telemetry_data.get('context_pressure_events') or 0 }}</span></div>
-<div class="ops-line"><span class="key">Credit Pressure</span><span class="{% if telemetry_data.get('credit_pressure_events', 0) > 0 %}status-fail{% else %}status-pass{% endif %}">{{ telemetry_data.get('credit_pressure_events') or 0 }}</span></div>
+{% set ctx_pressure = telemetry_data.get('context_pressure_events') or 0 %}
+{% set crd_pressure = telemetry_data.get('credit_pressure_events') or 0 %}
+<div class="ops-line"><span class="key">Context Pressure</span><span class="{% if ctx_pressure > 0 %}status-fail{% else %}status-pass{% endif %}">{{ ctx_pressure }}</span></div>
+<div class="ops-line"><span class="key">Credit Pressure</span><span class="{% if crd_pressure > 0 %}status-fail{% else %}status-pass{% endif %}">{{ crd_pressure }}</span></div>
 
 {% set model_counts = telemetry_data.get('model_counts') or {} %}
 {% if model_counts|length > 0 %}
