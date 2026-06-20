@@ -1,0 +1,111 @@
+{# templates/partials/run/_run_summary.html #}
+{% set summary = summary or {} %}
+{% set runs = runs or [] %}
+{% set experiments = experiments or [] %}
+{% set metric_key = metric_key or 'aggregate_score' %}
+{% set metric_meta = metric_meta or {} %}
+
+{%- comment -%}
+  Best experiment helpers (mirrors app.js bestExperiment()).
+  Expects best_directional / best_carry pre-computed in context,
+  or computes from experiments list.
+{%- endcomment -%}
+{% if best_directional is not defined %}
+  {% set best_directional = namespace(exp=none) %}
+  {% for exp in experiments %}
+    {% if exp.get('track') == 'trend_signals' %}
+      {% set raw_v = exp.get('summary', {}).get(metric_key) %}
+      {% if raw_v is not none and raw_v == raw_v %}
+        {% if best_directional.exp is none or (raw_v | float > best_directional.value) %}
+          {% set best_directional.exp = exp %}
+          {% set best_directional.value = raw_v | float %}
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+  {% set best_directional = best_directional.exp %}
+{% endif %}
+{% if best_carry is not defined %}
+  {% set best_carry = namespace(exp=none) %}
+  {% for exp in experiments %}
+    {% if exp.get('track') == 'yield_flows' %}
+      {% set raw_v = exp.get('summary', {}).get(metric_key) %}
+      {% if raw_v is not none and raw_v == raw_v %}
+        {% if best_carry.exp is none or (raw_v | float > best_carry.value) %}
+          {% set best_carry.exp = exp %}
+          {% set best_carry.value = raw_v | float %}
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+  {% set best_carry = best_carry.exp %}
+{% endif %}
+
+{% set benchmark_runs = runs | selectattr('benchmark_mode', 'true') | list %}
+{% set selected_run = selected_run or (runs[0] if runs | length > 0 else none) %}
+{% set experiments_len = experiments | length %}
+
+{%- comment -%}
+  Compute metric formatter output.
+{%- endcomment -%}
+{% macro fmt_metric(val) %}{% if val is not none and val == val %}{{ "%.3f" % val }}{% else %}n/a{% endif %}{% endmacro %}
+{% macro fmt_pct(val) %}{% if val is not none and val == val %}{{ "%.2f%%" % (val * 100) }}{% else %}n/a{% endif %}{% endmacro %}
+
+{%- comment -%}
+  Waiting card when selected_run exists but experiments is empty.
+{%- endcomment -%}
+{% if selected_run and experiments_len == 0 %}
+<article class="panel summary-card">
+  <div class="label">Awaiting first experiment</div>
+  <div class="value small">Run warming up</div>
+  <div class="detail">{{ selected_run.get('run_label') or selected_run.get('run_session_id') or 'this run' }} has started, but no experiment rows have landed yet. Experiments will appear once the first evaluation finishes.</div>
+</article>
+{% endif %}
+
+<article class="panel summary-card">
+  <div class="label">Runs</div>
+  <div class="value">{{ runs | length }}</div>
+  <div class="detail">Visible run sessions under the current track and family filters.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Benchmark Runs</div>
+  <div class="value">{{ benchmark_runs | length }}</div>
+  <div class="detail">Visible external-agent benchmark sessions in the current scope.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Experiments</div>
+  <div class="value">{{ experiments_len }}</div>
+  <div class="detail">Visible experiments inside the current run, track, and family filters.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Deployed</div>
+  <div class="value">{{ experiments | selectattr('deployd', 'true') | list | length }}</div>
+  <div class="detail">Visible experiments that currently lead or previously led a track.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Tool Traces</div>
+  <div class="value">{{ experiments | selectattr('tool_call_count') | selectattr('tool_call_count', '>', 0) | list | length }}</div>
+  <div class="detail">Experiments whose planner or writer stage issued at least one recorded tool call.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Best Directional</div>
+  {% if best_directional %}
+    {% set bd_val = best_directional.get('summary', {}).get(metric_key) %}
+    <div class="value">{{ fmt_metric(bd_val) }}</div>
+    <div class="detail">{{ best_directional.get('generation') }} generations, {{ (metric_meta.get('label') or metric_key) | lower }} {{ fmt_metric(bd_val) }}</div>
+  {% else %}
+    <div class="value small">n/a</div>
+    <div class="detail">No directional experiments in this view.</div>
+  {% endif %}
+</article>
+<article class="panel summary-card">
+  <div class="label">Best Carry</div>
+  {% if best_carry %}
+    {% set bc_val = best_carry.get('summary', {}).get(metric_key) %}
+    <div class="value">{{ fmt_metric(bc_val) }}</div>
+    <div class="detail">{{ best_carry.get('generation') }} generations, {{ (metric_meta.get('label') or metric_key) | lower }} {{ fmt_metric(bc_val) }}</div>
+  {% else %}
+    <div class="value small">n/a</div>
+    <div class="detail">No carry experiments in this view.</div>
+  {% endif %}
+</article>

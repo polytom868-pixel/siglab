@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}SoSoValue SigLab Run{% endblock %}
+{% block nav_dashboard_active %}active{% endblock %}
+{% block nav_extra_links %}
+<a class="navbar-link active" aria-label="Current run detail" href="#">Run</a>
+{% endblock %}
+
+{% block content %}
+<header class="hero">
+  <div>
+    <p class="eyebrow">SoSoValue SigLab</p>
+    <h1 id="runTitle" x-text="$store.selection.selectedRunId || 'Run'">Run</h1>
+    <p class="subhead" id="runSubtitle">Per-run experiment history, improvement curve, and experiment detail.</p>
+    <p class="scope-summary" id="scopeSummary"
+       x-text="'Run: ' + ($store.selection.selectedRunId || 'loading...')"></p>
+    <p class="freshness-indicator" id="freshnessIndicator"
+       x-show="$store.refresh.lastUpdated"
+       x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>
+  </div>
+  <div class="hero-controls" role="search">
+    <label for="familyFilter">Family</label>
+    <select id="familyFilter"
+            aria-label="Filter by family"
+            x-model="$store.filter.family"
+            @change="htmx.trigger('#runSummaryCards', 'load'); htmx.trigger('#experimentsTable', 'load')">
+      <option value="all">All Families</option>
+    </select>
+    <label for="metricFilter">Metric</label>
+    <select id="metricFilter"
+            aria-label="Select metric"
+            aria-describedby="metricDescription"
+            x-model="$store.filter.metric"></select>
+    <label class="checkbox">
+      <input type="checkbox" id="autoRefresh" checked />
+      Auto refresh
+    </label>
+    <button id="refreshButton" type="button" aria-label="Refresh data"
+            @click="htmx.trigger('#runSummaryCards', 'load'); htmx.trigger('#experimentsTable', 'load')">Refresh</button>
+    <a class="button-link" aria-label="Return to run dashboard" href="/">Back to Runs</a>
+  </div>
+</header>
+
+<section class="summary-grid" id="runSummaryCards"
+         hx-get="/partials/run/summary?run_id={{ run_id or '' }}"
+         hx-trigger="load, every 10s"
+         hx-indicator=".skeleton-card">
+</section>
+
+<div id="familyPills" style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;">
+  <span id="familyGuideSubtitle" style="font-size:12px;color:var(--muted);white-space:nowrap;">Families</span>
+  <div id="familyGuideCards"
+       hx-get="/partials/run/family_pills?run_id={{ run_id or '' }}"
+       hx-trigger="load"
+       style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+  <button id="clearFamilyFilter" type="button" class="pill slate" aria-label="Show all families"
+          @click="$store.filter.family = 'all'; htmx.trigger('#experimentsTable', 'load')">Clear</button>
+</div>
+
+<section class="panel chart-panel">
+  <div class="panel-header">
+    <div>
+      <h2>Improvement Curve</h2>
+      <p id="metricDescription"></p>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <div id="improvementChart"
+         hx-get="/partials/run/improvement_chart?run_id={{ run_id or '' }}&metric={{ metric or 'aggregate_score' }}"
+         hx-trigger="load, every 10s"
+         hx-indicator=".skeleton-chart">
+    </div>
+    <div id="tooltip" class="tooltip hidden"></div>
+  </div>
+</section>
+
+<section id="experiments" class="content-grid">
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>Run Experiments</h2>
+        <p id="experimentsSubtitle">Every recorded experiment inside this run. Click a row or chart point for full detail.</p>
+      </div>
+    </div>
+    <div class="table-wrap custom-scrollbar">
+      <table>
+        <thead>
+          <tr>
+            <th>Track</th>
+            <th>Family</th>
+            <th>Score</th>
+            <th>Sharpe</th>
+            <th>CAGR</th>
+            <th>Return</th>
+            <th>Status</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody id="experimentsTable"
+               hx-get="/partials/run/experiment_table?run_id={{ run_id or '' }}&family={{ family or 'all' }}"
+               hx-trigger="load, every 10s"
+               hx-indicator=".skeleton-card"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel detail-panel">
+    <div class="panel-header">
+      <div>
+        <h2>Experiment Detail</h2>
+        <p>Click a row above to inspect an experiment.</p>
+      </div>
+    </div>
+    <div class="detail-content" id="detailContent">
+      <p class="empty-state" id="detailPanelPlaceholder">Select an experiment to inspect it.</p>
+      <div id="detailPanel"
+           hx-trigger="none"
+           hx-indicator=".skeleton-card"></div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/app.js"></script>
+{% endblock %}

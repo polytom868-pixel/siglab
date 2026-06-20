@@ -1,0 +1,35 @@
+{# Shared macros for ops partials #}
+{% macro value_label(value) %}
+  {%- if value is sameas true %}yes
+  {%- elif value is sameas false %}no
+  {%- elif value is none or value == '' %}unknown
+  {%- else %}{{ value }}{% endif -%}
+{% endmacro %}
+
+{% macro status_class(value) %}
+  {%- set nv = value_label(value)|lower -%}
+  {%- if nv in ('present', 'pass', 'ready', 'yes', 'ok', 'true') %}ok
+  {%- elif nv in ('missing', 'malformed', 'blocked', 'fail', 'false', 'no') %}bad
+  {%- else %}warn{% endif -%}
+{% endmacro %}
+
+{% macro line(key, value, extra='') %}
+  {% set safe_v = value_label(value) %}
+  <div class="ops-line"><span class="ops-key">{{ key }}</span><span class="ops-value {{ status_class(value) }}">{{ safe_v }}</span>{% if extra %}<span class="ops-extra">{{ extra }}</span>{% endif %}</div>
+{% endmacro %}
+
+{% macro list_lines(items, empty_text) %}
+  {% set filtered = [] %}
+  {% for item in items %}
+    {% if item is not none and item|string|trim != '' %}
+      {% set _ = filtered.append(item) %}
+    {% endif %}
+  {% endfor %}
+  {% if filtered|length == 0 %}
+    {{ line('none', empty_text) }}
+  {% else %}
+    {% for item in filtered %}
+      {{ line('#' ~ loop.index, item) }}
+    {% endfor %}
+  {% endif %}
+{% endmacro %}

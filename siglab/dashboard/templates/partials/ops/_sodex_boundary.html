@@ -1,0 +1,32 @@
+{# SoDEX boundary partial #}
+{% set summary = summary or {} %}
+{% set sodex = summary.get('sodex') or {} %}
+{% set next_actions = sodex.get('next_actions') or [] %}
+
+<div class="ops-line">
+  <span class="key">Public Read Ready</span>
+  <span class="{% if sodex.get('public_read_ready') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('public_read_ready') %}yes{% else %}no{% endif %}</span>
+</div>
+<div class="ops-line">
+  <span class="key">Schema Pinned</span>
+  <span class="{% if sodex.get('schema_pinned') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('schema_pinned') %}yes{% else %}no{% endif %}</span>
+</div>
+<div class="ops-line">
+  <span class="key">Live Write Allowed</span>
+  <span class="{% if sodex.get('live_write_allowed') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('live_write_allowed') %}yes{% else %}no{% endif %}</span>
+</div>
+{% if sodex.get('live_write_refusal_reason') %}
+<div class="ops-line"><span class="key">Refusal Reason</span><span class="status-fail">{{ sodex.get('live_write_refusal_reason') }}</span></div>
+{% endif %}
+<div class="ops-line">
+  <span class="key">Signed Path Ready</span>
+  <span class="{% if sodex.get('signed_path_ready') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('signed_path_ready') %}yes{% else %}no{% endif %}</span>
+</div>
+<div class="ops-line"><span class="key">Request Budget</span><span>{{ sodex.get('request_weight_budget_per_minute') or 'n/a' }} / min</span></div>
+
+{% if next_actions|length > 0 %}
+<div class="ops-line"><span class="key">Next Actions</span></div>
+{% for action in next_actions %}
+<div class="ops-line ops-indent"><span class="mono">{{ action }}</span></div>
+{% endfor %}
+{% endif %}

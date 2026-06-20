@@ -1,0 +1,72 @@
+{# Deployment form and readiness partial #}
+{% set experiment = experiment or {} %}
+{% set readiness = experiment.get('deployment_readiness') or {'supported': false, 'reasons': [], 'warnings': []} %}
+{% set deployment = experiment.get('live_deployment') %}
+{% set reasons = readiness.get('reasons') or [] %}
+{% set warnings = readiness.get('warnings') or [] %}
+{% set track_labels = {'trend_signals': 'Directional Perps', 'yield_flows': 'Systematic Carry'} %}
+
+<div class="detail-grid">
+  <div class="detail-block">
+    <h3>Readiness</h3>
+    <div class="kv">
+      <div class="key">Supported</div><div>{% if readiness.get('supported') %}yes{% else %}no{% endif %}</div>
+      <div class="key">Family</div><div>{{ experiment.get('family') or 'n/a' }}</div>
+      <div class="key">Track</div><div>{{ track_labels.get(experiment.get('track') or '', experiment.get('track') or 'n/a') }}</div>
+    </div>
+    {% if warnings|length > 0 %}
+    <p class="detail-copy">{{ warnings|join(' ') }}</p>
+    {% endif %}
+  </div>
+
+  {% if deployment %}
+  <div class="detail-block">
+    <h3>Latest Deployment</h3>
+    <div class="kv">
+      <div class="key">Strategy</div><div>{{ deployment.get('strategy_name') or 'n/a' }}</div>
+      <div class="key">Scheduled</div><div>{% if deployment.get('scheduled') %}yes{% else %}no{% endif %}</div>
+      <div class="key">Dry Run</div><div>{% if deployment.get('dry_run') %}yes{% else %}no{% endif %}</div>
+      <div class="key">Job</div><div>{{ deployment.get('job_name') or 'n/a' }}</div>
+      <div class="key">Wallet</div><div>{{ deployment.get('wallet_label') or 'n/a' }}</div>
+      <div class="key">Spec</div><div class="mono">{{ deployment.get('spec_path') or 'n/a' }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if not readiness.get('supported') %}
+  <div class="detail-block">
+    <h3>Not Exportable Yet</h3>
+    <p class="detail-copy">{% if reasons|length > 0 %}{{ reasons|join(' ') }}{% else %}This family is not live-supported yet.{% endif %}</p>
+  </div>
+  {% else %}
+  <div class="detail-block">
+    <h3>Deployment Form</h3>
+    <form id="deploymentForm" class="deployment-form" hx-post="/api/experiments/{{ experiment.get('spec_hash') }}/deploy" hx-target="#deploymentResult" hx-swap="innerHTML">
+      <div class="filters deployment-grid">
+        <label for="deploymentWalletLabel">Wallet Label</label>
+        <input id="deploymentWalletLabel" type="text" placeholder="basis_trading_strategy" name="wallet_label" />
+        <label for="deploymentJobName">Job Name</label>
+        <input id="deploymentJobName" type="text" placeholder="siglab-job-name" name="job_name" />
+        <label for="deploymentInterval">Interval Seconds</label>
+        <input id="deploymentInterval" type="number" min="60" step="60" value="600" name="interval_seconds" />
+        <label for="deploymentConfigPath">Config Path</label>
+        <input id="deploymentConfigPath" type="text" placeholder="use default config" name="config_path" />
+        <label class="checkbox">
+          <input id="deploymentSchedule" type="checkbox" name="schedule" />
+          Schedule runner job
+        </label>
+        <label class="checkbox">
+          <input id="deploymentLive" type="checkbox" name="dry_run" value="false" />
+          Live trading
+        </label>
+        <label class="checkbox">
+          <input id="deploymentLlmFinalize" type="checkbox" name="llm_finalize" />
+          Claude finalize notes
+        </label>
+        <button type="submit" aria-label="Deploy experiment">Deploy</button>
+      </div>
+    </form>
+    <div id="deploymentResult" class="detail-copy"></div>
+  </div>
+  {% endif %}
+</div>

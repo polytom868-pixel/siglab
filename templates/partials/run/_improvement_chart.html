@@ -1,0 +1,215 @@
+{# templates/partials/run/_improvement_chart.html #}
+{% set experiments = experiments or [] %}
+{% set metric_key = metric_key or 'aggregate_score' %}
+{% set metric_meta = metric_meta or {} %}
+{% set TRACK_LABELS = TRACK_LABELS or {} %}
+{% set TRACK_COLORS = TRACK_COLORS or {} %}
+
+{%- comment -%}
+  Chart constants (mirrors chart-engine.js renderChart).
+  viewBox="0 0 1200 460", margin top=24 right=24 bottom=48 left=62.
+  A fixed-ratio viewBox keeps the chart responsive.
+{%- endcomment -%}
+{% set CHART_WIDTH = 1200 %}
+{% set CHART_HEIGHT = 460 %}
+{% set MARGIN_TOP = 24 %}
+{% set MARGIN_RIGHT = 24 %}
+{% set MARGIN_BOTTOM = 48 %}
+{% set MARGIN_LEFT = 62 %}
+{% set PLOT_W = CHART_WIDTH - MARGIN_LEFT - MARGIN_RIGHT %}
+{% set PLOT_H = CHART_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM %}
+
+{%- comment -%}
+  Helper: extract metric value from experiment summary.
+  Equivalent to app.js metricValue().
+{%- endcomment -%}
+{% macro get_metric_val(exp) %}
+  {%- set sv = exp.get('summary', {}) -%}
+  {%- set raw = sv.get(metric_key) -%}
+  {%- if raw is none and metric_key.startswith('validation_') -%}
+    {%- set raw = sv.get(metric_key | replace('validation_', 'holdout_')) -%}
+  {%- endif -%}
+  {%- if raw is not none and raw == raw -%}
+    {{- raw | float -}}
+  {%- else -%}
+    {{- '-inf' -}}
+  {%- endif -%}
+{% endmacro %}
+
+{%- comment -%}
+  Helper: chart x value (generation or run_position).
+  Mirrors app.js chartXValue().
+{%- endcomment -%}
+{% macro get_chart_x(exp) %}
+  {%- set rp = exp.get('run_position') or exp.get('run_iteration_number') -%}
+  {%- if rp is not none -%}
+    {{- rp -}}
+  {%- else -%}
+    {{- exp.get('generation', 1) -}}
+  {%- endif -%}
+{% endmacro %}
+
+{%- comment -%}
+  Pre-scan experiments: collect finite metric values, compute yMin/yMax.
+{%- endcomment -%}
+{% set scan = namespace(values=[], max_x=1) %}
+{% for exp in experiments %}
+  {% set mv = exp.get('summary', {}).get(metric_key) %}
+  {% if mv is not none and mv == mv and mv != '-inf' %}
+    {% set _ = scan.values.append(mv | float) %}
+  {% endif %}
+  {% set cx = get_chart_x(exp) %}
+  {% if cx > scan.max_x %}
+    {% set scan.max_x = cx %}
+  {% endif %}
+{% endfor %}
+{% set scan_x_max = scan.max_x %}
+{% set scan_values = scan.values %}
+
+{%- comment -%}
+  If no experiments or no finite values, show empty-state text in SVG.
+{%- endcomment -%}
+{% if experiments | length == 0 %}
+<svg id="chart" role="img" aria-label="Improvement curve chart" viewBox="0 0 {{ CHART_WIDTH }} {{ CHART_HEIGHT }}">
+  <text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">{% if selected_run %}Awaiting first experiment.{% else %}No experiments recorded yet.{% endif %}</text>
+</svg>
+{% elif scan_values | length == 0 %}
+<svg id="chart" role="img" aria-label="Improvement curve chart" viewBox="0 0 {{ CHART_WIDTH }} {{ CHART_HEIGHT }}">
+  <text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">No finite values are available for {{ metric_meta.get('label') or metric_key }}.</text>
+</svg>
+{% else %}
+  {% set svg_raw_min = scan_values | min %}
+  {% set svg_raw_max = scan_values | max %}
+  {% if svg_raw_min == svg_raw_max %}
+    {% set y0 = svg_raw_min - 1 %}
+    {% set y1 = svg_raw_max + 1 %}
+  {% else %}
+    {% set y0 = svg_raw_min %}
+    {% set y1 = svg_raw_max %}
+  {% endif %}
+  {% set y_padding = (y1 - y0) * 0.12 %}
+  {% set y_min = y0 - y_padding %}
+  {% set y_max = y1 + y_padding %}
+  {% set y_range = y_max - y_min %}
+
+  {%- comment -%}
+    Scale functions (inline):
+      xScale(generation) = MARGIN_LEFT + ((generation - 1) / max(scan_x_max - 1, 1)) * PLOT_W
+      yScale(value) = MARGIN_TOP + PLOT_H - ((value - y_min) / y_range) * PLOT_H
+  {%- endcomment -%}
+  {% set x_denom = [scan_x_max - 1, 1] | max %}
+
+  {%- comment -%}
+    Group experiments by track (mirrors app.js groupByTrack()).
+  {%- endcomment -%}
+  {% set tracks = namespace(map={}) %}
+  {% for exp in experiments %}
+    {% set trk = exp.get('track', 'unknown') %}
+    {% if tracks.map.get(trk) is none %}
+      {% set _ = tracks.map.update({trk: []}) %}
+    {% endif %}
+    {% set _ = tracks.map[trk].append(exp) %}
+  {% endfor %}
+
+  {%- comment -%}
+    Compute x_ticks for gridlines (at most 6 evenly-spaced).
+  {%- endcomment -%}
+  {% set x_tick_count = [scan_x_max - 1, 5] | min %}
+  {% if x_tick_count < 1 %}
+    {% set x_tick_count = 1 %}
+  {% endif %}
+
+<svg id="chart" role="img" aria-label="Improvement curve chart" viewBox="0 0 {{ CHART_WIDTH }} {{ CHART_HEIGHT }}">
+  <rect x="0" y="0" width="{{ CHART_WIDTH }}" height="{{ CHART_HEIGHT }}" fill="transparent"></rect>
+
+  {%- comment -%}
+    Horizontal grid lines (6 lines: step 0-5).
+  {%- endcomment -%}
+  {% for step in range(0, 6) %}
+    {% set grid_val = y_min + (y_range * step) / 5 %}
+    {% set grid_y = MARGIN_TOP + PLOT_H - ((grid_val - y_min) / y_range) * PLOT_H %}
+    <line x1="{{ MARGIN_LEFT }}" y1="{{ grid_y }}" x2="{{ CHART_WIDTH - MARGIN_RIGHT }}" y2="{{ grid_y }}" stroke="rgba(255,255,255,0.04)" stroke-width="1"></line>
+    <text x="14" y="{{ grid_y + 4 }}" fill="#6b7f70" font-family="Inter, sans-serif" font-size="12">
+      {%- if metric_meta.get('formatter') is defined -%}
+        {{- metric_meta.formatter(grid_val) -}}
+      {%- else -%}
+        {{- '%.3f' % grid_val -}}
+      {%- endif -%}
+    </text>
+  {% endfor %}
+
+  {%- comment -%}
+    Vertical grid lines (at most 6 evenly-spaced generations).
+  {%- endcomment -%}
+  {% for i in range(0, [scan_x_max - 1, 5] | min + 1) %}
+    {% set gen = 1 + ((scan_x_max - 1) * i / ([[scan_x_max - 1, 5] | min, 1] | max)) | round %}
+    {% set grid_x = MARGIN_LEFT + ((gen - 1) / x_denom) * PLOT_W %}
+    <line x1="{{ grid_x }}" y1="{{ MARGIN_TOP }}" x2="{{ grid_x }}" y2="{{ CHART_HEIGHT - MARGIN_BOTTOM }}" stroke="rgba(255,255,255,0.02)" stroke-width="1"></line>
+    <text x="{{ grid_x - 8 }}" y="{{ CHART_HEIGHT - 16 }}" fill="#6b7f70" font-family="Inter, sans-serif" font-size="12">{{ gen }}</text>
+  {% endfor %}
+
+  {%- comment -%}
+    Axes.
+  {%- endcomment -%}
+  <line x1="{{ MARGIN_LEFT }}" y1="{{ CHART_HEIGHT - MARGIN_BOTTOM }}" x2="{{ CHART_WIDTH - MARGIN_RIGHT }}" y2="{{ CHART_HEIGHT - MARGIN_BOTTOM }}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+  <line x1="{{ MARGIN_LEFT }}" y1="{{ MARGIN_TOP }}" x2="{{ MARGIN_LEFT }}" y2="{{ CHART_HEIGHT - MARGIN_BOTTOM }}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+
+  {%- comment -%}
+    Per-track polylines and markers.
+    Uses best-so-far logic (mirrors app.js renderChart).
+  {%- endcomment -%}
+  {% for trk, rows in tracks.map.items() %}
+    {% set color = TRACK_COLORS.get(trk, '#4ade80') %}
+    {% set best = namespace(val=-1e308) %}
+    {% set poly = namespace(pts=[]) %}
+
+    {% for exp in rows %}
+      {% set raw_val = exp.get('summary', {}).get(metric_key) %}
+      {% if raw_val is not none and raw_val == raw_val and raw_val != '-inf' %}
+        {% set val = raw_val | float %}
+        {% if val > best.val %}
+          {% set best.val = val %}
+        {% endif %}
+        {% set cx = get_chart_x(exp) %}
+        {% set px = MARGIN_LEFT + ((cx - 1) / x_denom) * PLOT_W %}
+        {% set py = MARGIN_TOP + PLOT_H - ((best.val - y_min) / y_range) * PLOT_H %}
+        {% set _ = poly.pts.append('%.2f,%.2f' | format(px, py)) %}
+      {% endif %}
+    {% endfor %}
+
+    {% if poly.pts | length > 0 %}
+    <polyline fill="none" stroke="{{ color }}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="{{ poly.pts | join(' ') }}"></polyline>
+    {% endif %}
+
+    {%- comment -%}
+      Circle markers for each experiment in this track.
+    {%- endcomment -%}
+    {% for exp in rows %}
+      {% set raw_val = exp.get('summary', {}).get(metric_key) %}
+      {% if raw_val is not none and raw_val == raw_val and raw_val != '-inf' %}
+        {% set val = raw_val | float %}
+        {% set cx = get_chart_x(exp) %}
+        {% set px = MARGIN_LEFT + ((cx - 1) / x_denom) * PLOT_W %}
+        {% set py = MARGIN_TOP + PLOT_H - ((val - y_min) / y_range) * PLOT_H %}
+        {% set deployd = exp.get('deployd', false) %}
+        {% set passed = exp.get('passed', false) %}
+        {% set r = '9' if deployd else '5.5' %}
+        {% set fill = color if passed else 'rgba(255,255,255,0.12)' %}
+        {% set stroke = '#fff' if deployd else 'rgba(255,255,255,0.2)' %}
+        {% set sw = '2' if deployd else '1.2' %}
+        {% if metric_meta.get('formatter') is defined %}
+          {% set aria_val = metric_meta.formatter(val) %}
+        {% else %}
+          {% set aria_val = '%.3f' % val %}
+        {% endif %}
+        <circle cx="{{ px }}" cy="{{ py }}" r="{{ r }}" fill="{{ fill }}" stroke="{{ stroke }}" stroke-width="{{ sw }}" aria-label="{{ exp.get('family') }} - {{ aria_val }}" style="cursor:pointer" tabindex="0" role="button"></circle>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+
+  {%- comment -%}
+    Chart title.
+  {%- endcomment -%}
+  <text x="{{ MARGIN_LEFT }}" y="18" fill="#e2ebe5" font-family="Inter, sans-serif" font-size="14" font-weight="600">{{ metric_meta.get('label') or 'Score' }} by {{ 'run order' if locked_run_id or selected_run_id else 'generation' }}</text>
+</svg>
+{% endif %}

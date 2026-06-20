@@ -1,0 +1,26 @@
+{# Artifact health partial #}
+{% set artifact_status = artifact_status or {} %}
+{% if artifact_status|length == 0 %}
+<p class="empty-state">No artifact status data available.</p>
+{% else %}
+{% for name, art in artifact_status.items() %}
+{% set status = art.get('status') or 'unknown' %}
+{% set freshness = art.get('freshness') %}
+{% set age = art.get('age_seconds') %}
+{% set err = art.get('error') %}
+<div class="ops-line">
+  <span class="pill {% if status == 'present' %}{% elif status == 'missing' %}amber{% elif status == 'malformed' %}amber{% else %}slate{% endif %}">{{ status }}</span>
+  <span><strong>{{ name }}</strong></span>
+  <span class="mono">{{ art.get('path') or '' }}</span>
+  {% if freshness %}
+  <span class="{% if freshness == 'fresh' %}status-pass{% elif freshness == 'stale' %}status-pending{% else %}status-fail{% endif %}">{{ freshness }}</span>
+  {% endif %}
+  {% if age is not none %}
+  <span>{{ '{:.0f}s'.format(age|float) }}</span>
+  {% endif %}
+  {% if err %}
+  <span class="detail-copy">{{ err }}</span>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}

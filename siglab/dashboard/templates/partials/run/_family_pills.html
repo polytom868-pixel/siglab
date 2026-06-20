@@ -1,0 +1,11 @@
+{# Family filter pills partial #}
+{% set families = families or [] %}
+{% set selected_family = family or 'all' %}
+{% if families|length == 0 %}
+<span class="pill">No families in scope</span>
+{% else %}
+{% for fam in families %}
+{% set active = ' active' if fam == selected_family else '' %}
+<span class="pill{{ active }}">{{ fam }}</span>
+{% endfor %}
+{% endif %}

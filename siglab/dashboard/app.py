@@ -14,10 +14,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from siglab.config import SiglabConfig, load_settings
@@ -38,7 +39,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://unpkg.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
@@ -116,6 +117,45 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.static_dir = Path(__file__).resolve().parent / "static"
     state.ws_manager = WebSocketManager()
     state.start_time = time.time()
+
+    # Configure Jinja2Templates for HTMX partials
+    _template_dir = Path(__file__).resolve().parent / "templates"
+    state.templates = Jinja2Templates(directory=str(_template_dir))
+
+    # Register custom Jinja2 filters
+    _env = state.templates.env
+
+    def _jinja2_format_number(value: Any, decimals: int = 2) -> str:
+        try:
+            v = float(value)
+            if not (v != v or v == float('inf') or v == float('-inf')):
+                return f"{v:.{decimals}f}"
+        except (TypeError, ValueError):
+            pass
+        return "n/a"
+
+    def _jinja2_format_pct(value: Any) -> str:
+        try:
+            v = float(value)
+            if not (v != v or v == float('inf') or v == float('-inf')):
+                return f"{v * 100:.2f}%"
+        except (TypeError, ValueError):
+            pass
+        return "n/a"
+
+    def _jinja2_format_dt(value: Any) -> str:
+        if not value:
+            return ""
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            return str(value)
+
+    _env.filters["format_number"] = _jinja2_format_number
+    _env.filters["format_pct"] = _jinja2_format_pct
+    _env.filters["format_dt"] = _jinja2_format_dt
 
     app.state.dashboard = state
     yield

@@ -1,0 +1,37 @@
+{# Provider / Telemetry state partial #}
+{% set summary = summary or {} %}
+{% set telemetry_data = summary.get('telemetry') or {} %}
+
+<div class="ops-line"><span class="key">Confidence</span><span>{{ telemetry_data.get('confidence') or 'unknown' }}</span></div>
+<div class="ops-line"><span class="key">Trace Count</span><span>{{ telemetry_data.get('trace_count') or 0 }}</span></div>
+<div class="ops-line"><span class="key">Tool Invocations</span><span>{{ telemetry_data.get('tool_invocation_count') or 0 }}</span></div>
+<div class="ops-line"><span class="key">Tool Errors</span><span class="{% if telemetry_data.get('tool_error_count', 0) > 0 %}status-fail{% else %}status-pass{% endif %}">{{ telemetry_data.get('tool_error_count') or 0 }}</span></div>
+<div class="ops-line"><span class="key">Provider Metrics</span><span class="{% if telemetry_data.get('provider_metrics_status') == 'present' %}status-pass{% else %}status-pending{% endif %}">{{ telemetry_data.get('provider_metrics_status') or 'missing' }}</span></div>
+<div class="ops-line"><span class="key">Provider Requests</span><span>{{ telemetry_data.get('provider_request_count') or 0 }}</span></div>
+<div class="ops-line"><span class="key">Estimated Credits</span><span>{{ telemetry_data.get('estimated_credits') or 0 }}</span></div>
+<div class="ops-line"><span class="key">Input Tokens</span><span>{{ telemetry_data.get('returned_input_tokens') or 0 }}</span></div>
+<div class="ops-line"><span class="key">Output Tokens</span><span>{{ telemetry_data.get('returned_output_tokens') or 0 }}</span></div>
+<div class="ops-line">
+  <span class="key">Context Pressure</span>
+  <span class="{% if telemetry_data.get('context_pressure_events', 0) > 0 %}status-fail{% else %}status-pass{% endif %}">{{ telemetry_data.get('context_pressure_events') or 0 }}</span>
+</div>
+<div class="ops-line">
+  <span class="key">Credit Pressure</span>
+  <span class="{% if telemetry_data.get('credit_pressure_events', 0) > 0 %}status-fail{% else %}status-pass{% endif %}">{{ telemetry_data.get('credit_pressure_events') or 0 }}</span>
+</div>
+
+{% set model_counts = telemetry_data.get('model_counts') or {} %}
+{% if model_counts|length > 0 %}
+<div class="ops-line"><span class="key">Model Counts</span></div>
+{% for model, count in model_counts.items() %}
+<div class="ops-line ops-indent"><span>{{ model }}: {{ count }}</span></div>
+{% endfor %}
+{% endif %}
+
+{% set stage_counts = telemetry_data.get('stage_counts') or {} %}
+{% if stage_counts|length > 0 %}
+<div class="ops-line"><span class="key">Stage Counts</span></div>
+{% for stage, count in stage_counts.items() %}
+<div class="ops-line ops-indent"><span>{{ stage }}: {{ count }}</span></div>
+{% endfor %}
+{% endif %}

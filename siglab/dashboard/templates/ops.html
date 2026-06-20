@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}SigLab Ops Board{% endblock %}
+{% block nav_ops_active %}active{% endblock %}
+
+{% block content %}
+<header class="hero">
+  <div>
+    <p class="eyebrow">SigLab Ops</p>
+    <h1>Research Operations Board</h1>
+    <p class="subhead">
+      One read-only screen for demo readiness, live-boundary truth, provider telemetry, and latest market evidence.
+    </p>
+    <p class="scope-summary" id="opsGeneratedAt"
+       x-text="$store.refresh.lastUpdated ? 'Generated: ' + $store.refresh.lastUpdated : 'Loading operator state...'">Loading operator state...</p>
+  </div>
+  <div class="hero-controls">
+    <label class="checkbox">
+      <input type="checkbox" id="autoRefresh" checked />
+      Auto refresh
+    </label>
+    <button id="refreshButton" type="button" aria-label="Refresh data"
+            @click="htmx.trigger('#opsSummary', 'load'); htmx.trigger('#artifactHealth', 'load'); htmx.trigger('#waveState', 'load'); htmx.trigger('#buildathonProof', 'load'); htmx.trigger('#marketState', 'load'); htmx.trigger('#sodexBoundary', 'load'); htmx.trigger('#telemetryState', 'load'); htmx.trigger('#blockers', 'load')">Refresh</button>
+  </div>
+</header>
+
+<section class="ops-grid" id="opsSummary"
+         hx-get="/partials/ops/summary"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card">
+</section>
+
+<section class="ops-board">
+  <div class="ops-panel">
+    <h2>Artifact Health</h2>
+    <div id="artifactHealth" class="ops-lines"
+         hx-get="/partials/ops/artifact_health"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card"></div>
+  </div>
+  <div class="ops-panel">
+    <h2>Current Wave</h2>
+    <div id="waveState" class="ops-lines"
+         hx-get="/partials/ops/wave_state"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card"></div>
+  </div>
+  <div class="ops-panel">
+    <h2>Buildathon Proof</h2>
+    <div id="buildathonProof" class="ops-lines"
+         hx-get="/partials/ops/buildathon_proof"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card"></div>
+  </div>
+  <div class="ops-panel">
+    <h2>Market Decision Support</h2>
+    <div id="marketState" class="ops-lines"
+         hx-get="/partials/ops/market_state"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card"></div>
+  </div>
+  <div class="ops-panel">
+    <h2>SoDEX Boundary</h2>
+    <div id="sodexBoundary" class="ops-lines"
+         hx-get="/partials/ops/sodex_boundary"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card"></div>
+  </div>
+  <div class="ops-panel">
+    <h2>Provider / Telemetry</h2>
+    <div id="telemetryState" class="ops-lines"
+         hx-get="/partials/ops/telemetry_state"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card"></div>
+  </div>
+  <div class="ops-panel">
+    <h2>Blockers</h2>
+    <div id="blockers" class="ops-lines"
+         hx-get="/partials/ops/blockers"
+         hx-trigger="load, every 15s"
+         hx-indicator=".skeleton-card"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/ops.js"></script>
+{% endblock %}

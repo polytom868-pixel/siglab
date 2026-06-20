@@ -1,0 +1,23 @@
+{# Blockers partial #}
+{% set summary = summary or {} %}
+{% set wave = summary.get('wave') or {} %}
+{% set blockers = wave.get('blockers') or [] %}
+{% set buildathon = summary.get('buildathon') or {} %}
+{% set red_flags = buildathon.get('red_flags') or [] %}
+{% set warnings = summary.get('market', {}).get('warnings') or [] %}
+
+{% set all_blockers = blockers + red_flags %}
+{% for warning in warnings %}
+{% set _ = all_blockers.append('Market warning: ' ~ warning) %}
+{% endfor %}
+
+{% if all_blockers|length == 0 %}
+<p class="empty-state">No active blockers across all sources.</p>
+{% else %}
+{% for blocker in all_blockers %}
+<div class="ops-line">
+  <span class="status-fail">&#x26A0;</span>
+  <span>{{ blocker }}</span>
+</div>
+{% endfor %}
+{% endif %}

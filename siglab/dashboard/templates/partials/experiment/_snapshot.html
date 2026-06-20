@@ -1,0 +1,99 @@
+{# Experiment snapshot partial #}
+{% set experiment = experiment or {} %}
+{% set run = run or {} %}
+{% set summary = experiment.get('summary') or {} %}
+{% set compiled_metadata = compiled_metadata or {} %}
+{% set series_available = series_available or false %}
+{% set timing = experiment.get('timing') or {} %}
+{% set track_labels = {'trend_signals': 'Directional Perps', 'yield_flows': 'Systematic Carry'} %}
+{% set visual_split = run.get('visual_split') or {} %}
+{% set ranges = visual_split.get('ranges') or [] %}
+{% set target_weights = run.get('target_weights') or {} %}
+{% set weight_cols = target_weights.get('columns') or [] %}
+
+{# Extract latest weights #}
+{% set changes = target_weights.get('changes') or [] %}
+{% set latest_weights = {} %}
+{% if changes|length > 0 %}
+{% set last_change = changes[-1] %}
+{% for asset, weight in (last_change.get('weights') or {}).items() %}
+{% if asset != 'GLOBAL' %}
+{% set _ = latest_weights.update({asset: weight}) %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% set longs = [] %}
+{% set shorts = [] %}
+{% for asset, weight in latest_weights.items() %}
+{% if weight > 0 %}{% set _ = longs.append((asset, weight)) %}{% endif %}
+{% if weight < 0 %}{% set _ = shorts.append((asset, weight)) %}{% endif %}
+{% endfor %}
+{% set longs_sorted = longs|sort(attribute='1', reverse=True) %}
+{% set shorts_sorted = shorts|sort(attribute='1') %}
+
+<div class="detail-grid">
+  <div class="detail-block">
+    <h3>Artifact</h3>
+    <div class="kv">
+      <div class="key">Track</div><div>{{ track_labels.get(experiment.get('track') or '', experiment.get('track') or 'unknown') }}</div>
+      <div class="key">Source</div><div>{{ experiment.get('source') or compiled_metadata.get('source') or 'unknown' }}</div>
+      <div class="key">Series</div><div>{% if series_available %}retained{% else %}missing{% endif %}</div>
+      <div class="key">Timing</div><div>{{ timing.get('signal_timing') or 'unknown' }}</div>
+      <div class="key">Bundle As Of</div><div>{{ timing.get('bundle_as_of') or 'n/a' }}</div>
+      <div class="key">Artifact Path</div><div class="mono">{{ experiment.get('artifact_path') or 'n/a' }}</div>
+    </div>
+  </div>
+  <div class="detail-block">
+    <h3>Evaluation Split</h3>
+    <div class="kv">
+      <div class="key">Strict Audit</div><div>{% if visual_split.get('strict_holdout') %}yes{% else %}no{% endif %}</div>
+      {% for range in ranges %}
+      <div class="key">{{ range.get('label', '') }}</div><div>{{ range.get('start_timestamp', '') or '?' }} to {{ range.get('end_timestamp', '') or '?' }}</div>
+      {% endfor %}
+      <div class="key">Validation</div><div>{% if summary.get('validation_available') %}{{ '{:.2%}'.format(summary.get('validation_total_return', 0)|float) }} / {{ '{:.2f}'.format(summary.get('validation_sharpe', 0)|float) }}{% else %}n/a{% endif %}</div>
+      <div class="key">Audit</div><div>{% if summary.get('audit_available') %}{{ '{:.2%}'.format(summary.get('audit_total_return', 0)|float) }} / {{ '{:.2f}'.format(summary.get('audit_sharpe', 0)|float) }}{% else %}n/a{% endif %}</div>
+    </div>
+    <p class="detail-copy">{{ visual_split.get('note') or 'No split metadata recorded.' }}</p>
+  </div>
+  {% if summary.get('policy_sweep_comparison_available') %}
+  <div class="detail-block">
+    <h3>Policy Sweep</h3>
+    <div class="kv">
+      {% set declared = summary.get('policy_sweep_declared_evaluation') or {} %}
+      {% set frozen = summary.get('policy_sweep_frozen_evaluation') or {} %}
+      <div class="key">Declared Score</div><div>{% if declared.get('selector_aggregate_score') is not none %}{{ '{:.3f}'.format(declared['selector_aggregate_score']|float) }}{% else %}n/a{% endif %}</div>
+      <div class="key">Frozen Score</div><div>{% if frozen.get('selector_aggregate_score') is not none %}{{ '{:.3f}'.format(frozen['selector_aggregate_score']|float) }}{% else %}n/a{% endif %}</div>
+      <div class="key">Winner</div><div>{{ summary.get('policy_sweep_realized_winner') or 'tie' }}</div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="detail-block">
+    <h3>Latest Longs</h3>
+    {% if longs_sorted|length > 0 %}
+    <div class="pill-row">
+      {% for asset, weight in longs_sorted %}
+      {% if loop.index <= 6 %}
+      <span class="pill">{{ asset }} {{ '{:.3f}'.format(weight|float) }}</span>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No long exposure at the latest retained timestamp.</p>
+    {% endif %}
+  </div>
+  <div class="detail-block">
+    <h3>Latest Shorts</h3>
+    {% if shorts_sorted|length > 0 %}
+    <div class="pill-row">
+      {% for asset, weight in shorts_sorted %}
+      {% if loop.index <= 6 %}
+      <span class="pill amber">{{ asset }} {{ '{:.3f}'.format(weight|float) }}</span>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No short exposure at the latest retained timestamp.</p>
+    {% endif %}
+  </div>
+</div>

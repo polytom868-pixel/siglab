@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}SoSoValue SigLab Runs{% endblock %}
+{% block nav_dashboard_active %}active{% endblock %}
+
+{% block content %}
+<header class="hero">
+  <div>
+    <p class="eyebrow">SoSoValue SigLab</p>
+    <h1>Run Dashboard</h1>
+    <p class="subhead">
+      Compare runs as separate search sessions, see each run's own improvement curve,
+      and drill into a specific run only when you need experiment-level detail.
+    </p>
+    <p class="scope-summary" id="scopeSummary"
+       x-text="'Viewing ' + ($store.filter.track === 'all' ? 'all tracks' : $store.filter.track) + ' and ' + ($store.filter.family === 'all' ? 'all families' : $store.filter.family) + '.'">
+      Viewing all tracks and all families.
+    </p>
+    <p class="freshness-indicator" id="freshnessIndicator"
+       x-show="$store.refresh.lastUpdated"
+       x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>
+  </div>
+  <div class="hero-controls" role="search">
+    <label for="trackFilter">Track</label>
+    <select id="trackFilter"
+            aria-label="Filter by track"
+            x-model="$store.filter.track"
+            @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
+      <option value="all">All Tracks</option>
+      <option value="trend_signals">Directional Perps</option>
+      <option value="yield_flows">Systematic Carry</option>
+    </select>
+    <label for="familyFilter">Family</label>
+    <select id="familyFilter"
+            aria-label="Filter by family"
+            x-model="$store.filter.family"
+            @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
+      <option value="all">All Families</option>
+    </select>
+    <label for="metricFilter">Metric</label>
+    <select id="metricFilter"
+            aria-label="Select metric"
+            x-model="$store.filter.metric"></select>
+    <label class="checkbox">
+      <input type="checkbox" id="autoRefresh" checked />
+      Auto refresh
+    </label>
+    <button id="refreshButton" type="button" aria-label="Refresh data"
+            @click="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Refresh</button>
+  </div>
+</header>
+
+<section class="summary-grid" id="summaryCards"
+         hx-get="/partials/dashboard/summary"
+         hx-trigger="load, every 10s"
+         hx-indicator=".skeleton-card">
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>Run Sessions</h2>
+      <p>Each card is one run. The chart shows the selected metric in that run's own order, not mixed with other runs.</p>
+    </div>
+  </div>
+  <div id="runCards" class="run-grid"
+       hx-get="/partials/dashboard/runs?track={{ track or 'all' }}&family={{ family or 'all' }}"
+       hx-trigger="load, every 10s"
+       hx-indicator=".skeleton-card">
+    <div class="panel run-card"><div class="skeleton-card"></div></div>
+    <div class="panel run-card"><div class="skeleton-card"></div></div>
+    <div class="panel run-card"><div class="skeleton-card"></div></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/home.js"></script>
+{% endblock %}

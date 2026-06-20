@@ -1,0 +1,91 @@
+{# Dashboard run cards partial #}
+{% set runs = runs or [] %}
+{% set metric = metric or 'aggregate_score' %}
+{% if runs|length == 0 %}
+<article class="waiting-card">
+  <div class="waiting-card-title">No runs recorded yet</div>
+  <p class="waiting-card-copy">No runs recorded yet.</p>
+  <p class="waiting-card-copy">Runs will appear once an experiment evaluation finishes.</p>
+</article>
+{% else %}
+{% for run in runs %}
+{% set series = run.get('series_points') or [] %}
+{% set has_finite = series|selectattr('aggregate_score', 'defined')|list|length > 0 %}
+{% set status_class = 'status-pass' if run.get('status') in ('deployd', 'pass') else 'status-fail' %}
+{% set llm_provider = run.get('llm_provider') or '' %}
+{% set llm_model = run.get('llm_model') or '' %}
+{% set llm_label = llm_provider + ' / ' + llm_model if llm_provider and llm_model else (llm_provider or llm_model or 'n/a') %}
+<article class="panel run-card">
+  <div class="run-card-header">
+    <div>
+      <div class="run-card-track">{{ run.get('track_label') or run.get('track') or 'Unknown Track' }}</div>
+      <h3>{{ run.get('run_label') or run.get('run_session_id') }}</h3>
+      <p class="run-card-meta">
+        {{ run.get('runner_label') or 'unknown' }} &bull; {{ run.get('run_kind') or 'harness' }}
+        {% if run.get('benchmark_deck') %} &bull; {{ run['benchmark_deck'] }}{% endif %}
+      </p>
+    </div>
+    <div class="run-card-badges">
+      <span class="pill {% if status_class == 'status-pass' %}{% else %}amber{% endif %}">{{ run.get('status') or 'unknown' }}</span>
+      <span class="pill slate">{{ run.get('experiment_count') or 0 }} exp</span>
+    </div>
+  </div>
+  <div class="run-card-chart">
+    <div class="run-card-chart-header">
+      <span>Aggregate Score in run order</span>
+      <span class="mono">{{ run.get('best_spec_hash') or 'n/a' }}</span>
+    </div>
+    {% if has_finite %}
+    {% set values = series|map(attribute='aggregate_score')|select('number')|list %}
+    {% set y_min = values|min %}
+    {% set y_max = values|max %}
+    {% set y_padding = ((y_max|float - y_min|float) * 0.16) if (y_max|float - y_min|float) > 0 else 1 %}
+    {% set y_lo = y_min|float - y_padding %}
+    {% set y_hi = y_max|float + y_padding %}
+    <svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline">
+      <rect x="0" y="0" width="360" height="110" fill="transparent"></rect>
+      <line x1="10" y1="92" x2="350" y2="92" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+      {% set max_idx = (values|length - 1)|max(1) %}
+      <polyline fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+        points="{% for i in range(values|length) %}{{ 10 + (i / max_idx) * 340 }},{{ 10 + 82 - ((values[i]|float - y_lo) / (y_hi - y_lo)) * 82 }}{% if not loop.last %} {% endif %}{% endfor %}"></polyline>
+      {% set best_val = values|max %}
+      {% set best_idx = values.index(best_val) %}
+      {% for i in range(values|length) %}
+      {% set cx = 10 + (i / max_idx) * 340 %}
+      {% set cy = 10 + 82 - ((values[i]|float - y_lo) / (y_hi - y_lo)) * 82 %}
+      {% set is_deployd = series[i].get('deployd') %}
+      {% set is_passed = series[i].get('passed') %}
+      {% set fill = '#ffffff' if is_deployd else ('#4ade80' if is_passed else 'rgba(255,255,255,0.22)') %}
+      {% set stroke = '#4ade80' if is_deployd else 'rgba(255,255,255,0.18)' %}
+      {% set radius = '4.2' if is_deployd else '3.2' %}
+      <circle cx="{{ cx }}" cy="{{ cy }}" r="{{ radius }}" fill="{{ fill }}" stroke="{{ stroke }}" stroke-width="1.4"></circle>
+      {% endfor %}
+      {% set best_cx = 10 + (best_idx / max_idx) * 340 %}
+      {% set best_cy = 10 + 82 - ((best_val|float - y_lo) / (y_hi - y_lo)) * 82 %}
+      <circle cx="{{ best_cx }}" cy="{{ best_cy }}" r="5.4" fill="none" stroke="#f0b456" stroke-width="1.6"></circle>
+    </svg>
+    {% else %}
+    <div class="waiting-card waiting-card-compact">
+      <div class="waiting-card-title">No experiments recorded yet</div>
+      <p class="waiting-card-copy">Experiments will appear once the first evaluation finishes.</p>
+    </div>
+    {% endif %}
+  </div>
+  <div class="run-card-stats">
+    <div><span class="key">Pass / Deployed</span><span>{{ run.get('passed_count') or 0 }} / {{ run.get('deployd_count') or 0 }}</span></div>
+    <div><span class="key">LLM / Burn-In</span><span>{{ run.get('llm_experiment_count') or 0 }} / {{ run.get('deterministic_experiment_count') or 0 }}</span></div>
+    <div><span class="key">LLM</span><span>{{ llm_label }}</span></div>
+    <div><span class="key">Best Score</span><span>{% if run.get('best_aggregate_score') is not none %}{{ '{:.3f}'.format(run['best_aggregate_score']|float) }}{% else %}n/a{% endif %}</span></div>
+    <div><span class="key">Best Validation</span><span>{% if run.get('best_validation_total_return') is not none %}{{ '{:.2%}'.format(run['best_validation_total_return']|float) }}{% else %}n/a{% endif %}</span></div>
+    <div><span class="key">Best Pre-Audit</span><span>{% if run.get('best_pre_audit_canonical_total_return') is not none %}{{ '{:.2%}'.format(run['best_pre_audit_canonical_total_return']|float) }}{% else %}n/a{% endif %}</span></div>
+    <div><span class="key">Updated</span><span>{{ run.get('last_created_at') or '' }}</span></div>
+  </div>
+  <div class="run-card-links">
+    <a class="button-link" aria-label="Open run page for {{ run.get('run_label') or run.get('run_session_id') }}" href="/runs/{{ run.get('run_session_id') | urlencode }}">Open Run</a>
+    {% if run.get('best_spec_hash') %}
+    <a class="table-link" aria-label="View best experiment for {{ run.get('run_label') or run.get('run_session_id') }}" href="/experiments/{{ run['best_spec_hash'] | urlencode }}">Best Experiment</a>
+    {% endif %}
+  </div>
+</article>
+{% endfor %}
+{% endif %}

@@ -1,0 +1,26 @@
+{# Wave state partial #}
+{% set summary = summary or {} %}
+{% set wave = summary.get('wave') or {} %}
+{% set agents = wave.get('agents') or [] %}
+{% set outputs = wave.get('outputs') or [] %}
+
+<div class="ops-line"><span class="key">Wave Number</span><span>{{ wave.get('wave_number') or '?' }}</span></div>
+<div class="ops-line"><span class="key">Phase</span><span>{{ wave.get('phase') or 'unknown' }}</span></div>
+<div class="ops-line"><span class="key">Status</span><span class="{% if wave.get('status') == 'running' %}status-pass{% else %}status-pending{% endif %}">{{ wave.get('status') or 'unknown' }}</span></div>
+<div class="ops-line"><span class="key">Goal</span><span>{{ wave.get('goal') or 'No goal recorded' }}</span></div>
+<div class="ops-line"><span class="key">Validation Status</span><span>{{ wave.get('validation_status') or 'unknown' }}</span></div>
+<div class="ops-line"><span class="key">Next Decision</span><span>{{ wave.get('next_decision') or 'none' }}</span></div>
+<div class="ops-line"><span class="key">Stop Allowed</span><span>{% if wave.get('stop_allowed') %}yes{% else %}no{% endif %}</span></div>
+
+{% if agents|length > 0 %}
+<div class="ops-line"><span class="key">Agents</span><span>{{ agents|join(', ') }}</span></div>
+{% endif %}
+
+{% if outputs|length > 0 %}
+<div class="ops-line"><span class="key">Outputs</span><span>{{ outputs|join(', ') }}</span></div>
+{% endif %}
+
+{% set unsafe = wave.get('unsafe_claims') or [] %}
+{% if unsafe|length > 0 %}
+<div class="ops-line"><span class="key">Unsafe Claims</span><span class="status-fail">{{ unsafe|join('; ') }}</span></div>
+{% endif %}

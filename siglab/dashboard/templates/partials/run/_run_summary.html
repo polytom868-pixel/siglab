@@ -1,0 +1,66 @@
+{# Run summary cards partial #}
+{% set runs = runs or [] %}
+{% set experiments = experiments or [] %}
+{% set benchmark_runs = runs|selectattr('benchmark_mode')|list %}
+{% set tool_traced = experiments|selectattr('tool_call_count')|select('gt', 0)|list %}
+{% set deployd = experiments|selectattr('deployd')|list %}
+{% set best_dir = namespace(experiment=none, value=none) %}
+{% set best_carry = namespace(experiment=none, value=none) %}
+{% for exp in experiments %}
+{% set val = exp.get('summary', {}).get(metric or 'aggregate_score') %}
+{% if val is not none %}
+{% set val_f = val|float %}
+{% if exp.get('track') == 'trend_signals' and (best_dir.value is none or val_f > best_dir.value) %}
+  {% set best_dir.experiment = exp %}
+  {% set best_dir.value = val_f %}
+{% endif %}
+{% if exp.get('track') == 'yield_flows' and (best_carry.value is none or val_f > best_carry.value) %}
+  {% set best_carry.experiment = exp %}
+  {% set best_carry.value = val_f %}
+{% endif %}
+{% endif %}
+{% endfor %}
+
+{% if selected_run and experiments|length == 0 %}
+<article class="panel summary-card">
+  <div class="label">Awaiting first experiment</div>
+  <div class="value small">Run warming up</div>
+  <div class="detail">{{ selected_run.get('run_label') or 'this run' }} has started, but no experiment rows have landed yet. Experiments will appear once the first evaluation finishes.</div>
+</article>
+{% endif %}
+
+<article class="panel summary-card">
+  <div class="label">Runs</div>
+  <div class="value">{{ runs|length }}</div>
+  <div class="detail">Visible run sessions under the current track and family filters.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Benchmark Runs</div>
+  <div class="value">{{ benchmark_runs|length }}</div>
+  <div class="detail">Visible external-agent benchmark sessions in the current scope.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Experiments</div>
+  <div class="value">{{ experiments|length }}</div>
+  <div class="detail">Visible experiments inside the current run, track, and family filters.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Deployed</div>
+  <div class="value">{{ deployd|length }}</div>
+  <div class="detail">Visible experiments that currently lead or previously led a track.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Tool Traces</div>
+  <div class="value">{{ tool_traced|length }}</div>
+  <div class="detail">Experiments whose planner or writer stage issued at least one recorded tool call.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Best Directional</div>
+  <div class="value{% if best_dir.value is none %} small{% endif %}">{% if best_dir.value is not none %}{{ '{:.4f}'.format(best_dir.value) }}{% else %}n/a{% endif %}</div>
+  <div class="detail">{% if best_dir.experiment %}{{ best_dir.experiment.get('generation') }} generations{% else %}No directional experiments in this view.{% endif %}</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Best Carry</div>
+  <div class="value{% if best_carry.value is none %} small{% endif %}">{% if best_carry.value is not none %}{{ '{:.4f}'.format(best_carry.value) }}{% else %}n/a{% endif %}</div>
+  <div class="detail">{% if best_carry.experiment %}{{ best_carry.experiment.get('generation') }} generations{% else %}No carry experiments in this view.{% endif %}</div>
+</article>

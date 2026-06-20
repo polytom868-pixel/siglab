@@ -1,0 +1,47 @@
+{# Ops summary cards partial #}
+{% set summary = summary or {} %}
+{% set artifact_status = artifact_status or {} %}
+
+{% set present_count = namespace(count=0) %}
+{% for name, art in artifact_status.items() %}
+{% if art.get('status') == 'present' %}
+{% set present_count.count = present_count.count + 1 %}
+{% endif %}
+{% endfor %}
+
+{% set buildathon = summary.get('buildathon') or {} %}
+{% set wave = summary.get('wave') or {} %}
+{% set market = summary.get('market') or {} %}
+{% set sodex = summary.get('sodex') or {} %}
+{% set telemetry_data = summary.get('telemetry') or {} %}
+
+<article class="panel summary-card">
+  <div class="label">Artifacts Present</div>
+  <div class="value">{{ present_count.count }} / {{ artifact_status|length }}</div>
+  <div class="detail">Live artifact files that are readable and in valid JSON format.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Wave</div>
+  <div class="value">Wave {{ wave.get('wave_number') or '?' }}</div>
+  <div class="detail">{{ wave.get('phase') or 'unknown' }} phase &mdash; {{ wave.get('status') or 'unknown' }}</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Market Stance</div>
+  <div class="value">{{ market.get('stance') or 'unknown' }}</div>
+  <div class="detail">{{ market.get('headline') or 'No market data' }}</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">SoDEX Readiness</div>
+  <div class="value">{% if sodex.get('public_read_ready') %}ready{% else %}blocked{% endif %}</div>
+  <div class="detail">Public read: {{ sodex.get('public_read_ready') }}, Schema pinned: {{ sodex.get('schema_pinned') }}, Live write: {{ sodex.get('live_write_allowed') }}</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Telemetry Confidence</div>
+  <div class="value">{{ telemetry_data.get('confidence') or 'unknown' }}</div>
+  <div class="detail">Tool invocations: {{ telemetry_data.get('tool_invocation_count') or 0 }}, Errors: {{ telemetry_data.get('tool_error_count') or 0 }}</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Blockers</div>
+  <div class="value">{{ (wave.get('blockers') or [])|length }}</div>
+  <div class="detail">{% set blockers = wave.get('blockers') or [] %}{% if blockers|length > 0 %}{{ blockers|join(', ') }}{% else %}No active blockers{% endif %}</div>
+</article>

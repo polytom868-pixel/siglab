@@ -1,0 +1,63 @@
+{# Trade table rows partial with pagination #}
+{% set trades = trades or [] %}
+{% set display_capital = display_capital|default(100000)|float %}
+{% set page = page|default(1)|int %}
+{% set page_size = 50 %}
+{% set total_trades = trades|length %}
+{% set total_pages = ((total_trades / page_size)|round(0, 'ceil'))|int if total_trades > 0 else 1 %}
+{% if page > total_pages %}{% set page = total_pages %}{% endif %}
+{% if page < 1 %}{% set page = 1 %}{% endif %}
+
+{% set end_idx = total_trades - ((page - 1) * page_size) %}
+{% set start_idx = (total_trades - (page * page_size))|max(0) %}
+{% set visible = trades[start_idx:end_idx]|reverse %}
+
+{% set action_meta = {
+  'buy': {'label': 'Buy', 'tone': ''},
+  'sell': {'label': 'Sell', 'tone': 'amber'},
+  'short': {'label': 'Short', 'tone': 'amber'},
+  'cover': {'label': 'Cover', 'tone': ''},
+  'flip_short': {'label': 'Flip Short', 'tone': 'amber'},
+  'flip_long': {'label': 'Flip Long', 'tone': ''},
+  'rebalance': {'label': 'Rebalance', 'tone': 'slate'},
+} %}
+
+{% if total_trades > 0 %}
+<p class="subhead" id="tradeSubtitle">
+  {% if total_trades > page_size %}
+    Showing page {{ page }} of {{ total_pages }} ({{ total_trades }} trades) from the canonical run. Display notionals and units assume ${{ '{:,.0f}'.format(display_capital) }} starting capital.
+  {% else %}
+    Showing {{ total_trades }} trades from the canonical run. Display notionals and units assume ${{ '{:,.0f}'.format(display_capital) }} starting capital.
+  {% endif %}
+</p>
+{% else %}
+<p class="subhead" id="tradeSubtitle">No trades recorded for this run.</p>
+{% endif %}
+
+{% for trade in visible %}
+{% set meta = action_meta.get(trade.get('action') or 'rebalance', action_meta['rebalance']) %}
+{% set scaled_units = (trade.get('units') or 0)|float * display_capital %}
+{% set scaled_notional = (trade.get('notional') or 0)|float * display_capital %}
+{% set scaled_cost = ((trade.get('cost') or 0)|float * display_capital * -1) %}
+<tr>
+  <td>{{ trade.get('timestamp') or '' }}</td>
+  <td>{{ trade.get('symbol') or '' }}</td>
+  <td><span class="pill {{ meta['tone'] }}">{{ meta['label'] }}</span></td>
+  <td>{{ trade.get('post_trade_label') or 'Flat' }}</td>
+  <td>{% if trade.get('price') is not none %}{{ '{:.4f}'.format(trade['price']|float) }}{% else %}n/a{% endif %}</td>
+  <td>{{ '{:.4f}'.format(scaled_units) }}</td>
+  <td>{% if trade.get('target_weight') is not none %}{{ '{:.4f}'.format(trade['target_weight']|float) }}{% else %}n/a{% endif %}</td>
+  <td>{% if scaled_notional >= 0 %}+{% endif %}{{ '{:,.2f}'.format(scaled_notional) }}</td>
+  <td>{{ '{:,.2f}'.format(scaled_cost) }}</td>
+</tr>
+{% endfor %}
+
+{% if total_pages > 1 %}
+<tr>
+  <td colspan="9" class="pagination-controls">
+    <button class="page-btn" hx-get="/partials/experiment/trades?page={{ page - 1 }}&display_capital={{ display_capital|int }}" hx-target="#tradesTable" hx-swap="innerHTML" {% if page <= 1 %}disabled{% endif %}>‹ Prev</button>
+    <span class="page-info">Page {{ page }} of {{ total_pages }} ({{ total_trades }} total)</span>
+    <button class="page-btn" hx-get="/partials/experiment/trades?page={{ page + 1 }}&display_capital={{ display_capital|int }}" hx-target="#tradesTable" hx-swap="innerHTML" {% if page >= total_pages %}disabled{% endif %}>Next ›</button>
+  </td>
+</tr>
+{% endif %}

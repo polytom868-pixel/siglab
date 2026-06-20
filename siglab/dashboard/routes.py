@@ -653,3 +653,496 @@ async def market_orderbook(
     except Exception as exc:
         logger.warning("Market orderbook error (%s): %s", symbol, exc)
         return {"bids": [], "asks": [], "symbol": symbol, "error": "Internal error"}
+
+
+# ---------------------------------------------------------------------------
+# HTMX Partial Endpoints (additive — old JSON API remains intact)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/partials/dashboard/summary")
+async def partial_dashboard_summary(request: Request) -> Any:
+    """Return dashboard summary cards as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    data = state.runs_payload()
+    return state.templates.TemplateResponse(
+        "partials/dashboard/_summary_cards.html",
+        {"request": request, **data},
+    )
+
+
+@router.get("/partials/dashboard/runs")
+async def partial_dashboard_runs(
+    request: Request,
+    track: str = "all",
+    family: str = "all",
+) -> Any:
+    """Return dashboard run cards as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    _track = track if track and track != "all" else None
+    _family = family if family and family != "all" else None
+    data = state.runs_payload(track=_track, family=_family)
+    return state.templates.TemplateResponse(
+        "partials/dashboard/_run_cards.html",
+        {"request": request, **data, "track": track, "family": family, "metric": "aggregate_score"},
+    )
+
+
+@router.get("/partials/run/summary")
+async def partial_run_summary(
+    request: Request,
+    run_id: str = "",
+    track: str = "all",
+    family: str = "all",
+) -> Any:
+    """Return run page summary cards as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    _track = track if track and track != "all" else None
+    _family = family if family and family != "all" else None
+    payload = state.experiments_payload(track=_track, family=_family)
+    runs = payload.get("runs", [])
+    experiments = payload.get("experiments", [])
+    selected_run = None
+    if run_id:
+        selected_run = next((r for r in runs if r.get("run_session_id") == run_id), None)
+    return state.templates.TemplateResponse(
+        "partials/run/_run_summary.html",
+        {
+            "request": request,
+            "runs": runs,
+            "experiments": experiments,
+            "selected_run": selected_run,
+            "metric": "aggregate_score",
+        },
+    )
+
+
+@router.get("/partials/run/family_pills")
+async def partial_run_family_pills(
+    request: Request,
+    run_id: str = "",
+    family: str = "all",
+) -> Any:
+    """Return family filter pills as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.experiments_payload()
+    families = sorted(payload.get("summary", {}).get("families", []) or [])
+    return state.templates.TemplateResponse(
+        "partials/run/_family_pills.html",
+        {"request": request, "families": families, "family": family},
+    )
+
+
+@router.get("/partials/run/improvement_chart")
+async def partial_run_improvement_chart(
+    request: Request,
+    run_id: str = "",
+    metric: str = "aggregate_score",
+    track: str = "all",
+    family: str = "all",
+) -> Any:
+    """Return improvement curve SVG as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    _track = track if track and track != "all" else None
+    _family = family if family and family != "all" else None
+    payload = state.experiments_payload(track=_track, family=_family)
+    experiments = payload.get("experiments", [])
+    if run_id:
+        experiments = [e for e in experiments if e.get("run_session_id") == run_id]
+    return state.templates.TemplateResponse(
+        "partials/run/_improvement_chart.html",
+        {"request": request, "experiments": experiments, "metric": metric},
+    )
+
+
+@router.get("/partials/run/experiment_table")
+async def partial_run_experiment_table(
+    request: Request,
+    run_id: str = "",
+    track: str = "all",
+    family: str = "all",
+) -> Any:
+    """Return experiment table rows as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    _track = track if track and track != "all" else None
+    _family = family if family and family != "all" else None
+    payload = state.experiments_payload(track=_track, family=_family)
+    experiments = payload.get("experiments", [])
+    if run_id:
+        experiments = [e for e in experiments if e.get("run_session_id") == run_id]
+    if _family:
+        experiments = [e for e in experiments if e.get("family") == _family]
+    return state.templates.TemplateResponse(
+        "partials/run/_experiment_table.html",
+        {"request": request, "experiments": experiments},
+    )
+
+
+@router.get("/partials/run/detail_panel")
+async def partial_run_detail_panel(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return experiment detail panel as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    if not spec_hash:
+        return state.templates.TemplateResponse(
+            "partials/run/_detail_panel.html",
+            {"request": request, "experiment": {}},
+        )
+    payload = state.experiment_detail_payload(spec_hash)
+    experiment = (payload or {}).get("experiment", {}) or {}
+    return state.templates.TemplateResponse(
+        "partials/run/_detail_panel.html",
+        {"request": request, "experiment": experiment},
+    )
+
+
+@router.get("/partials/experiment/summary")
+async def partial_experiment_summary(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return experiment summary cards as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    experiment = {}
+    if spec_hash:
+        payload = state.experiment_detail_payload(spec_hash)
+        experiment = (payload or {}).get("experiment", {}) or {}
+    return state.templates.TemplateResponse(
+        "partials/experiment/_experiment_summary.html",
+        {"request": request, "experiment": experiment},
+    )
+
+
+@router.get("/partials/experiment/equity_chart")
+async def partial_experiment_equity_chart(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return equity curve SVG as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    run: dict[str, Any] = {}
+    if spec_hash:
+        payload = state.experiment_series_payload(spec_hash)
+        if payload:
+            run = payload.get("canonical_run") or {}
+    return state.templates.TemplateResponse(
+        "partials/experiment/_equity_chart.html",
+        {"request": request, "run": run},
+    )
+
+
+@router.get("/partials/experiment/metrics_chart")
+async def partial_experiment_metrics_chart(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return metrics chart SVG as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    run: dict[str, Any] = {}
+    if spec_hash:
+        payload = state.experiment_series_payload(spec_hash)
+        if payload:
+            run = payload.get("canonical_run") or {}
+    return state.templates.TemplateResponse(
+        "partials/experiment/_metrics_chart.html",
+        {"request": request, "run": run},
+    )
+
+
+@router.get("/partials/experiment/snapshot")
+async def partial_experiment_snapshot(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return experiment snapshot as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    experiment: dict[str, Any] = {}
+    run: dict[str, Any] = {}
+    series_available = False
+    compiled_metadata: dict[str, Any] = {}
+    if spec_hash:
+        detail = state.experiment_detail_payload(spec_hash)
+        experiment = (detail or {}).get("experiment", {}) or {}
+        series = state.experiment_series_payload(spec_hash)
+        if series:
+            run = series.get("canonical_run") or {}
+            series_available = bool(series.get("series_available"))
+            compiled_metadata = series.get("compiled_metadata") or {}
+    return state.templates.TemplateResponse(
+        "partials/experiment/_snapshot.html",
+        {
+            "request": request,
+            "experiment": experiment,
+            "run": run,
+            "series_available": series_available,
+            "compiled_metadata": compiled_metadata,
+        },
+    )
+
+
+@router.get("/partials/experiment/deployment")
+async def partial_experiment_deployment(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return deployment form as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    experiment: dict[str, Any] = {}
+    if spec_hash:
+        payload = state.experiment_detail_payload(spec_hash)
+        experiment = (payload or {}).get("experiment", {}) or {}
+    return state.templates.TemplateResponse(
+        "partials/experiment/_deployment.html",
+        {"request": request, "experiment": experiment},
+    )
+
+
+@router.get("/partials/experiment/heatmap")
+async def partial_experiment_heatmap(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return position weight heatmap SVG as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    run: dict[str, Any] = {}
+    if spec_hash:
+        payload = state.experiment_series_payload(spec_hash)
+        if payload:
+            run = payload.get("canonical_run") or {}
+    return state.templates.TemplateResponse(
+        "partials/experiment/_heatmap.html",
+        {"request": request, "run": run},
+    )
+
+
+@router.get("/partials/experiment/trades")
+async def partial_experiment_trades(
+    request: Request,
+    spec_hash: str = "",
+    page: int = 1,
+    display_capital: int = 100000,
+) -> Any:
+    """Return trade table rows as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    trades: list[dict[str, Any]] = []
+    if spec_hash:
+        payload = state.experiment_series_payload(spec_hash)
+        if payload:
+            run = payload.get("canonical_run") or {}
+            trades = run.get("trades") or []
+    return state.templates.TemplateResponse(
+        "partials/experiment/_trades.html",
+        {
+            "request": request,
+            "trades": trades,
+            "page": page,
+            "display_capital": display_capital,
+        },
+    )
+
+
+@router.get("/partials/experiment/actions")
+async def partial_experiment_actions(
+    request: Request,
+    spec_hash: str = "",
+) -> Any:
+    """Return asset action chart cards as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    run: dict[str, Any] = {}
+    if spec_hash:
+        payload = state.experiment_series_payload(spec_hash)
+        if payload:
+            run = payload.get("canonical_run") or {}
+    return state.templates.TemplateResponse(
+        "partials/experiment/_actions.html",
+        {"request": request, "run": run},
+    )
+
+
+@router.get("/partials/ops/summary")
+async def partial_ops_summary(request: Request) -> Any:
+    """Return ops summary cards as an HTML partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_ops_summary.html",
+        {"request": request, **payload},
+    )
+
+
+@router.get("/partials/ops/artifact_health")
+async def partial_ops_artifact_health(request: Request) -> Any:
+    """Return artifact health partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_artifact_health.html",
+        {"request": request, "artifact_status": payload.get("artifact_status", {})},
+    )
+
+
+@router.get("/partials/ops/wave_state")
+async def partial_ops_wave_state(request: Request) -> Any:
+    """Return wave state partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_wave_state.html",
+        {"request": request, "summary": payload.get("summary", {})},
+    )
+
+
+@router.get("/partials/ops/buildathon_proof")
+async def partial_ops_buildathon_proof(request: Request) -> Any:
+    """Return buildathon proof partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_buildathon_proof.html",
+        {"request": request, "summary": payload.get("summary", {})},
+    )
+
+
+@router.get("/partials/ops/market_state")
+async def partial_ops_market_state(request: Request) -> Any:
+    """Return market state partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_market_state.html",
+        {"request": request, "summary": payload.get("summary", {})},
+    )
+
+
+@router.get("/partials/ops/sodex_boundary")
+async def partial_ops_sodex_boundary(request: Request) -> Any:
+    """Return SoDEX boundary partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_sodex_boundary.html",
+        {"request": request, "summary": payload.get("summary", {})},
+    )
+
+
+@router.get("/partials/ops/telemetry_state")
+async def partial_ops_telemetry_state(request: Request) -> Any:
+    """Return telemetry state partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_telemetry_state.html",
+        {"request": request, "summary": payload.get("summary", {})},
+    )
+
+
+@router.get("/partials/ops/blockers")
+async def partial_ops_blockers(request: Request) -> Any:
+    """Return blockers partial."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    payload = state.ops_payload()
+    return state.templates.TemplateResponse(
+        "partials/ops/_blockers.html",
+        {"request": request, "summary": payload.get("summary", {})},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Jinja2 / HTMX page routes (template-served pages alongside static fallback)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/templates/dashboard")
+async def template_dashboard(request: Request) -> Any:
+    """Return the Jinja2 dashboard shell."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    return state.templates.TemplateResponse(
+        "dashboard.html",
+        {"request": request, "track": "all", "family": "all"},
+    )
+
+
+@router.get("/templates/runs/{run_id:path}")
+async def template_run(request: Request, run_id: str = "") -> Any:
+    """Return the Jinja2 run detail shell."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    return state.templates.TemplateResponse(
+        "run.html",
+        {"request": request, "run_id": run_id, "track": "all", "family": "all"},
+    )
+
+
+@router.get("/templates/experiments/{spec_hash:path}")
+async def template_experiment(request: Request, spec_hash: str = "") -> Any:
+    """Return the Jinja2 experiment detail shell."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    return state.templates.TemplateResponse(
+        "experiment.html",
+        {"request": request, "spec_hash": spec_hash},
+    )
+
+
+@router.get("/templates/ops")
+async def template_ops(request: Request) -> Any:
+    """Return the Jinja2 ops board shell."""
+    state = request.app.state.dashboard
+    if state.templates is None:
+        return {"error": "templates not configured"}
+    return state.templates.TemplateResponse(
+        "ops.html",
+        {"request": request},
+    )

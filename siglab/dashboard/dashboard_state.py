@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from fastapi.templating import Jinja2Templates
+
 from siglab.config import SiglabConfig
 from siglab.data.deployment_store import DeploymentStore
 from siglab.io_utils import json_safe, load_json_path
@@ -172,6 +174,7 @@ class DashboardState:
     config: SiglabConfig | None = None
     deployment_store: DeploymentStore | None = None
     static_dir: Path | None = None
+    templates: Jinja2Templates | None = None
     _json_cache: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------

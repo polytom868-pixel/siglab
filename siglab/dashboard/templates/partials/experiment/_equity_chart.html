@@ -1,0 +1,110 @@
+{# Equity curve SVG partial #}
+{% set run = run or {} %}
+{% set equity = run.get('equity_curve') or {} %}
+{% set index = equity.get('index') or [] %}
+{% set values = equity.get('values') or [] %}
+{% set visual_split = run.get('visual_split') or {} %}
+{% set ranges = visual_split.get('ranges') or [] %}
+
+{% set has_finite = false %}
+{% for v in values %}
+{% if v is not none and v is number %}
+{% set has_finite = true %}
+{% endif %}
+{% endfor %}
+
+{% if not has_finite %}
+<svg id="equityChart" role="img" aria-label="Portfolio equity chart" viewBox="0 0 1200 420">
+  <text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">No finite equity values were retained for this run.</text>
+</svg>
+{% else %}
+{% set width = 1200 %}
+{% set height = 420 %}
+{% set margin_top = 28 %}
+{% set margin_right = 24 %}
+{% set margin_bottom = 72 %}
+{% set margin_left = 58 %}
+{% set plot_width = width - margin_left - margin_right %}
+{% set plot_height = height - margin_top - margin_bottom %}
+
+{% set finite_values = [] %}
+{% for v in values %}
+{% if v is not none and v is number %}
+{% set _ = finite_values.append(v|float) %}
+{% endif %}
+{% endfor %}
+{% set y_min = finite_values|min %}
+{% set y_max = finite_values|max %}
+{% if y_min == y_max %}
+{% set y_min = y_min - 1 %}
+{% set y_max = y_max + 1 %}
+{% endif %}
+{% set y_padding = (y_max - y_min) * 0.12 %}
+{% set y_lo = y_min - y_padding %}
+{% set y_hi = y_max + y_padding %}
+{% set max_idx = (values|length - 1)|max(1) %}
+
+<svg id="equityChart" role="img" aria-label="Portfolio equity chart" viewBox="0 0 1200 420" style="width:100%;height:auto;">
+  <rect x="0" y="0" width="1200" height="420" fill="transparent"></rect>
+
+  {# Y-axis grid #}
+  {% for i in range(6) %}
+  {% set val = y_lo + ((y_hi - y_lo) * i / 5) %}
+  {% set y_pt = margin_top + plot_height - ((val - y_lo) / (y_hi - y_lo)) * plot_height %}
+  <line x1="{{ margin_left }}" y1="{{ y_pt|round(1) }}" x2="{{ width - margin_right }}" y2="{{ y_pt|round(1) }}" stroke="rgba(255,255,255,0.04)" stroke-width="1"></line>
+  <text x="12" y="{{ (y_pt + 4)|round(1) }}" fill="#6b7f70" font-family="Inter, sans-serif" font-size="12">{{ '{:.3f}'.format(val|float) }}</text>
+  {% endfor %}
+
+  {# Axes #}
+  <line x1="{{ margin_left }}" y1="{{ height - margin_bottom }}" x2="{{ width - margin_right }}" y2="{{ height - margin_bottom }}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+  <line x1="{{ margin_left }}" y1="{{ margin_top }}" x2="{{ margin_left }}" y2="{{ height - margin_bottom }}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+
+  {# Visual split bands #}
+  {% for range in ranges %}
+  {% set start_idx = range.get('start_idx', 0) %}
+  {% set end_idx = range.get('end_idx', max_idx) %}
+  {% set x1 = margin_left + (start_idx / max_idx) * plot_width %}
+  {% set x2 = margin_left + (end_idx / max_idx) * plot_width %}
+  {% set kind = range.get('kind', 'in_sample') %}
+  {% if kind == 'audit_holdout' %}
+    {% set band_color = 'rgba(251, 113, 133, 0.07)' %}
+    {% set text_color = '#fb7185' %}
+  {% elif kind in ('validation_holdout', 'holdout_view') %}
+    {% set band_color = 'rgba(240, 180, 86, 0.06)' %}
+    {% set text_color = '#f0b456' %}
+  {% else %}
+    {% set band_color = 'rgba(74, 222, 128, 0.06)' %}
+    {% set text_color = '#4ade80' %}
+  {% endif %}
+  <rect x="{{ x1|round(1) }}" y="{{ margin_top }}" width="{{ (x2 - x1)|max(1)|round(1) }}" height="{{ plot_height }}" fill="{{ band_color }}" stroke="none"></rect>
+  <text x="{{ (x1 + 8)|round(1) }}" y="{{ margin_top + 18 }}" fill="{{ text_color }}" font-family="Inter, sans-serif" font-size="11" font-weight="600">{{ range.get('label', '') }}</text>
+  {% endfor %}
+
+  {# Equity line #}
+  {% set points = [] %}
+  {% for i in range(values|length) %}
+  {% if values[i] is not none and values[i] is number %}
+  {% set x = margin_left + (i / max_idx) * plot_width %}
+  {% set y = margin_top + plot_height - ((values[i]|float - y_lo) / (y_hi - y_lo)) * plot_height %}
+  {% set _ = points.append('{:.1f},{:.1f}'.format(x, y)) %}
+  {% endif %}
+  {% endfor %}
+  {% if points|length > 0 %}
+  <polyline fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="{{ points|join(' ') }}"></polyline>
+  {% endif %}
+
+  {# X-axis labels #}
+  {% if index|length > 0 %}
+  {% set tick_count = [6, index|length]|min %}
+  {% for ti in range(tick_count) %}
+  {% set pos = (ti * (index|length - 1) // (tick_count - 1))|max(0) %}
+  {% set x = margin_left + (pos / max_idx) * plot_width %}
+  <line x1="{{ x|round(1) }}" y1="{{ height - margin_bottom }}" x2="{{ x|round(1) }}" y2="{{ height - margin_bottom + 6 }}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+  <text x="{{ x|round(1) }}" y="{{ height - 28 }}" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11" text-anchor="{% if ti == 0 %}start{% elif ti == tick_count - 1 %}end{% else %}middle{% endif %}">{{ index[pos]|string|truncate(16, True) }}</text>
+  {% endfor %}
+  {% endif %}
+
+  <text x="{{ (width / 2)|round(1) }}" y="{{ height - 10 }}" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11" text-anchor="middle">Time</text>
+  <text x="{{ margin_left }}" y="18" fill="#e2ebe5" font-family="Inter, sans-serif" font-size="14" font-weight="600">Portfolio Equity</text>
+</svg>
+{% endif %}

@@ -1,0 +1,170 @@
+{# templates/partials/dashboard/_run_cards.html #}
+{% set runs = runs or [] %}
+{% set metric_key = metric_key or 'aggregate_score' %}
+{% set metric_meta = metric_meta or {} %}
+{% set TRACK_LABELS = TRACK_LABELS or {} %}
+
+{%- comment -%}
+  Sparkline constants (mirrors chart-engine.js sparklineSvg):
+    viewBox width=360, height=110
+    margin: top=10, right=10, bottom=18, left=10
+{%- endcomment -%}
+{% set SP_WIDTH = 360 %}
+{% set SP_HEIGHT = 110 %}
+{% set SP_MARGIN_TOP = 10 %}
+{% set SP_MARGIN_RIGHT = 10 %}
+{% set SP_MARGIN_BOTTOM = 18 %}
+{% set SP_MARGIN_LEFT = 10 %}
+{% set SP_PLOT_W = SP_WIDTH - SP_MARGIN_LEFT - SP_MARGIN_RIGHT %}
+{% set SP_PLOT_H = SP_HEIGHT - SP_MARGIN_TOP - SP_MARGIN_BOTTOM %}
+
+{% if runs | length == 0 %}
+<article class="waiting-card">
+  <div class="waiting-card-title">No runs recorded yet</div>
+  <p class="waiting-card-copy">No runs recorded yet.</p>
+  <p class="waiting-card-copy">Runs will appear once an experiment evaluation finishes.</p>
+</article>
+{% else %}
+  {% for run in runs %}
+    {% set series_points = run.get('series_points') or [] %}
+    {% set status = run.get('status') or 'unknown' %}
+    {% set status_class = 'status-pass' if status in ('deployd', 'pass') else 'status-fail' %}
+
+    {%- comment -%}
+      Build sparkline data: filter series_points with finite metric values.
+    {%- endcomment -%}
+    {% set sp = namespace(values=[], y_min=none, y_max=none) %}
+    {% for point in series_points %}
+      {% set raw = point.get(metric_key) %}
+      {% if raw is not none and raw == raw %}
+        {% set numeric = raw | float %}
+        {% set _ = sp.values.append({
+          'metric': numeric,
+          'passed': point.get('passed', false),
+          'deployd': point.get('deployd', false),
+        }) %}
+      {% endif %}
+    {% endfor %}
+    {% set sp_values = sp.values %}
+
+    <article class="panel run-card">
+      <div class="run-card-header">
+        <div>
+          <div class="run-card-track">{{ TRACK_LABELS.get(run.get('track'), run.get('track') or 'Unknown Track') }}</div>
+          <h3>{{ run.get('run_label') or run.get('run_session_id') }}</h3>
+          <p class="run-card-meta">
+            {{ run.get('runner_label') or 'unknown' }} &bull; {{ run.get('run_kind') or 'harness' }}
+            {% if run.get('benchmark_deck') %} &bull; {{ run.get('benchmark_deck') }}{% endif %}
+          </p>
+        </div>
+        <div class="run-card-badges">
+          <span class="pill{% if status_class != 'status-pass' %} amber{% endif %}">{{ status }}</span>
+          <span class="pill slate">{{ run.get('experiment_count', 0) }} exp</span>
+        </div>
+      </div>
+      <div class="run-card-chart">
+        <div class="run-card-chart-header">
+          <span>{{ metric_meta.get('label') or 'Score' }} in run order</span>
+          <span class="mono">{{ run.get('best_spec_hash') or 'n/a' }}</span>
+        </div>
+        {% if series_points | length == 0 %}
+        <div class="waiting-card waiting-card-compact">
+          <div class="waiting-card-title">No experiments recorded yet</div>
+          <p class="waiting-card-copy">Experiments will appear once the first evaluation finishes.</p>
+        </div>
+        {% elif sp_values | length == 0 %}
+        <svg viewBox="0 0 {{ SP_WIDTH }} {{ SP_HEIGHT }}" role="img" aria-label="Sparkline chart" class="run-sparkline">
+          <text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No finite values retained</text>
+        </svg>
+        {% else %}
+          {%- comment -%}
+            Compute yMin, yMax with padding (mirrors sparklineSvg JS logic).
+          {%- endcomment -%}
+          {% set sp_mins = sp_values | map(attribute='metric') | list %}
+          {% set raw_min = (sp_mins | min) %}
+          {% set raw_max = (sp_mins | max) %}
+          {% if raw_min == raw_max %}
+            {% set y0 = raw_min - 1 %}
+            {% set y1 = raw_max + 1 %}
+          {% else %}
+            {% set y0 = raw_min %}
+            {% set y1 = raw_max %}
+          {% endif %}
+          {% set padding = (y1 - y0) * 0.16 %}
+          {% set y_min = y0 - padding %}
+          {% set y_max = y1 + padding %}
+          {% set y_range = y_max - y_min %}
+
+          {%- comment -%}
+            xScale(index) = SP_MARGIN_LEFT + (index / max(values.length-1, 1)) * SP_PLOT_W
+            yScale(value) = SP_MARGIN_TOP + SP_PLOT_H - ((value - y_min) / y_range) * SP_PLOT_H
+          {%- endcomment -%}
+          {% set denom = [sp_values | length - 1, 1] | max %}
+          {% set last_idx = sp_values | length - 1 %}
+
+          {%- comment -%}
+            Build polyline points string and circle markers.
+          {%- endcomment -%}
+          {% set chart = namespace(polyline=[], markers='') %}
+          {% set best_val = namespace(value=-1e308) %}
+          {% for point in sp_values %}
+            {% set idx = loop.index0 %}
+            {% set px = SP_MARGIN_LEFT + (idx / denom) * SP_PLOT_W %}
+            {% set py = SP_MARGIN_TOP + SP_PLOT_H - ((point.metric - y_min) / y_range) * SP_PLOT_H %}
+            {% set _ = chart.polyline.append('%.2f,%.2f' | format(px, py)) %}
+            {% if point.metric > best_val.value %}
+              {% set best_val.value = point.metric %}
+              {% set best_val.cx = px %}
+              {% set best_val.cy = py %}
+            {% endif %}
+            {% if point.deployd %}
+              {% set fill = '#ffffff' %}
+              {% set stroke = '#4ade80' %}
+              {% set r = 4.2 %}
+            {% elif point.passed %}
+              {% set fill = '#4ade80' %}
+              {% set stroke = 'rgba(255,255,255,0.18)' %}
+              {% set r = 3.2 %}
+            {% else %}
+              {% set fill = 'rgba(255,255,255,0.22)' %}
+              {% set stroke = 'rgba(255,255,255,0.18)' %}
+              {% set r = 3.2 %}
+            {% endif %}
+            {% set chart.markers = chart.markers ~ ('<circle cx="%.2f" cy="%.2f" r="%.1f" fill="%s" stroke="%s" stroke-width="1.4"></circle>' | format(px, py, r, fill, stroke)) %}
+          {% endfor %}
+
+          {%- comment -%}
+            Compute best-point x,y for the gold ring.
+            The JS uses values.indexOf(best) to get the index.
+            We already tracked it during iteration.
+          {%- endcomment -%}
+          {% set bx = best_val.cx or (SP_MARGIN_LEFT + (last_idx / denom) * SP_PLOT_W) %}
+          {% set by = best_val.cy or (SP_MARGIN_TOP + SP_PLOT_H / 2) %}
+
+          <svg viewBox="0 0 {{ SP_WIDTH }} {{ SP_HEIGHT }}" role="img" aria-label="Sparkline chart" class="run-sparkline">
+            <rect x="0" y="0" width="{{ SP_WIDTH }}" height="{{ SP_HEIGHT }}" fill="transparent"></rect>
+            <line x1="{{ SP_MARGIN_LEFT }}" y1="{{ SP_HEIGHT - SP_MARGIN_BOTTOM }}" x2="{{ SP_WIDTH - SP_MARGIN_RIGHT }}" y2="{{ SP_HEIGHT - SP_MARGIN_BOTTOM }}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+            <polyline fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="{{ chart.polyline | join(' ') }}"></polyline>
+            {{ chart.markers }}
+            <circle cx="{{ bx }}" cy="{{ by }}" r="5.4" fill="none" stroke="#f0b456" stroke-width="1.6"></circle>
+          </svg>
+        {% endif %}
+      </div>
+      <div class="run-card-stats">
+        <div><span class="key">Pass / Deployed</span><span>{{ run.get('passed_count', 0) }} / {{ run.get('deployd_count', 0) }}</span></div>
+        <div><span class="key">LLM / Burn-In</span><span>{{ run.get('llm_experiment_count', 0) }} / {{ run.get('deterministic_experiment_count', 0) }}</span></div>
+        <div><span class="key">LLM</span><span>{% if run.get('llm_provider') or run.get('llm_model') %}{{ [run.get('llm_provider'), run.get('llm_model')] | select('string') | join(' / ') }}{% else %}n/a{% endif %}</span></div>
+        <div><span class="key">Best Score</span><span>{% if run.get('best_aggregate_score') is not none %}{{ "%.3f" % run.get('best_aggregate_score') }}{% else %}n/a{% endif %}</span></div>
+        <div><span class="key">Best Validation</span><span>{% if run.get('best_validation_total_return') is not none %}{{ "%.2f%%" % (run.get('best_validation_total_return') * 100) }}{% else %}n/a{% endif %}</span></div>
+        <div><span class="key">Best Pre-Audit</span><span>{% if run.get('best_pre_audit_canonical_total_return') is not none %}{{ "%.2f%%" % (run.get('best_pre_audit_canonical_total_return') * 100) }}{% else %}n/a{% endif %}</span></div>
+        <div><span class="key">Updated</span><span>{{ run.get('last_created_at') or '' }}</span></div>
+      </div>
+      <div class="run-card-links">
+        <a class="button-link" aria-label="Open run page for {{ run.get('run_label') or run.get('run_session_id') }}" href="/runs/{{ run.get('run_session_id') | urlencode }}">Open Run</a>
+        {% if run.get('best_spec_hash') %}
+        <a class="table-link" aria-label="View best experiment for {{ run.get('run_label') or run.get('run_session_id') }}" href="/experiments/{{ run.get('best_spec_hash') | urlencode }}">Best Experiment</a>
+        {% endif %}
+      </div>
+    </article>
+  {% endfor %}
+{% endif %}

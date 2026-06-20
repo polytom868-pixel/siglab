@@ -1,0 +1,18 @@
+{# Market state partial #}
+{% set summary = summary or {} %}
+{% set market = summary.get('market') or {} %}
+{% set warnings = market.get('warnings') or [] %}
+
+<div class="ops-line"><span class="key">Status</span><span class="{% if market.get('status') == 'ready' %}status-pass{% else %}status-pending{% endif %}">{{ market.get('status') or 'unknown' }}</span></div>
+<div class="ops-line"><span class="key">Entity</span><span>{{ market.get('entity') or 'n/a' }}</span></div>
+<div class="ops-line"><span class="key">Headline</span><span>{{ market.get('headline') or 'No signal data' }}</span></div>
+<div class="ops-line"><span class="key">Flow Direction</span><span>{{ market.get('flow_direction') or 'unknown' }}</span></div>
+<div class="ops-line"><span class="key">Quote</span><span>bid: {{ market.get('quote_bid') or 'n/a' }} / ask: {{ market.get('quote_ask') or 'n/a' }}</span></div>
+<div class="ops-line"><span class="key">Stance</span><span>{{ market.get('stance') or 'unknown' }}</span></div>
+
+{% if warnings|length > 0 %}
+<div class="ops-line"><span class="key">Warnings</span></div>
+{% for warning in warnings %}
+<div class="ops-line ops-indent"><span class="status-fail">{{ warning }}</span></div>
+{% endfor %}
+{% endif %}

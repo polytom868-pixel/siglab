@@ -1,0 +1,46 @@
+{# Experiment summary cards partial — reduced to 6 cards #}
+{% set experiment = experiment or {} %}
+{% set summary = experiment.get('summary') or {} %}
+{% set tool_trace = experiment.get('tool_trace') or {} %}
+{% set roll_lifecycle = experiment.get('roll_lifecycle') or {} %}
+{% set timing = experiment.get('timing') or {} %}
+{% set track_labels = {'trend_signals': 'Directional Perps', 'yield_flows': 'Systematic Carry'} %}
+
+<article class="panel summary-card">
+  <div class="label">Aggregate Score</div>
+  <div class="value">{% if summary.get('aggregate_score') is not none %}{{ '{:.4f}'.format(summary['aggregate_score']|float) }}{% else %}n/a{% endif %}</div>
+  <div class="detail">Primary selection metric across selector windows.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Sharpe / CAGR</div>
+  <div class="value">
+    {% if summary.get('median_sharpe') is not none %}{{ '{:.2f}'.format(summary['median_sharpe']|float) }}{% else %}n/a{% endif %}
+    /
+    {% if summary.get('median_cagr') is not none %}{{ '{:.2%}'.format(summary['median_cagr']|float) }}{% else %}n/a{% endif %}
+  </div>
+  <div class="detail">Risk-adjusted return and compound annual growth rate.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Total Return / Calmar</div>
+  <div class="value">
+    {% if summary.get('median_total_return') is not none %}{{ '{:.2%}'.format(summary['median_total_return']|float) }}{% else %}n/a{% endif %}
+    /
+    {% if summary.get('median_calmar') is not none %}{{ '{:.2f}'.format(summary['median_calmar']|float) }}{% else %}n/a{% endif %}
+  </div>
+  <div class="detail">Selector total return and Calmar ratio.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Track / Family</div>
+  <div class="value">{{ track_labels.get(experiment.get('track') or '', experiment.get('track') or '') }} / {{ experiment.get('family') or 'n/a' }}</div>
+  <div class="detail">{{ experiment.get('track') or '' }} track with {{ experiment.get('family') or '' }} strategy family.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">LLM Model / Tool Calls</div>
+  <div class="value">{{ tool_trace.get('model') or 'n/a' }} / {{ (tool_trace.get('tool_calls') or [])|length }}</div>
+  <div class="detail">Research model and total tool invocations across all stages.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Run / Iteration</div>
+  <div class="value">{{ experiment.get('run_label') or experiment.get('run_session_id') or 'n/a' }} / {{ experiment.get('run_iteration_label') or experiment.get('run_position') or 'n/a' }}</div>
+  <div class="detail">Run session and experiment position within the run.</div>
+</article>

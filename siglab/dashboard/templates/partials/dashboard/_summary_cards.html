@@ -1,0 +1,37 @@
+{# Dashboard summary cards partial #}
+{% set summary = summary or {} %}
+{% set runs = runs or [] %}
+<article class="panel summary-card">
+  <div class="label">Visible Runs</div>
+  <div class="value">{{ summary.get('run_count', runs|length) }}</div>
+  <div class="detail">Visible run sessions in the current scope.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Total Experiments</div>
+  <div class="value">{{ summary.get('experiment_count', 0) }}</div>
+  <div class="detail">Total recorded experiments across the visible runs.</div>
+</article>
+<article class="panel summary-card">
+  <div class="label">Deployed</div>
+  <div class="value">{{ summary.get('deployd_count', 0) }}</div>
+  <div class="detail">Deployments recorded inside the visible run set — shows adoption.</div>
+</article>
+{% set best_label = summary.get('best_run_label') %}
+{% set best_score = summary.get('best_aggregate_score') %}
+<article class="panel summary-card">
+  <div class="label">Best Run + Score</div>
+  <div class="value">
+    {%- if best_label -%}
+      {{ best_label }}{% if best_score is not none %} ({{ '{:.3f}'.format(best_score|float) }}){% endif %}
+    {%- else -%}
+      n/a
+    {%- endif -%}
+  </div>
+  <div class="detail">
+    {%- if best_label -%}
+      {{ best_label }} is the current strongest run by aggregate score.
+    {%- else -%}
+      No scored runs are visible.
+    {%- endif -%}
+  </div>
+</article>

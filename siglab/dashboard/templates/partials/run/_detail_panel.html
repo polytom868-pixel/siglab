@@ -1,0 +1,134 @@
+{# Experiment detail panel partial #}
+{% set experiment = experiment or {} %}
+{% set summary = experiment.get('summary') or {} %}
+{% set spec = experiment.get('spec') or {} %}
+{% set tool_trace = experiment.get('tool_trace') or {} %}
+{% set tool_trace_stages = experiment.get('tool_trace_stages') or [] %}
+{% set roll_lifecycle = experiment.get('roll_lifecycle') or {} %}
+{% set roll_events = roll_lifecycle.get('roll_events') or [] %}
+{% set timing = experiment.get('timing') or {} %}
+{% set bias_controls = timing.get('bias_controls') or {} %}
+{% set mode_flags = experiment.get('mode_flags') or {} %}
+{% set compiled_metadata = experiment.get('compiled_metadata') or {} %}
+{% set track_labels = {'trend_signals': 'Directional Perps', 'yield_flows': 'Systematic Carry'} %}
+
+<div class="detail-grid">
+  <div class="detail-block full-width detail-hero-block">
+    <div class="detail-hero-top">
+      <div>
+        <h3>{{ spec.get('family') or experiment.get('family') or '' }} <span class="mono">{{ experiment.get('spec_hash') or '' }}</span></h3>
+        <div class="detail-actions">
+          <a class="table-link" href="/experiments/{{ experiment.get('spec_hash') | urlencode }}">Open Full Experiment Page &rarr;</a>
+        </div>
+      </div>
+      <div class="detail-status-badge {% if experiment.get('passed') %}status-pass{% else %}status-fail{% endif %}">{% if experiment.get('passed') %}Passed{% else %}Failed{% endif %}{% if experiment.get('deployd') %} / Deployed{% endif %}</div>
+    </div>
+    <div class="detail-hero-stats">
+      <div class="detail-stat"><span class="detail-stat-label">Score</span><span class="detail-stat-value">{% if summary.get('aggregate_score') is not none %}{{ '{:.3f}'.format(summary['aggregate_score']|float) }}{% else %}n/a{% endif %}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Sharpe</span><span class="detail-stat-value">{% if summary.get('median_sharpe') is not none %}{{ '{:.3f}'.format(summary['median_sharpe']|float) }}{% else %}n/a{% endif %}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">CAGR</span><span class="detail-stat-value">{% if summary.get('median_cagr') is not none %}{{ '{:.2%}'.format(summary['median_cagr']|float) }}{% else %}n/a{% endif %}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Selector Return</span><span class="detail-stat-value">{% if summary.get('median_total_return') is not none %}{{ '{:.2%}'.format(summary['median_total_return']|float) }}{% else %}n/a{% endif %}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Pre-Audit Return</span><span class="detail-stat-value">{% if summary.get('pre_audit_canonical_total_return') is not none %}{{ '{:.2%}'.format(summary['pre_audit_canonical_total_return']|float) }}{% else %}n/a{% endif %}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Calmar</span><span class="detail-stat-value">{% if summary.get('median_calmar') is not none %}{{ '{:.3f}'.format(summary['median_calmar']|float) }}{% else %}n/a{% endif %}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Worst DD</span><span class="detail-stat-value">{% if summary.get('worst_max_drawdown') is not none %}{{ '{:.2%}'.format(summary['worst_max_drawdown']|float) }}{% else %}n/a{% endif %}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Track</span><span class="detail-stat-value">{{ track_labels.get(experiment.get('track') or '', experiment.get('track') or '') }}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Agent</span><span class="detail-stat-value">{{ experiment.get('runner_label') or 'unknown' }}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Run</span><span class="detail-stat-value">{{ experiment.get('run_label') or experiment.get('run_session_id') or 'n/a' }}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Run Iter</span><span class="detail-stat-value">{{ experiment.get('run_iteration_label') or 'n/a' }}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Lineage Row</span><span class="detail-stat-value">{{ experiment.get('global_index') or experiment.get('generation') or 'n/a' }}</span></div>
+      <div class="detail-stat"><span class="detail-stat-label">Created</span><span class="detail-stat-value">{{ experiment.get('created_at') or '' }}</span></div>
+    </div>
+  </div>
+
+  <div class="detail-block full-width">
+    <h3>Research Surface</h3>
+    <p class="detail-copy">{{ spec.get('hypothesis') or 'No hypothesis recorded.' }}</p>
+    <div class="pill-row">
+      {% for feature in (spec.get('features') or []) %}
+      <span class="pill">{{ feature }}</span>
+      {% endfor %}
+    </div>
+    <div class="pill-row meta-row">
+      <span class="pill amber">feature hash {{ experiment.get('feature_hash') or compiled_metadata.get('feature_hash') or 'n/a' }}</span>
+      <span class="pill amber">{{ mode_flags.get('hedge_mode') or 'unhedged' }}</span>
+      <span class="pill amber">{{ compiled_metadata.get('source') or experiment.get('source') or 'unknown source' }}</span>
+      <span class="pill amber">tool calls {{ (tool_trace.get('tool_calls') or [])|length }}</span>
+      {% for badge in (roll_lifecycle.get('badges') or []) %}
+      <span class="pill slate">{{ badge }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="detail-block">
+    <h3>LLM Research Trace</h3>
+    <div class="kv">
+      <div class="key">Primary Model</div><div>{{ tool_trace.get('model') or 'n/a' }}</div>
+      <div class="key">Thinking</div><div>{{ tool_trace.get('thinking_mode') or 'default' }}</div>
+      <div class="key">Stages</div><div>{{ tool_trace_stages|length }}</div>
+      <div class="key">Tool Rounds</div><div>{{ tool_trace.get('tool_rounds_used') or 0 }}</div>
+      <div class="key">Tool Calls</div><div>{{ (tool_trace.get('tool_calls') or [])|length }}</div>
+      <div class="key">Parent</div><div>{{ tool_trace.get('parent_family') or 'n/a' }}{% if tool_trace.get('parent_hash') %} <span class="mono">{{ tool_trace['parent_hash'] }}</span>{% endif %}</div>
+      <div class="key">Response</div><div>{{ tool_trace.get('response_finish_reason') or 'n/a' }}</div>
+    </div>
+    {% if tool_trace.get('error') %}
+    <p class="detail-copy">Trace error: {{ tool_trace['error'] }}</p>
+    {% endif %}
+    {% if tool_trace_stages|length > 0 %}
+    <div class="trace-list">
+      {% for stage in tool_trace_stages %}
+      <article class="trace-call">
+        <div class="trace-call-head">
+          <strong>{{ loop.index }}. {{ stage.get('stage') or 'stage' }}</strong>
+          <span class="mono">{{ stage.get('trace_path') or stage.get('model') or '' }}</span>
+        </div>
+        <div class="kv">
+          <div class="key">Model</div><div>{{ stage.get('model') or 'n/a' }}</div>
+          <div class="key">Thinking</div><div>{{ stage.get('thinking_mode') or 'default' }}</div>
+          <div class="key">Tool Rounds</div><div>{{ stage.get('tool_rounds_used') or 0 }}</div>
+          <div class="key">Tool Calls</div><div>{{ (stage.get('tool_calls') or [])|length }}</div>
+          <div class="key">Response</div><div>{{ stage.get('response_finish_reason') or 'n/a' }}</div>
+        </div>
+        {% if stage.get('error') %}
+        <p class="detail-copy">Trace error: {{ stage['error'] }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No trace metadata was recorded for this experiment.</p>
+    {% endif %}
+  </div>
+
+  <div class="detail-block">
+    <h3>Bias Audit</h3>
+    <div class="kv">
+      <div class="key">Timing</div><div>{{ timing.get('signal_timing') or 'unknown' }}</div>
+      <div class="key">Bundle As Of</div><div>{{ timing.get('bundle_as_of') or 'n/a' }}</div>
+      <div class="key">Shift Bars</div><div>{{ bias_controls.get('position_shift_bars') or 'n/a' }}</div>
+      <div class="key">Dropped Last Bar</div><div>{{ 'true' if bias_controls.get('dropped_last_bar') else 'false' }}</div>
+      <div class="key">Leak Checks</div><div class="{% if bias_controls.get('leak_checks_passed') %}status-pass{% else %}status-fail{% endif %}">{% if bias_controls.get('leak_checks_passed') %}passed{% else %}review{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="detail-block">
+    <h3>PT Roll Forward</h3>
+    <div class="kv">
+      <div class="key">Open End</div><div>{{ roll_lifecycle.get('policy', {}).get('open_ended_policy') or 'n/a' }}</div>
+      <div class="key">Universe</div><div>{{ roll_lifecycle.get('policy', {}).get('pt_universe_policy') or 'n/a' }}</div>
+      <div class="key">Roll Target</div><div>{{ roll_lifecycle.get('policy', {}).get('roll_target_policy') or 'n/a' }}</div>
+      <div class="key">Roll Cost</div><div>{{ roll_lifecycle.get('policy', {}).get('roll_cost_model') or 'n/a' }}</div>
+      <div class="key">Roll Window</div><div>{{ roll_lifecycle.get('policy', {}).get('roll_days_before_expiry') or 'n/a' }}</div>
+      <div class="key">Roll Events</div><div>{{ roll_lifecycle.get('roll_event_count') or 0 }}</div>
+    </div>
+  </div>
+
+  <div class="detail-block">
+    <h3>Spec Config</h3>
+    <pre>{{ {'neutrality_basis': spec.get('neutrality_basis'), 'universe': spec.get('universe'), 'risk': spec.get('risk'), 'params': spec.get('params')} | tojson(indent=2) }}</pre>
+  </div>
+
+  <div class="detail-block full-width">
+    <h3>Artifact</h3>
+    <div class="mono" style="font-size: 12px; color: var(--muted);">{{ experiment.get('artifact_path') or 'No artifact path' }}</div>
+  </div>
+</div>
