@@ -11,6 +11,9 @@ const {
   formatPercent,
   escapeHtml,
   llmIdentity,
+  selectedMetricKey,
+  toggleAutoRefresh,
+  populateFamilyFilter,
 } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -18,9 +21,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("trackFilter")?.addEventListener("change", () => refresh());
   document.getElementById("familyFilter")?.addEventListener("change", () => refresh());
   document.getElementById("metricFilter")?.addEventListener("change", () => render());
-  document.getElementById("autoRefresh")?.addEventListener("change", toggleAutoRefresh);
+  document.getElementById("autoRefresh")?.addEventListener("change", () => toggleAutoRefresh(HOME_STATE, refresh));
   await refresh();
-  toggleAutoRefresh();
+  toggleAutoRefresh(HOME_STATE, refresh);
 });
 
 async function refresh() {
@@ -32,18 +35,8 @@ async function refresh() {
   const url = query.toString() ? `/api/runs?${query}` : "/api/runs";
   const response = await fetch(url, { cache: "no-store" });
   HOME_STATE.payload = await response.json();
-  populateFamilyFilter(HOME_STATE.payload?.summary?.families || [], family);
+  populateFamilyFilter(HOME_STATE.payload?.summary?.families || [], family, escapeHtml);
   render();
-}
-
-function toggleAutoRefresh() {
-  if (HOME_STATE.autoRefreshTimer) {
-    clearInterval(HOME_STATE.autoRefreshTimer);
-    HOME_STATE.autoRefreshTimer = null;
-  }
-  if (document.getElementById("autoRefresh")?.checked) {
-    HOME_STATE.autoRefreshTimer = setInterval(refresh, 10000);
-  }
 }
 
 function render() {
@@ -52,20 +45,6 @@ function render() {
   renderScope(runs);
   renderSummary(runs);
   renderRunCards(runs);
-}
-
-function populateFamilyFilter(families, selectedValue) {
-  const select = document.getElementById("familyFilter");
-  if (!select) return;
-  const current = selectedValue && families.includes(selectedValue) ? selectedValue : "all";
-  select.innerHTML = [
-    "<option value=\"all\">All Families</option>",
-    ...families.map(
-      (family) =>
-        `<option value="${escapeHtml(family)}"${family === current ? " selected" : ""}>${escapeHtml(family)}</option>`
-    ),
-  ].join("");
-  select.value = current;
 }
 
 function renderScope(runs) {
@@ -265,14 +244,7 @@ function sparklineSvg(points, metricKey) {
   `;
 }
 
-function selectedMetricKey() {
-  return document.getElementById("metricFilter")?.value || "aggregate_score";
-}
-
 function metricValue(point, metricKey) {
   const numeric = Number(point?.[metricKey]);
   return Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY;
 }
-
-
-

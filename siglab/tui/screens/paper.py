@@ -588,33 +588,19 @@ class PaperScreen(BaseScreen):
             except Exception as exc:
                 logger.debug("Session reuse check failed, creating new: %s", exc)
 
-            result = await run_cli(
-                "paper-start", "--session", "tui-session"
-            )
-            if result.returncode == 0:
-                try:
-                    data = json.loads(result.stdout)
-                except json.JSONDecodeError as exc:
-                    self.status_text = f"Bad session response: {exc}"
-                    self.is_loading = False
-                    logger.warning("paper-start JSON decode error: %s", exc)
-                    return
-                self.session_id = data.get("session_id", "")
-                self.session_name = data.get("name", "tui-session")
-                self.status_text = f"Session {self.session_id[:8]}… ready"
-                self.is_loading = False
-                # Update form widget with default symbol
-                try:
-                    form = self.query_one("#order-form", OrderFormWidget)
-                    form.set_symbol("BTC-USD")
-                except Exception:
-                    logger.debug("Could not set default symbol on order form")
-                # Initial data fetch
-                await self._refresh_all()
-            else:
-                self.status_text = sanitize_status_text(f"Session error: {result.stderr[:80]}")
-                self.is_loading = False
-                logger.warning("paper-start failed: %s", result.stderr)
+            data = await self._api.create_paper_session("tui-session")
+            self.session_id = data.get("session_id", "")
+            self.session_name = data.get("name", "tui-session")
+            self.status_text = f"Session {self.session_id[:8]}… ready"
+            self.is_loading = False
+            # Update form widget with default symbol
+            try:
+                form = self.query_one("#order-form", OrderFormWidget)
+                form.set_symbol("BTC-USD")
+            except Exception:
+                logger.debug("Could not set default symbol on order form")
+            # Initial data fetch
+            await self._refresh_all()
         except Exception as exc:
             self.status_text = f"Init error: {exc}"
             self.is_loading = False
@@ -626,14 +612,8 @@ class PaperScreen(BaseScreen):
         """Fetch all session data and update widgets."""
         if not self.session_id:
             return
-        result = await run_cli("paper-status", "--session", self.session_id)
-        if result.returncode == 0:
-            try:
-                data = json.loads(result.stdout)
-            except json.JSONDecodeError as exc:
-                self._update_status_text(f"Bad status response: {exc}  [r]etry")
-                logger.warning("paper-status JSON decode error: %s", exc)
-                return
+        try:
+            data = await self._api.get_paper_session(self.session_id)
             mp = data.get("mark_prices")
             if isinstance(mp, dict):
                 self._mark_prices = mp
@@ -643,9 +623,9 @@ class PaperScreen(BaseScreen):
             self._update_status_text(
                 f"Session {self.session_id[:8]}\u2026 \u00b7 updated  [r]efresh  [s]ymbol [b]uy/sell [?]help"
             )
-        else:
-            self._update_status_text(f"Refresh error: {sanitize_status_text(result.stderr, 60)}  [r]etry")
-            logger.warning("paper-status failed: %s", result.stderr)
+        except Exception as exc:
+            self._update_status_text(f"Refresh error: {sanitize_status_text(str(exc), 60)}  [r]etry")
+            logger.warning("paper-status failed: %s", exc)
 
     def _update_positions(self, positions: list[dict[str, Any]]) -> None:
         """Update the positions table widget.

@@ -5,7 +5,9 @@ const PAGE_STATE = {
 
 const DEFAULT_DISPLAY_CAPITAL_USD = 100000;
 const DISPLAY_CAPITAL_STORAGE_KEY = "siglab.displayCapitalUsd";
-const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml } = window.SigLabUi;
+const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml,
+  rectNode, lineNode, textNode, historyRange, formatSweepMaybePercent,
+  safeParseJson, emptyChartText } = window.SigLabUi;
 
 const COLORS = {
   equity: "#4ade80",
@@ -1109,43 +1111,6 @@ function getSpecHash() {
   return new URLSearchParams(window.location.search).get("spec");
 }
 
-function rectNode(x, y, width, height, fill) {
-  const element = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  element.setAttribute("x", x);
-  element.setAttribute("y", y);
-  element.setAttribute("width", width);
-  element.setAttribute("height", height);
-  element.setAttribute("fill", fill);
-  return element;
-}
-
-function lineNode(x1, y1, x2, y2, stroke, width) {
-  const element = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  element.setAttribute("x1", x1);
-  element.setAttribute("y1", y1);
-  element.setAttribute("x2", x2);
-  element.setAttribute("y2", y2);
-  element.setAttribute("stroke", stroke);
-  element.setAttribute("stroke-width", width);
-  return element;
-}
-
-function textNode(x, y, content, fill, fontSize, fontWeight = "400") {
-  const element = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  element.setAttribute("x", x);
-  element.setAttribute("y", y);
-  element.setAttribute("fill", fill);
-  element.setAttribute("font-size", fontSize);
-  element.setAttribute("font-family", "Inter, -apple-system, sans-serif");
-  element.setAttribute("font-weight", fontWeight);
-  element.textContent = content;
-  return element;
-}
-
-function emptyChartText(message) {
-  return `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
-}
-
 function formatPrice(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "n/a";
@@ -1278,21 +1243,12 @@ function formatAxisDateTime(value) {
   }).format(date);
 }
 
-function historyRange(start, end) {
-  if (!start && !end) return "n/a";
-  return `${start || "?"} to ${end || "?"}`;
-}
-
 function outOfSampleMetric(summary, prefix) {
   const available = Boolean(summary?.[`${prefix}_available`]);
   if (!available) {
     return "n/a";
   }
   return `${formatPercent(summary?.[`${prefix}_total_return`])} / ${formatNumber(summary?.[`${prefix}_sharpe`], 2)}`;
-}
-
-function formatSweepMaybePercent(value) {
-  return Number.isFinite(value) ? formatPercent(value) : "n/a";
 }
 
 function joinOrNone(values) {

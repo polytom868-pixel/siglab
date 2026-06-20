@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from typing import Any, ClassVar, Sequence
 
 from rich.text import Text
@@ -24,7 +25,6 @@ from textual.reactive import reactive
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
-from siglab.tui.cli_bridge import run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
     ERROR_RED,
@@ -614,17 +614,37 @@ class EvidenceScreen(BaseScreen):
 
         Returns the CLI returncode (or ``-1`` on exception).
         """
+        import asyncio
+
         demo = self.query_one("#demo-flow", DemoFlowWidget)
         step_num = step_data["step"]
         args = step_data["command"].split()
         try:
-            result = await run_cli(*args, timeout=60.0)
+            cmd = [sys.executable, "-m", "siglab.cli", *args]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(), timeout=60.0
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise
+
+            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace")
+            returncode = proc.returncode or 0
+
             demo.set_step_result(step_num, {
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
+                "returncode": returncode,
+                "stdout": stdout,
+                "stderr": stderr,
             })
-            return result.returncode
+            return returncode
         except Exception as exc:
             demo.set_step_result(step_num, {
                 "returncode": -1,

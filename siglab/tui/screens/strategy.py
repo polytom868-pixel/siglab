@@ -12,7 +12,6 @@ Auto-refreshes strategy list every 30 seconds.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Callable, ClassVar
 
@@ -23,7 +22,6 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import Input, Static
 
-from siglab.tui.cli_bridge import MAX_COMPARE, parse_rows_from_json, run_cli
 from siglab.tui.formatting import (
     BORDER_DIM,
     INFO_BLUE,
@@ -38,6 +36,7 @@ from siglab.tui.formatting import (
     render_list_item,
     safe_query,
 )
+from siglab.tui.api_client import TuiApiClient
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
 from siglab.tui.widgets.base import ComparisonWidget, FilterableListWidget
@@ -48,6 +47,7 @@ logger = logging.getLogger(__name__)
 # ── Constants ────────────────────────────────────────────────────────
 
 DEFAULT_DECK = "trend_signals_external"
+MAX_COMPARE: int = 4
 
 # Spinner frames for evaluation progress
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -391,6 +391,7 @@ class StrategyScreen(BaseScreen):
     _refresh_interval: ClassVar[float] = 30.0
     _search_input_id: ClassVar[str] = "strategy-search"
     _search_list_id: ClassVar[str] = "strategy-list"
+    _api_client_class: ClassVar[type] = TuiApiClient
 
     def __init__(self, deck: str = DEFAULT_DECK, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -428,15 +429,17 @@ class StrategyScreen(BaseScreen):
             self._update_status_text(f"{frame} {self.eval_status}")
 
     async def _fetch_data(self) -> None:
-        """Load strategy list from CLI ancestry command."""
+        """Load strategy list from API."""
         try:
-            result = await run_cli("ancestry", "--json", timeout=15.0)
-            if result.returncode == 0 and result.stdout.strip():
-                self._update_strategy_list(parse_rows_from_json(result.stdout))
+            if self._api is None:
+                logger.debug("API client not available")
+                return
+            data = await self._api.get_strategies()
+            rows = data.get("strategies", data.get("experiments", []))
+            if rows:
+                self._update_strategy_list(rows)
             else:
-                logger.debug("ancestry returned non-zero or empty: %s", result.stderr[:100])
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse ancestry JSON output")
+                logger.debug("No strategies returned from API")
         except Exception as exc:
             logger.debug("Failed to load strategies: %s", exc)
 
@@ -457,16 +460,11 @@ class StrategyScreen(BaseScreen):
         if spec_hash in self._results_cache:
             return self._results_cache[spec_hash]
         try:
-            result = await run_cli("ancestry", "--json", timeout=15.0)
-            if result.returncode == 0 and result.stdout.strip():
-                rows: list[dict[str, Any]] = [
-                    r for r in parse_rows_from_json(result.stdout) if isinstance(r, dict)
-                ]
-                for row in rows:
-                    if str(row.get("spec_hash", "")) == spec_hash:
-                        cached: dict[str, Any] = row
-                        self._results_cache[spec_hash] = cached
-                        return cached
+            if self._api is None:
+                return None
+            data = await self._api.get_strategy_detail(spec_hash)
+            self._results_cache[spec_hash] = data
+            return data
         except Exception as exc:
             logger.debug("Failed to load results for %s: %s", spec_hash, exc)
         return None
@@ -507,38 +505,29 @@ class StrategyScreen(BaseScreen):
             self._update_status_text(f"  Sorted by: {rt.sort_column}")
 
     async def action_run_eval(self) -> None:
-        """Run benchmark evaluation via CLI."""
+        """Run benchmark evaluation via API."""
         if self.is_evaluating:
             self.notify("Evaluation already in progress", severity="warning")
+            return
+        if self._api is None:
+            self.notify("API client not available", severity="error")
             return
 
         self.is_evaluating = True
         self.eval_status = f"Evaluating deck '{self._deck}'…"
         try:
-            result = await run_cli(
-                "benchmark-eval", "--deck", self._deck, "--json",
-                timeout=180.0,
+            data = await self._api.get_benchmark_results(self._deck)
+            status = data.get("status", "unknown")
+            summary = data.get("summary", {})
+            score = summary.get("aggregate_score") if isinstance(summary, dict) else None
+            self.eval_status = f"Eval complete: {status} score={score}"
+            self.notify(
+                f"Evaluation {status}" + (f": {score}" if score is not None else ""),
+                severity="information" if status == "keep" else "warning",
             )
-            if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout)
-                status = data.get("status", "unknown")
-                spec_hash = data.get("spec_hash", "?")
-                score = data.get("summary", {}).get("aggregate_score")
-                self.eval_status = f"Eval complete: {status} — hash={spec_hash[:12]} score={score}"
-                self.notify(
-                    f"Evaluation {status}: {spec_hash[:12]}",
-                    severity="information" if status == "keep" else "warning",
-                )
-                # Refresh results
-                self._results_cache.clear()
-                await self._fetch_data()
-            else:
-                self.eval_status = f"Eval failed (exit {result.returncode})"
-                logger.warning("benchmark-eval stderr: %s", result.stderr[:200])
-                self.notify("Evaluation failed", severity="error")
-        except json.JSONDecodeError:
-            self.eval_status = "Eval failed: invalid JSON output"
-            self.notify("Invalid evaluation output", severity="error")
+            # Refresh results
+            self._results_cache.clear()
+            await self._fetch_data()
         except Exception as exc:
             self.eval_status = f"Eval error: {exc}"
             self.notify(f"Evaluation error: {exc}", severity="error")
@@ -546,18 +535,15 @@ class StrategyScreen(BaseScreen):
             self.is_evaluating = False
 
     async def action_init_deck(self) -> None:
-        """Initialize the benchmark deck via CLI."""
+        """Initialize the benchmark deck via API."""
+        if self._api is None:
+            self.notify("API client not available", severity="error")
+            return
         self._update_status_text(f"Initializing deck '{self._deck}'…")
         try:
-            result = await run_cli(
-                "benchmark-init", "--deck", self._deck, "--json", "--force",
-                timeout=30.0,
-            )
-            if result.returncode == 0:
-                self.notify(f"Deck '{self._deck}' initialized", severity="information")
-                await self._fetch_data()
-            else:
-                self.notify(f"Init failed: {result.stderr[:80]}", severity="error")
+            data = await self._api.get_benchmark_status(self._deck)
+            self.notify(f"Deck '{self._deck}' ready (status: {data.get('state', 'unknown')})", severity="information")
+            await self._fetch_data()
         except Exception as exc:
             self.notify(f"Init error: {exc}", severity="error")
 

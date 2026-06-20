@@ -30,10 +30,93 @@
     return [provider, model].filter(Boolean).join(" / ") || "n/a";
   }
 
+  function selectedMetricKey() {
+    return document.getElementById("metricFilter")?.value || "aggregate_score";
+  }
+
+  function toggleAutoRefresh(stateHolder, refreshFn) {
+    if (stateHolder.autoRefreshTimer) {
+      clearInterval(stateHolder.autoRefreshTimer);
+      stateHolder.autoRefreshTimer = null;
+    }
+    if (document.getElementById("autoRefresh")?.checked) {
+      stateHolder.autoRefreshTimer = setInterval(refreshFn, 10000);
+    }
+  }
+
+  function populateFamilyFilter(families, selectedValue, escapeFn) {
+    const select = document.getElementById("familyFilter");
+    if (!select) return;
+    const current = selectedValue && families.includes(selectedValue) ? selectedValue : "all";
+    const esc = escapeFn || escapeHtml;
+    select.innerHTML = [
+      "<option value=\"all\">All Families</option>",
+      ...families.map(
+        (family) =>
+          `<option value="${esc(family)}"${family === current ? " selected" : ""}>${esc(family)}</option>`
+      ),
+    ].join("");
+    select.value = current;
+  }
+
+  function rectNode(x, y, width, height, fill) {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    element.setAttribute("x", x);
+    element.setAttribute("y", y);
+    element.setAttribute("width", width);
+    element.setAttribute("height", height);
+    element.setAttribute("fill", fill);
+    return element;
+  }
+
+  function lineNode(x1, y1, x2, y2, stroke, strokeWidth) {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    element.setAttribute("x1", x1);
+    element.setAttribute("y1", y1);
+    element.setAttribute("x2", x2);
+    element.setAttribute("y2", y2);
+    element.setAttribute("stroke", stroke);
+    element.setAttribute("stroke-width", strokeWidth);
+    return element;
+  }
+
+  function textNode(x, y, value, fill, size, weight) {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    element.setAttribute("x", x);
+    element.setAttribute("y", y);
+    element.setAttribute("fill", fill);
+    element.setAttribute("font-size", size);
+    element.setAttribute("font-family", "Inter, -apple-system, sans-serif");
+    if (weight) element.setAttribute("font-weight", weight);
+    element.textContent = value;
+    return element;
+  }
+
+  function historyRange(start, end) {
+    if (!start && !end) return "n/a";
+    return `${start || "?"} to ${end || "?"}`;
+  }
+
+  function formatSweepMaybePercent(value) {
+    return Number.isFinite(value) ? formatPercent(value) : "n/a";
+  }
+
+  function safeParseJson(value) {
+    if (typeof value !== "string") return value;
+    try {
+      return JSON.parse(value);
+    } catch (_error) {
+      return value;
+    }
+  }
+
+  function emptyChartText(message) {
+    return `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
+  }
+
   window.SigLabUi = {
     TRACK_LABELS: {
       trend_signals: "Directional Perps",
-      yield_flows: "Systematic Carry",
       yield_flows: "Systematic Carry",
     },
 
@@ -105,7 +188,15 @@
     formatDateTime,
     escapeHtml,
     llmIdentity,
+    selectedMetricKey,
+    toggleAutoRefresh,
+    populateFamilyFilter,
+    rectNode,
+    lineNode,
+    textNode,
+    historyRange,
+    formatSweepMaybePercent,
+    safeParseJson,
+    emptyChartText,
   };
 })();
-
-

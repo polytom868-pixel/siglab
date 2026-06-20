@@ -14,11 +14,19 @@ const {
   formatPercent,
   escapeHtml,
   llmIdentity,
+  selectedMetricKey,
+  toggleAutoRefresh,
+  populateFamilyFilter,
+  rectNode,
+  lineNode,
+  textNode,
+  historyRange,
+  formatSweepMaybePercent,
+  safeParseJson,
 } = window.SigLabUi;
 
 const TRACK_COLORS = {
   trend_signals: "#4ade80",
-  yield_flows: "#f0b456",
   yield_flows: "#f0b456",
 };
 
@@ -116,7 +124,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     refresh();
   });
   document.getElementById("metricFilter")?.addEventListener("change", () => render());
-  document.getElementById("autoRefresh")?.addEventListener("change", toggleAutoRefresh);
+  document.getElementById("autoRefresh")?.addEventListener("change", () => toggleAutoRefresh(state, refresh));
   document.getElementById("clearFamilyFilter")?.addEventListener("click", () => {
     const familyFilter = document.getElementById("familyFilter");
     if (familyFilter) {
@@ -137,7 +145,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     render();
   });
   await refresh();
-  toggleAutoRefresh();
+  toggleAutoRefresh(state, refresh);
 });
 
 async function refresh() {
@@ -149,7 +157,7 @@ async function refresh() {
   const url = query.toString() ? `/api/experiments?${query}` : "/api/experiments";
   const response = await fetch(url, { cache: "no-store" });
   state.payload = await response.json();
-  populateFamilyFilter(collectFamilies(state.payload), family);
+  populateFamilyFilter(collectFamilies(state.payload), family, escapeHtml);
   if (state.lockedRunId) {
     state.selectedRunId = state.lockedRunId;
   }
@@ -168,16 +176,6 @@ async function refresh() {
   }
 
   render();
-}
-
-function toggleAutoRefresh() {
-  if (state.autoRefreshTimer) {
-    clearInterval(state.autoRefreshTimer);
-    state.autoRefreshTimer = null;
-  }
-  if (document.getElementById("autoRefresh").checked) {
-    state.autoRefreshTimer = setInterval(refresh, 10000);
-  }
 }
 
 function render() {
@@ -243,21 +241,6 @@ function collectFamilies(payload) {
   return [...familySet].sort();
 }
 
-function populateFamilyFilter(families, selectedValue) {
-  const select = document.getElementById("familyFilter");
-  if (!select) return;
-  const current = selectedValue && families.includes(selectedValue) ? selectedValue : "all";
-  const options = ["<option value=\"all\">All Families</option>"]
-    .concat(
-      families.map(
-        (family) =>
-          `<option value="${escapeHtml(family)}"${family === current ? " selected" : ""}>${escapeHtml(family)}</option>`
-      )
-    )
-    .join("");
-  select.innerHTML = options;
-  select.value = current;
-}
 
 function filteredExperiments(experiments) {
   const family = document.getElementById("familyFilter")?.value || "all";
@@ -545,19 +528,19 @@ function renderChart(experiments) {
   for (let i = 0; i <= 5; i += 1) {
     const value = yMin + ((yMax - yMin) * i) / 5;
     const y = yScale(value);
-    svg.appendChild(line(margin.left, y, width - margin.right, y, "rgba(255,255,255,0.04)", 1));
+    svg.appendChild(lineNode(margin.left, y, width - margin.right, y, "rgba(255,255,255,0.04)", 1));
     svg.appendChild(textNode(14, y + 4, metricMeta.formatter(value), "#6b7f70", "12"));
   }
 
   for (let i = 0; i <= Math.min(xMax - 1, 5); i += 1) {
     const generation = 1 + Math.round((xMax - 1) * (i / Math.max(Math.min(xMax - 1, 5), 1)));
     const x = xScale(generation);
-    svg.appendChild(line(x, margin.top, x, height - margin.bottom, "rgba(255,255,255,0.02)", 1));
+    svg.appendChild(lineNode(x, margin.top, x, height - margin.bottom, "rgba(255,255,255,0.02)", 1));
     svg.appendChild(textNode(x - 8, height - 16, `${generation}`, "#6b7f70", "12"));
   }
 
-  svg.appendChild(line(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
-  svg.appendChild(line(margin.left, margin.top, margin.left, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
+  svg.appendChild(lineNode(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
+  svg.appendChild(lineNode(margin.left, margin.top, margin.left, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
 
   Object.entries(tracks).forEach(([track, rows]) => {
     const color = TRACK_COLORS[track] || "#4ade80";
@@ -993,10 +976,6 @@ function modeCellLabel(row) {
   return `${base} / ${badges.join(", ")}`;
 }
 
-function selectedMetricKey() {
-  return document.getElementById("metricFilter")?.value || "aggregate_score";
-}
-
 function metricValue(row, metricKey) {
   let value = row?.summary?.[metricKey];
   if (value === undefined && metricKey.startsWith("validation_")) {
@@ -1077,11 +1056,6 @@ function policySweepMetricList(values) {
   return Array.isArray(values) && values.length ? values.join(", ") : "none";
 }
 
-function historyRange(start, end) {
-  if (!start && !end) return "n/a";
-  return `${start || "?"} to ${end || "?"}`;
-}
-
 function eligibleRangeLabel(rollLifecycle) {
   const minimum = rollLifecycle.eligible_market_count_min;
   const maximum = rollLifecycle.eligible_market_count_max;
@@ -1089,48 +1063,5 @@ function eligibleRangeLabel(rollLifecycle) {
   if (minimum === undefined && maximum === undefined && latest === undefined) return "n/a";
   return `${minimum ?? "?"}-${maximum ?? "?"} (latest ${latest ?? "?"})`;
 }
-
-function rectNode(x, y, width, height, fill) {
-  const element = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  element.setAttribute("x", x);
-  element.setAttribute("y", y);
-  element.setAttribute("width", width);
-  element.setAttribute("height", height);
-  element.setAttribute("fill", fill);
-  return element;
-}
-
-function line(x1, y1, x2, y2, stroke, strokeWidth) {
-  const element = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  element.setAttribute("x1", x1);
-  element.setAttribute("y1", y1);
-  element.setAttribute("x2", x2);
-  element.setAttribute("y2", y2);
-  element.setAttribute("stroke", stroke);
-  element.setAttribute("stroke-width", strokeWidth);
-  return element;
-}
-
-function textNode(x, y, value, fill, size, weight = "400") {
-  const element = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  element.setAttribute("x", x);
-  element.setAttribute("y", y);
-  element.setAttribute("fill", fill);
-  element.setAttribute("font-size", size);
-  element.setAttribute("font-family", "Inter, -apple-system, sans-serif");
-  element.setAttribute("font-weight", weight);
-  element.textContent = value;
-  return element;
-}
-
-function safeParseJson(value) {
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch (_error) {
-    return value;
-  }
-}
-
 
 

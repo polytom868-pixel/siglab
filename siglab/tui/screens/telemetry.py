@@ -12,7 +12,6 @@ Auto-refreshes every 30 seconds.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime
 from typing import Any, ClassVar
@@ -25,7 +24,6 @@ from textual.reactive import reactive
 from textual.widgets import Input, Static
 
 from siglab.tui.api_client import TuiApiClient
-from siglab.tui.cli_bridge import MAX_COMPARE, parse_rows_from_json, run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
     BORDER_DIM,
@@ -55,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────
 
+MAX_COMPARE: int = 4
 
 # Date range filter presets
 DATE_RANGE_FILTERS: list[str] = ["ALL", "7d", "30d", "TODAY"]
@@ -599,16 +598,14 @@ class TelemetryScreen(BaseScreen):
         )
 
     async def _fetch_telemetry(self) -> None:
-        """Fetch telemetry data from CLI telemetry-report command."""
+        """Fetch telemetry data from API."""
+        if self._api is None:
+            return
         try:
-            result = await run_cli("telemetry-report", "--json", timeout=15.0)
-            if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout)
-                self._telemetry_data = data
-                self._update_provider_metrics(data)
-                self._update_tool_usage(data)
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse telemetry report JSON")
+            data = await self._api.get_telemetry_report()
+            self._telemetry_data = data
+            self._update_provider_metrics(data)
+            self._update_tool_usage(data)
         except Exception as exc:
             logger.debug("Telemetry fetch failed: %s", exc)
 
@@ -624,15 +621,14 @@ class TelemetryScreen(BaseScreen):
             logger.debug("Ops board fetch failed: %s", exc)
 
     async def _fetch_runs(self) -> None:
-        """Fetch experiment runs from CLI ancestry command."""
+        """Fetch experiment runs from API."""
+        if self._api is None:
+            return
         try:
-            result = await run_cli("ancestry", "--json", timeout=15.0)
-            if result.returncode == 0 and result.stdout.strip():
-                rows = parse_rows_from_json(result.stdout)
-                self._runs_data = rows
-                self._update_run_list(rows)
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse ancestry JSON output")
+            data = await self._api.get_strategies()
+            rows = data.get("strategies", data.get("experiments", []))
+            self._runs_data = rows
+            self._update_run_list(rows)
         except Exception as exc:
             logger.debug("Runs fetch failed: %s", exc)
 
