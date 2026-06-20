@@ -11,6 +11,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import signal
+import sys
+
+# During module-load time, SIGINT exits silently to avoid tracebacks during
+# heavy import chains. The default handler is restored inside main() so
+# subcommand handlers can catch KeyboardInterrupt.
+_import_sigint = signal.signal(signal.SIGINT, lambda s, f: sys.exit(130))
 
 # ── Backward-compatibility re-exports ──────────────────────────────────────
 # These allow existing code and tests to import symbols directly from siglab.cli.
@@ -50,10 +57,8 @@ from siglab.cli.helpers import (
 # Demo module
 from siglab.cli.demo import (
     _build_demo_manifest,
-    _build_demo_report_payload,
     _build_wave_status_payload,
     _demo_manifest_html,
-    _demo_report_html,
 )
 
 # Market module
@@ -93,6 +98,10 @@ from siglab.cli.run import inspect_command
 
 def main() -> None:
     """Entry point: parse args, dispatch to subcommand handler."""
+    # Restore default SIGINT handler so subcommand handlers can catch
+    # KeyboardInterrupt for graceful shutdown.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+
     parser = argparse.ArgumentParser(prog="siglab")
     parser.add_argument(
         "--no-color",
@@ -160,15 +169,13 @@ def main() -> None:
     if args.command == "evidence-map":
         _evidence_mod.run_evidence_map(args)
         return
-    if args.command == "demo-report":
-        _demo_mod.run_demo_report(args)
-        return
-    if args.command == "demo-manifest":
-        _demo_mod.run_demo_manifest(args)
-        return
-    if args.command == "demo-refresh":
-        _demo_mod.run_demo_refresh(args)
-        return
+    if args.command == "demo":
+        if args.demo_command == "run":
+            _demo_mod.run_demo_run(args)
+            return
+        if args.demo_command == "manifest":
+            _demo_mod.run_demo_manifest(args)
+            return
     if args.command == "market-report":
         _market_mod.run_command(args)
         return
@@ -219,9 +226,6 @@ def main() -> None:
         return
     if args.command == "benchmark-status":
         _benchmark_mod.run_benchmark_status(args)
-        return
-    if args.command == "wave-status":
-        _demo_mod.run_wave_status(args)
         return
     if args.command == "telemetry-report":
         _telemetry_mod.run_command(args)

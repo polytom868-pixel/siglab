@@ -1,0 +1,436 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = []
+# ///
+
+"""Demo subcommands: demo run, demo manifest.
+
+PEP 723 inline metadata:
+  This module provides CLI subcommands for buildathon demo operations.
+  - demo run      — one-shot judge-friendly summary (preflight + manifest + market + telemetry)
+  - demo manifest — index and verify demo artifacts
+
+Migrated from 4 commands (demo-report, demo-manifest, demo-refresh, wave-status)
+to 2 nested subcommands (demo run, demo manifest) under a single ``demo`` parent.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from siglab.cli.rich_utils import print_json, print_success
+from siglab.config import load_settings
+from siglab.io_utils import write_json
+from siglab.path_utils import resolve_path_from_root
+from siglab.cli.helpers import (
+    display_paths,
+    latest_path,
+    load_json_if_exists,
+    split_cli_list,
+    sodex_preflight_report,
+)
+from siglab.cli.market import build_market_report, market_report_html
+from siglab.cli.telemetry import (
+    build_telemetry_payload,
+    provider_metric_paths_for_telemetry,
+    trace_paths_for_telemetry,
+)
+
+
+def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register nested demo subcommands: run, manifest."""
+    demo_parser = subparsers.add_parser("demo", help="Demo commands: run, manifest")
+    demo_subparsers = demo_parser.add_subparsers(dest="demo_command", required=True)
+
+    # demo run
+    run_parser = demo_subparsers.add_parser(
+        "run",
+        help="One-shot judge-friendly demo summary: preflight + manifest + market + telemetry.",
+    )
+    run_parser.add_argument("--output", default=None)
+    run_parser.add_argument("--html-output", default=None)
+    run_parser.add_argument("--json", action="store_true")
+
+    # demo manifest
+    manifest_parser = demo_subparsers.add_parser(
+        "manifest",
+        help="Index latest demo artifacts, telemetry, evidence, and live-boundary readiness.",
+    )
+    manifest_parser.add_argument("--output", default=None)
+    manifest_parser.add_argument("--html-output", default=None)
+    manifest_parser.add_argument("--json", action="store_true")
+
+
+# ---------------------------------------------------------------------------
+# Demo run — one-shot judge-friendly summary
+# ---------------------------------------------------------------------------
+
+
+def run_demo_run(args: argparse.Namespace) -> None:
+    """One-shot judge-friendly demo summary: collection -> manifest -> summary.
+
+    Chains:
+      1. sodex-preflight  — public-read / signed-path / live-write readiness
+      2. demo-manifest    — artifact index, readiness flags, unsafe-claims
+      3. market-report    — BTC market status from SoSoValue + SoDEX evidence
+      4. telemetry-report — trace / tool / provider-metric counts
+
+    Handles KeyboardInterrupt: cleans up any partial output file and prints a
+    user-facing message instead of a raw traceback.
+
+    ``--json`` strict mode: emits *only* the JSON payload on stdout (no info
+    lines, no progress messages) so consumers can pipe into ``jq`` or similar.
+    """
+    settings = load_settings()
+    output_path: Path | None = None
+
+    try:
+        # ----- 1. sodex-preflight -----
+        preflight = sodex_preflight_report()
+        preflight_summary = {
+            "public_read_ready": preflight.get("public_read_ready"),
+            "schema_pinned": preflight.get("schema_pinned"),
+            "signed_path_ready": preflight.get("signed_path", {}).get("ready"),
+            "environment": preflight.get("signed_path", {}).get("environment"),
+            "live_write_allowed": preflight.get("live_write_allowed"),
+        }
+
+        # ----- 2. demo-manifest -----
+        manifest = _build_demo_manifest(settings)
+        manifest_summary = {
+            "readiness": manifest.get("readiness"),
+            "unsafe_claims": manifest.get("unsafe_claims"),
+            "artifact_count": len(manifest.get("artifacts", {}) or {}),
+        }
+
+        # ----- 3. market-report -----
+        evidence_dir = settings.artifact_dir / "evidence"
+        sosovalue_path = latest_path(evidence_dir, "*sosovalue*.jsonl")
+        sodex_path = evidence_dir / "sodex_ws_evidence.jsonl"
+        market = build_market_report(
+            entity="BTC",
+            sosovalue_evidence=sosovalue_path,
+            sodex_evidence=sodex_path,
+        )
+        market_summary = {
+            "entity": market.get("entity"),
+            "status": market.get("status"),
+            "warnings": market.get("warnings"),
+            "as_of": market.get("as_of"),
+        }
+
+        # ----- 4. telemetry-report -----
+        trace_paths = trace_paths_for_telemetry(settings=settings, track="all", run_session_id=None)
+        provider_metric_paths = provider_metric_paths_for_telemetry(settings=settings, run_session_id=None)
+        telemetry = build_telemetry_payload(
+            trace_paths=trace_paths,
+            provider_metric_paths=provider_metric_paths,
+        )
+        telemetry_summary = {
+            "trace_count": telemetry.get("trace_count"),
+            "tool_invocation_count": telemetry.get("tool_invocation_count"),
+            "provider_metrics_status": telemetry.get("provider_metrics_status"),
+            "confidence": telemetry.get("confidence"),
+        }
+
+        # ----- One-line text summaries -----
+        preflight_line = (
+            f"preflight: public_read={preflight_summary['public_read_ready']} "
+            f"signed={preflight_summary['signed_path_ready']} "
+            f"live_write={preflight_summary['live_write_allowed']}"
+        )
+        manifest_line = (
+            f"manifest: readiness={manifest_summary['readiness']} "
+            f"artifacts={manifest_summary['artifact_count']}"
+        )
+        market_line = (
+            f"market: entity={market_summary['entity']} "
+            f"status={market_summary['status']} "
+            f"warnings={len(market_summary['warnings'] or [])}"
+        )
+        telemetry_line = (
+            f"telemetry: traces={telemetry_summary['trace_count']} "
+            f"tools={telemetry_summary['tool_invocation_count']} "
+            f"providers={telemetry_summary['provider_metrics_status']}"
+        )
+        one_page_summary = " | ".join([preflight_line, manifest_line, market_line, telemetry_line])
+
+        payload: dict[str, Any] = {
+            "summary": one_page_summary,
+            "sodex_preflight": preflight_summary,
+            "demo_manifest": manifest_summary,
+            "market_report": market_summary,
+            "telemetry_report": telemetry_summary,
+        }
+
+        # ----- Write JSON output -----
+        output_path = (
+            resolve_path_from_root(args.output, root_dir=settings.root_dir)
+            if getattr(args, "output", None)
+            else settings.artifact_dir / "demo_run_latest.json"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(output_path, payload)
+
+        # ----- Write HTML output (optional) -----
+        html_output: Path | None = (
+            resolve_path_from_root(args.html_output, root_dir=settings.root_dir)
+            if getattr(args, "html_output", None)
+            else None
+        )
+        if html_output is not None:
+            html_output.parent.mkdir(parents=True, exist_ok=True)
+            html_output.write_text(_demo_run_html(payload), encoding="utf-8")
+
+        # ----- --json strict mode: only JSON on stdout -----
+        if getattr(args, "json", False):
+            print_json(payload)
+            return
+
+        # ----- Human-readable summary -----
+        print_success(f"demo_run: {display_paths([output_path], root_dir=settings.root_dir)[0]}")
+        if html_output is not None:
+            print_success(
+                f"demo_run_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}"
+            )
+        print(one_page_summary)
+
+    except KeyboardInterrupt:
+        print("\n[yellow]demo-run interrupted by user — partial output may remain.[/yellow]")
+        if output_path is not None and output_path.exists():
+            output_path.unlink()
+        return
+
+
+def _demo_run_html(payload: dict[str, Any]) -> str:
+    """Minimal HTML page displaying the demo-run summary payload."""
+    _esc = lambda v: html.escape(str(v))
+
+    preflight = dict(payload.get("sodex_preflight") or {})
+    manifest = dict(payload.get("demo_manifest") or {})
+    market = dict(payload.get("market_report") or {})
+    telemetry = dict(payload.get("telemetry_report") or {})
+    summary = _esc(payload.get("summary", ""))
+
+    def kv_rows(d: dict[str, Any]) -> str:
+        return "\n".join(
+            f"<tr><th>{_esc(k)}</th><td>{_esc(v)}</td></tr>"
+            for k, v in sorted(d.items())
+        )
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SigLab Demo Run — Judge Summary</title>
+  <style>
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font-family:Georgia,'Times New Roman',serif; color:#1c1917; background:linear-gradient(135deg,#fbf7ef,#eef7f4); }}
+    main {{ max-width:960px; margin:0 auto; padding:40px 24px; }}
+    h1 {{ font-size:40px; letter-spacing:-0.03em; margin:0 0 8px; }}
+    .summary {{ background:#fff; border:1px solid #d7c7ac; border-radius:18px; padding:18px; font-size:18px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:20px; }}
+    .card {{ background:rgba(255,255,255,.74); border:1px solid #d7c7ac; border-radius:16px; padding:16px; }}
+    table {{ width:100%; border-collapse:collapse; }}
+    th,td {{ text-align:left; vertical-align:top; border-bottom:1px solid #d7c7ac; padding:8px; font-size:14px; }}
+    th {{ width:45%; color:#4b3b2a; }}
+    code {{ background:#efe6d7; padding:2px 5px; border-radius:5px; word-break:break-all; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>SigLab Demo Run</h1>
+  <div class="summary"><code>{summary}</code></div>
+  <div class="grid">
+    <section class="card"><h2>SoDEX Preflight</h2><table>{kv_rows(preflight)}</table></section>
+    <section class="card"><h2>Demo Manifest</h2><table>{kv_rows(manifest)}</table></section>
+    <section class="card"><h2>Market Report</h2><table>{kv_rows(market)}</table></section>
+    <section class="card"><h2>Telemetry Report</h2><table>{kv_rows(telemetry)}</table></section>
+  </div>
+  <p style="margin-top:24px;color:#4b3b2a;font-size:14px;">Generated: <code>{_esc(str(datetime.now(UTC).isoformat()))}</code></p>
+</main>
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------------------------
+# Demo manifest
+# ---------------------------------------------------------------------------
+
+
+def run_demo_manifest(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    manifest = _build_demo_manifest(settings)
+    output = (
+        resolve_path_from_root(args.output, root_dir=settings.root_dir)
+        if args.output
+        else settings.root_dir / "runs" / "demo_manifest_latest.json"
+    )
+    write_json(output, manifest)
+    html_output = (
+        resolve_path_from_root(args.html_output, root_dir=settings.root_dir)
+        if getattr(args, "html_output", None)
+        else output.with_suffix(".html")
+    )
+    html_output.parent.mkdir(parents=True, exist_ok=True)
+    html_output.write_text(_demo_manifest_html(manifest), encoding="utf-8")
+    if getattr(args, "json", False):
+        print_json(manifest)
+        return
+    print_success(f"demo_manifest: {display_paths([output], root_dir=settings.root_dir)[0]}")
+    print_success(f"demo_manifest_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}")
+
+
+def _build_demo_manifest(settings: Any) -> dict[str, Any]:
+    runs_dir = settings.artifact_dir
+    from siglab.cli.telemetry import provider_metric_paths_for_telemetry
+
+    provider_metric_paths = provider_metric_paths_for_telemetry(settings=settings, run_session_id=None)
+    telemetry_path = runs_dir / "latest_telemetry_report.json"
+    market_report_path = runs_dir / "market_report_latest.json"
+    demo_report_path = runs_dir / "demo_report.json"
+    market_report = load_json_if_exists(market_report_path) or {}
+    telemetry = load_json_if_exists(telemetry_path) or {}
+    preflight = sodex_preflight_report()
+    artifacts = {
+        "sosovalue_evidence": str(latest_path(runs_dir / "evidence", "*sosovalue*.jsonl") or ""),
+        "sodex_ws_evidence": str(runs_dir / "evidence" / "sodex_ws_evidence.jsonl"),
+        "evidence_graph": str(latest_path(runs_dir / "evidence", "*graph*.html") or ""),
+        "market_report_json": str(market_report_path) if market_report_path.exists() else "",
+        "market_report_html": str(runs_dir / "market_report_latest.html"),
+        "demo_report_json": str(demo_report_path) if demo_report_path.exists() else "",
+        "demo_report_html": str(runs_dir / "demo_report_latest.html"),
+        "telemetry_report_json": str(telemetry_path) if telemetry_path.exists() else "",
+        "provider_metrics": [str(path) for path in provider_metric_paths],
+        "sosovalue_surface": str(settings.root_dir / "docs" / "sosovalue-api-surface.yaml"),
+        "sodex_surface": str(settings.root_dir / "docs" / "sodex-api-surface.yaml"),
+        "buildathon_audit": str(settings.root_dir / "docs" / "buildathon-readiness-audit.md"),
+        "demo_script": str(settings.root_dir / "docs" / "demo-script.md"),
+    }
+    artifact_status = {
+        key: bool(value) and (isinstance(value, str) and Path(value).exists())
+        for key, value in artifacts.items()
+        if key != "provider_metrics"
+    }
+    artifact_status["provider_metrics"] = bool(provider_metric_paths)
+    readiness = {
+        "sosovalue_input_to_output": bool(artifact_status.get("market_report_json")),
+        "sodex_public_market_data": bool(artifact_status.get("sodex_ws_evidence")),
+        "sodex_live_write_allowed": bool(preflight.get("live_write_allowed")),
+        "provider_metrics_present": bool(provider_metric_paths),
+        "telemetry_provider_metrics_status": telemetry.get("provider_metrics_status"),
+        "llm_cost_status": dict(telemetry.get("provider_metrics") or {}).get("usage", {}).get("cost_status"),
+        "causality_claimed": False,
+        "usd_cost_claimed": False,
+    }
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "purpose": "buildathon_demo_artifact_index",
+        "artifacts": artifacts,
+        "artifact_status": artifact_status,
+        "readiness": readiness,
+        "market_report_status": market_report.get("status"),
+        "market_report_headline": dict(market_report.get("signal_summary") or {}).get("headline"),
+        "sodex_preflight": preflight,
+        "red_flags": [
+            "Signed SoDEX execution is not live-validated unless sodex_live_write_allowed is true.",
+            "Market report evidence is temporal/contextual; causality is not claimed.",
+            "B.AI Credits are not USD and must not be presented as USD spend.",
+        ],
+    }
+
+
+def _demo_manifest_html(manifest: dict[str, Any]) -> str:
+    def esc(value: object) -> str:
+        return html.escape(str(value))
+
+    readiness = dict(manifest.get("readiness") or {})
+    artifacts = dict(manifest.get("artifacts") or {})
+    artifact_status = dict(manifest.get("artifact_status") or {})
+    red_flags = list(manifest.get("red_flags") or [])
+    readiness_cards = "\n".join(
+        f"<li><strong>{esc(key)}</strong>: {esc(value)}</li>"
+        for key, value in sorted(readiness.items())
+    )
+    artifact_rows = "\n".join(
+        f"<tr><th>{esc(key)}</th><td>{esc(artifact_status.get(key))}</td><td><code>{esc(value)}</code></td></tr>"
+        for key, value in sorted(artifacts.items())
+    )
+    red_flag_items = "\n".join(f"<li>{esc(item)}</li>" for item in red_flags)
+    live_class = "bad" if not readiness.get("sodex_live_write_allowed") else "ok"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SigLab Buildathon Demo Panel</title>
+  <style>
+    :root {{ --ink:#1c1917; --paper:#f8f3e8; --card:#fffdf7; --line:#d6c8b4; --ok:#0f766e; --bad:#b91c1c; --warn:#a16207; }}
+    body {{ margin:0; color:var(--ink); background:radial-gradient(circle at 20% 0%,#e0f2fe 0,#f8f3e8 34%,#fff7ed 100%); font-family:Georgia,'Times New Roman',serif; }}
+    main {{ max-width:1120px; margin:0 auto; padding:42px 24px 72px; }}
+    h1 {{ font-size:48px; letter-spacing:-0.04em; margin:0 0 8px; }}
+    h2 {{ margin:0 0 12px; }}
+    .lede {{ font-size:18px; max-width:820px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin:22px 0; }}
+    .card {{ background:rgba(255,253,247,.86); border:1px solid var(--line); border-radius:20px; padding:20px; box-shadow:0 18px 40px rgba(60,45,25,.10); }}
+    .badge {{ display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:white; margin-right:8px; }}
+    .ok {{ color:var(--ok); }} .bad {{ color:var(--bad); }} .warn {{ color:var(--warn); }}
+    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    th,td {{ text-align:left; vertical-align:top; border-bottom:1px solid var(--line); padding:9px; }}
+    code {{ word-break:break-all; background:#f0e7d8; padding:2px 5px; border-radius:5px; }}
+    li {{ margin:8px 0; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>SigLab Buildathon Demo Panel</h1>
+  <p class="lede">One operator flow: SoSoValue evidence -> SoDEX market context -> non-causal market report -> risk/preflight boundary -> telemetry-backed AI loop. This panel indexes proof artifacts; it does not claim live signed execution.</p>
+  <p>
+    <span class="badge">market report: {esc(manifest.get('market_report_status'))}</span>
+    <span class="badge {live_class}">signed SoDEX live write: {esc(readiness.get('sodex_live_write_allowed'))}</span>
+    <span class="badge">provider metrics: {esc(readiness.get('provider_metrics_present'))}</span>
+  </p>
+  <section class="grid">
+    <div class="card"><h2>Readiness</h2><ul>{readiness_cards}</ul></div>
+    <div class="card"><h2>Market Headline</h2><p>{esc(manifest.get('market_report_headline'))}</p></div>
+    <div class="card"><h2>Red Flags</h2><ul class="bad">{red_flag_items}</ul></div>
+  </section>
+  <section class="card"><h2>Artifact Index</h2><table><tr><th>artifact</th><th>exists</th><th>path</th></tr>{artifact_rows}</table></section>
+  <section class="card"><h2>Generated</h2><p><code>{esc(manifest.get('generated_at'))}</code></p></section>
+</main>
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------------------------
+# Wave status payload builder (used internally and by tests)
+# ---------------------------------------------------------------------------
+
+
+def _build_wave_status_payload(args: argparse.Namespace) -> dict[str, Any]:
+    blockers = split_cli_list(args.blockers)
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "wave_number": int(args.wave_number),
+        "phase": str(args.phase or "execution"),
+        "status": str(args.status or "running"),
+        "goal": str(args.goal or "").strip(),
+        "agents": split_cli_list(args.agents),
+        "outputs": split_cli_list(args.outputs),
+        "blockers": blockers,
+        "validation_status": str(args.validation_status or "not_run"),
+        "next_decision": str(args.next_decision or "").strip(),
+        "stop_allowed": False,
+        "unsafe_claims": [
+            "signed SoDEX live execution remains unproven",
+            "private/account SoDEX WebSocket remains unvalidated",
+        ],
+    }
