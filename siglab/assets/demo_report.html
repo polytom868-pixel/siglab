@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SigLab Demo Run — Judge Summary</title>
+  <style>
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font-family:Georgia,'Times New Roman',serif; color:#1c1917; background:linear-gradient(135deg,#fbf7ef,#eef7f4); }}
+    main {{ max-width:960px; margin:0 auto; padding:40px 24px; }}
+    h1 {{ font-size:40px; letter-spacing:-0.03em; margin:0 0 8px; }}
+    .summary {{ background:#fff; border:1px solid #d7c7ac; border-radius:18px; padding:18px; font-size:18px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:20px; }}
+    .card {{ background:rgba(255,255,255,.74); border:1px solid #d7c7ac; border-radius:16px; padding:16px; }}
+    table {{ width:100%; border-collapse:collapse; }}
+    th,td {{ text-align:left; vertical-align:top; border-bottom:1px solid #d7c7ac; padding:8px; font-size:14px; }}
+    th {{ width:45%; color:#4b3b2a; }}
+    code {{ background:#efe6d7; padding:2px 5px; border-radius:5px; word-break:break-all; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>SigLab Demo Run</h1>
+  <div class="summary"><code>{summary}</code></div>
+  <div class="grid">
+    <section class="card"><h2>SoDEX Preflight</h2><table>{preflight_rows}</table></section>
+    <section class="card"><h2>Demo Manifest</h2><table>{manifest_rows}</table></section>
+    <section class="card"><h2>Market Report</h2><table>{market_rows}</table></section>
+    <section class="card"><h2>Telemetry Report</h2><table>{telemetry_rows}</table></section>
+  </div>
+  <p style="margin-top:24px;color:#4b3b2a;font-size:14px;">Generated: <code>{generated_at}</code></p>
+</main>
+</body>
+</html>

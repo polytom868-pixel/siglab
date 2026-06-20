@@ -94,6 +94,51 @@ class DrawdownEvent:
     max_drawdown_pct: float = 0.0
 
 
+@dataclass
+class CircuitBreakerState:
+    """Tracks trading risk state for circuit breaker pattern.
+
+    Tiers (from plan):
+      Tier 1 — max_risk_per_trade_pct (1-2% of equity per trade)
+      Tier 2 — max_daily_drawdown_pct (3-5% of equity per day)
+      Tier 3 — max_consecutive_losses (3-5 in a row → cooldown)
+    """
+
+    equity: float = 0.0
+    daily_start_equity: float = 0.0
+    peak_equity: float = 0.0
+    consecutive_losses: int = 0
+    max_risk_per_trade_pct: float = 0.02  # 2 % per trade
+    max_daily_drawdown_pct: float = 0.05  # 5 % daily max drawdown
+    max_consecutive_losses: int = 3  # 3 losses → cooldown
+    max_position_pct: float = 0.20  # 20 % per asset concentration
+
+    def check_circuit_breakers(self) -> tuple[bool, str]:
+        """Returns (passed, reason).  Refuses trades if any breaker tripped."""
+        if self.daily_start_equity <= 0.0:
+            return True, ""
+        daily_dd = (self.equity - self.daily_start_equity) / self.daily_start_equity
+        if daily_dd < -self.max_daily_drawdown_pct:
+            return False, (
+                f"Daily drawdown {daily_dd:.1%} exceeds limit "
+                f"{self.max_daily_drawdown_pct:.0%}"
+            )
+        if self.consecutive_losses >= self.max_consecutive_losses:
+            return False, (
+                f"{self.consecutive_losses} consecutive losses exceeds limit "
+                f"{self.max_consecutive_losses}"
+            )
+        return True, ""
+
+    def compute_position_size(self, entry_price: float, stop_loss_price: float) -> int:
+        """Fixed-fractional position sizing: risk_amount = equity * risk_percent."""
+        risk_amount = self.equity * self.max_risk_per_trade_pct
+        risk_per_unit = abs(entry_price - stop_loss_price)
+        if risk_per_unit == 0.0:
+            return 0
+        return int(risk_amount / risk_per_unit)
+
+
 # ---------------------------------------------------------------------------
 # Composite Risk Score
 # ---------------------------------------------------------------------------

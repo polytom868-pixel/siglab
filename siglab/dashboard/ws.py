@@ -1,3 +1,9 @@
+"""WebSocket handlers for SigLab Dashboard.
+
+Provides real-time market data (klines, tickers, positions, risk)
+over a single WebSocket endpoint.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,8 +23,10 @@ def _now_iso() -> str:
     """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(UTC).isoformat()
 
+
 # ---------------------------------------------------------------------------
 # WebSocket endpoint
+# ---------------------------------------------------------------------------
 
 
 @router.websocket("/ws")
@@ -51,7 +59,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             try:
                 raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
             except asyncio.TimeoutError:
-                # Send a periodic keepalive ping
                 try:
                     await _send_json(websocket, {"type": "ping", "timestamp": _now_iso()})
                 except Exception:
@@ -120,7 +127,6 @@ async def _handle_message(
         symbol = str(message.get("symbol") or "").strip().upper()
         sub_type = str(message.get("subscription_type") or "klines").strip().lower()
 
-        # Support subscription to risk scores without a symbol
         if sub_type == "risk_score":
             subscribed_symbols.add("_risk")
             subscription_types.add("risk_score")
@@ -131,7 +137,6 @@ async def _handle_message(
                 "message": "Subscribed to risk score updates",
             })
             await _stream_risk_scores(websocket)
-            # Start periodic push task
             if risk_push_tasks is not None:
                 task = asyncio.create_task(_periodic_risk_push(websocket))
                 risk_push_tasks.add(task)
@@ -156,7 +161,6 @@ async def _handle_message(
             "message": f"Subscribed to {sub_type} for {symbol}",
         })
 
-        # Stream initial data for the subscribed symbol
         await _stream_initial_data(websocket, symbol, sub_type)
         return
 
@@ -166,7 +170,6 @@ async def _handle_message(
             subscribed_symbols.discard(symbol)
             manager.unsubscribe(symbol, websocket)
         else:
-            # Unsubscribe from all
             for sym in list(subscribed_symbols):
                 manager.unsubscribe(sym, websocket)
             subscribed_symbols.clear()
@@ -195,39 +198,84 @@ async def _stream_initial_data(
     symbol: str,
     sub_type: str,
 ) -> None:
-    """Stream a snapshot of initial data for a subscribed symbol."""
+    """Stream a snapshot of initial data for a subscribed symbol.
+
+    Uses cached SoDEX feeds when available instead of zero-filled mock data.
+    """
     if sub_type == "klines":
-        # In production, this would be fetched from SoDEXFeeds
-        now = datetime.now(UTC)
-        timestamp = int(now.timestamp() * 1000)
         await _send_json(websocket, {
             "type": "klines",
             "symbol": symbol,
-            "data": [
-                {
-                    "timestamp": timestamp - 3600000 * i,
-                    "open": 0.0,
-                    "high": 0.0,
-                    "low": 0.0,
-                    "close": 0.0,
-                    "volume": 0.0,
-                    "quote_volume": 0.0,
-                }
-                for i in range(5)
-            ],
+            "data": await _fetch_cached_klines(websocket, symbol),
             "interval": "1h",
         })
     elif sub_type in ("ticks", "ticker"):
         await _send_json(websocket, {
             "type": "ticker",
             "symbol": symbol,
-            "bid": 0.0,
-            "ask": 0.0,
-            "last_price": 0.0,
+            **await _fetch_cached_ticker(websocket, symbol),
             "timestamp": _now_iso(),
         })
     elif sub_type == "positions":
         await _stream_positions(websocket)
+
+
+async def _fetch_cached_klines(websocket: WebSocket, symbol: str) -> list[dict[str, Any]]:
+    """Fetch klines from SoDEXFeeds cache, falling back gracefully."""
+    try:
+        state = websocket.app.state.dashboard
+        feeds = state.get_sodex_feeds()
+        if feeds is not None:
+            frame = await feeds.fetch_klines(symbol, "1h", limit=60)
+            if not frame.empty:
+                records = frame.reset_index().to_dict(orient="records")
+                for rec in records:
+                    ts = rec.get("timestamp")
+                    if ts is not None and hasattr(ts, "isoformat"):
+                        rec["timestamp"] = int(ts.timestamp() * 1000)
+                    for col in ("open", "high", "low", "close", "volume", "quote_volume"):
+                        val = rec.get(col)
+                        if val is not None:
+                            rec[col] = float(val)
+                return records
+    except Exception as exc:
+        logger.warning("WS klines fetch error for %s: %s", symbol, exc)
+
+    # Fallback: return a single placeholder candle
+    now = datetime.now(UTC)
+    timestamp = int(now.timestamp() * 1000)
+    return [
+        {
+            "timestamp": timestamp - 3600000 * i,
+            "open": 0.0,
+            "high": 0.0,
+            "low": 0.0,
+            "close": 0.0,
+            "volume": 0.0,
+            "quote_volume": 0.0,
+        }
+        for i in range(5)
+    ]
+
+
+async def _fetch_cached_ticker(websocket: WebSocket, symbol: str) -> dict[str, Any]:
+    """Fetch ticker data from SoDEXFeeds cache, falling back gracefully."""
+    try:
+        state = websocket.app.state.dashboard
+        feeds = state.get_sodex_feeds()
+        if feeds is not None:
+            tickers = await feeds.fetch_tickers(symbol=symbol)
+            if tickers:
+                t = tickers[0]
+                return {
+                    "bid": float(t.get("bidPrice", t.get("bid", 0.0))),
+                    "ask": float(t.get("askPrice", t.get("ask", 0.0))),
+                    "last_price": float(t.get("lastPrice", t.get("close", 0.0))),
+                }
+    except Exception as exc:
+        logger.warning("WS ticker fetch error for %s: %s", symbol, exc)
+
+    return {"bid": 0.0, "ask": 0.0, "last_price": 0.0}
 
 
 async def _stream_positions(websocket: WebSocket) -> None:

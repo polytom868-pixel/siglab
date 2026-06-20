@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SigLab Market Report {entity}</title>
+<style>
+body{{margin:0;background:#f5f0e8;color:#211b16;font-family:Georgia,'Times New Roman',serif}}
+main{{max-width:980px;margin:0 auto;padding:42px 24px}}
+.card{{background:#fffaf2;border:1px solid #d8c7ad;border-radius:18px;padding:20px;margin:18px 0;box-shadow:0 14px 30px rgba(45,35,25,.08)}}
+h1{{font-size:42px;margin:0}} h2{{margin-top:0}} code{{background:#eadfcc;padding:2px 5px;border-radius:5px}}
+li{{margin:8px 0}} .warn li{{color:#9a3412}}
+</style></head>
+<body><main>
+<h1>SigLab Market Report: {entity}</h1>
+<p><code>{status}</code> · generated {generated_at}</p>
+<section class="card"><h2>Signal Summary</h2><p>{headline}</p><ul>
+<li>flow direction: {flow_direction}</li>
+<li>flow value: {flow_value}</li>
+<li>net assets: {net_assets}</li>
+<li>operator action: {operator_action}</li>
+<li>causality: {causality}</li>
+</ul></section>
+<section class="card"><h2>Decision Support</h2><p><strong>{stance}</strong></p><ul>
+{next_actions}
+</ul><p>not a trade signal: {not_a_trade_signal}</p></section>
+<section class="card"><h2>News Context</h2><ul>{news_items}</ul></section>
+<section class="card"><h2>Evidence Quality</h2><ul>
+<li>selection: {selection_semantics}</li>
+<li>SoSoValue rows: {soso_record_count}; malformed: {soso_malformed}; non-object: {soso_non_object}</li>
+<li>SoDEX rows: {sodex_record_count}; malformed: {sodex_malformed}; non-object: {sodex_non_object}</li>
+</ul></section>
+<section class="card"><h2>Missing Evidence</h2><ul>{missing_items}</ul></section>
+<section class="card"><h2>Warnings</h2><ul class="warn">{warnings_items}</ul></section>
+</main></body></html>

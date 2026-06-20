@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from siglab.data import MarketDataProvider, ParquetLake
-from siglab.evaluator.compile import compile_spec
+from siglab.live.signal_compile import compile_spec
+from siglab.risk.guardian import (
+    CircuitBreakerState,
+    check_concentration,
+    compute_position_size,
+)
 from siglab.schemas import SignalSpec
 from siglab.config import load_settings
 from siglab.live.sodex_client import SoDEXSignedPerpsClient
@@ -266,6 +271,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         self.live_spec: dict[str, Any] = {}
         self.spec: SignalSpec | None = None
         self.sodex_adapter: SoDEXExecutionAdapter | None = None
+        self._circuit_breaker = CircuitBreakerState()
 
     def _get_strategy_wallet_address(self) -> str:
         runtime = dict(self.live_spec.get("runtime") or {})
@@ -303,18 +309,57 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         status = await self._build_live_status(include_trade_plan=True)
         strategy_status = dict(status["strategy_status"])
         plan = list(strategy_status.get("trade_plan") or [])
+        account_value = float(status.get("portfolio_value", 0.0))
         dry_run = self._adapter_dry_run()
+
+        # ---- Circuit breaker state update ----
+        self._circuit_breaker.equity = account_value
+        if self._circuit_breaker.daily_start_equity <= 0.0:
+            self._circuit_breaker.daily_start_equity = account_value
+        if (
+            self._circuit_breaker.peak_equity <= 0.0
+            or account_value > self._circuit_breaker.peak_equity
+        ):
+            self._circuit_breaker.peak_equity = account_value
+
+        # ---- Circuit breaker check (daily drawdown / consecutive losses) ----
+        cb_passed, cb_reason = self._circuit_breaker.check_circuit_breakers()
+        if not cb_passed:
+            return False, f"Circuit breaker tripped: {cb_reason}"
+
         if not plan:
             return True, "No rebalance needed"
         if dry_run:
             return True, f"Dry run generated {len(plan)} rebalance orders"
 
+        # ---- Drawdown stop (from peak) ----
+        peak_dd = (
+            (account_value - self._circuit_breaker.peak_equity)
+            / self._circuit_breaker.peak_equity
+            if self._circuit_breaker.peak_equity > 0
+            else 0.0
+        )
+        dd_ratio = abs(peak_dd)
+        if dd_ratio >= 0.20:
+            return False, f"20% drawdown stop triggered: {peak_dd:.1%}"
+        if dd_ratio >= 0.15:
+            for order in plan:
+                order["size"] = _finite_float(order["size"]) * 0.5
+        elif dd_ratio >= 0.10:
+            for order in plan:
+                order["size"] = _finite_float(order["size"]) * 0.75
+
         adapter = self._require_sodex_adapter()
         address = self._get_strategy_wallet_address()
+        runtime = dict(self.live_spec.get("runtime") or {})
         leverage = max(1, int(math.ceil(_finite_float(runtime.get("live_leverage"), 1.0))))
         executed = 0
         for order in plan:
             symbol = str(order["symbol"])
+            # ---- Concentration check ----
+            order_value = _finite_float(order.get("delta_usd", 0.0))
+            if order_value > account_value * self._circuit_breaker.max_position_pct:
+                continue  # skip orders exceeding concentration limit
             asset_id = adapter.coin_to_asset.get(symbol)
             if asset_id is None:
                 raise ValueError(f"SoDEX asset id not found for {symbol}")
@@ -410,6 +455,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
                 account_value=account_value,
                 leverage=leverage,
                 min_trade_usd=_finite_float(runtime.get("min_trade_usd"), 25.0),
+                circuit_breaker=self._circuit_breaker,
             )
             if include_trade_plan
             else []
@@ -527,6 +573,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         account_value: float,
         leverage: float,
         min_trade_usd: float,
+        circuit_breaker: CircuitBreakerState | None = None,
     ) -> list[dict[str, Any]]:
         plan: list[dict[str, Any]] = []
         symbols = sorted(set(target_weights) | set(current_positions))
@@ -539,6 +586,26 @@ class DirectionalPerpsSigLabStrategy(Strategy):
             current_qty = _finite_float(current_positions.get(symbol), 0.0)
             delta_qty = target_qty - current_qty
             delta_usd = abs(delta_qty) * mid
+
+            # ---- Risk: position sizing cap via compute_position_size() ----
+            if circuit_breaker is not None and account_value > 0.0:
+                max_pos_frac = compute_position_size(
+                    risk_budget=circuit_breaker.max_risk_per_trade_pct,
+                    volatility=0.05,
+                    max_size=circuit_breaker.max_position_pct,
+                )
+                max_pos_value = account_value * max_pos_frac
+                max_qty = max_pos_value / mid
+                total_qty_after = current_qty + delta_qty
+                if abs(total_qty_after) > max_qty:
+                    if current_qty == 0.0:
+                        sign = 1 if delta_qty >= 0 else -1
+                        delta_qty = sign * max_qty
+                    else:
+                        direction = 1 if delta_qty >= 0 else -1
+                        delta_qty = direction * max(0.0, max_qty - abs(current_qty))
+                    delta_usd = abs(delta_qty) * mid
+
             if delta_usd < min_trade_usd:
                 continue
             plan.append(

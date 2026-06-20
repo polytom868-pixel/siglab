@@ -1,17 +1,25 @@
+"""SigLab FastAPI dashboard application.
+
+Merged from legacy server.py (Track 2.3).  Serves the ops-board
+frontend from ``static/``, exposes REST + WebSocket endpoints,
+and supports CORS for demo / multi-origin deployment.
+"""
+
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from siglab.config import SiglabConfig, load_settings
-from siglab.search.lineage import LineageStore
+from siglab.dashboard.dashboard_state import DashboardState
 from siglab.dashboard.routes import router as api_router
 from siglab.dashboard.ws import router as ws_router
 
@@ -45,39 +53,15 @@ class WebSocketManager:
         return len(self._connections)
 
 
-class DashboardState:
-    """Holds runtime state for the FastAPI dashboard application."""
-
-    def __init__(self) -> None:
-        self.config: SiglabConfig | None = None
-        self.lineage: LineageStore | None = None
-        self.start_time: float = time.time()
-        self.ws_manager: WebSocketManager = WebSocketManager()
-        self._sodex_feeds: Any = None  # lazy SoDEXFeeds instance
-
-    def get_sodex_feeds(self) -> Any:
-        """Return or lazily initialise the SoDEXFeeds instance."""
-        if self._sodex_feeds is None:
-            try:
-                from siglab.data.sodex_feeds import SoDEXFeeds
-                from siglab.data.store import ParquetLake
-
-                lake_dir = self.config.data_lake_dir if self.config else "data/cache"
-                self._sodex_feeds = SoDEXFeeds(ParquetLake(Path(lake_dir)))
-            except Exception:
-                return None
-        return self._sodex_feeds
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan: load config and open lineage store on startup."""
+    """Application lifespan: load config and lineage store on startup."""
     state = DashboardState()
     try:
         state.config = load_settings()
     except Exception:
-        # Fall back to a minimal config for healthcheck-only mode
         from pathlib import Path as _Path
+
         state.config = SiglabConfig(
             root_dir=_Path.cwd(),
             sosovalue_config_path=_Path("config.json"),
@@ -89,15 +73,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sosovalue_api_key_override=None,
         )
     try:
+        from siglab.data.deployment_store import DeploymentStore as LineageStore
+
         state.lineage = LineageStore(state.config.ancestry_db_path)
     except Exception:
         state.lineage = None
+
+    state.static_dir = Path(__file__).resolve().parent / "static"
+    state.ws_manager = WebSocketManager()
+    state.start_time = time.time()
+
     app.state.dashboard = state
     yield
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
+    """Create and configure the FastAPI application.
+
+    Includes CORS middleware, REST router, WebSocket router,
+    and static file serving for the ops-board frontend.
+    """
     app = FastAPI(
         title="SigLab Dashboard",
         version="0.1.0",
@@ -114,6 +109,11 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(ws_router)
+
+    # Mount static files for the ops-board frontend (legacy server.py compat)
+    _static_dir = Path(__file__).resolve().parent / "static"
+    if _static_dir.is_dir():
+        app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
 
     return app
 

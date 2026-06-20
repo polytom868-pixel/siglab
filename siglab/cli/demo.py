@@ -210,11 +210,6 @@ def run_demo_run(args: argparse.Namespace) -> None:
 def _demo_run_html(payload: dict[str, Any]) -> str:
     """Minimal HTML page displaying the demo-run summary payload."""
     _esc = lambda v: html.escape(str(v))
-
-    preflight = dict(payload.get("sodex_preflight") or {})
-    manifest = dict(payload.get("demo_manifest") or {})
-    market = dict(payload.get("market_report") or {})
-    telemetry = dict(payload.get("telemetry_report") or {})
     summary = _esc(payload.get("summary", ""))
 
     def kv_rows(d: dict[str, Any]) -> str:
@@ -223,41 +218,16 @@ def _demo_run_html(payload: dict[str, Any]) -> str:
             for k, v in sorted(d.items())
         )
 
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SigLab Demo Run — Judge Summary</title>
-  <style>
-    * {{ box-sizing:border-box; }}
-    body {{ margin:0; font-family:Georgia,'Times New Roman',serif; color:#1c1917; background:linear-gradient(135deg,#fbf7ef,#eef7f4); }}
-    main {{ max-width:960px; margin:0 auto; padding:40px 24px; }}
-    h1 {{ font-size:40px; letter-spacing:-0.03em; margin:0 0 8px; }}
-    .summary {{ background:#fff; border:1px solid #d7c7ac; border-radius:18px; padding:18px; font-size:18px; }}
-    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:20px; }}
-    .card {{ background:rgba(255,255,255,.74); border:1px solid #d7c7ac; border-radius:16px; padding:16px; }}
-    table {{ width:100%; border-collapse:collapse; }}
-    th,td {{ text-align:left; vertical-align:top; border-bottom:1px solid #d7c7ac; padding:8px; font-size:14px; }}
-    th {{ width:45%; color:#4b3b2a; }}
-    code {{ background:#efe6d7; padding:2px 5px; border-radius:5px; word-break:break-all; }}
-  </style>
-</head>
-<body>
-<main>
-  <h1>SigLab Demo Run</h1>
-  <div class="summary"><code>{summary}</code></div>
-  <div class="grid">
-    <section class="card"><h2>SoDEX Preflight</h2><table>{kv_rows(preflight)}</table></section>
-    <section class="card"><h2>Demo Manifest</h2><table>{kv_rows(manifest)}</table></section>
-    <section class="card"><h2>Market Report</h2><table>{kv_rows(market)}</table></section>
-    <section class="card"><h2>Telemetry Report</h2><table>{kv_rows(telemetry)}</table></section>
-  </div>
-  <p style="margin-top:24px;color:#4b3b2a;font-size:14px;">Generated: <code>{_esc(str(datetime.now(UTC).isoformat()))}</code></p>
-</main>
-</body>
-</html>
-"""
+    from siglab.cli.helpers import _render_html_template
+    return _render_html_template(
+        "demo_report",
+        summary=summary,
+        preflight_rows=kv_rows(dict(payload.get("sodex_preflight") or {})),
+        manifest_rows=kv_rows(dict(payload.get("demo_manifest") or {})),
+        market_rows=kv_rows(dict(payload.get("market_report") or {})),
+        telemetry_rows=kv_rows(dict(payload.get("telemetry_report") or {})),
+        generated_at=_esc(datetime.now(UTC).isoformat()),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -365,49 +335,19 @@ def _demo_manifest_html(manifest: dict[str, Any]) -> str:
     )
     red_flag_items = "\n".join(f"<li>{esc(item)}</li>" for item in red_flags)
     live_class = "bad" if not readiness.get("sodex_live_write_allowed") else "ok"
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SigLab Buildathon Demo Panel</title>
-  <style>
-    :root {{ --ink:#1c1917; --paper:#f8f3e8; --card:#fffdf7; --line:#d6c8b4; --ok:#0f766e; --bad:#b91c1c; --warn:#a16207; }}
-    body {{ margin:0; color:var(--ink); background:radial-gradient(circle at 20% 0%,#e0f2fe 0,#f8f3e8 34%,#fff7ed 100%); font-family:Georgia,'Times New Roman',serif; }}
-    main {{ max-width:1120px; margin:0 auto; padding:42px 24px 72px; }}
-    h1 {{ font-size:48px; letter-spacing:-0.04em; margin:0 0 8px; }}
-    h2 {{ margin:0 0 12px; }}
-    .lede {{ font-size:18px; max-width:820px; }}
-    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin:22px 0; }}
-    .card {{ background:rgba(255,253,247,.86); border:1px solid var(--line); border-radius:20px; padding:20px; box-shadow:0 18px 40px rgba(60,45,25,.10); }}
-    .badge {{ display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:white; margin-right:8px; }}
-    .ok {{ color:var(--ok); }} .bad {{ color:var(--bad); }} .warn {{ color:var(--warn); }}
-    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
-    th,td {{ text-align:left; vertical-align:top; border-bottom:1px solid var(--line); padding:9px; }}
-    code {{ word-break:break-all; background:#f0e7d8; padding:2px 5px; border-radius:5px; }}
-    li {{ margin:8px 0; }}
-  </style>
-</head>
-<body>
-<main>
-  <h1>SigLab Buildathon Demo Panel</h1>
-  <p class="lede">One operator flow: SoSoValue evidence -> SoDEX market context -> non-causal market report -> risk/preflight boundary -> telemetry-backed AI loop. This panel indexes proof artifacts; it does not claim live signed execution.</p>
-  <p>
-    <span class="badge">market report: {esc(manifest.get('market_report_status'))}</span>
-    <span class="badge {live_class}">signed SoDEX live write: {esc(readiness.get('sodex_live_write_allowed'))}</span>
-    <span class="badge">provider metrics: {esc(readiness.get('provider_metrics_present'))}</span>
-  </p>
-  <section class="grid">
-    <div class="card"><h2>Readiness</h2><ul>{readiness_cards}</ul></div>
-    <div class="card"><h2>Market Headline</h2><p>{esc(manifest.get('market_report_headline'))}</p></div>
-    <div class="card"><h2>Red Flags</h2><ul class="bad">{red_flag_items}</ul></div>
-  </section>
-  <section class="card"><h2>Artifact Index</h2><table><tr><th>artifact</th><th>exists</th><th>path</th></tr>{artifact_rows}</table></section>
-  <section class="card"><h2>Generated</h2><p><code>{esc(manifest.get('generated_at'))}</code></p></section>
-</main>
-</body>
-</html>
-"""
+    from siglab.cli.helpers import _render_html_template
+    return _render_html_template(
+        "demo_manifest",
+        market_report_status=esc(manifest.get("market_report_status")),
+        live_class=live_class,
+        readiness_sodex_live_write=esc(readiness.get("sodex_live_write_allowed")),
+        readiness_provider_metrics=esc(readiness.get("provider_metrics_present")),
+        readiness_cards=readiness_cards,
+        market_report_headline=esc(manifest.get("market_report_headline")),
+        red_flag_items=red_flag_items,
+        artifact_rows=artifact_rows,
+        generated_at=esc(manifest.get("generated_at")),
+    )
 
 
 # ---------------------------------------------------------------------------

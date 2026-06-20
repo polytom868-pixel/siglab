@@ -287,43 +287,32 @@ def market_report_html(report: dict[str, Any]) -> str:
     selection = dict(report.get("evidence_selection") or {})
     soso_stats = dict(selection.get("sosovalue_read_stats") or {})
     sodex_stats = dict(selection.get("sodex_read_stats") or {})
-    warnings = "".join(f"<li>{esc(item)}</li>" for item in list(report.get("warnings") or []))
-    missing = "".join(f"<li>{esc(item)}</li>" for item in list(report.get("missing") or [])) or "<li>none</li>"
-    news = "".join(f"<li>{esc(item)}</li>" for item in list(signal.get("news_titles") or [])) or "<li>missing</li>"
-    return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SigLab Market Report {esc(report.get('entity'))}</title>
-<style>
-body{{margin:0;background:#f5f0e8;color:#211b16;font-family:Georgia,'Times New Roman',serif}}
-main{{max-width:980px;margin:0 auto;padding:42px 24px}}
-.card{{background:#fffaf2;border:1px solid #d8c7ad;border-radius:18px;padding:20px;margin:18px 0;box-shadow:0 14px 30px rgba(45,35,25,.08)}}
-h1{{font-size:42px;margin:0}} h2{{margin-top:0}} code{{background:#eadfcc;padding:2px 5px;border-radius:5px}}
-li{{margin:8px 0}} .warn li{{color:#9a3412}}
-</style></head>
-<body><main>
-<h1>SigLab Market Report: {esc(report.get('entity'))}</h1>
-<p><code>{esc(report.get('status'))}</code> · generated {esc(report.get('generated_at'))}</p>
-<section class="card"><h2>Signal Summary</h2><p>{esc(signal.get('headline'))}</p><ul>
-<li>flow direction: {esc(signal.get('flow_direction'))}</li>
-<li>flow value: {esc(signal.get('flow_value'))}</li>
-<li>net assets: {esc(signal.get('net_assets'))}</li>
-<li>operator action: {esc(signal.get('operator_action'))}</li>
-<li>causality: {esc(signal.get('causality'))}</li>
-</ul></section>
-<section class="card"><h2>Decision Support</h2><p><strong>{esc(decision.get('stance'))}</strong></p><ul>
-{''.join(f"<li>{esc(item)}</li>" for item in list(decision.get('next_actions') or []))}
-</ul><p>not a trade signal: {esc(decision.get('not_a_trade_signal'))}</p></section>
-<section class="card"><h2>News Context</h2><ul>{news}</ul></section>
-<section class="card"><h2>Evidence Quality</h2><ul>
-<li>selection: {esc(selection.get('latest_valid_semantics'))}</li>
-<li>SoSoValue rows: {esc(soso_stats.get('record_count'))}; malformed: {esc(soso_stats.get('malformed_count'))}; non-object: {esc(soso_stats.get('non_object_count'))}</li>
-<li>SoDEX rows: {esc(sodex_stats.get('record_count'))}; malformed: {esc(sodex_stats.get('malformed_count'))}; non-object: {esc(sodex_stats.get('non_object_count'))}</li>
-</ul></section>
-<section class="card"><h2>Missing Evidence</h2><ul>{missing}</ul></section>
-<section class="card"><h2>Warnings</h2><ul class="warn">{warnings}</ul></section>
-</main></body></html>
-"""
+    from siglab.cli.helpers import _render_html_template
+    return _render_html_template(
+        "market_report",
+        entity=esc(report.get("entity")),
+        status=esc(report.get("status")),
+        generated_at=esc(report.get("generated_at")),
+        headline=esc(signal.get("headline")),
+        flow_direction=esc(signal.get("flow_direction")),
+        flow_value=esc(signal.get("flow_value")),
+        net_assets=esc(signal.get("net_assets")),
+        operator_action=esc(signal.get("operator_action")),
+        causality=esc(signal.get("causality")),
+        stance=esc(decision.get("stance")),
+        next_actions="".join(f"<li>{esc(item)}</li>" for item in list(decision.get("next_actions") or [])),
+        not_a_trade_signal=esc(decision.get("not_a_trade_signal")),
+        news_items="".join(f"<li>{esc(item)}</li>" for item in list(signal.get("news_titles") or [])) or "<li>missing</li>",
+        selection_semantics=esc(selection.get("latest_valid_semantics")),
+        soso_record_count=esc(soso_stats.get("record_count")),
+        soso_malformed=esc(soso_stats.get("malformed_count")),
+        soso_non_object=esc(soso_stats.get("non_object_count")),
+        sodex_record_count=esc(sodex_stats.get("record_count")),
+        sodex_malformed=esc(sodex_stats.get("malformed_count")),
+        sodex_non_object=esc(sodex_stats.get("non_object_count")),
+        missing_items="".join(f"<li>{esc(item)}</li>" for item in list(report.get("missing") or [])) or "<li>none</li>",
+        warnings_items="".join(f"<li>{esc(item)}</li>" for item in list(report.get("warnings") or [])),
+    )
 
 
 def _record_sort_key_internal(row: dict[str, Any]) -> tuple[int, float, str]:

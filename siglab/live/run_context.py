@@ -1,3 +1,10 @@
+"""Run context — lightweight dependency bag for live operations.
+
+Extracted from ``siglab.orchestration.run_context`` before deletion
+of the orchestration/ module.  Uses ``DeploymentStore`` instead of the
+deleted ``LineageStore``.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,7 +12,7 @@ from typing import Any
 
 from siglab.data import ParquetLake
 from siglab.llm import ClaudeClient
-from siglab.search import LineageStore
+from siglab.data.deployment_store import DeploymentStore
 
 
 @dataclass
@@ -13,7 +20,7 @@ class RunContext:
     settings: Any
     lake: ParquetLake
     claude: ClaudeClient | None
-    ancestry: LineageStore | None
+    ancestry: DeploymentStore | None
 
 
 def build_run_context(
@@ -24,7 +31,7 @@ def build_run_context(
 ) -> RunContext:
     lake = ParquetLake(settings.data_lake_dir)
     claude = ClaudeClient(settings) if require_claude else None
-    ancestry = LineageStore(settings.ancestry_db_path) if require_ancestry else None
+    ancestry = DeploymentStore(settings.ancestry_db_path) if require_ancestry else None
     return RunContext(
         settings=settings,
         lake=lake,

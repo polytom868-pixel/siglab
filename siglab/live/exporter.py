@@ -9,9 +9,10 @@ from typing import Any
 
 from siglab.llm import ClaudeClient, LLMProviderError
 from siglab.path_utils import resolve_path_from_root
-from siglab.search.lineage import LineageStore
+from siglab.data.deployment_store import DeploymentStore as LineageStore
 from siglab.config import SiglabConfig
 from siglab.track_registry import track_label
+from siglab.evaluation.gates import evaluate_gates
 from siglab.cli.helpers import sodex_preflight_report
 
 SUPPORTED_DIRECTIONAL_FAMILIES = {
@@ -138,6 +139,17 @@ class LiveDeploymentManager:
         detail = self.ancestry.experiment_detail(spec_hash)
         if detail is None:
             raise ValueError(f"Unknown spec hash: {spec_hash}")
+
+        # ---- Gate enforcement: refuse deploy if evaluation gates fail ----
+        track = str(detail.get("track") or detail.get("spec", {}).get("track", ""))
+        summary = dict(detail.get("summary") or {})
+        gates_passed, gate_reasons = evaluate_gates(track, summary)
+        if not gates_passed:
+            raise ValueError(
+                f"Deployment refused — {len(gate_reasons)} gate(s) failed: "
+                f"{'; '.join(gate_reasons)}"
+            )
+
         resolved_config_path = resolve_path_from_root(
             config_path,
             root_dir=self.settings.root_dir,

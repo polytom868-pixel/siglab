@@ -7,15 +7,15 @@ import numpy as np
 import pandas as pd
 
 from siglab.data.feeds import MarketDataProvider
-from siglab.evaluator.compile import (  # via shim for mock compat
+from siglab.evaluation.compile import (  # direct import (evaluator shim deleted)
     PAIR_STATEFUL_POLICY_SCHEMA,
     _build_pair_trade_positions,
 )
-from siglab.evaluator.gates import evaluate_gates  # via shim for mock compat
-from siglab.evaluator.score import serialize_stats, summarize_window_results
+from siglab.evaluation.gates import evaluate_gates  # direct import (evaluator shim deleted)
+from siglab.evaluation.score import serialize_stats, summarize_window_results
 from siglab.schemas import SignalSpec
 from siglab.config import SiglabConfig
-from siglab.evaluator.backtesting import BacktestConfig  # via shim for mock compat
+from siglab.evaluation.backtest import BacktestConfig  # direct import (evaluator shim deleted)
 
 from siglab.utils import safe_float as _safe_float
 from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
@@ -24,12 +24,12 @@ from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_au
 
 
 async def _lazy_compile_spec(settings: Any, provider: Any, spec: Any) -> Any:
-    from siglab.evaluator.core import compile_spec as _fn
+    from siglab.evaluation.compile import compile_spec as _fn
     return await _fn(settings, provider, spec)
 
 
 def _lazy_run_backtest(prices: Any, target_weights: Any, config: Any) -> Any:
-    from siglab.evaluator.core import run_backtest as _fn
+    from siglab.evaluation.backtest import run_backtest as _fn
     return _fn(prices, target_weights, config)
 
 

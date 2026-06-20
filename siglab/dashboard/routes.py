@@ -1,7 +1,15 @@
+"""FastAPI REST routes for SigLab Dashboard.
+
+Merged from the legacy server.py (Track 2.3).  Provides experiments,
+runs, ops, evidence graph, skill report, risk, and market-data
+endpoints.
+"""
+
 from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,10 +25,13 @@ router = APIRouter()
 
 SIGLAB_VERSION = "0.1.0"
 
+_DEFAULT_PORT = int(os.environ.get("PORT", "8080"))
+
 
 def _now_iso() -> str:
     """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(UTC).isoformat()
+
 
 # ---------------------------------------------------------------------------
 # Health
@@ -89,7 +100,78 @@ async def get_config(request: Request) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Ops Board
+# Experiments (legacy server.py compat)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/experiments")
+async def api_experiments(
+    request: Request,
+    track: str | None = None,
+    family: str | None = None,
+) -> dict[str, Any]:
+    """Return experiments payload matching legacy server.py shape."""
+    from siglab.track_registry import canonical_track_name
+
+    state = request.app.state.dashboard
+    return state.experiments_payload(
+        track=canonical_track_name(track) if track else None,
+        family=family,
+    )
+
+
+@router.get("/api/runs")
+async def api_runs(
+    request: Request,
+    track: str | None = None,
+    family: str | None = None,
+) -> dict[str, Any]:
+    """Return runs payload matching legacy server.py shape."""
+    from siglab.track_registry import canonical_track_name
+
+    state = request.app.state.dashboard
+    return state.runs_payload(
+        track=canonical_track_name(track) if track else None,
+        family=family,
+    )
+
+
+@router.get("/api/experiments/{spec_hash}")
+async def api_experiment_detail(request: Request, spec_hash: str) -> dict[str, Any]:
+    """Return a single experiment detail (legacy compat)."""
+    state = request.app.state.dashboard
+    payload = state.experiment_detail_payload(spec_hash)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return payload
+
+
+@router.get("/api/experiments/{spec_hash}/series")
+async def api_experiment_series(request: Request, spec_hash: str) -> dict[str, Any]:
+    """Return experiment series including canonical run (legacy compat)."""
+    state = request.app.state.dashboard
+    payload = state.experiment_series_payload(spec_hash)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return payload
+
+
+@router.post("/api/experiments/{spec_hash}/deploy")
+async def api_experiment_deploy(
+    request: Request,
+    spec_hash: str,
+) -> dict[str, Any]:
+    """Deploy an experiment by spec hash (legacy compat)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    state = request.app.state.dashboard
+    return await state.deploy_experiment(spec_hash=spec_hash, payload=body)
+
+
+# ---------------------------------------------------------------------------
+# Ops Board / API Ops
 # ---------------------------------------------------------------------------
 
 
@@ -175,7 +257,7 @@ async def ops_board(request: Request) -> dict[str, Any]:
 
     # Service health probe: check external dependencies
     service_health = {
-        "dashboard": {"status": "running", "port": 3100},
+        "dashboard": {"status": "running", "port": _DEFAULT_PORT},
         "siglab_db": {
             "status": "ok" if Path(str(config.ancestry_db_path)).exists() else "missing",
         },
@@ -204,6 +286,13 @@ async def ops_board(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get("/api/ops")
+async def api_ops(request: Request) -> dict[str, Any]:
+    """Return full ops payload with artifact details (legacy server.py compat)."""
+    state = request.app.state.dashboard
+    return state.ops_payload()
+
+
 # ---------------------------------------------------------------------------
 # Evidence Graph
 # ---------------------------------------------------------------------------
@@ -215,7 +304,6 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
     if config is None:
         return None
 
-    # Find the latest evidence summary
     evidence_dir = config.artifact_dir / "evidence"
     if not evidence_dir.exists():
         return None
@@ -240,7 +328,7 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
-    seen_edges: set[tuple[str, str, str]] = set()  # (source, target, label)
+    seen_edges: set[tuple[str, str, str]] = set()
 
     def _node(node_id: str, label: str, kind: str, count: int) -> dict[str, Any]:
         return {
@@ -264,7 +352,6 @@ def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
             continue
         relation = str(link.get("relation") or "linked")
         source_name = str(link.get("source") or "cross-module")
-        # Support both "entities" list and "entity"/"feed_entity" string fields
         entities_raw = link.get("entities")
         if isinstance(entities_raw, list) and entities_raw:
             entities = [str(item) for item in entities_raw if item]
@@ -320,7 +407,6 @@ def _build_skill_report(state: Any) -> list[dict[str, Any]]:
         logger.warning("Failed to load skill report rows: %s", exc)
         return []
 
-    # Aggregate tool call data from experiment tool traces
     skill_usage: dict[str, dict[str, Any]] = {}
 
     for row in rows:
@@ -337,7 +423,6 @@ def _build_skill_report(state: Any) -> list[dict[str, Any]]:
         trace = tool_trace.get("trace") or {}
         tool_calls = list(trace.get("tool_calls") or [])
 
-        # Also check workspace traces
         workspace = research_summary.get("workspace") or {}
         for stage_key in ("planner_trace_path", "writer_trace_path", "reflector_trace_path"):
             trace_path = workspace.get(stage_key)
@@ -383,7 +468,6 @@ def _build_skill_report(state: Any) -> list[dict[str, Any]]:
             if stage:
                 entry["stages"].add(stage)
 
-    # Determine classification based on usage patterns
     report = []
     for name, entry in sorted(skill_usage.items()):
         stages = sorted(entry["stages"])
@@ -537,7 +621,6 @@ async def market_klines(
     try:
         frame = await feeds.fetch_klines(symbol, interval, limit=limit)
         records = frame.reset_index().to_dict(orient="records") if not frame.empty else []
-        # Convert timestamps to ISO strings for JSON serialisation
         for rec in records:
             ts = rec.get("timestamp")
             if ts is not None and hasattr(ts, "isoformat"):
@@ -570,4 +653,3 @@ async def market_orderbook(
     except Exception as exc:
         logger.warning("Market orderbook error (%s): %s", symbol, exc)
         return {"bids": [], "asks": [], "symbol": symbol, "error": "Internal error"}
-

@@ -40,11 +40,8 @@ FUNCTION_OPERATORS = (
     "clip",
     "sign_flip_prob",
     "gt",
-    "ge",
     "lt",
-    "le",
     "and",
-    "or",
     "not",
     "where",
 )
@@ -222,221 +219,299 @@ def _split_args(text: str) -> list[str]:
     return args
 
 
+# --- Operator registry (dict dispatch) ---
+
+def _op_pct_change(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, periods = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.pct_change(periods)
+
+def _op_diff(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, periods = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.diff(periods)
+
+def _op_rolling_mean(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.rolling(window).mean()
+
+def _op_rolling_sum(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.rolling(window).sum()
+
+def _op_ema(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, span = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.ewm(span=span, adjust=False).mean()
+
+def _op_rolling_std(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.rolling(window).std()
+
+def _op_rolling_zscore(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    mean = frame.rolling(window).mean()
+    std = frame.rolling(window).std().replace(0.0, np.nan)
+    return frame.sub(mean).div(std).replace([np.inf, -np.inf], np.nan)
+
+def _op_rolling_min(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.rolling(window).min()
+
+def _op_rolling_max(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.rolling(window).max()
+
+def _op_rolling_skew(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.rolling(window).skew()
+
+def _op_rolling_kurt(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.rolling(window).kurt()
+
+def _op_rolling_corr(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    left, right, window = _expect_two_frames_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    return left.rolling(window).corr(right)
+
+def _op_rolling_autocorr(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, lag, window = _expect_frame_and_two_ints(args)
+    if validate_only:
+        return pd.DataFrame()
+    shifted = frame.shift(lag)
+    return frame.rolling(window).corr(shifted)
+
+def _op_rolling_beta(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    left, right, window = _expect_two_frames_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    covariance = left.rolling(window).cov(right)
+    variance = right.rolling(window).var().replace(0.0, np.nan)
+    return covariance.div(variance).replace([np.inf, -np.inf], np.nan)
+
+def _op_rolling_hurst(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    out = pd.DataFrame(index=frame.index, columns=frame.columns, dtype=float)
+    for column in frame.columns:
+        series = frame[column].astype(float)
+        out[column] = series.rolling(window, min_periods=window).apply(_hurst_exponent, raw=True)
+    return out
+
+def _op_mean_reversion_halflife(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    lagged = frame.shift(1)
+    delta = frame.diff()
+    beta = delta.rolling(window).cov(lagged).div(lagged.rolling(window).var().replace(0.0, np.nan))
+    phi = 1.0 + beta
+    valid_phi = phi.where((phi > 0.0) & (phi < 1.0))
+    halflife = (-np.log(2.0) / np.log(valid_phi)).replace([np.inf, -np.inf], np.nan)
+    return cast(pd.DataFrame, halflife)
+
+def _op_kalman_beta(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    left, right, process_noise, observation_noise = _expect_kalman_args(args)
+    if validate_only:
+        return pd.DataFrame()
+    return _kalman_beta_frame(left, right, process_noise=process_noise, observation_noise=observation_noise)
+
+def _op_kalman_residual(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    left, right, process_noise, observation_noise = _expect_kalman_args(args)
+    if validate_only:
+        return pd.DataFrame()
+    beta = _kalman_beta_frame(left, right, process_noise=process_noise, observation_noise=observation_noise)
+    aligned_left, aligned_right = left.align(right, join="outer")
+    return aligned_left.sub(beta.mul(aligned_right))
+
+def _op_rsi(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    delta = frame.diff()
+    gains = delta.clip(lower=0.0)
+    losses = (-delta).clip(lower=0.0)
+    alpha = 1.0 / max(window, 1)
+    avg_gain = gains.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
+    avg_loss = losses.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
+    rs = avg_gain.div(avg_loss.replace(0.0, np.nan))
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    rsi = rsi.where(avg_loss > 0.0, 100.0)
+    both_zero = (avg_gain <= 0.0) & (avg_loss <= 0.0)
+    return rsi.where(~both_zero, 50.0)
+
+def _op_sign_flip_prob(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame, window = _expect_frame_and_int(args)
+    if validate_only:
+        return pd.DataFrame()
+    sign_change = frame.apply(np.sign).diff()
+    return sign_change.ne(0).astype(float).rolling(window).mean()
+
+def _op_neg(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame = _expect_frame(args, expected=1)
+    if validate_only:
+        return pd.DataFrame()
+    return -frame
+
+def _op_abs(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame = _expect_frame(args, expected=1)
+    if validate_only:
+        return pd.DataFrame()
+    return frame.abs()
+
+def _op_log(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame = _expect_frame(args, expected=1)
+    if validate_only:
+        return pd.DataFrame()
+    return cast(pd.DataFrame, np.log(frame.where(frame > 0.0)))
+
+def _op_clip(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    frame = _expect_frame(args[:1], expected=1)
+    if len(args) != 3 or not isinstance(args[1], float) or not isinstance(args[2], float):
+        raise ValueError("clip expects frame, low, high")
+    if validate_only:
+        return pd.DataFrame()
+    return frame.clip(lower=args[1], upper=args[2])
+
+def _op_gt(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 2:
+        raise ValueError("gt expects 2 arguments")
+    if validate_only:
+        return pd.DataFrame()
+    return _comparison(args[0], args[1], lambda a, b: a > b)
+
+def _op_lt(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 2:
+        raise ValueError("lt expects 2 arguments")
+    if validate_only:
+        return pd.DataFrame()
+    return _comparison(args[0], args[1], lambda a, b: a < b)
+
+def _op_and(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 2:
+        raise ValueError("and expects 2 arguments")
+    if validate_only:
+        return pd.DataFrame()
+    return _logical(args[0], args[1], lambda a, b: a & b)
+
+def _op_not(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 1:
+        raise ValueError("not expects 1 argument")
+    if validate_only:
+        return pd.DataFrame()
+    return _truthy_frame(args[0]).eq(0.0).astype(float)
+
+def _op_where(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 3:
+        raise ValueError("where expects condition, then_value, else_value")
+    if validate_only:
+        return pd.DataFrame()
+    condition, on_true, on_false = args
+    condition_frame = _truthy_frame(condition)
+    if isinstance(on_true, float) and isinstance(on_false, float):
+        true_frame = pd.DataFrame(on_true, index=condition_frame.index, columns=condition_frame.columns)
+        false_frame = pd.DataFrame(on_false, index=condition_frame.index, columns=condition_frame.columns)
+    else:
+        true_frame, false_frame = _aligned_pair(on_true, on_false)
+    return true_frame.where(condition_frame > 0.0, false_frame)
+
+def _op_add(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 2:
+        raise ValueError("add expects 2 arguments")
+    if validate_only:
+        return pd.DataFrame()
+    return _binary(args[0], args[1], lambda a, b: a.add(b, fill_value=0.0))
+
+def _op_sub(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 2:
+        raise ValueError("sub expects 2 arguments")
+    if validate_only:
+        return pd.DataFrame()
+    return _binary(args[0], args[1], lambda a, b: a.sub(b, fill_value=0.0))
+
+def _op_mul(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 2:
+        raise ValueError("mul expects 2 arguments")
+    if validate_only:
+        return pd.DataFrame()
+    return _binary(args[0], args[1], lambda a, b: a * b)
+
+def _op_div(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
+    if len(args) != 2:
+        raise ValueError("div expects 2 arguments")
+    if validate_only:
+        return pd.DataFrame()
+    return _binary(args[0], args[1], _safe_div)
+
+_OPERATOR_REGISTRY: dict[str, Any] = {
+    "pct_change": _op_pct_change,
+    "diff": _op_diff,
+    "ema": _op_ema,
+    "rolling_mean": _op_rolling_mean,
+    "rolling_sum": _op_rolling_sum,
+    "rolling_std": _op_rolling_std,
+    "rolling_zscore": _op_rolling_zscore,
+    "rolling_min": _op_rolling_min,
+    "rolling_max": _op_rolling_max,
+    "rolling_skew": _op_rolling_skew,
+    "rolling_kurt": _op_rolling_kurt,
+    "rolling_corr": _op_rolling_corr,
+    "rolling_autocorr": _op_rolling_autocorr,
+    "rolling_beta": _op_rolling_beta,
+    "rolling_hurst": _op_rolling_hurst,
+    "mean_reversion_halflife": _op_mean_reversion_halflife,
+    "kalman_beta": _op_kalman_beta,
+    "kalman_residual": _op_kalman_residual,
+    "rsi": _op_rsi,
+    "sign_flip_prob": _op_sign_flip_prob,
+    "neg": _op_neg,
+    "abs": _op_abs,
+    "log": _op_log,
+    "clip": _op_clip,
+    "gt": _op_gt,
+    "lt": _op_lt,
+    "and": _op_and,
+    "not": _op_not,
+    "where": _op_where,
+    "add": _op_add,
+    "sub": _op_sub,
+    "mul": _op_mul,
+    "div": _op_div,
+}
+
+
 def _apply_operator(
     function_name: str,
     args: list[pd.DataFrame | float],
     *,
     validate_only: bool,
 ) -> pd.DataFrame:
-    if function_name == "pct_change":
-        frame, periods = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.pct_change(periods)
-    if function_name == "diff":
-        frame, periods = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.diff(periods)
-    if function_name == "rolling_mean":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.rolling(window).mean()
-    if function_name == "rolling_sum":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.rolling(window).sum()
-    if function_name == "ema":
-        frame, span = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.ewm(span=span, adjust=False).mean()
-    if function_name == "rolling_std":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.rolling(window).std()
-    if function_name == "rolling_zscore":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        mean = frame.rolling(window).mean()
-        std = frame.rolling(window).std().replace(0.0, np.nan)
-        return frame.sub(mean).div(std).replace([np.inf, -np.inf], np.nan)
-    if function_name == "rolling_min":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.rolling(window).min()
-    if function_name == "rolling_max":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.rolling(window).max()
-    if function_name == "rolling_skew":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.rolling(window).skew()
-    if function_name == "rolling_kurt":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.rolling(window).kurt()
-    if function_name == "rolling_corr":
-        left, right, window = _expect_two_frames_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        return left.rolling(window).corr(right)
-    if function_name == "rolling_autocorr":
-        frame, lag, window = _expect_frame_and_two_ints(args)
-        if validate_only:
-            return pd.DataFrame()
-        shifted = frame.shift(lag)
-        return frame.rolling(window).corr(shifted)
-    if function_name == "rolling_beta":
-        left, right, window = _expect_two_frames_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        covariance = left.rolling(window).cov(right)
-        variance = right.rolling(window).var().replace(0.0, np.nan)
-        return covariance.div(variance).replace([np.inf, -np.inf], np.nan)
-    if function_name == "rolling_hurst":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        out = pd.DataFrame(index=frame.index, columns=frame.columns, dtype=float)
-        for column in frame.columns:
-            series = frame[column].astype(float)
-            out[column] = series.rolling(window, min_periods=window).apply(
-                _hurst_exponent,
-                raw=True,
-            )
-        return out
-    if function_name == "mean_reversion_halflife":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        lagged = frame.shift(1)
-        delta = frame.diff()
-        beta = delta.rolling(window).cov(lagged).div(
-            lagged.rolling(window).var().replace(0.0, np.nan)
-        )
-        phi = 1.0 + beta
-        valid_phi = phi.where((phi > 0.0) & (phi < 1.0))
-        halflife = (-np.log(2.0) / np.log(valid_phi)).replace([np.inf, -np.inf], np.nan)
-        return cast(pd.DataFrame, halflife)
-    if function_name in {"kalman_beta", "kalman_residual"}:
-        left, right, process_noise, observation_noise = _expect_kalman_args(args)
-        if validate_only:
-            return pd.DataFrame()
-        beta = _kalman_beta_frame(
-            left,
-            right,
-            process_noise=process_noise,
-            observation_noise=observation_noise,
-        )
-        if function_name == "kalman_beta":
-            return beta
-        aligned_left, aligned_right = left.align(right, join="outer")
-        return aligned_left.sub(beta.mul(aligned_right))
-    if function_name == "rsi":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        delta = frame.diff()
-        gains = delta.clip(lower=0.0)
-        losses = (-delta).clip(lower=0.0)
-        alpha = 1.0 / max(window, 1)
-        avg_gain = gains.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
-        avg_loss = losses.ewm(alpha=alpha, adjust=False, min_periods=window).mean()
-        rs = avg_gain.div(avg_loss.replace(0.0, np.nan))
-        rsi = 100.0 - (100.0 / (1.0 + rs))
-        rsi = rsi.where(avg_loss > 0.0, 100.0)
-        both_zero = (avg_gain <= 0.0) & (avg_loss <= 0.0)
-        return rsi.where(~both_zero, 50.0)
-    if function_name == "sign_flip_prob":
-        frame, window = _expect_frame_and_int(args)
-        if validate_only:
-            return pd.DataFrame()
-        sign_change = frame.apply(np.sign).diff()
-        return sign_change.ne(0).astype(float).rolling(window).mean()
-    if function_name == "neg":
-        frame = _expect_frame(args, expected=1)
-        if validate_only:
-            return pd.DataFrame()
-        return -frame
-    if function_name == "abs":
-        frame = _expect_frame(args, expected=1)
-        if validate_only:
-            return pd.DataFrame()
-        return frame.abs()
-    if function_name == "log":
-        frame = _expect_frame(args, expected=1)
-        if validate_only:
-            return pd.DataFrame()
-        return cast(pd.DataFrame, np.log(frame.where(frame > 0.0)))
-    if function_name == "clip":
-        frame = _expect_frame(args[:1], expected=1)
-        if len(args) != 3 or not isinstance(args[1], float) or not isinstance(args[2], float):
-            raise ValueError("clip expects frame, low, high")
-        if validate_only:
-            return pd.DataFrame()
-        return frame.clip(lower=args[1], upper=args[2])
-    if function_name in {"gt", "ge", "lt", "le"}:
-        if len(args) != 2:
-            raise ValueError(f"{function_name} expects 2 arguments")
-        if validate_only:
-            return pd.DataFrame()
-        if function_name == "gt":
-            return _comparison(args[0], args[1], lambda a, b: a > b)
-        if function_name == "ge":
-            return _comparison(args[0], args[1], lambda a, b: a >= b)
-        if function_name == "lt":
-            return _comparison(args[0], args[1], lambda a, b: a < b)
-        return _comparison(args[0], args[1], lambda a, b: a <= b)
-    if function_name in {"and", "or"}:
-        if len(args) != 2:
-            raise ValueError(f"{function_name} expects 2 arguments")
-        if validate_only:
-            return pd.DataFrame()
-        if function_name == "and":
-            return _logical(args[0], args[1], lambda a, b: a & b)
-        return _logical(args[0], args[1], lambda a, b: a | b)
-    if function_name == "not":
-        if len(args) != 1:
-            raise ValueError("not expects 1 argument")
-        if validate_only:
-            return pd.DataFrame()
-        return _truthy_frame(args[0]).eq(0.0).astype(float)
-    if function_name == "where":
-        if len(args) != 3:
-            raise ValueError("where expects condition, then_value, else_value")
-        if validate_only:
-            return pd.DataFrame()
-        condition, on_true, on_false = args
-        condition_frame = _truthy_frame(condition)
-        if isinstance(on_true, float) and isinstance(on_false, float):
-            true_frame = pd.DataFrame(on_true, index=condition_frame.index, columns=condition_frame.columns)
-            false_frame = pd.DataFrame(on_false, index=condition_frame.index, columns=condition_frame.columns)
-        else:
-            true_frame, false_frame = _aligned_pair(on_true, on_false)
-        return true_frame.where(condition_frame > 0.0, false_frame)
-    if function_name in {"add", "sub", "mul", "div"}:
-        if len(args) != 2:
-            raise ValueError(f"{function_name} expects 2 arguments")
-        if validate_only:
-            return pd.DataFrame()
-        if function_name == "add":
-            return _binary(args[0], args[1], lambda a, b: a.add(b, fill_value=0.0))
-        if function_name == "sub":
-            return _binary(args[0], args[1], lambda a, b: a.sub(b, fill_value=0.0))
-        if function_name == "mul":
-            return _binary(args[0], args[1], lambda a, b: a * b)
-        return _binary(args[0], args[1], _safe_div)
-    raise ValueError(f"Unsupported feature operator: {function_name}")
+    handler = _OPERATOR_REGISTRY.get(function_name)
+    if handler is None:
+        raise ValueError(f"Unsupported feature operator: {function_name}")
+    return handler(args, validate_only=validate_only)
 
 
 def _expect_frame(args: list[pd.DataFrame | float], *, expected: int) -> pd.DataFrame:

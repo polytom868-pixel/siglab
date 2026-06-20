@@ -57,7 +57,7 @@ class SigLabStatusBar(Widget):
     def __init__(
         self,
         version: str = "0.1.0",
-        api_url: str = "http://localhost:3100",
+        api_url: str = "http://localhost:8080",
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)

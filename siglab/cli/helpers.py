@@ -440,52 +440,6 @@ def base_spec_payload_for_family(
     return _override_seed_spec_symbols(parent, custom_symbols).canonical_dict()
 
 
-def motif_audit_streak(
-    *,
-    ancestry: Any,
-    track: str,
-    spec_payload: dict[str, Any],
-    limit: int = 40,
-    run_session_id: str | None = None,
-) -> int:
-    from siglab.orchestration.contracts import motif_signature
-
-    target_motif = motif_signature(spec_payload)
-    streak = 0
-    for row in ancestry.recent(
-        track,
-        limit=limit,
-        include_deterministic=False,
-        run_session_id=run_session_id,
-    ):
-        row_spec = dict(row.get("spec") or {})
-        if motif_signature(row_spec) != target_motif:
-            continue
-        row_trial = dict(dict(row.get("research_summary") or {}).get("trial") or {})
-        row_generalization = summarize_generalization_from_lib(
-            dict(row.get("summary") or {}),
-            stability_pack=dict(row_trial.get("stability_pack") or {}),
-        )
-        alignment = str(
-            row_trial.get("audit_alignment")
-            or row_generalization.get("audit_alignment")
-            or "not_run"
-        )
-        if alignment in {"negative", "mismatch"}:
-            streak += 1
-            continue
-        break
-    return streak
-
-
-def summarize_generalization_from_lib(
-    summary: dict[str, Any],
-    stability_pack: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    from siglab.orchestration.trials import summarize_generalization
-    return summarize_generalization(summary, stability_pack=stability_pack)
-
-
 def pick_deterministic_parent(
     *,
     track: str,
@@ -659,6 +613,16 @@ def external_research_from_llm_trace(
         payload["queries"] = queries
         payload["reports"] = reports
     return payload
+
+_HTML_CACHE: dict[str, str] = {}
+
+def _render_html_template(name: str, **kwargs: Any) -> str:
+    """Load an HTML template from siglab/assets/{name}.html and fill placeholders."""
+    if name not in _HTML_CACHE:
+        template_path = Path(__file__).parent.parent / "assets" / f"{name}.html"
+        _HTML_CACHE[name] = template_path.read_text(encoding="utf-8")
+    return _HTML_CACHE[name].format(**kwargs)
+
 
 def add_json_flag(parser: Any, *, dest: str = "as_json", default: bool = False, help_text: str | None = None) -> None:
     parser.add_argument(

@@ -1,6 +1,6 @@
 """FastAPI HTTP client for the SigLab TUI.
 
-Connects to the FastAPI dashboard running on port 3100.
+Connects to the FastAPI dashboard (default port from $PORT or 8080).
 Supports both HTTP REST and WebSocket connections.
 """
 
@@ -23,12 +23,12 @@ class TuiApiClient:
     """Async HTTP client for the SigLab FastAPI dashboard.
 
     Args:
-        base_url: Base URL of the FastAPI dashboard (default http://localhost:3100).
+        base_url: Base URL of the FastAPI dashboard (default http://localhost:8080).
         timeout: Request timeout in seconds (default 10).
     """
 
     def __init__(
-        self, base_url: str = "http://localhost:3100", timeout: float = 10.0
+        self, base_url: str = "http://localhost:8080", timeout: float = 10.0
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._client: httpx.AsyncClient | None = None

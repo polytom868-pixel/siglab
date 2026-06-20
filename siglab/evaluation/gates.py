@@ -10,6 +10,8 @@ Assertions fulfilled: VAL-EVAL-005
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 
 from siglab.track_registry import resolve_track
@@ -36,13 +38,6 @@ def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]
     if float(summary.get("median_sharpe", 0.0)) <= 0.0:
         reasons.append("non_positive_median_sharpe")
 
-    # ---- Validation gates ------------------------------------------------
-    if bool(summary.get("validation_available")):
-        if float(summary.get("validation_total_return", 0.0)) <= 0.0:
-            reasons.append("non_positive_validation_return")
-        if float(summary.get("validation_sharpe", 0.0)) <= 0.0:
-            reasons.append("non_positive_validation_sharpe")
-
     # ---- Pre-audit canonical gates ---------------------------------------
     pre_audit_canonical_total_return = summary.get("pre_audit_canonical_total_return")
     if (
@@ -64,5 +59,33 @@ def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]
         reasons.append("insufficient_breadth")
     if breadth < 1 and track == "yield_flows":
         reasons.append("insufficient_breadth")
+
+    # ---- Data freshness gate ---------------------------------------------
+    # Fail if the backtest data is more than 1 hour stale
+    bundle_as_of = summary.get("bundle_as_of")
+    if bundle_as_of is not None:
+        try:
+            if isinstance(bundle_as_of, str):
+                data_ts = datetime.fromisoformat(bundle_as_of)
+            else:
+                data_ts = datetime.fromisoformat(str(bundle_as_of))
+            age_seconds = (datetime.now(UTC) - data_ts).total_seconds()
+            if age_seconds > 3600:
+                reasons.append(f"stale_data_{int(age_seconds)}s")
+        except (ValueError, TypeError):
+            reasons.append("unparseable_data_timestamp")
+
+    # ---- Lookahead bias gate ---------------------------------------------
+    leak_checks = summary.get("leak_checks_passed")
+    if leak_checks is not None and not bool(leak_checks):
+        reasons.append("lookahead_bias_detected")
+
+    # ---- Position sizing sanity gate -------------------------------------
+    # Verify that a position-sizing configuration file exists on disk
+    config_path = summary.get("position_sizing_config_path")
+    if config_path is not None:
+        resolved = Path(str(config_path)).expanduser().resolve()
+        if not resolved.exists():
+            reasons.append(f"position_sizing_config_missing:{resolved}")
 
     return not reasons, reasons

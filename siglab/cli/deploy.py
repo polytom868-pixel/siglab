@@ -9,7 +9,7 @@ from typing import Any
 from siglab.config import load_settings
 from siglab.llm import ClaudeClient
 from siglab.live import LiveDeploymentManager
-from siglab.search.lineage import LineageStore
+from siglab.data.deployment_store import DeploymentStore as LineageStore
 from siglab.cli.helpers import (
     require_sosovalue_config,
     display_deployment_record,
