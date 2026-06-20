@@ -66,7 +66,7 @@
   <div class="chart-wrap">
     <div id="improvementChart"
          hx-get="/partials/run/improvement_chart?run_id={{ run_id or '' }}&metric={{ metric or 'aggregate_score' }}"
-         hx-trigger="load, every 10s"
+         hx-trigger="load"
          hx-indicator=".skeleton-chart">
     </div>
     <div id="tooltip" class="tooltip hidden"></div>
@@ -97,7 +97,7 @@
         </thead>
         <tbody id="experimentsTable"
                hx-get="/partials/run/experiment_table?run_id={{ run_id or '' }}&family={{ family or 'all' }}"
-               hx-trigger="load, every 10s"
+               hx-trigger="load"
                hx-indicator=".skeleton-card"></tbody>
       </table>
     </div>

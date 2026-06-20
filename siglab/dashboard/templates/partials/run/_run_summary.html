@@ -2,7 +2,7 @@
 {% set runs = runs or [] %}
 {% set experiments = experiments or [] %}
 {% set benchmark_runs = runs|selectattr('benchmark_mode')|list %}
-{% set tool_traced = experiments|selectattr('tool_call_count')|select('gt', 0)|list %}
+{% set tool_traced = experiments|selectattr('tool_call_count', 'gt', 0)|list %}
 {% set deployd = experiments|selectattr('deployd')|list %}
 {% set best_dir = namespace(experiment=none, value=none) %}
 {% set best_carry = namespace(experiment=none, value=none) %}

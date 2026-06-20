@@ -847,5 +847,14 @@ function eligibleRangeLabel(rollLifecycle) {
   return `${minimum ?? "?"}-${maximum ?? "?"} (latest ${latest ?? "?"})`;
 }
 
+// Export functions used by chart-engine.js
+window.SigLabUi.state = state;
+window.SigLabUi.metricValue = metricValue;
+window.SigLabUi.runIterationLabel = runIterationLabel;
+window.SigLabUi.outOfSampleLabel = outOfSampleLabel;
+window.SigLabUi.modeCellLabel = modeCellLabel;
+window.SigLabUi.renderTable = renderTable;
+window.SigLabUi.renderDetail = renderDetail;
+
 // close IIFE
 })();

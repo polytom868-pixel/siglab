@@ -62,9 +62,9 @@
   {% endfor %}
 
   {# X-axis grid lines #}
-  {% set x_ticks = [1, x_max] if x_max <= 2 else range(1, x_max + 1, ((x_max - 1) // 5)|max(1)) %}
+  {% set x_ticks = [1, x_max] if x_max <= 2 else range(1, x_max + 1, [((x_max - 1) // 5), 1] | max) %}
   {% for gen in x_ticks %}
-  {% set x_pt = margin_left + ((gen - 1) / (x_max - 1)|max(1)) * plot_width %}
+  {% set x_pt = margin_left + ((gen - 1) / [(x_max - 1), 1] | max) * plot_width %}
   {% if gen > 0 and gen <= x_max %}
   <line x1="{{ x_pt|round(1) }}" y1="{{ margin_top }}" x2="{{ x_pt|round(1) }}" y2="{{ height - margin_bottom }}" stroke="rgba(255,255,255,0.02)" stroke-width="1"></line>
   <text x="{{ (x_pt - 8)|round(1) }}" y="{{ height - 16 }}" fill="#6b7f70" font-family="Inter, sans-serif" font-size="12">{{ gen }}</text>
@@ -92,7 +92,7 @@
   {% endif %}
   {% if best_val.v is not none %}
   {% set gen = exp.get('generation') or loop.index %}
-  {% set x_pt = margin_left + ((gen - 1) / (x_max - 1)|max(1)) * plot_width %}
+  {% set x_pt = margin_left + ((gen - 1) / [(x_max - 1), 1] | max) * plot_width %}
   {% set y_pt = margin_top + plot_height - ((best_val.v - y_lo) / (y_hi - y_lo)) * plot_height %}
   {% set _ = points.append('{:.1f},{:.1f}'.format(x_pt, y_pt)) %}
   {% endif %}
@@ -108,7 +108,7 @@
   {% if v is not none %}
   {% set v_f = v|float %}
   {% set gen = exp.get('generation') or loop.index %}
-  {% set cx = margin_left + ((gen - 1) / (x_max - 1)|max(1)) * plot_width %}
+  {% set cx = margin_left + ((gen - 1) / [(x_max - 1), 1] | max) * plot_width %}
   {% set cy = margin_top + plot_height - ((v_f - y_lo) / (y_hi - y_lo)) * plot_height %}
   {% set is_passed = exp.get('passed', false) %}
   {% set is_deployd = exp.get('deployd', false) %}
