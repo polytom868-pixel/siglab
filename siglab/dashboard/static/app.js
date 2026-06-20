@@ -22,11 +22,12 @@ const {
   lineNode,
   textNode,
   historyRange,
-  formatSweepMaybePercent,
   safeParseJson,
   showError,
   apiFetch,
   setLoading,
+  renderPolicySweepBlock,
+  renderSummaryCards,
 } = window.SigLabUi;
 
 const TRACK_COLORS = {
@@ -390,17 +391,7 @@ function renderSummary(experiments, runs) {
     });
   }
 
-  container.innerHTML = cards
-    .map(
-      (card) => `
-        <article class="panel summary-card">
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="value ${card.valueClass || ""}">${escapeHtml(card.value)}</div>
-          <div class="detail">${escapeHtml(card.detail)}</div>
-        </article>
-      `
-    )
-    .join("");
+  renderSummaryCards(container, cards);
 }
 
 function renderRuns(runs) {
@@ -724,7 +715,7 @@ async function renderDetail(specHash) {
   const rollLifecycle = experiment.roll_lifecycle || {};
   const rollEvents = rollLifecycle.roll_events || [];
   delete researchSummaryView.llm_tool_trace;
-  const policySweepBlock = renderDetailPolicySweep(summary, experiment.family || spec.family);
+  const policySweepBlock = renderPolicySweepBlock(summary, experiment.family || spec.family, { heading: "Policy Sweep Comparison", winnerLabel: "Winner" });
 
   container.innerHTML = `
     <div class="detail-grid">
@@ -1042,49 +1033,7 @@ function outOfSampleLabel(summary) {
   return `${validationLabel} | ${auditLabel}`;
 }
 
-function renderDetailPolicySweep(summary, family) {
-  if (!summary?.policy_sweep_comparison_available) {
-    const pairFamily = String(family || "").startsWith("perp_pair_trade_");
-    const message = pairFamily
-      ? "This pair artifact does not have a stored declared-vs-frozen policy comparison."
-      : "This family does not use the local pair-policy sweep, so there is no declared-vs-frozen comparison.";
-    return `
-      <div class="detail-block">
-        <h3>Policy Sweep Comparison</h3>
-        <p class="detail-copy">${escapeHtml(message)}</p>
-      </div>
-    `;
-  }
-  const declared = summary.policy_sweep_declared_evaluation || {};
-  const frozen = summary.policy_sweep_frozen_evaluation || {};
-  return `
-    <div class="detail-block">
-      <h3>Policy Sweep Comparison</h3>
-      <div class="kv">
-        <div class="key">Declared Score</div><div>${escapeHtml(formatNumber(declared.selector_aggregate_score, 3))}</div>
-        <div class="key">Frozen Score</div><div>${escapeHtml(formatNumber(frozen.selector_aggregate_score, 3))}</div>
-        <div class="key">Declared Selector Return</div><div>${escapeHtml(formatPercent(declared.selector_median_total_return ?? 0))}</div>
-        <div class="key">Frozen Selector Return</div><div>${escapeHtml(formatPercent(frozen.selector_median_total_return ?? 0))}</div>
-        <div class="key">Declared Pre-Audit</div><div>${escapeHtml(formatPercent(declared.pre_audit_canonical_total_return ?? 0))}</div>
-        <div class="key">Frozen Pre-Audit</div><div>${escapeHtml(formatPercent(frozen.pre_audit_canonical_total_return ?? 0))}</div>
-        <div class="key">Declared Validation</div><div>${escapeHtml(formatPolicySweepMaybePercent(declared.validation_total_return))}</div>
-        <div class="key">Frozen Validation</div><div>${escapeHtml(formatPolicySweepMaybePercent(frozen.validation_total_return))}</div>
-        <div class="key">Winner</div><div>${escapeHtml(summary.policy_sweep_realized_winner || "tie")}</div>
-      </div>
-      <p class="detail-copy">
-        Declared-better metrics: ${escapeHtml(policySweepMetricList(summary.policy_sweep_declared_better_metrics))}. Frozen-better metrics: ${escapeHtml(policySweepMetricList(summary.policy_sweep_frozen_better_metrics))}.
-      </p>
-    </div>
-  `;
-}
 
-function formatPolicySweepMaybePercent(value) {
-  return Number.isFinite(value) ? formatPercent(value) : "n/a";
-}
-
-function policySweepMetricList(values) {
-  return Array.isArray(values) && values.length ? values.join(", ") : "none";
-}
 
 function eligibleRangeLabel(rollLifecycle) {
   const minimum = rollLifecycle.eligible_market_count_min;

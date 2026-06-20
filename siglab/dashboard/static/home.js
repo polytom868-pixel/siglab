@@ -18,6 +18,7 @@ const {
   showError,
   apiFetch,
   setLoading,
+  renderSummaryCards,
 } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -92,9 +93,9 @@ function renderSummary(runs) {
   const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
   const points = runs.flatMap((run) => run.series_points || []);
   const bestPoint = points.reduce((best, point) => {
-    if (!Number.isFinite(metricValue(point, metricKey))) return best;
+    if (!Number.isFinite(pointMetricValue(point, metricKey))) return best;
     if (!best) return point;
-    return metricValue(point, metricKey) > metricValue(best, metricKey) ? point : best;
+    return pointMetricValue(point, metricKey) > pointMetricValue(best, metricKey) ? point : best;
   }, null);
   const cards = [
     {
@@ -126,23 +127,13 @@ function renderSummary(runs) {
     },
     {
       label: `Best ${metricMeta.label}`,
-      value: bestPoint ? metricMeta.formatter(metricValue(bestPoint, metricKey)) : "n/a",
+      value: bestPoint ? metricMeta.formatter(pointMetricValue(bestPoint, metricKey)) : "n/a",
       detail: bestPoint
         ? `${bestPoint.family || "experiment"} at ${bestPoint.run_iteration_label || `run #${bestPoint.run_position || "n/a"}`}`
         : "No finite experiment points are available for the selected metric.",
     },
   ];
-  container.innerHTML = cards
-    .map(
-      (card) => `
-        <article class="panel summary-card">
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="value">${escapeHtml(card.value)}</div>
-          <div class="detail">${escapeHtml(card.detail)}</div>
-        </article>
-      `
-    )
-    .join("");
+  renderSummaryCards(container, cards);
 }
 
 function renderRunCards(runs) {
@@ -219,7 +210,7 @@ function sparklineSvg(points, metricKey) {
     `;
   }
   const values = points
-    .map((point) => ({ ...point, metric: metricValue(point, metricKey) }))
+    .map((point) => ({ ...point, metric: pointMetricValue(point, metricKey) }))
     .filter((point) => Number.isFinite(point.metric));
   if (!values.length) {
     return `<svg viewBox="0 0 360 110" preserveAspectRatio="none" class="run-sparkline"><text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No finite values retained</text></svg>`;
@@ -267,7 +258,7 @@ function sparklineSvg(points, metricKey) {
   `;
 }
 
-function metricValue(point, metricKey) {
+function pointMetricValue(point, metricKey) {
   const numeric = Number(point?.[metricKey]);
   return Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY;
 }

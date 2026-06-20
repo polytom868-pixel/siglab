@@ -133,6 +133,63 @@
     return Number.isFinite(value) ? formatPercent(value) : "n/a";
   }
 
+  function joinOrNone(values) {
+    return Array.isArray(values) && values.length ? values.join(", ") : "none";
+  }
+
+  function renderPolicySweepBlock(summary, family, options) {
+    options = options || {};
+    const heading = options.heading || "Policy Sweep";
+    const winnerLabel = options.winnerLabel || "Realized Winner";
+    if (!summary?.policy_sweep_comparison_available) {
+      const pairFamily = String(family || "").startsWith("perp_pair_trade_");
+      const message = pairFamily
+        ? "This pair artifact does not have a stored declared-vs-frozen policy comparison."
+        : "This family does not use the local pair-policy sweep, so there is no declared-vs-frozen comparison.";
+      return `
+        <div class="detail-block">
+          <h3>${escapeHtml(heading)}</h3>
+          <p class="detail-copy">${escapeHtml(message)}</p>
+        </div>
+      `;
+    }
+    const declared = summary.policy_sweep_declared_evaluation || {};
+    const frozen = summary.policy_sweep_frozen_evaluation || {};
+    return `
+      <div class="detail-block">
+        <h3>${escapeHtml(heading)}</h3>
+        <div class="kv">
+          <div class="key">Declared Score</div><div>${escapeHtml(formatNumber(declared.selector_aggregate_score, 3))}</div>
+          <div class="key">Frozen Score</div><div>${escapeHtml(formatNumber(frozen.selector_aggregate_score, 3))}</div>
+          <div class="key">Declared Selector Return</div><div>${escapeHtml(formatPercent(declared.selector_median_total_return ?? 0))}</div>
+          <div class="key">Frozen Selector Return</div><div>${escapeHtml(formatPercent(frozen.selector_median_total_return ?? 0))}</div>
+          <div class="key">Declared Pre-Audit</div><div>${escapeHtml(formatPercent(declared.pre_audit_canonical_total_return ?? 0))}</div>
+          <div class="key">Frozen Pre-Audit</div><div>${escapeHtml(formatPercent(frozen.pre_audit_canonical_total_return ?? 0))}</div>
+          <div class="key">Declared Validation</div><div>${escapeHtml(formatSweepMaybePercent(declared.validation_total_return))}</div>
+          <div class="key">Frozen Validation</div><div>${escapeHtml(formatSweepMaybePercent(frozen.validation_total_return))}</div>
+          <div class="key">${escapeHtml(winnerLabel)}</div><div>${escapeHtml(summary.policy_sweep_realized_winner || "tie")}</div>
+        </div>
+        <p class="detail-copy">
+          Declared-better metrics: ${escapeHtml(joinOrNone(summary.policy_sweep_declared_better_metrics))}. Frozen-better metrics: ${escapeHtml(joinOrNone(summary.policy_sweep_frozen_better_metrics))}.
+        </p>
+      </div>
+    `;
+  }
+
+  function renderSummaryCards(container, cards) {
+    container.innerHTML = cards
+      .map(
+        (card) => `
+          <article class="panel summary-card">
+            <div class="label">${escapeHtml(card.label)}</div>
+            <div class="value ${card.valueClass || ""}">${escapeHtml(card.value)}</div>
+            <div class="detail">${escapeHtml(card.detail)}</div>
+          </article>
+        `
+      )
+      .join("");
+  }
+
   function safeParseJson(value) {
     if (typeof value !== "string") return value;
     try {
@@ -167,75 +224,90 @@
     ).join("");
   }
 
+  function buildAxisTicks(index, maxTicks) {
+    if (!index?.length) return [];
+    if (index.length === 1) {
+      return [{ position: 0, timestamp: index[0] }];
+    }
+    const count = Math.max(2, Math.min(maxTicks, index.length));
+    const positions = [];
+    for (let step = 0; step < count; step += 1) {
+      positions.push(Math.round((step * (index.length - 1)) / (count - 1)));
+    }
+    return [...new Set(positions)].map((position) => ({
+      position,
+      timestamp: index[position],
+    }));
+  }
+
+  function sampleSeries(index, values, maxPoints) {
+    if (values.length <= maxPoints) {
+      return values.map((value, idx) => ({ index: idx, timestamp: index[idx], value }));
+    }
+    const step = Math.ceil(values.length / maxPoints);
+    const points = [];
+    for (let idx = 0; idx < values.length; idx += step) {
+      points.push({ index: idx, timestamp: index[idx], value: values[idx] });
+    }
+    return points;
+  }
+
+  function hasFiniteSeriesValues(series) {
+    return (series?.values || []).some((value) => value !== null && Number.isFinite(Number(value)));
+  }
+
+  function metricSeries(frame, columnName) {
+    const columns = frame.columns || [];
+    const columnIndex = columns.indexOf(columnName);
+    if (columnIndex === -1) {
+      return { index: [], values: [] };
+    }
+    return {
+      index: frame.index || [],
+      values: (frame.rows || []).map((row) => row[columnIndex]),
+    };
+  }
+
+  function seriesMinimum(series) {
+    const values = (series.values || []).filter((value) => value !== null && Number.isFinite(Number(value)));
+    if (!values.length) return null;
+    return Math.min(...values);
+  }
+
+  function seriesMaximum(series) {
+    const values = (series.values || []).filter((value) => value !== null && Number.isFinite(Number(value)));
+    if (!values.length) return null;
+    return Math.max(...values);
+  }
+
+  function renderChartLegend(container, items) {
+    if (!container) return;
+    container.innerHTML = items
+      .map(
+        (item) => `
+          <span class="legend-item">
+            <span class="legend-swatch" style="background:${escapeHtml(item.color)}"></span>
+            <span>${escapeHtml(item.label)}</span>
+          </span>
+        `
+      )
+      .join("");
+  }
+
+  function formatAxisDateTime(value) {
+    if (!value) return "n/a";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
+  }
+
   window.SigLabUi = {
-    TRACK_LABELS: {
-      trend_signals: "Directional Perps",
-      yield_flows: "Systematic Carry",
-    },
-
-    METRIC_META: {
-      aggregate_score: {
-        label: "Aggregate Score",
-        formatter: (value) => formatNumber(value, 3),
-        description: "Primary selector metric, computed from the evaluator's selector windows.",
-      },
-      median_sharpe: {
-        label: "Median Sharpe",
-        formatter: (value) => formatNumber(value, 3),
-        description: "Median Sharpe across the selector windows.",
-      },
-      median_cagr: {
-        label: "Median CAGR",
-        formatter: (value) => formatPercent(value),
-        description: "Median annualized return across the selector windows.",
-      },
-      median_total_return: {
-        label: "Median Return",
-        formatter: (value) => formatPercent(value),
-        description: "Median total return across the selector windows.",
-      },
-      pre_audit_canonical_total_return: {
-        label: "Pre-Audit Return",
-        formatter: (value) => formatPercent(value),
-        description: "Canonical total return measured only up to the audit boundary.",
-      },
-      median_calmar: {
-        label: "Median Calmar",
-        formatter: (value) => formatNumber(value, 3),
-        description: "Median Calmar across the selector windows.",
-      },
-      validation_total_return: {
-        label: "Validation Return",
-        formatter: (value) => formatPercent(value),
-        description: "Out-of-sample total return across the validation slices used during selection.",
-      },
-      validation_sharpe: {
-        label: "Validation Sharpe",
-        formatter: (value) => formatNumber(value, 3),
-        description: "Out-of-sample Sharpe across the validation slices used during selection.",
-      },
-      validation_cagr: {
-        label: "Validation CAGR",
-        formatter: (value) => formatPercent(value),
-        description: "Out-of-sample annualized return across the validation slices used during selection.",
-      },
-      audit_total_return: {
-        label: "Audit Return",
-        formatter: (value) => formatPercent(value),
-        description: "Final untouched out-of-sample total return on the audit slice.",
-      },
-      audit_sharpe: {
-        label: "Audit Sharpe",
-        formatter: (value) => formatNumber(value, 3),
-        description: "Final untouched out-of-sample Sharpe on the audit slice.",
-      },
-      audit_cagr: {
-        label: "Audit CAGR",
-        formatter: (value) => formatPercent(value),
-        description: "Final untouched out-of-sample annualized return on the audit slice.",
-      },
-    },
-
     formatNumber,
     formatPercent,
     formatDateTime,
@@ -251,9 +323,20 @@
     textNode,
     historyRange,
     formatSweepMaybePercent,
+    joinOrNone,
+    renderPolicySweepBlock,
+    renderSummaryCards,
     safeParseJson,
     emptyChartText,
     showError,
     showSkeleton,
+    buildAxisTicks,
+    sampleSeries,
+    hasFiniteSeriesValues,
+    metricSeries,
+    seriesMinimum,
+    seriesMaximum,
+    renderChartLegend,
+    formatAxisDateTime,
   };
 })();

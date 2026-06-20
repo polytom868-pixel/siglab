@@ -8,7 +8,9 @@ const DEFAULT_DISPLAY_CAPITAL_USD = 100000;
 const DISPLAY_CAPITAL_STORAGE_KEY = "siglab.displayCapitalUsd";
 const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml,
   rectNode, lineNode, textNode, historyRange, formatSweepMaybePercent,
-  safeParseJson, emptyChartText, apiFetch, setLoading } = window.SigLabUi;
+  safeParseJson, emptyChartText, apiFetch, setLoading, joinOrNone,
+  renderPolicySweepBlock,
+  buildAxisTicks, sampleSeries, hasFiniteSeriesValues, metricSeries, seriesMinimum, seriesMaximum, renderChartLegend, formatAxisDateTime } = window.SigLabUi;
 
 const COLORS = {
   equity: "#4ade80",
@@ -462,7 +464,7 @@ function renderSnapshot(experiment, run, seriesAvailable, compiledMetadata) {
         </div>
         <p class="detail-copy">${escapeHtml(visualSplit.note || "No split metadata recorded.")}</p>
       </div>
-      ${renderPolicySweepBlock(summary, experiment.family)}
+      ${renderPolicySweepBlock(summary, experiment.family, { heading: "Policy Sweep", winnerLabel: "Realized Winner" })}
       <div class="detail-block">
         <h3>Latest Longs</h3>
         ${latestLongs.length ? pillRow(latestLongs, "long") : '<p class="empty-state">No long exposure at the latest retained timestamp.</p>'}
@@ -475,42 +477,7 @@ function renderSnapshot(experiment, run, seriesAvailable, compiledMetadata) {
   `;
 }
 
-function renderPolicySweepBlock(summary, family) {
-  if (!summary?.policy_sweep_comparison_available) {
-    const pairFamily = String(family || "").startsWith("perp_pair_trade_");
-    const message = pairFamily
-      ? "This pair artifact does not have a stored declared-vs-frozen policy comparison."
-      : "This family does not use the local pair-policy sweep, so there is no declared-vs-frozen comparison.";
-    return `
-      <div class="detail-block">
-        <h3>Policy Sweep</h3>
-        <p class="detail-copy">${escapeHtml(message)}</p>
-      </div>
-    `;
-  }
-  const declared = summary.policy_sweep_declared_evaluation || {};
-  const frozen = summary.policy_sweep_frozen_evaluation || {};
-  const winner = summary.policy_sweep_realized_winner || "tie";
-  return `
-    <div class="detail-block">
-      <h3>Policy Sweep</h3>
-      <div class="kv">
-        <div class="key">Declared Score</div><div>${escapeHtml(formatNumber(declared.selector_aggregate_score, 3))}</div>
-        <div class="key">Frozen Score</div><div>${escapeHtml(formatNumber(frozen.selector_aggregate_score, 3))}</div>
-        <div class="key">Declared Selector Return</div><div>${escapeHtml(formatPercent(declared.selector_median_total_return ?? 0))}</div>
-        <div class="key">Frozen Selector Return</div><div>${escapeHtml(formatPercent(frozen.selector_median_total_return ?? 0))}</div>
-        <div class="key">Declared Pre-Audit</div><div>${escapeHtml(formatPercent(declared.pre_audit_canonical_total_return ?? 0))}</div>
-        <div class="key">Frozen Pre-Audit</div><div>${escapeHtml(formatPercent(frozen.pre_audit_canonical_total_return ?? 0))}</div>
-        <div class="key">Declared Validation</div><div>${escapeHtml(formatSweepMaybePercent(declared.validation_total_return))}</div>
-        <div class="key">Frozen Validation</div><div>${escapeHtml(formatSweepMaybePercent(frozen.validation_total_return))}</div>
-        <div class="key">Realized Winner</div><div>${escapeHtml(winner)}</div>
-      </div>
-      <p class="detail-copy">
-        Declared-better metrics: ${escapeHtml(joinOrNone(summary.policy_sweep_declared_better_metrics))}. Frozen-better metrics: ${escapeHtml(joinOrNone(summary.policy_sweep_frozen_better_metrics))}.
-      </p>
-    </div>
-  `;
-}
+
 
 function renderEquityChart(run) {
   const svg = document.getElementById("equityChart");
@@ -944,65 +911,6 @@ function drawLineChart(svg, tooltip, seriesList, options) {
     });
   });
 }
-
-function metricSeries(frame, columnName) {
-  const columns = frame.columns || [];
-  const columnIndex = columns.indexOf(columnName);
-  if (columnIndex === -1) {
-    return { index: [], values: [] };
-  }
-  return {
-    index: frame.index || [],
-    values: (frame.rows || []).map((row) => row[columnIndex]),
-  };
-}
-
-function renderChartLegend(container, items) {
-  if (!container) return;
-  container.innerHTML = items
-    .map(
-      (item) => `
-        <span class="legend-item">
-          <span class="legend-swatch" style="background:${escapeHtml(item.color)}"></span>
-          <span>${escapeHtml(item.label)}</span>
-        </span>
-      `
-    )
-    .join("");
-}
-
-function buildAxisTicks(index, maxTicks) {
-  if (!index?.length) return [];
-  if (index.length === 1) {
-    return [{ position: 0, timestamp: index[0] }];
-  }
-  const count = Math.max(2, Math.min(maxTicks, index.length));
-  const positions = [];
-  for (let step = 0; step < count; step += 1) {
-    positions.push(Math.round((step * (index.length - 1)) / (count - 1)));
-  }
-  return [...new Set(positions)].map((position) => ({
-    position,
-    timestamp: index[position],
-  }));
-}
-
-function seriesMinimum(series) {
-  const values = (series.values || []).filter((value) => value !== null && Number.isFinite(Number(value)));
-  if (!values.length) return null;
-  return Math.min(...values);
-}
-
-function seriesMaximum(series) {
-  const values = (series.values || []).filter((value) => value !== null && Number.isFinite(Number(value)));
-  if (!values.length) return null;
-  return Math.max(...values);
-}
-
-function hasFiniteSeriesValues(series) {
-  return (series?.values || []).some((value) => value !== null && Number.isFinite(Number(value)));
-}
-
 function latestWeightMap(timeline) {
   const changes = timeline?.changes || [];
   if (!changes.length) return {};
@@ -1124,18 +1032,6 @@ function tradeMarkerSvg(trade, x, y) {
     return `<circle cx="${x}" cy="${y}" r="4.3" fill="${meta.color}" stroke="rgba(8,12,10,0.65)" stroke-width="1.2"><title>${escapeHtml(title)}</title></circle>`;
   }
   return `<circle cx="${x}" cy="${y}" r="4.5" fill="${meta.color}" stroke="rgba(8,12,10,0.65)" stroke-width="1.2"><title>${escapeHtml(title)}</title></circle>`;
-}
-
-function sampleSeries(index, values, maxPoints) {
-  if (values.length <= maxPoints) {
-    return values.map((value, idx) => ({ index: idx, timestamp: index[idx], value }));
-  }
-  const step = Math.ceil(values.length / maxPoints);
-  const points = [];
-  for (let idx = 0; idx < values.length; idx += step) {
-    points.push({ index: idx, timestamp: index[idx], value: values[idx] });
-  }
-  return points;
 }
 
 function pillRow(entries, mode) {
@@ -1287,19 +1183,6 @@ function canonicalOutcomeDecomposition(run) {
   };
 }
 
-function formatAxisDateTime(value) {
-  if (!value) return "n/a";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
 function outOfSampleMetric(summary, prefix) {
   const available = Boolean(summary?.[`${prefix}_available`]);
   if (!available) {
@@ -1307,10 +1190,4 @@ function outOfSampleMetric(summary, prefix) {
   }
   return `${formatPercent(summary?.[`${prefix}_total_return`])} / ${formatNumber(summary?.[`${prefix}_sharpe`], 2)}`;
 }
-
-function joinOrNone(values) {
-  return Array.isArray(values) && values.length ? values.join(", ") : "none";
-}
-
-
 
