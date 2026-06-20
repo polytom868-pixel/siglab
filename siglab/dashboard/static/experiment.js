@@ -594,7 +594,7 @@ function renderHeatmap(run) {
   }
 
   const segments = buildWeightSegments(timeline);
-  const width = 1180;
+  const width = Math.max(400, container?.clientWidth || 1180);
   const rowHeight = 26;
   const labelWidth = 108;
   const axisHeight = 38;
@@ -602,7 +602,7 @@ function renderHeatmap(run) {
   const plotWidth = width - labelWidth - 16;
 
   const pieces = [
-    `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="heatmap-svg">`,
+    `<svg viewBox="0 0 ${width} ${height}"  class="heatmap-svg">`,
     `<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>`,
   ];
 
@@ -621,9 +621,7 @@ function renderHeatmap(run) {
       const x2 = xScale(segment.endPosition);
       const widthPx = Math.max(2, x2 - x1);
       pieces.push(
-        `<rect x="${x1}" y="${y}" width="${widthPx}" height="18" fill="${weightColor(value)}" rx="2" ry="2">
-          <title>${escapeHtml(asset)}\n${escapeHtml(segment.startTimestamp)} → ${escapeHtml(segment.endTimestamp)}\nweight ${formatNumber(value, 3)}</title>
-        </rect>`
+        `<rect x="${x1}" y="${y}" width="${widthPx}" height="18" fill="${weightColor(value)}" rx="2" ry="2" data-asset="${escapeHtml(asset)}" data-start="${escapeHtml(segment.startTimestamp)}" data-end="${escapeHtml(segment.endTimestamp)}" data-weight="${formatNumber(value, 3)}"></rect>`
       );
     });
   });
@@ -644,6 +642,35 @@ function renderHeatmap(run) {
 
   pieces.push(`</svg>`);
   container.innerHTML = pieces.join("");
+
+  const heatmapTooltip = document.getElementById("pageTooltip") || document.getElementById("tooltip");
+  if (heatmapTooltip) {
+    container.querySelectorAll("rect[data-asset]").forEach((rect) => {
+      rect.addEventListener("mouseenter", (event) => {
+        const asset = rect.getAttribute("data-asset");
+        const start = rect.getAttribute("data-start");
+        const end = rect.getAttribute("data-end");
+        const weight = rect.getAttribute("data-weight");
+        heatmapTooltip.innerHTML = `<div class="meta">${escapeHtml(start)} → ${escapeHtml(end)}</div><strong>${escapeHtml(asset)}</strong><div>Weight: ${weight}</div>`;
+        heatmapTooltip.classList.remove("hidden");
+        moveTooltip(event, heatmapTooltip);
+      });
+      rect.addEventListener("mousemove", (event) => moveTooltip(event, heatmapTooltip));
+      rect.addEventListener("mouseleave", () => heatmapTooltip.classList.add("hidden"));
+      rect.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        const touch = event.touches[0];
+        const asset = rect.getAttribute("data-asset");
+        const start = rect.getAttribute("data-start");
+        const end = rect.getAttribute("data-end");
+        const weight = rect.getAttribute("data-weight");
+        heatmapTooltip.innerHTML = `<div class="meta">${escapeHtml(start)} → ${escapeHtml(end)}</div><strong>${escapeHtml(asset)}</strong><div>Weight: ${weight}</div>`;
+        heatmapTooltip.classList.remove("hidden");
+        moveTooltip({ clientX: touch.clientX, clientY: touch.clientY }, heatmapTooltip);
+      }, { passive: false });
+      rect.addEventListener("touchend", () => heatmapTooltip.classList.add("hidden"));
+    });
+  }
 }
 
 function renderAssetActionCharts(run) {
@@ -656,17 +683,18 @@ function renderAssetActionCharts(run) {
   }
 
   const bySymbol = groupTradesBySymbol(annotatedTrades);
+  const cardWidth = Math.max(200, Math.round(container.clientWidth / 2) || 520);
   const cards = Object.entries(bySymbol)
     .sort((left, right) => {
       const leftLatest = left[1][left[1].length - 1];
       const rightLatest = right[1][right[1].length - 1];
       return Math.abs(Number(rightLatest?.target_weight || 0)) - Math.abs(Number(leftLatest?.target_weight || 0));
     })
-    .map(([symbol, trades]) => renderAssetActionCard(symbol, trades));
+    .map(([symbol, trades]) => renderAssetActionCard(symbol, trades, cardWidth));
   container.innerHTML = cards.join("");
 }
 
-function renderAssetActionCard(symbol, trades) {
+function renderAssetActionCard(symbol, trades, cardWidth) {
   const latest = trades[trades.length - 1] || {};
   const latestState = positionStateLabel(latest.target_weight);
   return `
@@ -682,7 +710,7 @@ function renderAssetActionCard(symbol, trades) {
           ${escapeHtml(String(trades.length))} trades • latest ${escapeHtml(latestState)}
         </div>
       </div>
-      ${assetActionSvg(symbol, trades)}
+      ${assetActionSvg(symbol, trades, cardWidth)}
       <div class="asset-action-legend">
         <span class="legend-marker"><span class="legend-dot"></span>Buy</span>
         <span class="legend-marker"><span class="legend-dot sell"></span>Sell</span>
@@ -693,8 +721,8 @@ function renderAssetActionCard(symbol, trades) {
   `;
 }
 
-function assetActionSvg(symbol, trades) {
-  const width = 520;
+function assetActionSvg(symbol, trades, widthOverride) {
+  const width = Math.max(200, widthOverride || 520);
   const height = 180;
   const margin = { top: 18, right: 14, bottom: 34, left: 46 };
   const plotWidth = width - margin.left - margin.right;
@@ -706,7 +734,7 @@ function assetActionSvg(symbol, trades) {
     .map((trade) => Number(trade.price))
     .filter((value) => Number.isFinite(value));
   if (!timestamps.length || !prices.length) {
-    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="asset-action-svg"><text x="16" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No retained prices for ${escapeHtml(symbol)}</text></svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}"  class="asset-action-svg"><text x="16" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No retained prices for ${escapeHtml(symbol)}</text></svg>`;
   }
   let yMin = Math.min(...prices);
   let yMax = Math.max(...prices);
@@ -741,7 +769,7 @@ function assetActionSvg(symbol, trades) {
     .join("");
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="asset-action-svg">
+    <svg viewBox="0 0 ${width} ${height}"  class="asset-action-svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
       ${bands}
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
@@ -807,7 +835,8 @@ function drawLineChart(svg, tooltip, seriesList, options) {
     return;
   }
 
-  const width = 1200;
+  const container = svg.parentElement;
+  const width = Math.max(400, container?.clientWidth || 1200);
   const height = Number(svg.getAttribute("viewBox")?.split(" ")[3] || 420);
   const margin = { top: 28, right: 24, bottom: 72, left: 58 };
   const plotWidth = width - margin.left - margin.right;
@@ -892,7 +921,7 @@ function drawLineChart(svg, tooltip, seriesList, options) {
       const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       dot.setAttribute("cx", `${xScale(point.index)}`);
       dot.setAttribute("cy", `${yScale(point.value)}`);
-      dot.setAttribute("r", "4");
+      dot.setAttribute("r", "5.5");
       dot.setAttribute("fill", series.color);
       dot.setAttribute("stroke", "rgba(8, 12, 10, 0.6)");
       dot.setAttribute("stroke-width", "1.2");
@@ -907,6 +936,23 @@ function drawLineChart(svg, tooltip, seriesList, options) {
       });
       dot.addEventListener("mousemove", (event) => moveTooltip(event, tooltip));
       dot.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
+      dot.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        const touch = event.touches[0];
+        tooltip.innerHTML = `
+          <div class="meta">${escapeHtml(point.timestamp)}</div>
+          <strong>${escapeHtml(series.label)}</strong>
+          <div>${escapeHtml(series.formatter(point.value))}</div>
+        `;
+        tooltip.classList.remove("hidden");
+        moveTooltip({ clientX: touch.clientX, clientY: touch.clientY }, tooltip);
+      }, { passive: false });
+      dot.addEventListener("touchmove", (event) => {
+        event.preventDefault();
+        const touch = event.touches[0];
+        moveTooltip({ clientX: touch.clientX, clientY: touch.clientY }, tooltip);
+      }, { passive: false });
+      dot.addEventListener("touchend", () => tooltip.classList.add("hidden"));
       svg.appendChild(dot);
     });
   });
@@ -1051,8 +1097,25 @@ function weightColor(value) {
 }
 
 function moveTooltip(event, tooltip) {
-  tooltip.style.left = `${event.clientX + 14}px`;
-  tooltip.style.top = `${event.clientY + 12}px`;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const tooltipWidth = 280;
+  const tooltipHeight = 200;
+
+  let left = event.clientX + 14;
+  let top = event.clientY + 12;
+
+  if (left + tooltipWidth > viewportWidth) {
+    left = viewportWidth - tooltipWidth - 8;
+  }
+  if (left < 0) left = 8;
+  if (top + tooltipHeight > viewportHeight) {
+    top = viewportHeight - tooltipHeight - 8;
+  }
+  if (top < 0) top = 8;
+
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
 }
 
 function getSpecHash() {

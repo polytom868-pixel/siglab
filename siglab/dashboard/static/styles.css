@@ -53,6 +53,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 body::before {
@@ -175,6 +176,18 @@ body::before {
 .status-label {
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Hamburger button — hidden on desktop */
+.navbar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px;
+  line-height: 1;
 }
 
 /* ─── Layout ─── */
@@ -410,7 +423,7 @@ button {
   border-radius: 10px;
   background: var(--surface);
   color: var(--text);
-  padding: 10px 14px;
+  padding: 14px 18px;
   font-family: inherit;
   font-size: 13px;
   transition: all 150ms ease;
@@ -465,7 +478,7 @@ button:hover {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
-  padding: 10px 16px;
+  padding: 14px 18px;
   transition: all 150ms ease;
 }
 
@@ -483,7 +496,8 @@ button:hover {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 10px 14px;
+  padding: 14px 18px;
+  min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
@@ -882,6 +896,10 @@ input[type="checkbox"] {
   transform: translate(8px, 8px);
   font-size: 13px;
   z-index: 50;
+  touch-action: none;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .tooltip.hidden {
@@ -916,7 +934,8 @@ table {
 
 th,
 td {
-  padding: 8px 10px;
+  padding: 12px 10px;
+  min-height: 44px;
   text-align: left;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
@@ -1453,14 +1472,40 @@ pre {
     align-items: start;
   }
 
+  .navbar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .navbar-nav {
     display: none;
+    position: absolute;
+    top: 56px;
+    left: 0;
+    right: 0;
+    background: var(--navbar-bg, rgba(8, 12, 10, 0.95));
+    backdrop-filter: blur(20px);
+    flex-direction: column;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    z-index: 99;
+  }
+
+  .navbar-nav.open {
+    display: flex;
+  }
+
+  .navbar-link {
+    padding: 12px 14px;
+    width: 100%;
   }
 }
 
 @media (max-width: 640px) {
   .page-shell {
     padding: 20px 16px 48px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 8px));
   }
 
   .navbar {
@@ -1470,6 +1515,42 @@ pre {
   .hero-controls {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* Mobile bottom tab bar */
+  .mobile-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface-glass);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    z-index: 100;
+    justify-content: space-around;
+    padding: 8px 0;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  }
+
+  .mobile-tab-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    text-decoration: none;
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 8px 16px;
+  }
+
+  .mobile-tab-link.active {
+    color: var(--green);
+  }
+
+  .mobile-tab-icon {
+    font-size: 20px;
+    line-height: 1;
   }
 }
 
@@ -1515,6 +1596,12 @@ pre {
     border-bottom: 1px solid var(--border);
   }
 
+  @media (max-width: 1080px) {
+    .navbar-nav {
+      background: var(--navbar-bg, rgba(255, 255, 255, 0.95));
+    }
+  }
+
   .ops-terminal {
     --ops-bg: #ffffff;
     --ops-text: #1a1d1b;
@@ -1525,5 +1612,39 @@ pre {
     --ops-warn: #6b7f70;
     --ops-bad: #dc2626;
   }
+}
+
+/* ─── Responsive SVG Charts ─── */
+
+.chart-wrap svg,
+.chart-wrap object {
+  width: 100%;
+  height: auto;
+  max-height: 460px;
+  overflow: visible;
+}
+
+.compact-chart-wrap svg {
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+}
+
+.run-sparkline {
+  width: 100%;
+  height: auto;
+  max-height: 110px;
+}
+
+.heatmap-svg {
+  width: 100%;
+  height: auto;
+  min-width: 0; /* override the 960px min-width */
+}
+
+.asset-action-svg {
+  width: 100%;
+  height: auto;
+  max-height: 180px;
 }
 

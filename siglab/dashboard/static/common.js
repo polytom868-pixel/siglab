@@ -316,6 +316,24 @@
     ).join("");
   }
 
+  function responsiveSvg(svgElement, drawCallback) {
+    if (!svgElement) return;
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        if (width > 0) {
+          drawCallback(width);
+        }
+      }
+    });
+    resizeObserver.observe(svgElement.parentElement || svgElement);
+    const parentWidth = (svgElement.parentElement || svgElement).clientWidth;
+    if (parentWidth > 0) {
+      drawCallback(parentWidth);
+    }
+    return resizeObserver;
+  }
+
   window.SigLabUi = {
     formatNumber,
     formatPercent,
@@ -348,5 +366,16 @@
     renderChartLegend,
     formatAxisDateTime,
     populateMetricFilter,
+    responsiveSvg,
   };
 })();
+
+/* ─── Mobile Hamburger Toggle ─── */
+document.addEventListener("click", (event) => {
+  const toggle = document.getElementById("navbarToggle");
+  const nav = document.querySelector(".navbar-nav");
+  if (toggle && nav && (event.target === toggle || toggle.contains(event.target))) {
+    nav.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", nav.classList.contains("open"));
+  }
+});

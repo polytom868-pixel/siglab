@@ -460,7 +460,8 @@ function renderChart(experiments) {
 
   const metricKey = selectedMetricKey();
   const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
-  const width = 1200;
+  const container = svg.parentElement;
+  const width = Math.max(400, container?.clientWidth || 1200);
   const height = 460;
   const margin = { top: 24, right: 24, bottom: 48, left: 62 };
   const plotWidth = width - margin.left - margin.right;
@@ -540,7 +541,7 @@ function renderChart(experiments) {
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute("cx", `${xScale(chartXValue(row))}`);
       circle.setAttribute("cy", `${yScale(value)}`);
-      circle.setAttribute("r", row.deployd ? "6.5" : "4.5");
+      circle.setAttribute("r", row.deployd ? "9" : "5.5");
       circle.setAttribute("fill", row.passed ? color : "rgba(255,255,255,0.12)");
       circle.setAttribute("stroke", row.deployd ? "#fff" : "rgba(255,255,255,0.2)");
       circle.setAttribute("stroke-width", row.deployd ? "2" : "1.2");
@@ -882,8 +883,23 @@ function showTooltip(event, row, metricKey) {
 function moveTooltip(event) {
   const tooltip = document.getElementById("tooltip");
   const bounds = document.querySelector(".chart-wrap").getBoundingClientRect();
-  tooltip.style.left = `${event.clientX - bounds.left + 14}px`;
-  tooltip.style.top = `${event.clientY - bounds.top + 12}px`;
+  const tooltipWidth = 280;
+  const tooltipHeight = 300;
+
+  let left = event.clientX - bounds.left + 14;
+  let top = event.clientY - bounds.top + 12;
+
+  if (left + tooltipWidth > bounds.width) {
+    left = bounds.width - tooltipWidth - 8;
+  }
+  if (left < 0) left = 8;
+  if (top + tooltipHeight > bounds.height) {
+    top = bounds.height - tooltipHeight - 8;
+  }
+  if (top < 0) top = 8;
+
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
 }
 
 function bestExperiment(experiments, track, metricKey) {

@@ -215,9 +215,10 @@ function sparklineSvg(points, metricKey) {
     .map((point) => ({ ...point, metric: pointMetricValue(point, metricKey) }))
     .filter((point) => Number.isFinite(point.metric));
   if (!values.length) {
-    return `<svg viewBox="0 0 360 110" preserveAspectRatio="none" class="run-sparkline"><text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No finite values retained</text></svg>`;
+    return `<svg viewBox="0 0 360 110"  class="run-sparkline"><text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No finite values retained</text></svg>`;
   }
-  const width = 360;
+  const container = svg.parentElement;
+  const width = Math.max(100, container?.clientWidth || 360);
   const height = 110;
   const margin = { top: 10, right: 10, bottom: 18, left: 10 };
   const plotWidth = width - margin.left - margin.right;
@@ -250,7 +251,7 @@ function sparklineSvg(points, metricKey) {
   const bestX = xScale(values.indexOf(best));
   const bestY = yScale(best.metric);
   return `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="run-sparkline">
+    <svg viewBox="0 0 ${width} ${height}"  class="run-sparkline">
       <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
       <polyline fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="${polyline}"></polyline>
