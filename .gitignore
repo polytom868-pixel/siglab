@@ -1,0 +1,110 @@
+# SigLab core-code .gitignore
+# Tracks: siglab/ + docs/ + .agents/ + scripts/ + config files
+# Ignores: tests/ (junk), agent_workspace/ (junk), temp, one-off, logs
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py*.class
+*.so
+*.egg-info/
+*.egg
+
+# ----- Virtual envs -----
+.venv/
+venv/
+env/
+
+# ----- Test/cache/runtime junk -----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.prof
+*.lprof
+*.npy
+*.parquet
+
+# ----- OS -----
+.DS_Store
+Thumbs.db
+
+# ----- Tooling -----
+.omc/
+.claude/
+.wayfinder/
+.cursor/
+.idea/
+.vscode/
+
+# ----- Logs -----
+*.log
+dashboard_*.log
+
+# ----- Local env / secrets -----
+.env
+.env.*
+.siglab-provider.env
+config.json
+config.local.json
+*.db
+*.db.*
+lineage.db
+new_empty_check.db
+
+# ----- SigLab runtime artefacts (state, snapshots, etc.) -----
+runs/
+backups/
+
+# ----- ALL TESTS, scratch notes, agent work — keep repo CORE only -----
+tests/
+agent_workspace/
+tmp/
+scratch/
+oneoff/
+one_offs/
+junk/
+logs/
+benchmarks/
+scripts/
+.agents/
+.mcp.json
+reports/
+
+# ----- Cache / runtime artifacts -----
+data/cache/
+sessions/
+
+# ----- Local experiment config -----
+mutable/
+challenges/
+tracks/
+
+# ----- Wallet / key material -----
+*.key
+*_key*
+wallet*
+
+# ----- Deployed agent credentials / private config (keep __init__) -----
+siglab/live/deployed_agents/*
+!siglab/live/deployed_agents/__init__.py
+
+# ----- Auto-generated noise inside docs -----
+docs/*gap*
+docs/*audit*.md
+docs/*validation*.md
+docs/refactor-correction-report.md
+docs/*surface*.yaml
+docs/screenshots/
+
+# ----- Root-level generated artifacts -----
+tmp_git_cmd.sh
+git-ls-files-output.txt
+
+# ----- Misc auto-generated -----
+*.swp
+*.bak
+*.tmp
