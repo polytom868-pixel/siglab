@@ -1,5 +1,4 @@
-(() => {
-  const { escapeHtml, formatDateTime, toggleAutoRefresh, apiFetch } = window.SigLabUi;
+const { escapeHtml, formatDateTime, toggleAutoRefresh, apiFetch } = window.SigLabUi;
   const state = {
     refreshTimer: null,
     isRefreshing: false,
@@ -168,4 +167,3 @@
       loadOps();
     }
   });
-})();

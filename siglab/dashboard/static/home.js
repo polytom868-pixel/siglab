@@ -15,6 +15,7 @@ const {
   selectedMetricKey,
   toggleAutoRefresh,
   populateFamilyFilter,
+  populateMetricFilter,
   showError,
   apiFetch,
   setLoading,
@@ -27,6 +28,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("familyFilter")?.addEventListener("change", () => refresh());
   document.getElementById("metricFilter")?.addEventListener("change", () => render());
   document.getElementById("autoRefresh")?.addEventListener("change", () => toggleAutoRefresh(HOME_STATE, refresh));
+  populateMetricFilter("metricFilter", null, document.getElementById("metricFilter")?.value);
   await refresh();
   toggleAutoRefresh(HOME_STATE, refresh);
 

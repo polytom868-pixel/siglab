@@ -37,6 +37,13 @@
   color: #fff;
 }
 
+/* ─── Custom Scrollbar ─── */
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -236,7 +243,15 @@ h2 {
 
 .ops-terminal {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: #d7ded9;
+  --ops-bg: #050705;
+  --ops-text: #d7ded9;
+  --ops-muted: #79837d;
+  --ops-heading: #f4f7f5;
+  --ops-value: #d7ded9;
+  --ops-ok: #f4f7f5;
+  --ops-warn: #b9c1bc;
+  --ops-bad: #ffffff;
+  color: var(--ops-text, #d7ded9);
 }
 
 .ops-terminal h1,
@@ -258,7 +273,7 @@ h2 {
 
 .ops-card,
 .ops-panel {
-  background: #050705;
+  background: var(--ops-bg, #050705);
   border: 1px solid rgba(215, 222, 217, 0.18);
   box-shadow: none;
 }
@@ -273,7 +288,7 @@ h2 {
 .ops-card span,
 .ops-key,
 .ops-extra {
-  color: #79837d;
+  color: var(--ops-muted, #79837d);
 }
 
 .ops-card strong {
@@ -294,7 +309,7 @@ h2 {
 
 .ops-panel h2 {
   margin-bottom: 12px;
-  color: #f4f7f5;
+  color: var(--ops-heading, #f4f7f5);
   font-size: 13px;
   font-weight: 500;
 }
@@ -315,20 +330,20 @@ h2 {
 }
 
 .ops-value {
-  color: #d7ded9;
+  color: var(--ops-value, #d7ded9);
   overflow-wrap: anywhere;
 }
 
 .ops-value.ok {
-  color: #f4f7f5;
+  color: var(--ops-ok, #f4f7f5);
 }
 
 .ops-value.warn {
-  color: #b9c1bc;
+  color: var(--ops-warn, #b9c1bc);
 }
 
 .ops-value.bad {
-  color: #ffffff;
+  color: var(--ops-bad, #ffffff);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
@@ -892,23 +907,7 @@ input[type="checkbox"] {
   overflow: auto;
 }
 
-.table-wrap::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
 
-.table-wrap::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.table-wrap::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-}
-
-.table-wrap::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
 
 table {
   width: 100%;
@@ -1153,18 +1152,7 @@ pre {
   overflow: auto;
 }
 
-pre::-webkit-scrollbar {
-  width: 5px;
-}
 
-pre::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-pre::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-}
 
 /* ─── Trace ─── */
 
@@ -1323,18 +1311,7 @@ pre::-webkit-scrollbar-thumb {
   padding: 12px;
 }
 
-.heatmap-wrap::-webkit-scrollbar {
-  height: 6px;
-}
 
-.heatmap-wrap::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.heatmap-wrap::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-}
 
 .heatmap-svg {
   width: 100%;
@@ -1505,5 +1482,48 @@ pre::-webkit-scrollbar-thumb {
 
 [data-loading="true"] .refresh-indicator {
   display: inline-block;
+}
+
+/* ─── Light Mode ─── */
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f7f5;
+    --bg-subtle: #e8edea;
+    --surface: #ffffff;
+    --surface-raised: #f9fbfa;
+    --surface-hover: #eef2ef;
+    --surface-glass: rgba(255, 255, 255, 0.82);
+    --text: #1a1d1b;
+    --text-secondary: #4a524d;
+    --muted: #7a8f7e;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-accent: rgba(74, 204, 130, 0.15);
+    --shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.1);
+    --glow-green: 0 0 80px rgba(74, 222, 128, 0.04);
+  }
+
+  h1 {
+    background: linear-gradient(135deg, #1a1d1b 0%, #4a524d 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .navbar {
+    background: rgba(255, 255, 255, 0.85);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ops-terminal {
+    --ops-bg: #ffffff;
+    --ops-text: #1a1d1b;
+    --ops-muted: #6b7f70;
+    --ops-heading: #1a1d1b;
+    --ops-value: #1a1d1b;
+    --ops-ok: #1a1d1b;
+    --ops-warn: #6b7f70;
+    --ops-bad: #dc2626;
+  }
 }
 

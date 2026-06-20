@@ -18,6 +18,7 @@ const {
   selectedMetricKey,
   toggleAutoRefresh,
   populateFamilyFilter,
+  populateMetricFilter,
   rectNode,
   lineNode,
   textNode,
@@ -141,14 +142,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     refresh();
   });
-  document.getElementById("clearRunFilter")?.addEventListener("click", () => {
-    if (state.lockedRunId) {
-      return;
-    }
-    state.selectedRunId = null;
-    state.runFilterTouched = true;
-    render();
-  });
+
+  populateMetricFilter("metricFilter", null, document.getElementById("metricFilter")?.value);
   await refresh();
   toggleAutoRefresh(state, refresh);
 
@@ -215,7 +210,7 @@ function render() {
   }
   renderScope(experiments);
   renderSummary(experiments, runs);
-  renderRuns(runs);
+
   renderFamilyGuide();
   renderChart(experiments);
   renderTable(experiments);
@@ -310,12 +305,7 @@ function renderScope(experiments) {
           ? "Every recorded generation in the current track scope. Click a row or chart point for full detail."
           : `Every recorded generation for ${family}. Click a row or chart point for full detail.`;
   }
-  const runsSubtitle = document.getElementById("runsSubtitle");
-  if (runsSubtitle) {
-    runsSubtitle.textContent = selectedRun
-      ? `Focused on ${selectedRun.run_label}. Click the selected row again or use Show All Runs to clear the run filter.`
-      : "Grouped run sessions across the current scope. Click a row to focus the experiment table on one run.";
-  }
+
   const runTitle = document.getElementById("runTitle");
   if (runTitle && selectedRun) {
     runTitle.textContent = selectedRun.run_label || selectedRun.run_session_id;
@@ -394,45 +384,7 @@ function renderSummary(experiments, runs) {
   renderSummaryCards(container, cards);
 }
 
-function renderRuns(runs) {
-  const tbody = document.getElementById("runsTable");
-  if (!tbody) return;
-  if (!runs.length) {
-    tbody.innerHTML = `<tr><td colspan="13" class="empty-state">No runs in the current scope.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = "";
-  runs.forEach((row) => {
-    const tr = document.createElement("tr");
-    if (row.run_session_id === state.selectedRunId) {
-      tr.classList.add("selected");
-    }
-    tr.innerHTML = `
-      <td>${escapeHtml(TRACK_LABELS[row.track] || row.track)}</td>
-      <td>${escapeHtml(row.runner_label || "unknown")}</td>
-      <td>${escapeHtml(row.run_kind || "harness")}${row.benchmark_deck ? ` / ${escapeHtml(row.benchmark_deck)}` : ""}</td>
-      <td title="${escapeHtml(row.run_session_id)}">${escapeHtml(row.run_label || row.run_session_id)}</td>
-      <td>${escapeHtml(String(row.experiment_count || 0))}</td>
-      <td>${escapeHtml(String(row.llm_experiment_count || 0))}</td>
-      <td class="${runStatusClass(row.status)}">${escapeHtml(row.status === "running" || row.status === "starting" ? String(row.status) : `${row.passed_count || 0} / ${row.deployd_count || 0}`)}</td>
-      <td>${escapeHtml(String(row.tool_call_count || 0))}</td>
-      <td>${escapeHtml(formatNumber(row.best_aggregate_score, 3))}</td>
-      <td>${escapeHtml(formatPercent(row.best_validation_total_return))}</td>
-      <td>${escapeHtml(formatPercent(row.best_pre_audit_canonical_total_return))}</td>
-      <td>${row.best_spec_hash ? `<a class="table-link" href="/experiments/${encodeURIComponent(row.best_spec_hash)}">${escapeHtml(row.best_spec_hash)}</a>` : "n/a"}</td>
-      <td>${escapeHtml(formatDateTime(row.last_created_at))}</td>
-    `;
-    tr.querySelector(".table-link")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
-    tr.addEventListener("click", () => {
-      state.runFilterTouched = true;
-      state.selectedRunId = row.run_session_id === state.selectedRunId ? null : row.run_session_id;
-      render();
-    });
-    tbody.appendChild(tr);
-  });
-}
+
 
 function renderFamilyGuide() {
   const container = document.getElementById("familyGuideCards");

@@ -307,6 +307,15 @@
     }).format(date);
   }
 
+  function populateMetricFilter(containerId, metricMeta, selectedValue) {
+    const select = document.getElementById(containerId || "metricFilter");
+    if (!select) return;
+    const entries = Object.entries(metricMeta || window.SigLabUi?.METRIC_META || {});
+    select.innerHTML = entries.map(([key, meta]) =>
+      `<option value="${key}"${key === (selectedValue || "aggregate_score") ? " selected" : ""}>${window.SigLabUi?.escapeHtml ? window.SigLabUi.escapeHtml(meta.label) : meta.label}</option>`
+    ).join("");
+  }
+
   window.SigLabUi = {
     formatNumber,
     formatPercent,
@@ -338,5 +347,6 @@
     seriesMaximum,
     renderChartLegend,
     formatAxisDateTime,
+    populateMetricFilter,
   };
 })();
