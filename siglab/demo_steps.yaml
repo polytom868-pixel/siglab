@@ -1,0 +1,84 @@
+# SigLab Buildathon Demo Steps
+# Shared canonical definition — consumed by TUI EvidenceScreen, demo CLI, and docs.
+# Each step maps 1:1 to a section in docs/demo-script.md.
+
+steps:
+  - step: 1
+    title: "Build SoSoValue Evidence"
+    command: "evidence-build --currency BTC --etf-type us-btc-spot --news-page-size 20 --news-pages 2 --output runs/evidence/live_sosovalue_probe_btc_pages.jsonl --summary-output runs/evidence/live_sosovalue_probe_btc_pages.summary.json --json"
+    description: "Ingest ETF inflow data and news from SoSoValue API"
+    expected: "record_count > 0, ETF + Feed records present"
+    evidence_path: "runs/evidence/live_sosovalue_probe_btc_pages.jsonl"
+    required: true
+
+  - step: 2
+    title: "Probe SoDEX WebSocket"
+    command: "sodex-ws-probe --channel allBookTicker --timeout-seconds 12 --evidence-output runs/evidence/sodex_ws_evidence.jsonl --json"
+    description: "Capture public SoDEX quote evidence via WebSocket"
+    expected: "ready: true, signed: false, evidence_records_appended > 0"
+    evidence_path: "runs/evidence/sodex_ws_evidence.jsonl"
+    required: true
+
+  - step: 3
+    title: "Render Evidence Graph"
+    command: "evidence-map --evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl --output runs/evidence/evidence_graph.html --json"
+    description: "Generate HTML evidence graph visualization"
+    expected: "HTML file exists, links are not causal claims"
+    evidence_path: "runs/evidence/evidence_graph.html"
+    required: true
+
+  - step: 4
+    title: "Generate Market Report"
+    command: "market-report --entity BTC --sosovalue-evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl --sodex-evidence runs/evidence/sodex_ws_evidence.jsonl --output runs/market_report_latest.json --html-output runs/market_report_latest.html --json"
+    description: "Operator-facing decision support from evidence"
+    expected: "status: READY_FOR_OPERATOR_REVIEW, stance, confirmations"
+    evidence_path: "runs/market_report_latest.html"
+    required: true
+
+  - step: 5
+    title: "Capture Provider Telemetry"
+    command: "telemetry-report --track trend_signals --json"
+    description: "Aggregate provider metrics and credit usage"
+    expected: "provider_metrics_status: present, latency, tokens"
+    evidence_path: "runs/latest_telemetry_report.json"
+    required: true
+
+  - step: 6
+    title: "Verify Live Boundary"
+    command: "sodex-preflight --json"
+    description: "Check SoDEX signed-write readiness"
+    expected: "Missing credentials → live write refused"
+    evidence_path: "runs/sodex_preflight_latest.json"
+    required: true
+
+  - step: 7
+    title: "Run B.AI Research Loop"
+    command: "run --track trend_signals --iterations 1 --max-call-estimated-credits 3000 --max-total-credits 6000 --max-provider-errors 1 --agent-label demo --run-label demo"
+    description: "Bounded B.AI research loop with credit guard (optional, requires .siglab-provider.env)"
+    expected: "Traces written, credits telemetry recorded"
+    evidence_path: "runs/llm_traces/trend_signals/"
+    required: false
+
+  - step: 8
+    title: "Build Demo Manifest"
+    command: "demo-manifest --output runs/demo_manifest_latest.json --html-output runs/demo_manifest_latest.html --json"
+    description: "Index all demo artifacts"
+    expected: "Artifact paths, readiness flags, red_flags"
+    evidence_path: "runs/demo_manifest_latest.html"
+    required: true
+
+  - step: 9
+    title: "Open Operator Board"
+    command: "wave-status --wave-number 1 --phase demo --status running --goal show-input-to-action-flow --agents operator,dashboard,hardening --outputs market-report,ops-board,preflight --blockers signed-SoDEX-unproven --validation-status targeted_pass --next-decision continue-demo-refresh"
+    description: "Record wave status for ops board"
+    expected: "Wave status recorded for dashboard display"
+    evidence_path: "runs/wave_status_latest.json"
+    required: true
+
+  - step: 10
+    title: "Benchmark External Deck"
+    command: "benchmark-status --deck trend_signals_external"
+    description: "Read external-agent benchmark deck (optional)"
+    expected: "spec.yaml and best_spec.yaml readable"
+    evidence_path: "benchmarks/trend_signals_external/"
+    required: false

@@ -30,20 +30,13 @@ FUNCTION_OPERATORS = (
     "kalman_beta",
     "kalman_residual",
     "rsi",
-    "add",
     "sub",
     "mul",
     "div",
-    "neg",
     "abs",
     "log",
     "clip",
     "sign_flip_prob",
-    "gt",
-    "lt",
-    "and",
-    "not",
-    "where",
 )
 
 _NUMBER_RE = re.compile(r"^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$")
@@ -369,11 +362,6 @@ def _op_sign_flip_prob(args: list[pd.DataFrame | float], *, validate_only: bool)
     sign_change = frame.apply(np.sign).diff()
     return sign_change.ne(0).astype(float).rolling(window).mean()
 
-def _op_neg(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
-    frame = _expect_frame(args, expected=1)
-    if validate_only:
-        return pd.DataFrame()
-    return -frame
 
 def _op_abs(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
     frame = _expect_frame(args, expected=1)
@@ -395,54 +383,6 @@ def _op_clip(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.Dat
         return pd.DataFrame()
     return frame.clip(lower=args[1], upper=args[2])
 
-def _op_gt(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
-    if len(args) != 2:
-        raise ValueError("gt expects 2 arguments")
-    if validate_only:
-        return pd.DataFrame()
-    return _comparison(args[0], args[1], lambda a, b: a > b)
-
-def _op_lt(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
-    if len(args) != 2:
-        raise ValueError("lt expects 2 arguments")
-    if validate_only:
-        return pd.DataFrame()
-    return _comparison(args[0], args[1], lambda a, b: a < b)
-
-def _op_and(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
-    if len(args) != 2:
-        raise ValueError("and expects 2 arguments")
-    if validate_only:
-        return pd.DataFrame()
-    return _logical(args[0], args[1], lambda a, b: a & b)
-
-def _op_not(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
-    if len(args) != 1:
-        raise ValueError("not expects 1 argument")
-    if validate_only:
-        return pd.DataFrame()
-    return _truthy_frame(args[0]).eq(0.0).astype(float)
-
-def _op_where(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
-    if len(args) != 3:
-        raise ValueError("where expects condition, then_value, else_value")
-    if validate_only:
-        return pd.DataFrame()
-    condition, on_true, on_false = args
-    condition_frame = _truthy_frame(condition)
-    if isinstance(on_true, float) and isinstance(on_false, float):
-        true_frame = pd.DataFrame(on_true, index=condition_frame.index, columns=condition_frame.columns)
-        false_frame = pd.DataFrame(on_false, index=condition_frame.index, columns=condition_frame.columns)
-    else:
-        true_frame, false_frame = _aligned_pair(on_true, on_false)
-    return true_frame.where(condition_frame > 0.0, false_frame)
-
-def _op_add(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
-    if len(args) != 2:
-        raise ValueError("add expects 2 arguments")
-    if validate_only:
-        return pd.DataFrame()
-    return _binary(args[0], args[1], lambda a, b: a.add(b, fill_value=0.0))
 
 def _op_sub(args: list[pd.DataFrame | float], *, validate_only: bool) -> pd.DataFrame:
     if len(args) != 2:
@@ -486,16 +426,9 @@ _OPERATOR_REGISTRY: dict[str, Any] = {
     "kalman_residual": _op_kalman_residual,
     "rsi": _op_rsi,
     "sign_flip_prob": _op_sign_flip_prob,
-    "neg": _op_neg,
     "abs": _op_abs,
     "log": _op_log,
     "clip": _op_clip,
-    "gt": _op_gt,
-    "lt": _op_lt,
-    "and": _op_and,
-    "not": _op_not,
-    "where": _op_where,
-    "add": _op_add,
     "sub": _op_sub,
     "mul": _op_mul,
     "div": _op_div,
@@ -641,29 +574,6 @@ def _broadcast_single_column_frame(
         index=frame.index,
     ).reindex(columns=target_columns)
 
-
-def _truthy_frame(value: pd.DataFrame | float) -> pd.DataFrame:
-    if isinstance(value, pd.DataFrame):
-        return value.fillna(0.0).astype(float)
-    raise ValueError("Expected dataframe truthy operand")
-
-
-def _comparison(
-    left: pd.DataFrame | float,
-    right: pd.DataFrame | float,
-    comparator: Any,
-) -> pd.DataFrame:
-    left_frame, right_frame = _aligned_pair(left, right)
-    return cast(pd.DataFrame, comparator(left_frame, right_frame).fillna(False).astype(float))
-
-
-def _logical(
-    left: pd.DataFrame | float,
-    right: pd.DataFrame | float,
-    operator: Any,
-) -> pd.DataFrame:
-    left_frame, right_frame = _aligned_pair(left, right)
-    return cast(pd.DataFrame, operator(left_frame.fillna(0.0) != 0.0, right_frame.fillna(0.0) != 0.0).astype(float))
 
 
 def _safe_div(left: pd.DataFrame | float, right: pd.DataFrame | float) -> pd.DataFrame:

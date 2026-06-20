@@ -521,6 +521,24 @@ class MarketDataProvider:
                 }
                 for market in lending_markets[:5]
             ]
+
+        # SoSoValue evidence: ETF inflow + featured news
+        sosovalue_etf, sosovalue_news = await asyncio.gather(
+            self.fetch_etf_historical_inflow(etf_type="us-btc-spot"),
+            self.fetch_featured_news(page_size=5),
+            return_exceptions=True,
+        )
+        if isinstance(sosovalue_etf, list):
+            summary["etf_inflow"] = [
+                {"date": row.get("date"), "total_net_inflow": row.get("total_net_inflow"), "total_net_assets": row.get("total_net_assets")}
+                for row in sosovalue_etf[:10]
+            ]
+        if isinstance(sosovalue_news, list):
+            summary["featured_news"] = [
+                {"title": row.get("title"), "source_link": row.get("source_link"), "published_at": row.get("published_at")}
+                for row in sosovalue_news[:5]
+            ]
+        summary["sosovalue_evidence_used"] = True
         return summary
 
     async def discover_perp_symbols(

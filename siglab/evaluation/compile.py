@@ -643,12 +643,6 @@ def _resolve_regime_gates(
     }
 
 
-def _single_column_frame(series: pd.Series, *, name: str) -> pd.DataFrame:
-    clean = pd.to_numeric(series, errors="coerce")
-    return clean.rename(name).to_frame()
-
-
-
 
 
 def _perp_global_raw_frames(
@@ -665,18 +659,18 @@ def _perp_global_raw_frames(
     market_co_movement_72h = _mean_pairwise_rolling_corr(returns_1h, window=72)
     market_realized_vol_168h = returns_1h.rolling(168).std().mean(axis=1)
     return {
-        "market_price_mean": _single_column_frame(market_price_mean, name="GLOBAL"),
-        "market_funding_mean": _single_column_frame(market_funding_mean, name="GLOBAL"),
-        "market_funding_dispersion": _single_column_frame(
+        "market_price_mean": pd.to_numeric(market_price_mean, errors="coerce").rename("GLOBAL").to_frame(),
+        "market_funding_mean": pd.to_numeric(market_funding_mean, errors="coerce").rename("GLOBAL").to_frame(),
+        "market_funding_dispersion": pd.to_numeric(
             market_funding_dispersion,
-            name="GLOBAL",
-        ),
-        "market_breadth_24h": _single_column_frame(market_breadth_24h, name="GLOBAL"),
-        "market_co_movement_72h": _single_column_frame(market_co_movement_72h, name="GLOBAL"),
-        "market_realized_vol_168h": _single_column_frame(
+            errors="coerce",
+        ).rename("GLOBAL").to_frame(),
+        "market_breadth_24h": pd.to_numeric(market_breadth_24h, errors="coerce").rename("GLOBAL").to_frame(),
+        "market_co_movement_72h": pd.to_numeric(market_co_movement_72h, errors="coerce").rename("GLOBAL").to_frame(),
+        "market_realized_vol_168h": pd.to_numeric(
             market_realized_vol_168h,
-            name="GLOBAL",
-        ),
+            errors="coerce",
+        ).rename("GLOBAL").to_frame(),
     }
 
 

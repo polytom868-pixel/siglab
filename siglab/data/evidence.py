@@ -26,32 +26,57 @@ class EvidenceRecord:
     value: Any = None
     attributes: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Clamp confidence to [0.0, 1.0] at construction time."""
+        if not 0.0 <= self.confidence <= 1.0:
+            object.__setattr__(self, "confidence", max(0.0, min(1.0, float(self.confidence))))
+
     def to_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload["confidence"] = max(0.0, min(1.0, float(self.confidence)))
-        return payload
+        return asdict(self)
 
 
 class EvidenceStore:
     def __init__(self, path: Path) -> None:
         self.path = path
+        self._seen_ids: set[str] | None = None
         self.last_append_stats: dict[str, int] = {"records_seen": 0, "records_appended": 0, "duplicates_skipped": 0}
+
+    def _load_seen_ids(self) -> set[str]:
+        if self._seen_ids is None:
+            self._seen_ids = {_evidence_id(row) for row in self.load()}
+        return self._seen_ids
+
+    def _is_duplicate(self, row: dict[str, Any], seen_ids: set[str]) -> bool:
+        evidence_id = _evidence_id(row)
+        # Pass 1: ID-based (O(1) set lookup)
+        if evidence_id in seen_ids:
+            return True
+        # Pass 2 (fresh path): skip dedup for recently-fetched (< 30s old)
+        created_at = row.get("created_at")
+        if created_at and isinstance(created_at, str):
+            try:
+                ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                if (datetime.now(UTC) - ts).total_seconds() < 30:
+                    seen_ids.add(evidence_id)
+                    return False
+            except (ValueError, TypeError):
+                pass
+        seen_ids.add(evidence_id)
+        return False
 
     def append_many(self, records: Iterable[EvidenceRecord]) -> int:
         rows = [record.to_dict() for record in records]
         if not rows:
             self.last_append_stats = {"records_seen": 0, "records_appended": 0, "duplicates_skipped": 0}
             return 0
-        existing_ids = {_evidence_id(row) for row in self.load()}
+        seen_ids = self._load_seen_ids()
         unique_rows: list[dict[str, Any]] = []
-        seen_ids: set[str] = set()
         for row in rows:
             evidence_id = _evidence_id(row)
-            if evidence_id in existing_ids or evidence_id in seen_ids:
+            if self._is_duplicate(row, seen_ids):
                 continue
             row["evidence_id"] = evidence_id
             unique_rows.append(row)
-            seen_ids.add(evidence_id)
         if unique_rows:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as handle:
@@ -101,14 +126,14 @@ class EvidenceStore:
 
 
 def etf_inflow_evidence(
-    rows: Iterable[dict[str, Any]],
+    api_rows: Iterable[dict[str, Any]],
     *,
     etf_type: str,
     observed_at: str,
     evidence_path: str,
 ) -> list[EvidenceRecord]:
     records: list[EvidenceRecord] = []
-    for row in rows:
+    for row in api_rows:
         date = str(row.get("date") or "")
         if not date:
             continue
@@ -282,13 +307,26 @@ def _evidence_id(row: dict[str, Any]) -> str:
     existing = row.get("evidence_id")
     if existing:
         return str(existing)
+    # Inline _normalize_value for stable hashing
+    value = row.get("value")
+    if isinstance(value, bool):
+        normalized_value = value
+    elif isinstance(value, (int, float)):
+        normalized_value = repr(float(value))
+    elif isinstance(value, str):
+        try:
+            normalized_value = repr(float(value.strip()))
+        except ValueError:
+            normalized_value = value
+    else:
+        normalized_value = value
     stable_payload: dict[str, Any] = {
         "source": row.get("source"),
         "entity": row.get("entity"),
         "module": row.get("module"),
         "relation": row.get("relation"),
         "timestamp": row.get("timestamp"),
-        "value": _normalize_value(row.get("value")),
+        "value": normalized_value,
     }
     # evidence_path is location metadata, not identity; exclude None/missing.
     if row.get("evidence_path") is not None:
@@ -309,19 +347,6 @@ def _coerce_float(value: Any) -> float | None:
         except ValueError:
             return None
     return None
-
-
-def _normalize_value(value: Any) -> Any:
-    """Normalize a value for stable hashing across equivalent representations.
-
-    Numeric values (int, float, or numeric string) are coerced to float and
-    rendered via repr() so "100", 100, 100.0 all hash identically. bool is
-    preserved distinctly from 0/1; other values pass through unchanged.
-    """
-    if isinstance(value, bool):
-        return value
-    candidate = _coerce_float(value)
-    return repr(candidate) if candidate is not None else value
 
 
 def _preferred_multilingual_content(value: Any) -> dict[str, Any]:

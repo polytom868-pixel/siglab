@@ -16,7 +16,6 @@ Mark prices dict is shared between screen and widget.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import Any, ClassVar, cast
@@ -29,7 +28,6 @@ from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Input, Static
 
-from siglab.tui.cli_bridge import run_cli
 from siglab.tui.formatting import (
     ACCENT_GREEN,
     BORDER_DIM,

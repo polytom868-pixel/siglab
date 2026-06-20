@@ -18,25 +18,6 @@ from siglab.evaluation.runner_episodes import (
 from siglab.utils import safe_float as _safe_float
 
 
-def _annualized_sharpe(returns: pd.Series, *, periods_per_year: float = 365.25 * 24.0) -> float | None:
-    clean = pd.to_numeric(returns, errors="coerce").dropna()
-    if clean.empty:
-        return None
-    volatility = float(clean.std())
-    if not math.isfinite(volatility) or volatility <= 0.0:
-        return None
-    return _safe_float((float(clean.mean()) / volatility) * math.sqrt(periods_per_year))
-
-
-def _max_drawdown(returns: pd.Series) -> float | None:
-    clean = pd.to_numeric(returns, errors="coerce").dropna()
-    if clean.empty:
-        return None
-    equity = (1.0 + clean).cumprod()
-    drawdown = equity.div(equity.cummax()).sub(1.0)
-    return _safe_float(drawdown.min())
-
-
 def _slice_performance_stats(
     *,
     returns: pd.Series,
@@ -56,6 +37,16 @@ def _slice_performance_stats(
         }
     total_return = float(cast(Any, (1.0 + subset).prod()) - 1.0)
     active_bars = int((exposure_subset > 1e-9).sum())
+    # Inline sharpe and max_drawdown (removed _annualized_sharpe / _max_drawdown — duplicates backtest._stats)
+    _sharpe_val: float | None = None
+    _max_dd_val: float | None = None
+    if not subset.empty:
+        _vol = float(subset.std())
+        if math.isfinite(_vol) and _vol > 0.0:
+            _sharpe_val = _safe_float((float(subset.mean()) / _vol) * math.sqrt(365.25 * 24.0))
+        _equity = (1.0 + subset).cumprod()
+        _drawdown = _equity.div(_equity.cummax()).sub(1.0)
+        _max_dd_val = _safe_float(_drawdown.min())
     return {
         "label": label,
         "available": True,
@@ -65,8 +56,8 @@ def _slice_performance_stats(
         "avg_gross_exposure": _safe_float(exposure_subset.mean()),
         "mean_return": _safe_float(subset.mean()),
         "total_return": _safe_float(total_return),
-        "sharpe": _annualized_sharpe(subset),
-        "max_drawdown": _max_drawdown(subset),
+        "sharpe": _sharpe_val,
+        "max_drawdown": _max_dd_val,
         "positive_bar_fraction": _safe_float((subset > 0.0).mean()),
     }
 

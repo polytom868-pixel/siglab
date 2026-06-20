@@ -12,16 +12,6 @@ from typing import Any
 import pandas as pd
 
 
-def apply_roll_exit_days(
-    target_positions: pd.DataFrame,
-    days_to_expiry: pd.DataFrame,
-    roll_days_before_expiry: int,
-) -> pd.DataFrame:
-    """Zero out positions for contracts inside the roll window."""
-    aligned_days = days_to_expiry.reindex_like(target_positions).ffill()
-    return target_positions.where(aligned_days > float(roll_days_before_expiry), 0.0)
-
-
 def classify_pt_market_state(
     *,
     prices: pd.DataFrame,

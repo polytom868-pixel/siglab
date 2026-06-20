@@ -25,6 +25,7 @@ from typing import Any
 
 from siglab.cli.rich_utils import print_json, print_success
 from siglab.config import load_settings
+from siglab.evaluation.signal_narrative import build_signal_narrative
 from siglab.io_utils import write_json
 from siglab.path_utils import resolve_path_from_root
 from siglab.cli.helpers import (
@@ -55,6 +56,7 @@ def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser
     run_parser.add_argument("--output", default=None)
     run_parser.add_argument("--html-output", default=None)
     run_parser.add_argument("--json", action="store_true")
+    run_parser.add_argument("--narrative", action="store_true", help="Include signal narrative from latest evaluation")
 
     # demo manifest
     manifest_parser = demo_subparsers.add_parser(
@@ -167,6 +169,14 @@ def run_demo_run(args: argparse.Namespace) -> None:
             "market_report": market_summary,
             "telemetry_report": telemetry_summary,
         }
+
+        # ----- Narrative (optional --narrative flag) -----
+        if getattr(args, "narrative", False):
+            try:
+                narrative_text = build_signal_narrative({})
+            except Exception:
+                narrative_text = "[Narrative unavailable]"
+            payload["narrative"] = narrative_text
 
         # ----- Write JSON output -----
         output_path = (
