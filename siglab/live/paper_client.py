@@ -1071,6 +1071,74 @@ class SoDEXPaperPerpsClient:
     # Persistence
     # ------------------------------------------------------------------
 
+    async def process_funding(
+        self,
+        session_id: str,
+        *,
+        force: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        Apply funding costs to all open positions using real SoDEX
+        funding rates.
+
+        Funding is applied on 8-hour intervals. The method checks the
+        current funding rate from SoDEX mark_prices and applies it to
+        open positions.
+        """
+        session = self.get_session(session_id)
+        if not session.positions:
+            return []
+
+        now = _now_timestamp()
+        if not force and session.last_funding_time is not None:
+            elapsed = now - session.last_funding_time
+            if elapsed < FUNDING_INTERVAL_HOURS * 3600:
+                return []
+
+        if self.feeds is None:
+            logger.warning("Cannot fetch funding rates for session %s: feeds not available", session_id)
+            return []
+        try:
+            mark_prices = await self.feeds.fetch_mark_prices()
+        except Exception as exc:
+            logger.warning("Failed to fetch funding rates for session %s: %s", session_id, exc)
+            return []
+
+        funding_map: dict[str, float] = {}
+        price_map: dict[str, float] = {}
+        for entry in mark_prices:
+            sym = entry.get("symbol", "")
+            fr_str = entry.get("fundingRate", "0")
+            mp_str = entry.get("markPrice", "0")
+            try:
+                funding_map[sym] = float(fr_str)
+                price_map[sym] = float(mp_str)
+            except (TypeError, ValueError):
+                continue
+
+        funding_events: list[dict[str, Any]] = []
+        for pos in list(session.positions.values()):
+            if pos.quantity == 0:
+                continue
+            sym = pos.symbol
+            funding_rate = funding_map.get(sym, 0.0)
+            mark_price = price_map.get(sym, pos.entry_price or 0.0)
+            if mark_price <= 0 or funding_rate == 0.0:
+                continue
+            cost = _compute_funding_cost(pos, mark_price, funding_rate)
+            pos.accumulated_funding += cost
+            session.pnl += cost
+            funding_events.append({
+                "symbol": sym, "funding_rate": funding_rate,
+                "mark_price": mark_price, "cost": cost, "timestamp": now,
+            })
+
+        session.last_funding_time = now
+        if funding_events:
+            self._save_session_to_disk(session)
+            logger.info("Applied %d funding events for session %s", len(funding_events), session_id)
+        return funding_events
+
     def _save_session_to_disk(self, session: PaperSession) -> None:
         """Persist session state to a JSON file via an atomic temp-file replace."""
         path = self.session_path(session.session_id)

@@ -1206,6 +1206,7 @@ class ResearchEvaluator:
             "policy_sweep_best_train_score": policy_sweep_best_train_score,
             "policy_sweep_activity_penalty": float((best_summary or {}).get("activity_penalty") or 0.0),
             "policy_sweep_material_change": bool(changed_keys),
+            "policy_sweep_changed_keys": list(changed_keys),
             "policy_sweep_proposed_policy": _policy_summary_spec(base_policy),
             "policy_sweep_frozen_policy": _policy_summary_spec(best_policy),
             "policy_active_bar_fraction": activity_summary.get("active_bar_fraction"),
