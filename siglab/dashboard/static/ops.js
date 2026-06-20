@@ -1,3 +1,4 @@
+;(function opsInit() {
 const { escapeHtml, formatDateTime, toggleAutoRefresh, apiFetch, initThemeToggle, initAriaLive } = window.SigLabUi;
 initAriaLive();
   const state = {
@@ -169,3 +170,4 @@ initAriaLive();
       loadOps();
     }
   });
+})();

@@ -1,3 +1,4 @@
+;(function experimentInit() {
 const PAGE_STATE = {
   payload: null,
   displayCapitalUsd: null,
@@ -660,3 +661,6 @@ function outOfSampleMetric(summary, prefix) {
   }
   return `${formatPercent(summary?.[`${prefix}_total_return`])} / ${formatNumber(summary?.[`${prefix}_sharpe`], 2)}`;
 }
+
+// close IIFE
+})();

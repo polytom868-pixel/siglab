@@ -1,3 +1,4 @@
+;(function homeInit() {
 const HOME_STATE = {
   payload: null,
   autoRefreshTimer: null,
@@ -221,3 +222,6 @@ function updateFreshnessIndicator() {
   el.textContent = `Updated ${seconds}s ago`;
   el.className = "freshness-indicator" + (seconds > 30 ? " stale" : "");
 }
+
+// close IIFE
+})();

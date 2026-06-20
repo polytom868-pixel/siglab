@@ -3,8 +3,9 @@
 
 window.SigLabUi = window.SigLabUi || {};
 
+;(function chartEngine() {
 // Pull in dependencies from common.js / constants.js
-const { formatNumber, formatPercent, escapeHtml, formatDateTime, TRACK_LABELS, METRIC_META, TRACK_COLORS, ACTION_META, buildAxisTicks, sampleSeries, hasFiniteSeriesValues, metricSeries, formatAxisDateTime } = window.SigLabUi;
+const { formatNumber, formatPercent, escapeHtml, formatDateTime, buildAxisTicks, sampleSeries, hasFiniteSeriesValues, metricSeries, formatAxisDateTime } = window.SigLabUi;
 
 /* ─── SVG Helpers (moved from common.js) ─── */
 
@@ -165,7 +166,7 @@ function renderChart(experiments) {
   }
 
   const metricKey = selectedMetricKey();
-  const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
+  const metricMeta = window.SigLabUi.METRIC_META[metricKey] || window.SigLabUi.METRIC_META.aggregate_score;
   const container = svg.parentElement;
   const width = Math.max(400, container?.clientWidth || 1200);
   const height = 460;
@@ -217,7 +218,7 @@ function renderChart(experiments) {
   svg.appendChild(lineNode(margin.left, margin.top, margin.left, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
 
   Object.entries(tracks).forEach(([track, rows]) => {
-    const color = TRACK_COLORS[track] || "#4ade80";
+    const color = window.SigLabUi.TRACK_COLORS[track] || "#4ade80";
     let best = -Infinity;
     const points = rows
       .map((row) => {
@@ -287,9 +288,9 @@ function renderChart(experiments) {
 
 function showTooltip(event, row, metricKey) {
   const tooltip = document.getElementById("tooltip");
-  const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
+  const metricMeta = window.SigLabUi.METRIC_META[metricKey] || window.SigLabUi.METRIC_META.aggregate_score;
   tooltip.innerHTML = `
-    <div class="meta">${escapeHtml(TRACK_LABELS[row.track] || row.track)} &middot; ${escapeHtml(runIterationLabel(row))} &middot; row ${escapeHtml(String(row.global_index || row.generation || "n/a"))}</div>
+    <div class="meta">${escapeHtml(window.SigLabUi.TRACK_LABELS[row.track] || row.track)} &middot; ${escapeHtml(runIterationLabel(row))} &middot; row ${escapeHtml(String(row.global_index || row.generation || "n/a"))}</div>
     <strong>${escapeHtml(row.family)}</strong>
     <div>${metricMeta.label}: ${escapeHtml(metricMeta.formatter(metricValue(row, metricKey)))}</div>
     <div>Sharpe: ${escapeHtml(formatNumber(row.summary?.median_sharpe ?? 0, 3))}</div>
@@ -782,7 +783,7 @@ function renderTrades(trades) {
     const scaledUnits = Number(trade.units) * displayCapital;
     const scaledNotional = Number(trade.notional) * displayCapital;
     const scaledCost = Number(trade.cost) * displayCapital;
-    const actionMeta = ACTION_META[trade.action] || ACTION_META.rebalance;
+    const actionMeta = window.SigLabUi.ACTION_META[trade.action] || window.SigLabUi.ACTION_META.rebalance;
     row.innerHTML = `
       <td>${escapeHtml(formatDateTime(trade.timestamp))}</td>
       <td>${escapeHtml(trade.symbol || "")}</td>
@@ -884,7 +885,7 @@ function positionBandColor(weight) {
 }
 
 function tradeMarkerSvg(trade, x, y) {
-  const meta = ACTION_META[trade.action] || ACTION_META.rebalance;
+  const meta = window.SigLabUi.ACTION_META[trade.action] || window.SigLabUi.ACTION_META.rebalance;
   const title = `${trade.symbol || ""}\n${meta.label}\n${formatDateTime(trade.timestamp)}\n${formatPrice(trade.price)}\nPost-trade ${trade.post_trade_label || "Flat"}`;
   const titleEl = document.createElementNS("http://www.w3.org/2000/svg", "title");
   titleEl.textContent = title;
@@ -1055,4 +1056,7 @@ function sumSeriesValues(series) {
   window.SigLabUi.buildWeightSegments = buildWeightSegments;
   window.SigLabUi.canonicalOutcomeDecomposition = canonicalOutcomeDecomposition;
   window.SigLabUi.sumSeriesValues = sumSeriesValues;
+})();
+
+// close outer IIFE
 })();

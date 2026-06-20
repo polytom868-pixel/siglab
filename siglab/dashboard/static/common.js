@@ -368,7 +368,7 @@
     });
   }
 
-  window.SigLabUi = {
+  Object.assign(window.SigLabUi, {
     formatNumber,
     formatPercent,
     formatDateTime,
@@ -402,7 +402,7 @@
     showOnboarding,
     initAriaLive,
     initThemeToggle,
-  };
+  });
 })();
 
 /* ─── Mobile Hamburger Toggle ─── */

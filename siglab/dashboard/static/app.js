@@ -1,3 +1,4 @@
+;(function appInit() {
 const state = {
   payload: null,
   selectedHash: null,
@@ -846,4 +847,5 @@ function eligibleRangeLabel(rollLifecycle) {
   return `${minimum ?? "?"}-${maximum ?? "?"} (latest ${latest ?? "?"})`;
 }
 
-
+// close IIFE
+})();
