@@ -226,10 +226,7 @@ function render() {
       ? (selectorMeta.description || metricMeta.description || "Best-so-far and all recorded experiments.")
       : `${metricMeta.description} Selector remains ${selectorMeta.label || "Aggregate Score"}.`;
   }
-  const selectedMetricHeader = document.getElementById("selectedMetricHeader");
-  if (selectedMetricHeader) {
-    selectedMetricHeader.textContent = metricMeta.label;
-  }
+
 }
 
 function selectedRunRow() {
@@ -304,7 +301,7 @@ function renderScope(experiments) {
   if (experimentsSubtitle) {
     experimentsSubtitle.textContent =
       selectedRun
-        ? `Showing experiments for ${selectedRun.runner_label} / ${selectedRun.run_label}. Run iteration and ancestry row are both shown in the table.`
+        ? `Showing experiments for ${selectedRun.runner_label} / ${selectedRun.run_label}.`
         : family === "all"
           ? "Every recorded generation in the current track scope. Click a row or chart point for full detail."
           : `Every recorded generation for ${family}. Click a row or chart point for full detail.`;
@@ -404,51 +401,36 @@ function renderFamilyGuide() {
 
   subtitle.textContent =
     selectedFamily === "all"
-      ? "Strategy templates currently in scope. Click a card to filter the whole page."
-      : `Page filtered to ${selectedFamily}. Click another card to switch families.`;
+      ? "Families"
+      : `Filtered to ${selectedFamily}`;
 
   if (!visibleFamilies.length) {
-    container.innerHTML = `<p class="empty-state">No family definitions are available for the current scope.</p>`;
+    container.innerHTML = `<span class="pill">No families in scope</span>`;
     return;
   }
 
   container.innerHTML = visibleFamilies
     .map((family) => {
-      const meta = FAMILY_GUIDE[family] || {
-        track: "unknown",
-        title: family,
-        summary: "Strategy family in the current experiment set.",
-        execution: "See experiment detail for exact configuration.",
-        hedge: "Varies by spec.",
-      };
-      const active = selectedFamily === family ? "active" : "";
-      return `
-        <article class="family-card ${active}" data-family="${escapeHtml(family)}">
-          <div class="family-track">${escapeHtml(TRACK_LABELS[meta.track] || meta.track)}</div>
-          <h3>${escapeHtml(meta.title)}</h3>
-          <p class="family-copy">${escapeHtml(meta.summary)}</p>
-          <div class="family-meta">
-            <div><strong>Execution:</strong> ${escapeHtml(meta.execution)}</div>
-            <div><strong>Hedge:</strong> ${escapeHtml(meta.hedge)}</div>
-          </div>
-        </article>
-      `;
+      const meta = FAMILY_GUIDE[family];
+      const label = meta?.title || family;
+      const active = selectedFamily === family ? " active" : "";
+      return `<span class="pill${active}" data-family="${escapeHtml(family)}">${escapeHtml(label)}</span>`;
     })
     .join("");
 
-  container.querySelectorAll(".family-card").forEach((card) => {
-    card.setAttribute("tabindex", "0");
-    card.setAttribute("role", "button");
-    card.addEventListener("keydown", (event) => {
+  container.querySelectorAll(".pill").forEach((pill) => {
+    pill.setAttribute("tabindex", "0");
+    pill.setAttribute("role", "button");
+    pill.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        card.click();
+        pill.click();
       }
     });
-    card.addEventListener("click", () => {
+    pill.addEventListener("click", () => {
       const familyFilter = document.getElementById("familyFilter");
       if (familyFilter) {
-        familyFilter.value = card.dataset.family || "all";
+        familyFilter.value = pill.dataset.family || "all";
       }
       refresh();
     });
@@ -602,7 +584,7 @@ function renderTable(experiments) {
     const message = waiting
       ? `${waiting.title}: ${waiting.summary} ${waiting.detail}`
       : "No experiments recorded for the current scope.";
-    tbody.innerHTML = `<tr><td colspan="14" class="empty-state">${escapeHtml(message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${escapeHtml(message)}</td></tr>`;
     return;
   }
 
@@ -616,6 +598,13 @@ function renderTable(experiments) {
       }
       tr.setAttribute("tabindex", "0");
       tr.setAttribute("role", "button");
+      // Store hidden column data as data attributes for future expansion
+      tr.dataset.runIter = runIterationLabel(row);
+      tr.dataset.lineage = String(row.global_index || row.generation || "n/a");
+      tr.dataset.mode = modeCellLabel(row);
+      tr.dataset.tools = String(row.tool_call_count || 0);
+      tr.dataset.validationAudit = outOfSampleLabel(row.summary || {});
+      tr.dataset.specHash = row.spec_hash;
       tr.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -626,23 +615,14 @@ function renderTable(experiments) {
       });
       tr.innerHTML = `
         <td>${escapeHtml(TRACK_LABELS[row.track] || row.track)}</td>
-        <td>${escapeHtml(runIterationLabel(row))}</td>
-        <td>${escapeHtml(String(row.global_index || row.generation || "n/a"))}</td>
         <td>${escapeHtml(row.family)}</td>
-        <td>${escapeHtml(modeCellLabel(row))}</td>
-        <td>${escapeHtml(String(row.tool_call_count || 0))}</td>
-        <td>${escapeHtml(metricMeta.formatter(metricValue(row, metricKey)))}</td>
+        <td>${escapeHtml(METRIC_META.aggregate_score.formatter(row.summary?.aggregate_score ?? 0))}</td>
         <td>${escapeHtml(METRIC_META.median_sharpe.formatter(row.summary?.median_sharpe ?? 0))}</td>
         <td>${escapeHtml(METRIC_META.median_cagr.formatter(row.summary?.median_cagr ?? 0))}</td>
         <td>${escapeHtml(METRIC_META.median_total_return.formatter(row.summary?.median_total_return ?? 0))}</td>
-        <td>${escapeHtml(outOfSampleLabel(row.summary || {}))}</td>
         <td class="${row.passed ? "status-pass" : "status-fail"}">${row.passed ? "pass" : "fail"}${row.deployd ? " / deployed" : ""}</td>
-        <td><a class="table-link" href="/experiments/${encodeURIComponent(row.spec_hash)}">More info</a></td>
         <td>${escapeHtml(formatDateTime(row.created_at))}</td>
       `;
-      tr.querySelector(".table-link")?.addEventListener("click", (event) => {
-        event.stopPropagation();
-      });
       tr.addEventListener("click", () => {
         state.selectedHash = row.spec_hash;
         renderTable(experiments);

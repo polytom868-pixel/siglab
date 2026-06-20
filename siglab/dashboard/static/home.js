@@ -22,11 +22,13 @@ const {
   setLoading,
   renderSummaryCards,
   initThemeToggle,
+  showOnboarding,
 } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
   initAriaLive();
   initThemeToggle();
+  showOnboarding();
   document.getElementById("refreshButton")?.addEventListener("click", () => refresh());
   document.getElementById("trackFilter")?.addEventListener("change", () => refresh());
   document.getElementById("familyFilter")?.addEventListener("change", () => refresh());
@@ -103,40 +105,33 @@ function renderSummary(runs) {
     if (!best) return point;
     return pointMetricValue(point, metricKey) > pointMetricValue(best, metricKey) ? point : best;
   }, null);
+  const bestExperimentDetail = bestPoint
+    ? `${bestPoint.family || "experiment"} at ${bestPoint.run_iteration_label || `run #${bestPoint.run_position || "n/a"}`} — ${metricMeta.label} ${metricMeta.formatter(pointMetricValue(bestPoint, metricKey))}`
+    : "";
   const cards = [
     {
-      label: "Runs",
+      label: "Visible Runs",
       value: `${summary.run_count || runs.length || 0}`,
       detail: "Visible run sessions in the current scope.",
     },
     {
-      label: "Experiments",
+      label: "Total Experiments",
       value: `${summary.experiment_count || 0}`,
       detail: "Total recorded experiments across the visible runs.",
     },
     {
-      label: "Harness / Benchmark",
-      value: `${summary.harness_run_count || 0} / ${summary.benchmark_run_count || 0}`,
-      detail: "Visible harness runs versus external benchmark runs.",
-    },
-    {
-      label: "Deployed Experiments",
+      label: "Deployed",
       value: `${summary.deployd_count || 0}`,
-      detail: "Deployments recorded inside the visible run set.",
+      detail: "Deployments recorded inside the visible run set — shows adoption.",
     },
     {
-      label: "Best Run",
-      value: summary.best_aggregate_score != null ? formatNumber(summary.best_aggregate_score, 3) : "n/a",
+      label: "Best Run + Score",
+      value: summary.best_run_label
+        ? `${summary.best_run_label} (${summary.best_aggregate_score != null ? formatNumber(summary.best_aggregate_score, 3) : "n/a"})`
+        : "n/a",
       detail: summary.best_run_label
-        ? `${summary.best_run_label} is the current strongest run by aggregate score.`
-        : "No scored runs are visible.",
-    },
-    {
-      label: `Best ${metricMeta.label}`,
-      value: bestPoint ? metricMeta.formatter(pointMetricValue(bestPoint, metricKey)) : "n/a",
-      detail: bestPoint
-        ? `${bestPoint.family || "experiment"} at ${bestPoint.run_iteration_label || `run #${bestPoint.run_position || "n/a"}`}`
-        : "No finite experiment points are available for the selected metric.",
+        ? `${summary.best_run_label} is the current strongest run by aggregate score. ${bestExperimentDetail}`
+        : bestExperimentDetail || "No scored runs are visible.",
     },
   ];
   renderSummaryCards(container, cards);

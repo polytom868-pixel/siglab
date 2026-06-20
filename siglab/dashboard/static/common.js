@@ -312,7 +312,7 @@
     if (!select) return;
     const entries = Object.entries(metricMeta || window.SigLabUi?.METRIC_META || {});
     select.innerHTML = entries.map(([key, meta]) =>
-      `<option value="${key}"${key === (selectedValue || "aggregate_score") ? " selected" : ""}>${window.SigLabUi?.escapeHtml ? window.SigLabUi.escapeHtml(meta.label) : meta.label}</option>`
+      `<option value="${key}"${key === (selectedValue || "aggregate_score") ? " selected" : ""}${meta.description ? ` title="${escapeHtml(meta.description)}"` : ""}>${window.SigLabUi?.escapeHtml ? window.SigLabUi.escapeHtml(meta.label) : meta.label}</option>`
     ).join("");
   }
 
@@ -356,6 +356,60 @@
         toggle.textContent = "☀️";
         toggle.setAttribute("aria-label", "Switch to dark mode");
       }
+    });
+  }
+
+  function showOnboarding() {
+    if (sessionStorage.getItem("siglab.onboarding.seen")) return;
+
+    const banner = document.createElement("div");
+    banner.id = "onboardingBanner";
+    banner.className = "onboarding-banner";
+    banner.setAttribute("role", "dialog");
+    banner.setAttribute("aria-label", "Welcome to SigLab");
+    banner.innerHTML = `
+      <div class="onboarding-content">
+        <h2>Welcome to SigLab</h2>
+        <div class="onboarding-step" data-step="1">
+          <p><strong>Dashboard</strong> shows research experiments grouped by <strong>track</strong> (Directional Perps, Systematic Carry) and <strong>family</strong> (specific strategy templates).</p>
+        </div>
+        <div class="onboarding-step" data-step="2" style="display:none">
+          <p>Click a <strong>run card</strong> to see its experiments, or a <strong>chart point</strong> to inspect an experiment's detail page.</p>
+        </div>
+        <div class="onboarding-step" data-step="3" style="display:none">
+          <p>Use the <strong>filter controls</strong> to narrow by track, family, or metric. Enable <strong>Auto refresh</strong> for live updates.</p>
+        </div>
+        <div class="onboarding-nav">
+          <button id="onboardingPrev" style="display:none">Back</button>
+          <span id="onboardingStepIndicator">1 / 3</span>
+          <button id="onboardingNext">Next</button>
+          <button id="onboardingDismiss">Skip</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(banner);
+
+    let currentStep = 1;
+    const totalSteps = 3;
+
+    const updateStep = () => {
+      document.querySelectorAll(".onboarding-step").forEach((el, i) => {
+        el.style.display = (i + 1) === currentStep ? "block" : "none";
+      });
+      document.getElementById("onboardingPrev").style.display = currentStep === 1 ? "none" : "inline-block";
+      document.getElementById("onboardingNext").textContent = currentStep === totalSteps ? "Done" : "Next";
+      document.getElementById("onboardingStepIndicator").textContent = `${currentStep} / ${totalSteps}`;
+    };
+
+    document.getElementById("onboardingNext").addEventListener("click", () => {
+      if (currentStep < totalSteps) { currentStep++; updateStep(); }
+      else { banner.remove(); sessionStorage.setItem("siglab.onboarding.seen", "1"); }
+    });
+    document.getElementById("onboardingPrev").addEventListener("click", () => {
+      if (currentStep > 1) { currentStep--; updateStep(); }
+    });
+    document.getElementById("onboardingDismiss").addEventListener("click", () => {
+      banner.remove(); sessionStorage.setItem("siglab.onboarding.seen", "1");
     });
   }
 
@@ -408,6 +462,7 @@
     formatAxisDateTime,
     populateMetricFilter,
     responsiveSvg,
+    showOnboarding,
     initAriaLive,
     initThemeToggle,
   };

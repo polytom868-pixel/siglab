@@ -6,6 +6,8 @@
     <title>SoSoValue SigLab Run</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"></noscript>
     <link rel="dns-prefetch" href="/api">
     <link rel="stylesheet" href="/styles.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1f9ea;</text></svg>" />
@@ -20,7 +22,7 @@
     </noscript>
     <nav class="navbar" role="navigation">
       <a class="navbar-brand" href="/">
-        <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" />
+        <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" loading="lazy" />
         <span class="navbar-title">SoSoValue</span>
       </a>
       <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
@@ -62,16 +64,11 @@
 
       <section class="summary-grid" id="summaryCards"></section>
 
-      <section id="families" class="panel family-guide-panel">
-        <div class="panel-header">
-          <div>
-            <h2>Family Guide</h2>
-            <p id="familyGuideSubtitle">Families active inside this run. Click a card to filter the run view.</p>
-          </div>
-          <button id="clearFamilyFilter" type="button" aria-label="Show all families">Show All</button>
-        </div>
-        <div class="family-guide-grid" id="familyGuideCards"></div>
-      </section>
+      <div id="familyPills" style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;">
+        <span id="familyGuideSubtitle" style="font-size:12px;color:var(--muted);white-space:nowrap;">Families</span>
+        <div id="familyGuideCards" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+        <button id="clearFamilyFilter" type="button" class="pill slate" aria-label="Show all families">Clear</button>
+      </div>
 
       <section class="panel chart-panel">
         <div class="panel-header">
@@ -99,18 +96,12 @@
               <thead>
                 <tr>
                   <th>Track</th>
-                  <th>Run Iter</th>
-                  <th>Lineage</th>
                   <th>Family</th>
-                  <th>Mode</th>
-                  <th>Tools</th>
-                  <th id="selectedMetricHeader">View Metric</th>
+                  <th>Score</th>
                   <th>Sharpe</th>
                   <th>CAGR</th>
                   <th>Return</th>
-                  <th>Validation / Audit</th>
                   <th>Status</th>
-                  <th>More</th>
                   <th>Created</th>
                 </tr>
               </thead>

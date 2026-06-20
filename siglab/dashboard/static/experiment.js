@@ -302,12 +302,6 @@ async function submitDeployment(specHash) {
 function renderSummary(experiment, run, seriesAvailable) {
   const summary = experiment.summary || {};
   const tradeCount = run?.trade_count ?? 0;
-  const frame = run?.metrics_by_period || { index: [], columns: [], rows: [] };
-  const cashBalance = metricSeries(frame, "cash_balance");
-  const marginHeadroom = metricSeries(frame, "margin_headroom");
-  const grossExposure = metricSeries(frame, "gross_exposure");
-  const outcome = canonicalOutcomeDecomposition(run);
-  const displayCapital = getDisplayCapitalUsd();
   const cards = [
     {
       label: "Aggregate Score",
@@ -325,11 +319,6 @@ function renderSummary(experiment, run, seriesAvailable) {
       detail: "Annualized median return across evaluated windows.",
     },
     {
-      label: "Median Return",
-      value: formatPercent(summary.median_total_return ?? 0),
-      detail: "Raw median total return across evaluated windows.",
-    },
-    {
       label: "Pre-Audit Return",
       value: formatPercent(summary.pre_audit_canonical_total_return ?? 0),
       detail: "Canonical total return measured only up to the audit boundary.",
@@ -340,71 +329,15 @@ function renderSummary(experiment, run, seriesAvailable) {
       detail: "Final untouched out-of-sample total return on the audit slice.",
     },
     {
-      label: "Price Outcome",
-      value: outcome ? formatPercent(outcome.priceOutcome) : "n/a",
-      detail: outcome
-        ? `Mark-to-market outcome on the canonical run. At ${formatUsd(displayCapital)}, about ${formatSignedUsd(
-            outcome.priceOutcome * displayCapital
-          )}.`
-        : "Requires retained fee and funding components in the canonical artifact.",
-    },
-    {
-      label: "Carry Outcome",
-      value: outcome ? formatPercent(outcome.carryOutcome) : "n/a",
-      detail: outcome
-        ? `Funding/carry contribution on the canonical run. Positive means carry income. At ${formatUsd(
-            displayCapital
-          )}, about ${formatSignedUsd(outcome.carryOutcome * displayCapital)}.`
-        : "Requires retained fee and funding components in the canonical artifact.",
-    },
-    {
-      label: "Tx Cost",
-      value: outcome ? formatPercent(outcome.txCost) : "n/a",
-      detail: outcome
-        ? `Fee plus slippage drag on the canonical run. At ${formatUsd(displayCapital)}, about ${formatSignedUsd(
-            outcome.txCost * displayCapital
-          )}.`
-        : "Requires retained fee and funding components in the canonical artifact.",
-    },
-    {
       label: "Canonical Trades",
       value: `${tradeCount}`,
       detail: seriesAvailable
         ? "Trade count on the full-run timeline retained for this experiment."
         : "Full-run trade tape not retained for this historical artifact.",
     },
-    {
-      label: "Min Cash Balance",
-      value: formatPercent(seriesMinimum(cashBalance)),
-      detail: "Lowest retained cash balance during the canonical run, as a share of starting capital.",
-    },
-    {
-      label: "Min Margin Headroom",
-      value: formatPercent(seriesMinimum(marginHeadroom)),
-      detail: "Lowest equity minus maintenance-margin requirement during the canonical run.",
-    },
-    {
-      label: "Max Gross Exposure",
-      value: formatNumber(seriesMaximum(grossExposure), 3),
-      detail: "Highest retained gross notional exposure divided by equity.",
-    },
   ];
-  if (summary.policy_sweep_comparison_available) {
-    cards.splice(1, 0,
-      {
-        label: "Declared Score",
-        value: formatNumber(summary.policy_sweep_declared_evaluation?.selector_aggregate_score, 3),
-        detail: "Unswept declared policy score on the selector objective before local tuning.",
-      },
-      {
-        label: "Frozen Score",
-        value: formatNumber(summary.policy_sweep_frozen_evaluation?.selector_aggregate_score, 3),
-        detail: "Swept policy score on the selector objective after local tuning.",
-      }
-    );
-  }
 
-  document.getElementById("experimentSummary").innerHTML = cards
+  let html = cards
     .map(
       (card) => `
         <article class="panel summary-card">
@@ -415,6 +348,20 @@ function renderSummary(experiment, run, seriesAvailable) {
       `
     )
     .join("");
+
+  if (summary.policy_sweep_comparison_available) {
+    const declared = formatNumber(summary.policy_sweep_declared_evaluation?.selector_aggregate_score, 3);
+    const frozen = formatNumber(summary.policy_sweep_frozen_evaluation?.selector_aggregate_score, 3);
+    html += `
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px;color:var(--muted);">
+        <span class="pill slate">Declared: ${escapeHtml(declared)}</span>
+        <span class="pill slate">Frozen: ${escapeHtml(frozen)}</span>
+        <span>Policy sweep — unswept vs swept score</span>
+      </div>
+    `;
+  }
+
+  document.getElementById("experimentSummary").innerHTML = html;
 }
 
 function renderSnapshot(experiment, run, seriesAvailable, compiledMetadata) {
