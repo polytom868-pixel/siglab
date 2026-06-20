@@ -2,6 +2,7 @@ const PAGE_STATE = {
   payload: null,
   displayCapitalUsd: null,
   isRefreshing: false,
+  lastUpdatedTimestamp: null,
 };
 
 const DEFAULT_DISPLAY_CAPITAL_USD = 100000;
@@ -54,7 +55,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderMissing(`Failed to parse experiment data: ${error.message}`);
     return;
   }
+  PAGE_STATE.lastUpdatedTimestamp = Date.now();
+  updateFreshnessIndicator();
   renderPage();
+  setInterval(updateFreshnessIndicator, 1000);
 });
 
 function renderPage() {
@@ -92,6 +96,18 @@ function renderPage() {
   renderAssetActionCharts(run);
   renderHeatmap(run);
   renderTrades(run.trades || []);
+}
+
+function updateFreshnessIndicator() {
+  const el = document.getElementById("freshnessIndicator");
+  if (!el) return;
+  if (!PAGE_STATE.lastUpdatedTimestamp) {
+    el.textContent = "";
+    return;
+  }
+  const seconds = Math.floor((Date.now() - PAGE_STATE.lastUpdatedTimestamp) / 1000);
+  el.textContent = `Updated ${seconds}s ago`;
+  el.className = "freshness-indicator" + (seconds > 30 ? " stale" : "");
 }
 
 function renderMissing(message) {

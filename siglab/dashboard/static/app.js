@@ -6,6 +6,7 @@ const state = {
   runFilterTouched: false,
   autoRefreshTimer: null,
   isRefreshing: false,
+  lastUpdatedTimestamp: null,
 };
 const {
   TRACK_LABELS,
@@ -156,6 +157,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       refresh();
     }
   });
+
+  setInterval(updateFreshnessIndicator, 1000);
 });
 
 async function refresh() {
@@ -174,6 +177,8 @@ async function refresh() {
     }
     const data = await response.json();
     state.payload = data;
+    state.lastUpdatedTimestamp = Date.now();
+    updateFreshnessIndicator();
     populateFamilyFilter(collectFamilies(state.payload), family, escapeHtml);
     if (state.lockedRunId) {
       state.selectedRunId = state.lockedRunId;
@@ -236,9 +241,9 @@ function selectedRunRow() {
 function runWaitingMessage(run) {
   const label = run?.run_label || run?.run_session_id || "this run";
   return {
-    title: "Hold tight",
+    title: "Awaiting first experiment",
     summary: `${label} has started, but no experiment rows have landed yet.`,
-    detail: "SigLab is likely fetching market data, compiling the first spec, or finishing the first evaluation.",
+    detail: "Experiments will appear once the first evaluation finishes.",
   };
 }
 
@@ -446,7 +451,7 @@ function renderChart(experiments) {
   if (experiments.length === 0) {
     const selectedRun = selectedRunRow();
     const message = selectedRun
-      ? "Hold tight. This run has started, but the first experiment has not finished yet."
+      ? "Awaiting first experiment."
       : "No experiments recorded yet.";
     svg.innerHTML = `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
     return;
@@ -995,6 +1000,18 @@ function metricValue(row, metricKey) {
   }
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY;
+}
+
+function updateFreshnessIndicator() {
+  const el = document.getElementById("freshnessIndicator");
+  if (!el) return;
+  if (!state.lastUpdatedTimestamp) {
+    el.textContent = "";
+    return;
+  }
+  const seconds = Math.floor((Date.now() - state.lastUpdatedTimestamp) / 1000);
+  el.textContent = `Updated ${seconds}s ago`;
+  el.className = "freshness-indicator" + (seconds > 30 ? " stale" : "");
 }
 
 function compareByMetricThenTime(a, b, metricKey) {

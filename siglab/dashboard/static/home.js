@@ -2,6 +2,7 @@ const HOME_STATE = {
   payload: null,
   autoRefreshTimer: null,
   isRefreshing: false,
+  lastUpdatedTimestamp: null,
 };
 
 const {
@@ -43,6 +44,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       refresh();
     }
   });
+
+  setInterval(updateFreshnessIndicator, 1000);
 });
 
 async function refresh() {
@@ -61,6 +64,8 @@ async function refresh() {
     }
     const data = await response.json();
     HOME_STATE.payload = data;
+    HOME_STATE.lastUpdatedTimestamp = Date.now();
+    updateFreshnessIndicator();
     populateFamilyFilter(HOME_STATE.payload?.summary?.families || [], family, escapeHtml);
     render();
   } catch (error) {
@@ -145,7 +150,7 @@ function renderRunCards(runs) {
   if (!runs.length) {
     container.innerHTML = `
       <article class="waiting-card">
-        <div class="waiting-card-title">No runs yet</div>
+        <div class="waiting-card-title">No runs recorded yet</div>
         <p class="waiting-card-copy">No runs recorded yet.</p>
         <p class="waiting-card-copy">Runs will appear once an experiment evaluation finishes.</p>
       </article>
@@ -205,8 +210,8 @@ function sparklineSvg(points, metricKey) {
   if (!points.length) {
     return `
       <div class="waiting-card waiting-card-compact">
-        <div class="waiting-card-title">No experiment yet</div>
-        <p class="waiting-card-copy">Experiment data will appear once the first evaluation finishes.</p>
+        <div class="waiting-card-title">No experiments recorded yet</div>
+        <p class="waiting-card-copy">Experiments will appear once the first evaluation finishes.</p>
       </div>
     `;
   }
@@ -258,6 +263,18 @@ function sparklineSvg(points, metricKey) {
       <circle cx="${bestX}" cy="${bestY}" r="5.4" fill="none" stroke="#f0b456" stroke-width="1.6"></circle>
     </svg>
   `;
+}
+
+function updateFreshnessIndicator() {
+  const el = document.getElementById("freshnessIndicator");
+  if (!el) return;
+  if (!HOME_STATE.lastUpdatedTimestamp) {
+    el.textContent = "";
+    return;
+  }
+  const seconds = Math.floor((Date.now() - HOME_STATE.lastUpdatedTimestamp) / 1000);
+  el.textContent = `Updated ${seconds}s ago`;
+  el.className = "freshness-indicator" + (seconds > 30 ? " stale" : "");
 }
 
 function pointMetricValue(point, metricKey) {
