@@ -20,9 +20,6 @@ const {
   toggleAutoRefresh,
   populateFamilyFilter,
   populateMetricFilter,
-  rectNode,
-  lineNode,
-  textNode,
   historyRange,
   safeParseJson,
   showError,
@@ -32,12 +29,14 @@ const {
   renderPolicySweepBlock,
   renderSummaryCards,
   initThemeToggle,
+  // Chart functions (from chart-engine.js)
+  renderChart,
+  bestExperiment,
+  showTooltip,
+  moveTooltip,
+  groupByTrack,
+  chartXValue,
 } = window.SigLabUi;
-
-const TRACK_COLORS = {
-  trend_signals: "#4ade80",
-  yield_flows: "#f0b456",
-};
 
 const FAMILY_GUIDE = {
   perp_multi_asset_decision: {
@@ -442,141 +441,7 @@ function renderFamilyGuide() {
   });
 }
 
-function renderChart(experiments) {
-  const svg = document.getElementById("chart");
-  const tooltip = document.getElementById("tooltip");
-  tooltip.classList.add("hidden");
-  svg.innerHTML = "";
-
-  if (experiments.length === 0) {
-    const selectedRun = selectedRunRow();
-    const message = selectedRun
-      ? "Awaiting first experiment."
-      : "No experiments recorded yet.";
-    svg.innerHTML = `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
-    return;
-  }
-
-  const metricKey = selectedMetricKey();
-  const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
-  const container = svg.parentElement;
-  const width = Math.max(400, container?.clientWidth || 1200);
-  const height = 460;
-  const margin = { top: 24, right: 24, bottom: 48, left: 62 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-
-  const tracks = groupByTrack(experiments);
-  const values = experiments
-    .map((exp) => metricValue(exp, metricKey))
-    .filter((value) => Number.isFinite(value));
-  if (!values.length) {
-    svg.innerHTML = `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">No finite values are available for ${escapeHtml(metricMeta.label)}.</text>`;
-    return;
-  }
-  let yMin = Math.min(...values);
-  let yMax = Math.max(...values);
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-  const yPadding = (yMax - yMin) * 0.12;
-  yMin -= yPadding;
-  yMax += yPadding;
-
-  const xMax = Math.max(...experiments.map((exp) => chartXValue(exp)), 1);
-  const xScale = (generation) =>
-    margin.left + ((generation - 1) / Math.max(xMax - 1, 1)) * plotWidth;
-  const yScale = (value) =>
-    margin.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight;
-
-  svg.appendChild(rectNode(0, 0, width, height, "transparent"));
-
-  for (let i = 0; i <= 5; i += 1) {
-    const value = yMin + ((yMax - yMin) * i) / 5;
-    const y = yScale(value);
-    svg.appendChild(lineNode(margin.left, y, width - margin.right, y, "rgba(255,255,255,0.04)", 1));
-    svg.appendChild(textNode(14, y + 4, metricMeta.formatter(value), "#6b7f70", "12"));
-  }
-
-  for (let i = 0; i <= Math.min(xMax - 1, 5); i += 1) {
-    const generation = 1 + Math.round((xMax - 1) * (i / Math.max(Math.min(xMax - 1, 5), 1)));
-    const x = xScale(generation);
-    svg.appendChild(lineNode(x, margin.top, x, height - margin.bottom, "rgba(255,255,255,0.02)", 1));
-    svg.appendChild(textNode(x - 8, height - 16, `${generation}`, "#6b7f70", "12"));
-  }
-
-  svg.appendChild(lineNode(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
-  svg.appendChild(lineNode(margin.left, margin.top, margin.left, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
-
-  Object.entries(tracks).forEach(([track, rows]) => {
-    const color = TRACK_COLORS[track] || "#4ade80";
-    let best = -Infinity;
-    const points = rows
-      .map((row) => {
-        const value = metricValue(row, metricKey);
-        if (!Number.isFinite(value)) return null;
-        best = Math.max(best, value);
-        return `${xScale(chartXValue(row))},${yScale(best)}`;
-      })
-      .filter(Boolean);
-    if (!points.length) {
-      return;
-    }
-    const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    polyline.setAttribute("fill", "none");
-    polyline.setAttribute("stroke", color);
-    polyline.setAttribute("stroke-width", "2.5");
-    polyline.setAttribute("stroke-linecap", "round");
-    polyline.setAttribute("stroke-linejoin", "round");
-    polyline.setAttribute("points", points.join(" "));
-    svg.appendChild(polyline);
-
-    rows.forEach((row) => {
-      const value = metricValue(row, metricKey);
-      if (!Number.isFinite(value)) {
-        return;
-      }
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", `${xScale(chartXValue(row))}`);
-      circle.setAttribute("cy", `${yScale(value)}`);
-      circle.setAttribute("r", row.deployd ? "9" : "5.5");
-      circle.setAttribute("fill", row.passed ? color : "rgba(255,255,255,0.12)");
-      circle.setAttribute("stroke", row.deployd ? "#fff" : "rgba(255,255,255,0.2)");
-      circle.setAttribute("stroke-width", row.deployd ? "2" : "1.2");
-      circle.setAttribute("aria-label", `${row.family} - ${metricMeta.formatter(metricValue(row, metricKey))}`);
-      circle.style.cursor = "pointer";
-      circle.setAttribute("tabindex", "0");
-      circle.setAttribute("role", "button");
-      circle.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          circle.click();
-        }
-      });
-      circle.addEventListener("mouseenter", (event) => showTooltip(event, row, metricKey));
-      circle.addEventListener("mousemove", (event) => moveTooltip(event));
-      circle.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
-      circle.addEventListener("click", () => {
-        state.selectedHash = row.spec_hash;
-        renderTable(experiments);
-        renderDetail(state.selectedHash);
-      });
-      svg.appendChild(circle);
-    });
-  });
-
-  svg.appendChild(
-    textNode(
-      margin.left,
-      18,
-      `${metricMeta.label} by ${state.selectedRunId ? "run order" : "generation"}`,
-      "#e2ebe5",
-      "14",
-      "600"
-    )
-  );
-}
+// renderChart moved to chart-engine.js
 
 function renderTable(experiments) {
   const tbody = document.getElementById("experimentsTable");
@@ -886,83 +751,13 @@ async function renderDetail(specHash) {
   focusFirstHeading("detailContent");
 }
 
-function showTooltip(event, row, metricKey) {
-  const tooltip = document.getElementById("tooltip");
-  const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
-  tooltip.innerHTML = `
-    <div class="meta">${escapeHtml(TRACK_LABELS[row.track] || row.track)} &middot; ${escapeHtml(runIterationLabel(row))} &middot; row ${escapeHtml(String(row.global_index || row.generation || "n/a"))}</div>
-    <strong>${escapeHtml(row.family)}</strong>
-    <div>${metricMeta.label}: ${escapeHtml(metricMeta.formatter(metricValue(row, metricKey)))}</div>
-    <div>Sharpe: ${escapeHtml(formatNumber(row.summary?.median_sharpe ?? 0, 3))}</div>
-    <div>CAGR: ${escapeHtml(formatPercent(row.summary?.median_cagr ?? 0))}</div>
-    <div>Selector Return: ${escapeHtml(formatPercent(row.summary?.median_total_return ?? 0))}</div>
-    <div>Pre-Audit Return: ${escapeHtml(formatPercent(row.summary?.pre_audit_canonical_total_return ?? 0))}</div>
-    <div>Validation / Audit: ${escapeHtml(outOfSampleLabel(row.summary || {}))}</div>
-    <div>Tools: ${escapeHtml(String(row.tool_call_count || 0))}</div>
-    <div>Rolls: ${escapeHtml(String(row.roll_lifecycle?.roll_event_count || 0))}</div>
-    <div>Mode: ${escapeHtml(modeCellLabel(row))}</div>
-    <div>Source: ${escapeHtml(row.source || "unknown")}</div>
-    <div class="${row.passed ? "status-pass" : "status-fail"}">${row.passed ? "Passed" : "Failed"}${row.deployd ? " / Deployed" : ""}</div>
-  `;
-  tooltip.classList.remove("hidden");
-  moveTooltip(event);
-}
-
-function moveTooltip(event) {
-  const tooltip = document.getElementById("tooltip");
-  const bounds = document.querySelector(".chart-wrap").getBoundingClientRect();
-  const tooltipWidth = 280;
-  const tooltipHeight = 300;
-
-  let left = event.clientX - bounds.left + 14;
-  let top = event.clientY - bounds.top + 12;
-
-  if (left + tooltipWidth > bounds.width) {
-    left = bounds.width - tooltipWidth - 8;
-  }
-  if (left < 0) left = 8;
-  if (top + tooltipHeight > bounds.height) {
-    top = bounds.height - tooltipHeight - 8;
-  }
-  if (top < 0) top = 8;
-
-  tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${top}px`;
-}
-
-function bestExperiment(experiments, track, metricKey) {
-  const rows = experiments.filter(
-    (row) => row.track === track && Number.isFinite(metricValue(row, metricKey))
-  );
-  if (rows.length === 0) return null;
-  return rows.reduce((best, row) => {
-    if (!best) return row;
-    return metricValue(row, metricKey) > metricValue(best, metricKey)
-      ? row
-      : best;
-  }, null);
-}
-
-function groupByTrack(experiments) {
-  return experiments.reduce((acc, experiment) => {
-    if (!acc[experiment.track]) acc[experiment.track] = [];
-    acc[experiment.track].push(experiment);
-    return acc;
-  }, {});
-}
+// showTooltip, moveTooltip, bestExperiment, groupByTrack, chartXValue moved to chart-engine.js
 
 function runIterationLabel(row) {
   if (row.run_iteration_label) return String(row.run_iteration_label);
   if (row.run_iteration_number != null) return `iter ${row.run_iteration_number}`;
   if (row.run_position != null) return `run #${row.run_position}`;
   return "n/a";
-}
-
-function chartXValue(row) {
-  if (state.selectedRunId || state.lockedRunId) {
-    return Number(row.run_position || row.run_iteration_number || row.generation || 1);
-  }
-  return Number(row.generation || 1);
 }
 
 function getRunId() {

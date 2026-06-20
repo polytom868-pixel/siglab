@@ -3,34 +3,26 @@ const PAGE_STATE = {
   displayCapitalUsd: null,
   isRefreshing: false,
   lastUpdatedTimestamp: null,
+  tradePage: 1,
 };
 
 const DEFAULT_DISPLAY_CAPITAL_USD = 100000;
 const DISPLAY_CAPITAL_STORAGE_KEY = "siglab.displayCapitalUsd";
 const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml,
-  rectNode, lineNode, textNode, historyRange, formatSweepMaybePercent,
-  safeParseJson, emptyChartText, apiFetch, setLoading, joinOrNone,
+  historyRange, formatSweepMaybePercent,
+  safeParseJson, apiFetch,
   renderPolicySweepBlock,
-  buildAxisTicks, sampleSeries, hasFiniteSeriesValues, metricSeries, seriesMinimum, seriesMaximum, renderChartLegend, formatAxisDateTime,
-  initThemeToggle, initAriaLive } = window.SigLabUi;
-
-const COLORS = {
-  equity: "#4ade80",
-  grossExposure: "#f0b456",
-  cashBalance: "#60a5fa",
-  marginHeadroom: "#a3e635",
-  turnover: "#a3b5a8",
-};
-
-const ACTION_META = {
-  buy: { label: "Buy", color: "#4ade80", tone: "" },
-  sell: { label: "Sell", color: "#9fb4a5", tone: "slate" },
-  short: { label: "Short", color: "#f0b456", tone: "amber" },
-  cover: { label: "Cover", color: "#60a5fa", tone: "" },
-  flip_long: { label: "Flip to Long", color: "#4ade80", tone: "" },
-  flip_short: { label: "Flip to Short", color: "#f0b456", tone: "amber" },
-  rebalance: { label: "Rebalance", color: "#a3b5a8", tone: "slate" },
-};
+  hasFiniteSeriesValues, metricSeries, renderChartLegend, formatAxisDateTime,
+  initThemeToggle, initAriaLive,
+  // Chart functions (from chart-engine.js)
+  COLORS,
+  rectNode, lineNode, textNode, emptyChartText,
+  drawLineChart, renderHeatmap, renderAssetActionCharts, renderTrades,
+  pillRow, latestWeightMap, moveTooltip,
+  assetActionSvg, renderAssetActionCard, tradeMarkerSvg,
+  annotateTrades, groupTradesBySymbol, positionStateLabel, positionBandColor,
+  weightSign, weightColor, buildWeightSegments, classifyTradeAction,
+  canonicalOutcomeDecomposition, sumSeriesValues } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
   initAriaLive();
@@ -95,6 +87,31 @@ function renderPage() {
   renderMetricsChart(run);
   renderAssetActionCharts(run);
   renderHeatmap(run);
+  renderTrades(run.trades || []);
+}
+
+function renderScaledValues() {
+  const payload = PAGE_STATE.payload || {};
+  const run = payload.canonical_run || null;
+  if (!run) return;
+  const outcome = canonicalOutcomeDecomposition(run);
+  const displayCapital = getDisplayCapitalUsd();
+  // Update outcome summary cards if present (indices 6-8: Price Outcome, Carry Outcome, Tx Cost)
+  const outcomeCards = document.querySelectorAll(".summary-card");
+  if (outcomeCards.length >= 9) {
+    outcomeCards[6].querySelector(".value").textContent = outcome ? formatPercent(outcome.priceOutcome) : "n/a";
+    outcomeCards[6].querySelector(".detail").textContent = outcome
+      ? `Mark-to-market outcome... At ${formatUsd(displayCapital)}, about ${formatSignedUsd(outcome.priceOutcome * displayCapital)}.`
+      : "...";
+    outcomeCards[7].querySelector(".value").textContent = outcome ? formatPercent(outcome.carryOutcome) : "n/a";
+    outcomeCards[7].querySelector(".detail").textContent = outcome
+      ? `Funding carry outcome... At ${formatUsd(displayCapital)}, about ${formatSignedUsd(outcome.carryOutcome * displayCapital)}.`
+      : "...";
+    outcomeCards[8].querySelector(".value").textContent = outcome ? formatSignedUsd(outcome.txCost) : "n/a";
+    outcomeCards[8].querySelector(".detail").textContent = outcome
+      ? `Total transaction cost... At ${formatUsd(displayCapital)}, about ${formatSignedUsd(outcome.txCost * displayCapital)}.`
+      : "...";
+  }
   renderTrades(run.trades || []);
 }
 
@@ -539,564 +556,6 @@ function renderMetricsChart(run) {
   ]);
 }
 
-function renderHeatmap(run) {
-  const container = document.getElementById("positionHeatmap");
-  const timeline = run.target_weights;
-  if (!timeline || !timeline.columns?.length || !timeline.index?.length) {
-    container.innerHTML = `<p class="empty-state">No retained weight timeline for this experiment.</p>`;
-    return;
-  }
-  const tradableColumns = timeline.columns.filter((asset) => asset !== "GLOBAL");
-  if (!tradableColumns.length) {
-    container.innerHTML = `<p class="empty-state">No retained tradable weight timeline for this experiment.</p>`;
-    return;
-  }
-
-  const segments = buildWeightSegments(timeline);
-  const width = Math.max(400, container?.clientWidth || 1180);
-  const rowHeight = 26;
-  const labelWidth = 108;
-  const axisHeight = 38;
-  const height = Math.max(140, rowHeight * tradableColumns.length + axisHeight + 28);
-  const plotWidth = width - labelWidth - 16;
-
-  const pieces = [
-    `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Position weight heatmap" class="heatmap-svg">`,
-    `<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>`,
-  ];
-
-  const maxIndex = Math.max(timeline.index.length - 1, 1);
-  const xScale = (position) => labelWidth + (Math.max(0, Math.min(maxIndex, position)) / maxIndex) * plotWidth;
-
-  tradableColumns.forEach((asset, rowIndex) => {
-    const y = 24 + rowIndex * rowHeight;
-    pieces.push(
-      `<text x="6" y="${y + 16}" fill="#a3b5a8" font-size="12" font-family="Inter, sans-serif">${escapeHtml(asset)}</text>`
-    );
-
-    segments.forEach((segment) => {
-      const value = Number(segment.weights?.[asset] || 0);
-      const x1 = xScale(segment.startPosition);
-      const x2 = xScale(segment.endPosition);
-      const widthPx = Math.max(2, x2 - x1);
-      pieces.push(
-        `<rect x="${x1}" y="${y}" width="${widthPx}" height="18" fill="${weightColor(value)}" rx="2" ry="2" data-asset="${escapeHtml(asset)}" data-start="${escapeHtml(segment.startTimestamp)}" data-end="${escapeHtml(segment.endTimestamp)}" data-weight="${formatNumber(value, 3)}"></rect>`
-      );
-    });
-  });
-
-  const axisY = height - 24;
-  const tickY = axisY - 8;
-  buildAxisTicks(timeline.index, 6).forEach((tick, tickIndex, ticks) => {
-    const x = xScale(tick.position);
-    pieces.push(
-      `<line x1="${x}" y1="${axisY - 10}" x2="${x}" y2="${axisY - 4}" stroke="rgba(255,255,255,0.10)" stroke-width="1"></line>`
-    );
-    const anchor =
-      tickIndex === 0 ? "start" : tickIndex === ticks.length - 1 ? "end" : "middle";
-    pieces.push(
-      `<text x="${x}" y="${axisY + 12}" fill="#6b7f70" font-size="11" text-anchor="${anchor}" font-family="Inter, sans-serif">${escapeHtml(formatAxisDateTime(tick.timestamp))}</text>`
-    );
-  });
-
-  pieces.push(`</svg>`);
-  container.innerHTML = pieces.join("");
-
-  const heatmapTooltip = document.getElementById("pageTooltip") || document.getElementById("tooltip");
-  if (heatmapTooltip) {
-    container.querySelectorAll("rect[data-asset]").forEach((rect) => {
-      rect.addEventListener("mouseenter", (event) => {
-        const asset = rect.getAttribute("data-asset");
-        const start = rect.getAttribute("data-start");
-        const end = rect.getAttribute("data-end");
-        const weight = rect.getAttribute("data-weight");
-        heatmapTooltip.innerHTML = `<div class="meta">${escapeHtml(start)} → ${escapeHtml(end)}</div><strong>${escapeHtml(asset)}</strong><div>Weight: ${weight}</div>`;
-        heatmapTooltip.classList.remove("hidden");
-        moveTooltip(event, heatmapTooltip);
-      });
-      rect.addEventListener("mousemove", (event) => moveTooltip(event, heatmapTooltip));
-      rect.addEventListener("mouseleave", () => heatmapTooltip.classList.add("hidden"));
-      rect.addEventListener("touchstart", (event) => {
-        event.preventDefault();
-        const touch = event.touches[0];
-        const asset = rect.getAttribute("data-asset");
-        const start = rect.getAttribute("data-start");
-        const end = rect.getAttribute("data-end");
-        const weight = rect.getAttribute("data-weight");
-        heatmapTooltip.innerHTML = `<div class="meta">${escapeHtml(start)} → ${escapeHtml(end)}</div><strong>${escapeHtml(asset)}</strong><div>Weight: ${weight}</div>`;
-        heatmapTooltip.classList.remove("hidden");
-        moveTooltip({ clientX: touch.clientX, clientY: touch.clientY }, heatmapTooltip);
-      }, { passive: false });
-      rect.addEventListener("touchend", () => heatmapTooltip.classList.add("hidden"));
-    });
-  }
-}
-
-function renderAssetActionCharts(run) {
-  const container = document.getElementById("assetActionCharts");
-  if (!container) return;
-  const annotatedTrades = annotateTrades(run?.trades || []);
-  if (!annotatedTrades.length) {
-    container.innerHTML = `<p class="empty-state">No trade actions recorded.</p>`;
-    return;
-  }
-
-  const bySymbol = groupTradesBySymbol(annotatedTrades);
-  const cardWidth = Math.max(200, Math.round(container.clientWidth / 2) || 520);
-  const cards = Object.entries(bySymbol)
-    .sort((left, right) => {
-      const leftLatest = left[1][left[1].length - 1];
-      const rightLatest = right[1][right[1].length - 1];
-      return Math.abs(Number(rightLatest?.target_weight || 0)) - Math.abs(Number(leftLatest?.target_weight || 0));
-    })
-    .map(([symbol, trades]) => renderAssetActionCard(symbol, trades, cardWidth));
-  container.innerHTML = cards.join("");
-}
-
-function renderAssetActionCard(symbol, trades, cardWidth) {
-  const latest = trades[trades.length - 1] || {};
-  const latestState = positionStateLabel(latest.target_weight);
-  return `
-    <article class="asset-action-card">
-      <div class="asset-action-head">
-        <div>
-          <h3>${escapeHtml(symbol)}</h3>
-          <div class="asset-action-meta">
-            ${escapeHtml(formatDateTime(trades[0]?.timestamp))} → ${escapeHtml(formatDateTime(trades[trades.length - 1]?.timestamp))}
-          </div>
-        </div>
-        <div class="asset-action-meta">
-          ${escapeHtml(String(trades.length))} trades • latest ${escapeHtml(latestState)}
-        </div>
-      </div>
-      ${assetActionSvg(symbol, trades, cardWidth)}
-      <div class="asset-action-legend">
-        <span class="legend-marker"><span class="legend-dot"></span>Buy</span>
-        <span class="legend-marker"><span class="legend-dot sell"></span>Sell</span>
-        <span class="legend-marker"><span class="legend-dot short"></span>Short</span>
-        <span class="legend-marker"><span class="legend-dot cover"></span>Cover</span>
-      </div>
-    </article>
-  `;
-}
-
-function assetActionSvg(symbol, trades, widthOverride) {
-  const width = Math.max(200, widthOverride || 520);
-  const height = 180;
-  const margin = { top: 18, right: 14, bottom: 34, left: 46 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  const timestamps = trades
-    .map((trade) => new Date(trade.timestamp).getTime())
-    .filter((value) => Number.isFinite(value));
-  const prices = trades
-    .map((trade) => Number(trade.price))
-    .filter((value) => Number.isFinite(value));
-  if (!timestamps.length || !prices.length) {
-    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Price chart for ${escapeHtml(symbol)}" class="asset-action-svg"><text x="16" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No retained prices for ${escapeHtml(symbol)}</text></svg>`;
-  }
-  let yMin = Math.min(...prices);
-  let yMax = Math.max(...prices);
-  if (yMin === yMax) {
-    yMin *= 0.98;
-    yMax *= 1.02;
-  }
-  const yPadding = (yMax - yMin) * 0.12;
-  yMin -= yPadding;
-  yMax += yPadding;
-  const start = timestamps[0];
-  const end = timestamps[timestamps.length - 1];
-  const xScale = (timestamp) =>
-    margin.left + ((timestamp - start) / Math.max(end - start, 1)) * plotWidth;
-  const yScale = (price) =>
-    margin.top + plotHeight - ((price - yMin) / (yMax - yMin)) * plotHeight;
-
-  const bands = trades
-    .map((trade, index) => {
-      const x1 = xScale(new Date(trade.timestamp).getTime());
-      const next = trades[index + 1];
-      const x2 = next ? xScale(new Date(next.timestamp).getTime()) : width - margin.right;
-      const tone = positionBandColor(trade.target_weight);
-      return `<rect x="${x1}" y="${margin.top}" width="${Math.max(2, x2 - x1)}" height="${plotHeight}" fill="${tone}" rx="2" ry="2"></rect>`;
-    })
-    .join("");
-  const linePoints = trades
-    .map((trade) => `${xScale(new Date(trade.timestamp).getTime())},${yScale(Number(trade.price))}`)
-    .join(" ");
-  const markers = trades
-    .map((trade) => tradeMarkerSvg(trade, xScale(new Date(trade.timestamp).getTime()), yScale(Number(trade.price))))
-    .join("");
-
-  return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Price chart for ${escapeHtml(symbol)}" class="asset-action-svg">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
-      ${bands}
-      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
-      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
-      <polyline fill="none" stroke="#e2ebe5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" points="${linePoints}"></polyline>
-      ${markers}
-      <text x="${margin.left}" y="12" fill="#6b7f70" font-size="11" font-family="Inter, sans-serif">${escapeHtml(formatPrice(yMax))}</text>
-      <text x="${margin.left}" y="${height - margin.bottom + 16}" fill="#6b7f70" font-size="11" font-family="Inter, sans-serif">${escapeHtml(formatAxisDateTime(trades[0]?.timestamp))}</text>
-      <text x="${width - margin.right}" y="${height - margin.bottom + 16}" text-anchor="end" fill="#6b7f70" font-size="11" font-family="Inter, sans-serif">${escapeHtml(formatAxisDateTime(trades[trades.length - 1]?.timestamp))}</text>
-    </svg>
-  `;
-}
-
-function renderTrades(trades) {
-  const tbody = document.getElementById("tradesTable");
-  const subtitle = document.getElementById("tradeSubtitle");
-  tbody.innerHTML = "";
-  if (!trades.length) {
-    subtitle.textContent = "No trades recorded for this run.";
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No trades recorded for this run.</td></tr>';
-    return;
-  }
-
-  const annotatedTrades = annotateTrades(trades);
-  const visible = annotatedTrades.slice(-400).reverse();
-  const displayCapital = getDisplayCapitalUsd();
-  subtitle.textContent =
-    trades.length > visible.length
-      ? `Showing the latest ${visible.length} of ${trades.length} trades from the canonical run. Display notionals and units assume ${formatUsd(displayCapital)} starting capital. Actions reflect the post-trade position state.`
-      : `Showing ${trades.length} trades from the canonical run. Display notionals and units assume ${formatUsd(displayCapital)} starting capital. Actions reflect the post-trade position state.`;
-
-  visible.forEach((trade) => {
-    const row = document.createElement("tr");
-    const scaledUnits = Number(trade.units) * displayCapital;
-    const scaledNotional = Number(trade.notional) * displayCapital;
-    const scaledCost = Number(trade.cost) * displayCapital;
-    const actionMeta = ACTION_META[trade.action] || ACTION_META.rebalance;
-    row.innerHTML = `
-      <td>${escapeHtml(formatDateTime(trade.timestamp))}</td>
-      <td>${escapeHtml(trade.symbol || "")}</td>
-      <td><span class="pill ${escapeHtml(actionMeta.tone || "")}">${escapeHtml(actionMeta.label)}</span></td>
-      <td>${escapeHtml(trade.post_trade_label || "Flat")}</td>
-      <td>${escapeHtml(formatPrice(trade.price))}</td>
-      <td>${escapeHtml(formatAssetUnits(scaledUnits))}</td>
-      <td>${escapeHtml(formatNumber(trade.target_weight, 4))}</td>
-      <td>${escapeHtml(formatSignedUsd(scaledNotional))}</td>
-      <td>${escapeHtml(formatSignedUsd(-Math.abs(scaledCost)))}</td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function drawLineChart(svg, tooltip, seriesList, options) {
-  svg.innerHTML = "";
-  const validSeries = seriesList.filter((series) => (series.index || []).length && (series.values || []).length);
-  if (!validSeries.length) {
-    svg.innerHTML = emptyChartText("No time-series data retained for this chart.");
-    return;
-  }
-  const allValues = validSeries.flatMap((series) => (series.values || []).filter((value) => value !== null));
-  if (!allValues.length) {
-    svg.innerHTML = emptyChartText("No finite values retained for this chart.");
-    return;
-  }
-
-  const container = svg.parentElement;
-  const width = Math.max(400, container?.clientWidth || 1200);
-  const height = Number(svg.getAttribute("viewBox")?.split(" ")[3] || 420);
-  const margin = { top: 28, right: 24, bottom: 72, left: 58 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  const referenceIndex = validSeries.reduce(
-    (longest, series) => ((series.index || []).length > longest.length ? (series.index || []) : longest),
-    validSeries[0].index || []
-  );
-  let yMin = Math.min(...allValues);
-  let yMax = Math.max(...allValues);
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-  const padding = (yMax - yMin) * 0.12;
-  yMin -= padding;
-  yMax += padding;
-  const maxIndex = Math.max(...validSeries.map((series) => series.values.length), 1);
-  const xScale = (index) => margin.left + (index / Math.max(maxIndex - 1, 1)) * plotWidth;
-  const yScale = (value) => margin.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight;
-
-  svg.appendChild(rectNode(0, 0, width, height, "transparent"));
-
-  for (let step = 0; step <= 5; step += 1) {
-    const value = yMin + ((yMax - yMin) * step) / 5;
-    const y = yScale(value);
-    svg.appendChild(lineNode(margin.left, y, width - margin.right, y, "rgba(255,255,255,0.04)", 1));
-    svg.appendChild(textNode(12, y + 4, options.yFormatter(value), "#6b7f70", "12"));
-  }
-
-  svg.appendChild(lineNode(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
-  svg.appendChild(lineNode(margin.left, margin.top, margin.left, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
-  svg.appendChild(textNode(margin.left, 18, options.title, "#e2ebe5", "14", "600"));
-  const boundaryScale = (boundary) =>
-    boundary >= maxIndex
-      ? width - margin.right
-      : margin.left + (boundary / Math.max(maxIndex - 1, 1)) * plotWidth;
-  (options.bands || []).forEach((band) => {
-    const startIndex = Math.max(0, Number(band.startIndex || 0));
-    const endIndex = Math.max(startIndex + 1, Number(band.endIndex || maxIndex));
-    const x1 = boundaryScale(startIndex);
-    const x2 = boundaryScale(Math.min(endIndex, maxIndex));
-    const rect = rectNode(x1, margin.top, Math.max(1, x2 - x1), plotHeight, band.color || "rgba(255,255,255,0.02)");
-    rect.setAttribute("stroke", "none");
-    svg.appendChild(rect);
-    const label = textNode(x1 + 8, margin.top + 18, band.label || "", band.textColor || "#6b7f70", "11", "600");
-    label.setAttribute("text-anchor", "start");
-    svg.appendChild(label);
-  });
-  buildAxisTicks(referenceIndex, 6).forEach((tick, tickIndex, ticks) => {
-    const x = xScale(tick.position);
-    svg.appendChild(lineNode(x, height - margin.bottom, x, height - margin.bottom + 6, "rgba(255,255,255,0.08)", 1));
-    const label = textNode(x, height - 28, formatAxisDateTime(tick.timestamp), "#6b7f70", "11");
-    if (tickIndex === 0) {
-      label.setAttribute("text-anchor", "start");
-    } else if (tickIndex === ticks.length - 1) {
-      label.setAttribute("text-anchor", "end");
-    } else {
-      label.setAttribute("text-anchor", "middle");
-    }
-    svg.appendChild(label);
-  });
-  const xAxisLabel = textNode(width / 2, height - 10, "Time", "#6b7f70", "11");
-  xAxisLabel.setAttribute("text-anchor", "middle");
-  svg.appendChild(xAxisLabel);
-
-  validSeries.forEach((series) => {
-    const points = series.values
-      .map((value, index) => (value === null ? null : `${xScale(index)},${yScale(value)}`))
-      .filter(Boolean);
-    const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    polyline.setAttribute("fill", "none");
-    polyline.setAttribute("stroke", series.color);
-    polyline.setAttribute("stroke-width", "2.4");
-    polyline.setAttribute("stroke-linecap", "round");
-    polyline.setAttribute("stroke-linejoin", "round");
-    polyline.setAttribute("points", points.join(" "));
-    svg.appendChild(polyline);
-
-    sampleSeries(series.index, series.values, 120).forEach((point) => {
-      if (point.value === null) return;
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", `${xScale(point.index)}`);
-      dot.setAttribute("cy", `${yScale(point.value)}`);
-      dot.setAttribute("r", "5.5");
-      dot.setAttribute("fill", series.color);
-      dot.setAttribute("stroke", "rgba(8, 12, 10, 0.6)");
-      dot.setAttribute("stroke-width", "1.2");
-      dot.setAttribute("tabindex", "0");
-      dot.setAttribute("role", "button");
-      dot.addEventListener("focus", (event) => {
-        tooltip.innerHTML = `
-          <div class="meta">${escapeHtml(point.timestamp)}</div>
-          <strong>${escapeHtml(series.label)}</strong>
-          <div>${escapeHtml(series.formatter(point.value))}</div>
-        `;
-        tooltip.classList.remove("hidden");
-        const rect = dot.getBoundingClientRect();
-        const chartRect = svg.getBoundingClientRect();
-        moveTooltip({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }, tooltip);
-      });
-      dot.addEventListener("blur", () => tooltip.classList.add("hidden"));
-      dot.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          dot.focus();
-        }
-      });
-      dot.addEventListener("mouseenter", (event) => {
-        tooltip.innerHTML = `
-          <div class="meta">${escapeHtml(point.timestamp)}</div>
-          <strong>${escapeHtml(series.label)}</strong>
-          <div>${escapeHtml(series.formatter(point.value))}</div>
-        `;
-        tooltip.classList.remove("hidden");
-        moveTooltip(event, tooltip);
-      });
-      dot.addEventListener("mousemove", (event) => moveTooltip(event, tooltip));
-      dot.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
-      dot.addEventListener("touchstart", (event) => {
-        event.preventDefault();
-        const touch = event.touches[0];
-        tooltip.innerHTML = `
-          <div class="meta">${escapeHtml(point.timestamp)}</div>
-          <strong>${escapeHtml(series.label)}</strong>
-          <div>${escapeHtml(series.formatter(point.value))}</div>
-        `;
-        tooltip.classList.remove("hidden");
-        moveTooltip({ clientX: touch.clientX, clientY: touch.clientY }, tooltip);
-      }, { passive: false });
-      dot.addEventListener("touchmove", (event) => {
-        event.preventDefault();
-        const touch = event.touches[0];
-        moveTooltip({ clientX: touch.clientX, clientY: touch.clientY }, tooltip);
-      }, { passive: false });
-      dot.addEventListener("touchend", () => tooltip.classList.add("hidden"));
-      svg.appendChild(dot);
-    });
-  });
-}
-function latestWeightMap(timeline) {
-  const changes = timeline?.changes || [];
-  if (!changes.length) return {};
-  return changes[changes.length - 1].weights || {};
-}
-
-function buildWeightSegments(timeline) {
-  const index = timeline?.index || [];
-  const changes = timeline.changes || [];
-  if (!index.length || !changes.length) {
-    return [];
-  }
-
-  const positionByTimestamp = new Map(index.map((timestamp, position) => [timestamp, position]));
-  const positions = changes
-    .map((change) => ({
-      timestamp: change.timestamp,
-      weights: change.weights || {},
-      position: positionByTimestamp.get(change.timestamp),
-    }))
-    .filter((change) => Number.isFinite(change.position));
-
-  if (!positions.length) {
-    return [];
-  }
-
-  return positions.map((change, idx) => {
-    const next = positions[idx + 1];
-    const startPosition = Number(change.position);
-    const endPosition = next ? Math.max(startPosition + 1, Number(next.position)) : index.length - 1;
-    const endTimestamp = next ? next.timestamp : index[index.length - 1];
-    return {
-      startTimestamp: change.timestamp,
-      endTimestamp,
-      startPosition,
-      endPosition,
-      weights: change.weights,
-    };
-  });
-}
-
-function annotateTrades(trades) {
-  const previousWeightBySymbol = new Map();
-  return [...trades].map((trade) => {
-    const symbol = String(trade.symbol || "");
-    const previousWeight = Number(previousWeightBySymbol.get(symbol) || 0);
-    const nextWeight = Number(trade.target_weight || 0);
-    const classification = classifyTradeAction(previousWeight, nextWeight, Number(trade.units || 0));
-    previousWeightBySymbol.set(symbol, nextWeight);
-    return {
-      ...trade,
-      previous_target_weight: previousWeight,
-      action: classification.action,
-      action_label: classification.label,
-      post_trade_label: positionStateLabel(nextWeight),
-    };
-  });
-}
-
-function classifyTradeAction(previousWeight, nextWeight, units) {
-  const previousState = weightSign(previousWeight);
-  const nextState = weightSign(nextWeight);
-  if (previousState === 0 && nextState > 0) return { action: "buy", label: "Buy" };
-  if (previousState === 0 && nextState < 0) return { action: "short", label: "Short" };
-  if (previousState > 0 && nextState === 0) return { action: "sell", label: "Sell" };
-  if (previousState < 0 && nextState === 0) return { action: "cover", label: "Cover" };
-  if (previousState > 0 && nextState < 0) return { action: "flip_short", label: "Flip to Short" };
-  if (previousState < 0 && nextState > 0) return { action: "flip_long", label: "Flip to Long" };
-  if (previousState > 0 && nextState > 0) {
-    return nextWeight >= previousWeight ? { action: "buy", label: "Buy" } : { action: "sell", label: "Sell" };
-  }
-  if (previousState < 0 && nextState < 0) {
-    return nextWeight <= previousWeight ? { action: "short", label: "Short" } : { action: "cover", label: "Cover" };
-  }
-  if (Number.isFinite(units) && units > 0) return { action: "buy", label: "Buy" };
-  if (Number.isFinite(units) && units < 0) return { action: "sell", label: "Sell" };
-  return { action: "rebalance", label: "Rebalance" };
-}
-
-function weightSign(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || Math.abs(numeric) < 1e-9) return 0;
-  return numeric > 0 ? 1 : -1;
-}
-
-function positionStateLabel(weight) {
-  const state = weightSign(weight);
-  if (state > 0) return "Long";
-  if (state < 0) return "Short";
-  return "Flat";
-}
-
-function groupTradesBySymbol(trades) {
-  return trades.reduce((acc, trade) => {
-    const symbol = String(trade.symbol || "UNKNOWN");
-    if (!acc[symbol]) acc[symbol] = [];
-    acc[symbol].push(trade);
-    return acc;
-  }, {});
-}
-
-function positionBandColor(weight) {
-  const state = weightSign(weight);
-  if (state > 0) return "rgba(74, 222, 128, 0.08)";
-  if (state < 0) return "rgba(240, 180, 86, 0.08)";
-  return "rgba(255, 255, 255, 0.03)";
-}
-
-function tradeMarkerSvg(trade, x, y) {
-  const meta = ACTION_META[trade.action] || ACTION_META.rebalance;
-  const title = `${trade.symbol || ""}\n${meta.label}\n${formatDateTime(trade.timestamp)}\n${formatPrice(trade.price)}\nPost-trade ${trade.post_trade_label || "Flat"}`;
-  if (trade.action === "short" || trade.action === "flip_short") {
-    return `<polygon points="${x},${y - 6} ${x - 5.2},${y + 4.6} ${x + 5.2},${y + 4.6}" fill="${meta.color}" stroke="rgba(8,12,10,0.65)" stroke-width="1.2"><title>${escapeHtml(title)}</title></polygon>`;
-  }
-  if (trade.action === "cover") {
-    return `<rect x="${x - 4.4}" y="${y - 4.4}" width="8.8" height="8.8" rx="1.8" ry="1.8" transform="rotate(45 ${x} ${y})" fill="${meta.color}" stroke="rgba(8,12,10,0.65)" stroke-width="1.2"><title>${escapeHtml(title)}</title></rect>`;
-  }
-  if (trade.action === "sell") {
-    return `<circle cx="${x}" cy="${y}" r="4.3" fill="${meta.color}" stroke="rgba(8,12,10,0.65)" stroke-width="1.2"><title>${escapeHtml(title)}</title></circle>`;
-  }
-  return `<circle cx="${x}" cy="${y}" r="4.5" fill="${meta.color}" stroke="rgba(8,12,10,0.65)" stroke-width="1.2"><title>${escapeHtml(title)}</title></circle>`;
-}
-
-function pillRow(entries, mode) {
-  const tone = mode === "short" ? "amber" : "";
-  return `<div class="pill-row">${entries
-    .map(([asset, value]) => `<span class="pill ${tone}">${escapeHtml(asset)} ${escapeHtml(formatNumber(value, 3))}</span>`)
-    .join("")}</div>`;
-}
-
-function weightColor(value) {
-  const clipped = Math.max(-1, Math.min(1, Number(value || 0)));
-  if (Math.abs(clipped) < 1e-9) return "rgba(255, 255, 255, 0.04)";
-  if (clipped > 0) {
-    return `rgba(74, 222, 128, ${0.12 + Math.abs(clipped) * 0.65})`;
-  }
-  return `rgba(240, 180, 86, ${0.12 + Math.abs(clipped) * 0.65})`;
-}
-
-function moveTooltip(event, tooltip) {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const tooltipWidth = 280;
-  const tooltipHeight = 200;
-
-  let left = event.clientX + 14;
-  let top = event.clientY + 12;
-
-  if (left + tooltipWidth > viewportWidth) {
-    left = viewportWidth - tooltipWidth - 8;
-  }
-  if (left < 0) left = 8;
-  if (top + tooltipHeight > viewportHeight) {
-    top = viewportHeight - tooltipHeight - 8;
-  }
-  if (top < 0) top = 8;
-
-  tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${top}px`;
-}
-
 function getSpecHash() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   const experimentsIndex = parts.indexOf("experiments");
@@ -1189,40 +648,9 @@ function bindDisplayCapitalInput() {
     input.value = String(getDisplayCapitalUsd());
     saveDisplayCapitalUsd(getDisplayCapitalUsd());
     if (PAGE_STATE.payload) {
-      renderPage();
+      renderScaledValues();
     }
   });
-}
-
-function sumSeriesValues(series) {
-  return (series.values || []).reduce((total, value) => {
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? total + numeric : total;
-  }, 0);
-}
-
-function canonicalOutcomeDecomposition(run) {
-  const frame = run?.metrics_by_period || { columns: [], rows: [] };
-  const feeSeries = metricSeries(frame, "fee_amount");
-  const fundingSeries = metricSeries(frame, "funding_amount");
-  if (!feeSeries.values.length || !fundingSeries.values.length) {
-    return null;
-  }
-  const equityValues = (run?.equity_curve?.values || []).filter((value) => Number.isFinite(Number(value)));
-  if (!equityValues.length) {
-    return null;
-  }
-  const totalReturn = Number(equityValues[equityValues.length - 1]) / Number(equityValues[0]) - 1.0;
-  const totalFees = sumSeriesValues(feeSeries);
-  const totalFunding = sumSeriesValues(fundingSeries);
-  return {
-    totalReturn,
-    totalFees,
-    totalFunding,
-    priceOutcome: totalReturn + totalFees + totalFunding,
-    carryOutcome: -totalFunding,
-    txCost: -totalFees,
-  };
 }
 
 function outOfSampleMetric(summary, prefix) {
@@ -1232,4 +660,3 @@ function outOfSampleMetric(summary, prefix) {
   }
   return `${formatPercent(summary?.[`${prefix}_total_return`])} / ${formatNumber(summary?.[`${prefix}_sharpe`], 2)}`;
 }
-

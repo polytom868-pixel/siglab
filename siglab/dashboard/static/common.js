@@ -91,38 +91,7 @@
     select.value = current;
   }
 
-  function rectNode(x, y, width, height, fill) {
-    const element = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    element.setAttribute("x", x);
-    element.setAttribute("y", y);
-    element.setAttribute("width", width);
-    element.setAttribute("height", height);
-    element.setAttribute("fill", fill);
-    return element;
-  }
-
-  function lineNode(x1, y1, x2, y2, stroke, strokeWidth) {
-    const element = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    element.setAttribute("x1", x1);
-    element.setAttribute("y1", y1);
-    element.setAttribute("x2", x2);
-    element.setAttribute("y2", y2);
-    element.setAttribute("stroke", stroke);
-    element.setAttribute("stroke-width", strokeWidth);
-    return element;
-  }
-
-  function textNode(x, y, value, fill, size, weight) {
-    const element = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    element.setAttribute("x", x);
-    element.setAttribute("y", y);
-    element.setAttribute("fill", fill);
-    element.setAttribute("font-size", size);
-    element.setAttribute("font-family", "Inter, -apple-system, sans-serif");
-    if (weight) element.setAttribute("font-weight", weight);
-    element.textContent = value;
-    return element;
-  }
+  // rectNode, lineNode, textNode moved to chart-engine.js
 
   function historyRange(start, end) {
     if (!start && !end) return "n/a";
@@ -199,9 +168,7 @@
     }
   }
 
-  function emptyChartText(message) {
-    return `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
-  }
+  // emptyChartText moved to chart-engine.js
 
   function showError(message) {
     const toast = document.getElementById("errorToast");
@@ -280,19 +247,7 @@
     return Math.max(...values);
   }
 
-  function renderChartLegend(container, items) {
-    if (!container) return;
-    container.innerHTML = items
-      .map(
-        (item) => `
-          <span class="legend-item">
-            <span class="legend-swatch" style="background:${escapeHtml(item.color)}"></span>
-            <span>${escapeHtml(item.label)}</span>
-          </span>
-        `
-      )
-      .join("");
-  }
+  // renderChartLegend moved to chart-engine.js
 
   function formatAxisDateTime(value) {
     if (!value) return "n/a";
@@ -316,23 +271,7 @@
     ).join("");
   }
 
-  function responsiveSvg(svgElement, drawCallback) {
-    if (!svgElement) return;
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const width = entry.contentRect.width;
-        if (width > 0) {
-          drawCallback(width);
-        }
-      }
-    });
-    resizeObserver.observe(svgElement.parentElement || svgElement);
-    const parentWidth = (svgElement.parentElement || svgElement).clientWidth;
-    if (parentWidth > 0) {
-      drawCallback(parentWidth);
-    }
-    return resizeObserver;
-  }
+  // responsiveSvg moved to chart-engine.js
 
   function initThemeToggle() {
     const toggle = document.getElementById("themeToggle");
@@ -440,16 +379,14 @@
     apiFetch,
     setLoading,
     populateFamilyFilter,
-    rectNode,
-    lineNode,
-    textNode,
+    // rectNode, lineNode, textNode moved to chart-engine.js
     historyRange,
     formatSweepMaybePercent,
     joinOrNone,
     renderPolicySweepBlock,
     renderSummaryCards,
     safeParseJson,
-    emptyChartText,
+    // emptyChartText moved to chart-engine.js
     showError,
     showSkeleton,
     buildAxisTicks,
@@ -458,10 +395,10 @@
     metricSeries,
     seriesMinimum,
     seriesMaximum,
-    renderChartLegend,
+    // renderChartLegend moved to chart-engine.js
     formatAxisDateTime,
     populateMetricFilter,
-    responsiveSvg,
+    // responsiveSvg moved to chart-engine.js
     showOnboarding,
     initAriaLive,
     initThemeToggle,

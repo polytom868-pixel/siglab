@@ -24,6 +24,8 @@ const {
   renderSummaryCards,
   initThemeToggle,
   showOnboarding,
+  // Chart functions (from chart-engine.js)
+  sparklineSvg,
 } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -206,64 +208,7 @@ function renderRunCards(runs) {
     .join("");
 }
 
-function sparklineSvg(points, metricKey) {
-  if (!points.length) {
-    return `
-      <div class="waiting-card waiting-card-compact">
-        <div class="waiting-card-title">No experiments recorded yet</div>
-        <p class="waiting-card-copy">Experiments will appear once the first evaluation finishes.</p>
-      </div>
-    `;
-  }
-  const values = points
-    .map((point) => ({ ...point, metric: pointMetricValue(point, metricKey) }))
-    .filter((point) => Number.isFinite(point.metric));
-  if (!values.length) {
-    return `<svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline"><text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No finite values retained</text></svg>`;
-  }
-  const container = svg.parentElement;
-  const width = Math.max(100, container?.clientWidth || 360);
-  const height = 110;
-  const margin = { top: 10, right: 10, bottom: 18, left: 10 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  let yMin = Math.min(...values.map((point) => point.metric));
-  let yMax = Math.max(...values.map((point) => point.metric));
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-  const padding = (yMax - yMin) * 0.16;
-  yMin -= padding;
-  yMax += padding;
-  const xScale = (index) => margin.left + (index / Math.max(values.length - 1, 1)) * plotWidth;
-  const yScale = (value) => margin.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight;
-  const best = values.reduce((top, point) => (point.metric > top.metric ? point : top), values[0]);
-  const polyline = values
-    .map((point, index) => `${xScale(index)},${yScale(point.metric)}`)
-    .join(" ");
-  const markers = values
-    .map((point, index) => {
-      const cx = xScale(index);
-      const cy = yScale(point.metric);
-      const fill = point.deployd ? "#ffffff" : point.passed ? "#4ade80" : "rgba(255,255,255,0.22)";
-      const stroke = point.deployd ? "#4ade80" : "rgba(255,255,255,0.18)";
-      const radius = point.deployd ? 4.2 : 3.2;
-      return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.4"></circle>`;
-    })
-    .join("");
-  const bestX = xScale(values.indexOf(best));
-  const bestY = yScale(best.metric);
-  return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Sparkline chart" class="run-sparkline">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
-      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
-      <polyline fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="${polyline}"></polyline>
-      ${markers}
-      <circle cx="${bestX}" cy="${bestY}" r="5.4" fill="none" stroke="#f0b456" stroke-width="1.6"></circle>
-    </svg>
-  `;
-}
+// sparklineSvg, pointMetricValue moved to chart-engine.js
 
 function updateFreshnessIndicator() {
   const el = document.getElementById("freshnessIndicator");
@@ -275,9 +220,4 @@ function updateFreshnessIndicator() {
   const seconds = Math.floor((Date.now() - HOME_STATE.lastUpdatedTimestamp) / 1000);
   el.textContent = `Updated ${seconds}s ago`;
   el.className = "freshness-indicator" + (seconds > 30 ? " stale" : "");
-}
-
-function pointMetricValue(point, metricKey) {
-  const numeric = Number(point?.[metricKey]);
-  return Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY;
 }

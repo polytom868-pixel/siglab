@@ -738,6 +738,21 @@ input[type="checkbox"] {
   overflow: visible;
 }
 
+.run-sparkline path {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: draw-line 500ms ease forwards;
+  transition: d 300ms ease;
+}
+
+@keyframes draw-line {
+  to { stroke-dashoffset: 0; }
+}
+
+.run-sparkline circle {
+  transition: cx 300ms ease, cy 300ms ease;
+}
+
 .run-card-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1851,5 +1866,36 @@ tr[role="button"]:focus-visible,
     bottom: 80px; /* above mobile tab bar */
     max-width: none;
   }
+}
+
+/* ─── Trade Table Pagination ─── */
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.page-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.page-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.page-info {
+  color: var(--muted);
 }
 
