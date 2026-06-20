@@ -5,6 +5,7 @@ const state = {
   lockedRunId: null,
   runFilterTouched: false,
   autoRefreshTimer: null,
+  isRefreshing: false,
 };
 const {
   TRACK_LABELS,
@@ -24,6 +25,8 @@ const {
   formatSweepMaybePercent,
   safeParseJson,
   showError,
+  apiFetch,
+  setLoading,
 } = window.SigLabUi;
 
 const TRACK_COLORS = {
@@ -147,9 +150,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   await refresh();
   toggleAutoRefresh(state, refresh);
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !state.isRefreshing) {
+      refresh();
+    }
+  });
 });
 
 async function refresh() {
+  setLoading("summaryCards", true);
   try {
     const track = document.getElementById("trackFilter")?.value || "all";
     const family = document.getElementById("familyFilter")?.value || "all";
@@ -157,7 +167,7 @@ async function refresh() {
     if (track !== "all") query.set("track", track);
     if (family && family !== "all") query.set("family", family);
     const url = query.toString() ? `/api/experiments?${query}` : "/api/experiments";
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await apiFetch(url);
     if (!response.ok) {
       showError(`Failed to load data (${response.status})`);
       return;
@@ -184,7 +194,11 @@ async function refresh() {
 
     render();
   } catch (error) {
-    showError(`Connection error: ${error.message}`);
+    if (error.name !== "AbortError") {
+      showError(`Connection error: ${error.message}`);
+    }
+  } finally {
+    setLoading("summaryCards", false);
   }
 }
 
@@ -682,7 +696,7 @@ async function renderDetail(specHash) {
     return;
   }
 
-  const response = await fetch(`/api/experiments/${specHash}`, { cache: "no-store" });
+  const response = await apiFetch(`/api/experiments/${specHash}`);
   if (!response.ok) {
     container.innerHTML = `<p class="empty-state">Unable to load experiment detail.</p>`;
     return;

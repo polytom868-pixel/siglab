@@ -34,13 +34,45 @@
     return document.getElementById("metricFilter")?.value || "aggregate_score";
   }
 
-  function toggleAutoRefresh(stateHolder, refreshFn) {
+  function toggleAutoRefresh(stateHolder, refreshFn, intervalMs = 10000) {
     if (stateHolder.autoRefreshTimer) {
-      clearInterval(stateHolder.autoRefreshTimer);
+      clearTimeout(stateHolder.autoRefreshTimer);
       stateHolder.autoRefreshTimer = null;
     }
+    if (stateHolder.isRefreshing) return;
     if (document.getElementById("autoRefresh")?.checked) {
-      stateHolder.autoRefreshTimer = setInterval(refreshFn, 10000);
+      async function refreshLoop() {
+        if (stateHolder.isRefreshing) return;
+        stateHolder.isRefreshing = true;
+        try {
+          await refreshFn();
+        } catch (e) {
+          // Error already handled by refreshFn or shared showError
+        } finally {
+          stateHolder.isRefreshing = false;
+          stateHolder.autoRefreshTimer = setTimeout(refreshLoop, intervalMs);
+        }
+      }
+      stateHolder.autoRefreshTimer = setTimeout(refreshLoop, intervalMs);
+    }
+  }
+
+  function apiFetch(url, options = {}) {
+    if (apiFetch._lastController) {
+      apiFetch._lastController.abort();
+    }
+    const controller = new AbortController();
+    apiFetch._lastController = controller;
+    return fetch(url, { ...options, signal: controller.signal, cache: "no-store" });
+  }
+
+  function setLoading(containerId, loading) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (loading) {
+      container.setAttribute("data-loading", "true");
+    } else {
+      container.removeAttribute("data-loading");
     }
   }
 
@@ -127,6 +159,14 @@
     }
   }
 
+  function showSkeleton(containerId, skeletonType = "card", count = 3) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = Array.from({ length: count }, () =>
+      `<div class="skeleton-${skeletonType}"></div>`
+    ).join("");
+  }
+
   window.SigLabUi = {
     TRACK_LABELS: {
       trend_signals: "Directional Perps",
@@ -203,6 +243,8 @@
     llmIdentity,
     selectedMetricKey,
     toggleAutoRefresh,
+    apiFetch,
+    setLoading,
     populateFamilyFilter,
     rectNode,
     lineNode,
@@ -212,5 +254,6 @@
     safeParseJson,
     emptyChartText,
     showError,
+    showSkeleton,
   };
 })();

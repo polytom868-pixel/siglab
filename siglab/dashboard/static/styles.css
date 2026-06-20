@@ -1368,6 +1368,77 @@ pre::-webkit-scrollbar-thumb {
   padding: 8px 0;
 }
 
+/* ─── Skeleton Loaders ─── */
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton-card,
+.skeleton-chart,
+.skeleton-row,
+.skeleton-text,
+.skeleton-inline {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.skeleton-card {
+  height: 120px;
+}
+
+.skeleton-chart {
+  height: 460px;
+}
+
+.skeleton-row {
+  height: 32px;
+  margin-bottom: 4px;
+}
+
+.skeleton-text {
+  height: 14px;
+  width: 60%;
+  margin-bottom: 8px;
+}
+
+.skeleton-inline {
+  display: inline-block;
+  height: 11px;
+  width: 80px;
+  vertical-align: middle;
+}
+
+/* ─── CLS Mitigation ─── */
+
+#summaryCards, #runCards, #experimentsTable, #detailContent,
+#experimentSummary, #experimentSnapshot, #deploymentPanel,
+#assetActionCharts, #positionHeatmap, #tradesTable,
+#opsSummary, #artifactHealth, #waveState, #buildathonProof,
+#marketState, #sodexBoundary, #telemetryState, #blockers {
+  min-height: 40px;
+}
+
+.chart-wrap {
+  aspect-ratio: 1200/460;
+  max-width: 100%;
+}
+
+.compact-chart-wrap {
+  aspect-ratio: 1200/300;
+  max-width: 100%;
+}
+
+/* content-visibility for below-fold sections */
+#families, #experiments, #deploymentPanel,
+#assetActionCharts, #positionHeatmap, #tradesTable {
+  content-visibility: auto;
+  contain-intrinsic-size: 200px;
+}
+
 /* ─── Error Toast ─── */
 
 .toast-error {
@@ -1423,5 +1494,16 @@ pre::-webkit-scrollbar-thumb {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* ─── Loading Indicator ─── */
+
+[data-loading="true"] {
+  opacity: 0.7;
+  transition: opacity 150ms ease;
+}
+
+[data-loading="true"] .refresh-indicator {
+  display: inline-block;
 }
 

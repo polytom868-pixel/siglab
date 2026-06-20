@@ -1,7 +1,8 @@
 (() => {
-  const { escapeHtml, formatDateTime } = window.SigLabUi;
+  const { escapeHtml, formatDateTime, toggleAutoRefresh, apiFetch } = window.SigLabUi;
   const state = {
     refreshTimer: null,
+    isRefreshing: false,
   };
 
   function valueLabel(value) {
@@ -139,31 +140,32 @@
   }
 
   async function loadOps() {
-    const response = await fetch("/api/ops", { cache: "no-store" });
-    if (!response.ok) throw new Error(`Ops API failed: ${response.status}`);
-    render(await response.json());
-  }
-
-  function schedule() {
-    window.clearInterval(state.refreshTimer);
-    if (document.getElementById("autoRefresh")?.checked) {
-      state.refreshTimer = window.setInterval(() => {
-        loadOps().catch((error) => {
-          document.getElementById("opsGeneratedAt").textContent = `Refresh failed: ${error.message}`;
-        });
-      }, 15000);
+    try {
+      const response = await apiFetch("/api/ops");
+      if (!response.ok) throw new Error(`Ops API failed: ${response.status}`);
+      render(await response.json());
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        document.getElementById("opsGeneratedAt").textContent = `Refresh failed: ${error.message}`;
+      }
     }
   }
 
+  function schedule() {
+    toggleAutoRefresh(state, loadOps, 15000);
+  }
+
   document.getElementById("refreshButton").addEventListener("click", () => {
-    loadOps().catch((error) => {
-      document.getElementById("opsGeneratedAt").textContent = `Refresh failed: ${error.message}`;
-    });
+    loadOps();
   });
   document.getElementById("autoRefresh").addEventListener("change", schedule);
 
-  loadOps().catch((error) => {
-    document.getElementById("opsGeneratedAt").textContent = `Load failed: ${error.message}`;
-  });
+  loadOps();
   schedule();
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !state.isRefreshing) {
+      loadOps();
+    }
+  });
 })();

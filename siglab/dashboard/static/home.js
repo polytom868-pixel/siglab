@@ -1,6 +1,7 @@
 const HOME_STATE = {
   payload: null,
   autoRefreshTimer: null,
+  isRefreshing: false,
 };
 
 const {
@@ -15,6 +16,8 @@ const {
   toggleAutoRefresh,
   populateFamilyFilter,
   showError,
+  apiFetch,
+  setLoading,
 } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -25,9 +28,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("autoRefresh")?.addEventListener("change", () => toggleAutoRefresh(HOME_STATE, refresh));
   await refresh();
   toggleAutoRefresh(HOME_STATE, refresh);
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !HOME_STATE.isRefreshing) {
+      refresh();
+    }
+  });
 });
 
 async function refresh() {
+  setLoading("summaryCards", true);
   try {
     const track = document.getElementById("trackFilter")?.value || "all";
     const family = document.getElementById("familyFilter")?.value || "all";
@@ -35,7 +45,7 @@ async function refresh() {
     if (track !== "all") query.set("track", track);
     if (family !== "all") query.set("family", family);
     const url = query.toString() ? `/api/runs?${query}` : "/api/runs";
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await apiFetch(url);
     if (!response.ok) {
       showError(`Failed to load data (${response.status})`);
       return;
@@ -45,7 +55,11 @@ async function refresh() {
     populateFamilyFilter(HOME_STATE.payload?.summary?.families || [], family, escapeHtml);
     render();
   } catch (error) {
-    showError(`Connection error: ${error.message}`);
+    if (error.name !== "AbortError") {
+      showError(`Connection error: ${error.message}`);
+    }
+  } finally {
+    setLoading("summaryCards", false);
   }
 }
 
@@ -139,9 +153,9 @@ function renderRunCards(runs) {
   if (!runs.length) {
     container.innerHTML = `
       <article class="waiting-card">
-        <div class="waiting-card-title">Hold tight</div>
-        <p class="waiting-card-copy">No runs are visible for the current scope yet.</p>
-        <p class="waiting-card-copy">If you just started one, SigLab may still be loading market data before the first experiment lands.</p>
+        <div class="waiting-card-title">No runs yet</div>
+        <p class="waiting-card-copy">No runs recorded yet.</p>
+        <p class="waiting-card-copy">Runs will appear once an experiment evaluation finishes.</p>
       </article>
     `;
     return;
@@ -199,9 +213,8 @@ function sparklineSvg(points, metricKey) {
   if (!points.length) {
     return `
       <div class="waiting-card waiting-card-compact">
-        <div class="waiting-card-title">Hold tight</div>
-        <p class="waiting-card-copy">This run has started, but no experiment points have been recorded yet.</p>
-        <p class="waiting-card-copy">SigLab is likely still loading market data or finishing the first evaluation.</p>
+        <div class="waiting-card-title">No experiment yet</div>
+        <p class="waiting-card-copy">Experiment data will appear once the first evaluation finishes.</p>
       </div>
     `;
   }

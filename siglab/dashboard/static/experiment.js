@@ -1,13 +1,14 @@
 const PAGE_STATE = {
   payload: null,
   displayCapitalUsd: null,
+  isRefreshing: false,
 };
 
 const DEFAULT_DISPLAY_CAPITAL_USD = 100000;
 const DISPLAY_CAPITAL_STORAGE_KEY = "siglab.displayCapitalUsd";
 const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml,
   rectNode, lineNode, textNode, historyRange, formatSweepMaybePercent,
-  safeParseJson, emptyChartText } = window.SigLabUi;
+  safeParseJson, emptyChartText, apiFetch, setLoading } = window.SigLabUi;
 
 const COLORS = {
   equity: "#4ade80",
@@ -36,9 +37,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  const response = await fetch(`/api/experiments/${encodeURIComponent(specHash)}/series`, {
-    cache: "no-store",
-  });
+  const response = await apiFetch(`/api/experiments/${encodeURIComponent(specHash)}/series`);
   if (!response.ok) {
     renderMissing("Unable to load experiment data.");
     return;
@@ -272,9 +271,8 @@ async function submitDeployment(specHash) {
     dry_run: !Boolean(document.getElementById("deploymentLive")?.checked),
   };
   try {
-    const response = await fetch(`/api/experiments/${encodeURIComponent(specHash)}/deploy`, {
+    const response = await apiFetch(`/api/experiments/${encodeURIComponent(specHash)}/deploy`, {
       method: "POST",
-      cache: "no-store",
       headers: {
         "Content-Type": "application/json",
       },
@@ -287,12 +285,14 @@ async function submitDeployment(specHash) {
     if (resultNode) {
       resultNode.textContent = `Deployed as ${data.deployment?.strategy_name || "generated strategy"}.`;
     }
-    const refreshed = await fetch(`/api/experiments/${encodeURIComponent(specHash)}/series`, {
-      cache: "no-store",
-    });
+    const refreshed = await apiFetch(`/api/experiments/${encodeURIComponent(specHash)}/series`);
     if (refreshed.ok) {
       PAGE_STATE.payload = await refreshed.json();
       renderPage();
+    } else {
+      if (window.SigLabUi?.showError) {
+        window.SigLabUi.showError("Deploy succeeded but page refresh failed. Reload to see latest data.");
+      }
     }
   } catch (error) {
     if (resultNode) {
@@ -684,7 +684,7 @@ function renderAssetActionCharts(run) {
   if (!container) return;
   const annotatedTrades = annotateTrades(run?.trades || []);
   if (!annotatedTrades.length) {
-    container.innerHTML = `<p class="empty-state">No retained trade actions are available for this experiment.</p>`;
+    container.innerHTML = `<p class="empty-state">No trade actions recorded.</p>`;
     return;
   }
 
@@ -793,7 +793,8 @@ function renderTrades(trades) {
   const subtitle = document.getElementById("tradeSubtitle");
   tbody.innerHTML = "";
   if (!trades.length) {
-    subtitle.textContent = "No trades were retained for the canonical run.";
+    subtitle.textContent = "No trades recorded for this run.";
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No trades recorded for this run.</td></tr>';
     return;
   }
 
