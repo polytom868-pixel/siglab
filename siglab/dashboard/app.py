@@ -73,11 +73,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sosovalue_api_key_override=None,
         )
     try:
-        from siglab.data.deployment_store import DeploymentStore as LineageStore
+        from siglab.data.deployment_store import DeploymentStore
 
-        state.lineage = LineageStore(state.config.ancestry_db_path)
+        state.deployment_store = DeploymentStore(state.config.ancestry_db_path)
     except Exception:
-        state.lineage = None
+        state.deployment_store = None
 
     state.static_dir = Path(__file__).resolve().parent / "static"
     state.ws_manager = WebSocketManager()
