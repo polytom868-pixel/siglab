@@ -114,6 +114,19 @@
     return `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
   }
 
+  function showError(message) {
+    const toast = document.getElementById("errorToast");
+    if (toast) {
+      toast.textContent = message;
+      toast.classList.remove("hidden");
+      toast.classList.add("visible");
+      setTimeout(() => {
+        toast.classList.remove("visible");
+        toast.classList.add("hidden");
+      }, 8000);
+    }
+  }
+
   window.SigLabUi = {
     TRACK_LABELS: {
       trend_signals: "Directional Perps",
@@ -198,5 +211,6 @@
     formatSweepMaybePercent,
     safeParseJson,
     emptyChartText,
+    showError,
   };
 })();

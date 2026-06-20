@@ -146,7 +146,7 @@
 
   function schedule() {
     window.clearInterval(state.refreshTimer);
-    if (document.getElementById("autoRefresh").checked) {
+    if (document.getElementById("autoRefresh")?.checked) {
       state.refreshTimer = window.setInterval(() => {
         loadOps().catch((error) => {
           document.getElementById("opsGeneratedAt").textContent = `Refresh failed: ${error.message}`;

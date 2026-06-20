@@ -44,7 +44,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  PAGE_STATE.payload = await response.json();
+  try {
+    PAGE_STATE.payload = await response.json();
+  } catch (error) {
+    renderMissing(`Failed to parse experiment data: ${error.message}`);
+    return;
+  }
   renderPage();
 });
 
@@ -201,11 +206,62 @@ function renderDeployment(experiment) {
   }
 }
 
+function validateDeploymentInput() {
+  /* Client-side validation for the deployment form.
+     Returns an error string or null if all fields pass. */
+  const walletLabel = document.getElementById("deploymentWalletLabel")?.value || "";
+  const jobName = document.getElementById("deploymentJobName")?.value || "";
+  const intervalRaw = document.getElementById("deploymentInterval")?.value || "";
+  const configPath = document.getElementById("deploymentConfigPath")?.value || "";
+
+  // wallet_label: max 64 chars, alphanumeric + underscores
+  if (walletLabel.length > 64) {
+    return "Wallet label must be at most 64 characters.";
+  }
+  if (walletLabel && !/^[a-zA-Z0-9_]+$/.test(walletLabel)) {
+    return "Wallet label must contain only letters, digits, and underscores.";
+  }
+
+  // job_name: max 64 chars, alphanumeric + hyphens
+  if (jobName.length > 64) {
+    return "Job name must be at most 64 characters.";
+  }
+  if (jobName && !/^[a-zA-Z0-9-]+$/.test(jobName)) {
+    return "Job name must contain only letters, digits, and hyphens.";
+  }
+
+  // interval_seconds: 60 to 86400
+  const interval = parseInt(intervalRaw, 10);
+  if (intervalRaw && (isNaN(interval) || interval < 60 || interval > 86400)) {
+    return "Interval must be between 60 and 86400 seconds.";
+  }
+
+  // config_path: max 256 chars, no path traversal
+  if (configPath.length > 256) {
+    return "Config path must be at most 256 characters.";
+  }
+  if (configPath && (configPath.includes("..") || configPath.startsWith("/"))) {
+    return "Config path must not contain path traversal sequences.";
+  }
+
+  return null;
+}
+
 async function submitDeployment(specHash) {
   const resultNode = document.getElementById("deploymentResult");
   if (resultNode) {
     resultNode.textContent = "Promoting...";
   }
+
+  // Client-side input validation before building the payload
+  const validationError = validateDeploymentInput();
+  if (validationError) {
+    if (resultNode) {
+      resultNode.textContent = validationError;
+    }
+    return;
+  }
+
   const payload = {
     wallet_label: document.getElementById("deploymentWalletLabel")?.value || null,
     job_name: document.getElementById("deploymentJobName")?.value || null,
@@ -229,7 +285,7 @@ async function submitDeployment(specHash) {
     }
     const data = await response.json();
     if (resultNode) {
-      resultNode.textContent = `Deployd as ${data.deployment?.strategy_name || "generated strategy"}.`;
+      resultNode.textContent = `Deployed as ${data.deployment?.strategy_name || "generated strategy"}.`;
     }
     const refreshed = await fetch(`/api/experiments/${encodeURIComponent(specHash)}/series`, {
       cache: "no-store",
@@ -240,7 +296,7 @@ async function submitDeployment(specHash) {
     }
   } catch (error) {
     if (resultNode) {
-      resultNode.textContent = `Deployment failed: ${error.message || error}`;
+      resultNode.textContent = "Deployment failed. Please try again.";
     }
   }
 }

@@ -59,6 +59,26 @@ body::before {
   z-index: 0;
 }
 
+/* ─── Skip Link ─── */
+
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 8px;
+  padding: 8px 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  z-index: 9999;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 8px;
+}
+
 /* ─── Navbar ─── */
 
 .navbar {
@@ -1347,6 +1367,26 @@ pre::-webkit-scrollbar-thumb {
   font-size: 13px;
   padding: 8px 0;
 }
+
+/* ─── Error Toast ─── */
+
+.toast-error {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  padding: 12px 20px;
+  border-radius: 10px;
+  background: var(--fail);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.toast-error.hidden { opacity: 0; transform: translateY(-8px); pointer-events: none; }
+.toast-error.visible { opacity: 1; transform: translateY(0); }
 
 /* ─── Responsive ─── */
 

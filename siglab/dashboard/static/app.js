@@ -23,6 +23,7 @@ const {
   historyRange,
   formatSweepMaybePercent,
   safeParseJson,
+  showError,
 } = window.SigLabUi;
 
 const TRACK_COLORS = {
@@ -149,33 +150,42 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function refresh() {
-  const track = document.getElementById("trackFilter")?.value || "all";
-  const family = document.getElementById("familyFilter")?.value || "all";
-  const query = new URLSearchParams();
-  if (track !== "all") query.set("track", track);
-  if (family && family !== "all") query.set("family", family);
-  const url = query.toString() ? `/api/experiments?${query}` : "/api/experiments";
-  const response = await fetch(url, { cache: "no-store" });
-  state.payload = await response.json();
-  populateFamilyFilter(collectFamilies(state.payload), family, escapeHtml);
-  if (state.lockedRunId) {
-    state.selectedRunId = state.lockedRunId;
-  }
-  const runs = state.payload?.runs || [];
-  if (!runs.some((row) => row.run_session_id === state.selectedRunId)) {
-    state.selectedRunId = state.lockedRunId ? state.lockedRunId : null;
-  }
-  if (!state.lockedRunId && !state.runFilterTouched && !state.selectedRunId && runs.length) {
-    state.selectedRunId = runs[0].run_session_id;
-  }
+  try {
+    const track = document.getElementById("trackFilter")?.value || "all";
+    const family = document.getElementById("familyFilter")?.value || "all";
+    const query = new URLSearchParams();
+    if (track !== "all") query.set("track", track);
+    if (family && family !== "all") query.set("family", family);
+    const url = query.toString() ? `/api/experiments?${query}` : "/api/experiments";
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      showError(`Failed to load data (${response.status})`);
+      return;
+    }
+    const data = await response.json();
+    state.payload = data;
+    populateFamilyFilter(collectFamilies(state.payload), family, escapeHtml);
+    if (state.lockedRunId) {
+      state.selectedRunId = state.lockedRunId;
+    }
+    const runs = state.payload?.runs || [];
+    if (!runs.some((row) => row.run_session_id === state.selectedRunId)) {
+      state.selectedRunId = state.lockedRunId ? state.lockedRunId : null;
+    }
+    if (!state.lockedRunId && !state.runFilterTouched && !state.selectedRunId && runs.length) {
+      state.selectedRunId = runs[0].run_session_id;
+    }
 
-  const experiments = filteredExperiments(state.payload.experiments || []);
-  if (!experiments.some((row) => row.spec_hash === state.selectedHash)) {
-    const deployd = [...experiments].reverse().find((row) => row.deployd);
-    state.selectedHash = deployd?.spec_hash || experiments.at(-1)?.spec_hash || null;
-  }
+    const experiments = filteredExperiments(state.payload.experiments || []);
+    if (!experiments.some((row) => row.spec_hash === state.selectedHash)) {
+      const deployd = [...experiments].reverse().find((row) => row.deployd);
+      state.selectedHash = deployd?.spec_hash || experiments.at(-1)?.spec_hash || null;
+    }
 
-  render();
+    render();
+  } catch (error) {
+    showError(`Connection error: ${error.message}`);
+  }
 }
 
 function render() {
@@ -330,7 +340,7 @@ function renderSummary(experiments, runs) {
       detail: "Visible experiments inside the current run, track, and family filters.",
     },
     {
-      label: "Deployd",
+      label: "Deployed",
       value: `${experiments.filter((row) => row.deployd).length}`,
       detail: "Visible experiments that currently lead or previously led a track.",
     },
@@ -632,11 +642,11 @@ function renderTable(experiments) {
         <td>${escapeHtml(modeCellLabel(row))}</td>
         <td>${escapeHtml(String(row.tool_call_count || 0))}</td>
         <td>${escapeHtml(metricMeta.formatter(metricValue(row, metricKey)))}</td>
-        <td>${escapeHtml(METRIC_META.median_sharpe.formatter(row.summary.median_sharpe))}</td>
-        <td>${escapeHtml(METRIC_META.median_cagr.formatter(row.summary.median_cagr ?? 0))}</td>
-        <td>${escapeHtml(METRIC_META.median_total_return.formatter(row.summary.median_total_return))}</td>
+        <td>${escapeHtml(METRIC_META.median_sharpe.formatter(row.summary?.median_sharpe ?? 0))}</td>
+        <td>${escapeHtml(METRIC_META.median_cagr.formatter(row.summary?.median_cagr ?? 0))}</td>
+        <td>${escapeHtml(METRIC_META.median_total_return.formatter(row.summary?.median_total_return ?? 0))}</td>
         <td>${escapeHtml(outOfSampleLabel(row.summary || {}))}</td>
-        <td class="${row.passed ? "status-pass" : "status-fail"}">${row.passed ? "pass" : "fail"}${row.deployd ? " / deployd" : ""}</td>
+        <td class="${row.passed ? "status-pass" : "status-fail"}">${row.passed ? "pass" : "fail"}${row.deployd ? " / deployed" : ""}</td>
         <td><a class="table-link" href="/experiments/${encodeURIComponent(row.spec_hash)}">More info</a></td>
         <td>${escapeHtml(formatDateTime(row.created_at))}</td>
       `;
@@ -677,7 +687,13 @@ async function renderDetail(specHash) {
     container.innerHTML = `<p class="empty-state">Unable to load experiment detail.</p>`;
     return;
   }
-  const payload = await response.json();
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    container.innerHTML = `<p class="empty-state">Failed to parse experiment detail: ${error.message}</p>`;
+    return;
+  }
   const experiment = payload.experiment;
   const artifact = experiment.artifact || {};
   const spec = experiment.spec || {};
@@ -706,7 +722,7 @@ async function renderDetail(specHash) {
               <a class="table-link" href="/experiments/${encodeURIComponent(experiment.spec_hash)}">Open Full Experiment Page &rarr;</a>
             </div>
           </div>
-          <div class="detail-status-badge ${experiment.passed ? "status-pass" : "status-fail"}">${experiment.passed ? "Passed" : "Failed"}${experiment.deployd ? " / Deployd" : ""}</div>
+          <div class="detail-status-badge ${experiment.passed ? "status-pass" : "status-fail"}">${experiment.passed ? "Passed" : "Failed"}${experiment.deployd ? " / Deployed" : ""}</div>
         </div>
         <div class="detail-hero-stats">
           <div class="detail-stat"><span class="detail-stat-label">Score</span><span class="detail-stat-value">${escapeHtml(formatNumber(summary.aggregate_score, 3))}</span></div>
@@ -900,7 +916,7 @@ function showTooltip(event, row, metricKey) {
     <div>Rolls: ${escapeHtml(String(row.roll_lifecycle?.roll_event_count || 0))}</div>
     <div>Mode: ${escapeHtml(modeCellLabel(row))}</div>
     <div>Source: ${escapeHtml(row.source || "unknown")}</div>
-    <div class="${row.passed ? "status-pass" : "status-fail"}">${row.passed ? "Passed" : "Failed"}${row.deployd ? " / Deployd" : ""}</div>
+    <div class="${row.passed ? "status-pass" : "status-fail"}">${row.passed ? "Passed" : "Failed"}${row.deployd ? " / Deployed" : ""}</div>
   `;
   tooltip.classList.remove("hidden");
   moveTooltip(event);

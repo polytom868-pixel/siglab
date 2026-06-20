@@ -14,6 +14,7 @@ const {
   selectedMetricKey,
   toggleAutoRefresh,
   populateFamilyFilter,
+  showError,
 } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -27,16 +28,25 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function refresh() {
-  const track = document.getElementById("trackFilter")?.value || "all";
-  const family = document.getElementById("familyFilter")?.value || "all";
-  const query = new URLSearchParams();
-  if (track !== "all") query.set("track", track);
-  if (family !== "all") query.set("family", family);
-  const url = query.toString() ? `/api/runs?${query}` : "/api/runs";
-  const response = await fetch(url, { cache: "no-store" });
-  HOME_STATE.payload = await response.json();
-  populateFamilyFilter(HOME_STATE.payload?.summary?.families || [], family, escapeHtml);
-  render();
+  try {
+    const track = document.getElementById("trackFilter")?.value || "all";
+    const family = document.getElementById("familyFilter")?.value || "all";
+    const query = new URLSearchParams();
+    if (track !== "all") query.set("track", track);
+    if (family !== "all") query.set("family", family);
+    const url = query.toString() ? `/api/runs?${query}` : "/api/runs";
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      showError(`Failed to load data (${response.status})`);
+      return;
+    }
+    const data = await response.json();
+    HOME_STATE.payload = data;
+    populateFamilyFilter(HOME_STATE.payload?.summary?.families || [], family, escapeHtml);
+    render();
+  } catch (error) {
+    showError(`Connection error: ${error.message}`);
+  }
 }
 
 function render() {
@@ -89,7 +99,7 @@ function renderSummary(runs) {
       detail: "Visible harness runs versus external benchmark runs.",
     },
     {
-      label: "Deployd Experiments",
+      label: "Deployed Experiments",
       value: `${summary.deployd_count || 0}`,
       detail: "Deployments recorded inside the visible run set.",
     },
@@ -167,7 +177,7 @@ function renderRunCards(runs) {
             ${seriesSvg}
           </div>
           <div class="run-card-stats">
-            <div><span class="key">Pass / Deployd</span><span>${escapeHtml(`${run.passed_count || 0} / ${run.deployd_count || 0}`)}</span></div>
+            <div><span class="key">Pass / Deployed</span><span>${escapeHtml(`${run.passed_count || 0} / ${run.deployd_count || 0}`)}</span></div>
             <div><span class="key">LLM / Burn-In</span><span>${escapeHtml(`${run.llm_experiment_count || 0} / ${run.deterministic_experiment_count || 0}`)}</span></div>
             <div><span class="key">LLM</span><span>${escapeHtml(llmLabel)}</span></div>
             <div><span class="key">Best Score</span><span>${escapeHtml(formatNumber(run.best_aggregate_score, 3))}</span></div>

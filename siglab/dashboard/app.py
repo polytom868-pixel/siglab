@@ -14,14 +14,48 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from siglab.config import SiglabConfig, load_settings
 from siglab.dashboard.dashboard_state import DashboardState
 from siglab.dashboard.routes import router as api_router
 from siglab.dashboard.ws import router as ws_router
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Set security-related HTTP headers on every response.
+
+    Includes Content-Security-Policy, HSTS-family headers, and
+    permission restrictions.  Added *after* CORS so the CSP
+    reflects the final response.
+    """
+
+    async def dispatch(self, request, call_next):
+        response: Response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "form-action 'self'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'; "
+            "upgrade-insecure-requests; "
+            "block-all-mixed-content;"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=()"
+        )
+        return response
 
 
 class WebSocketManager:
@@ -99,19 +133,38 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Configure CORS — restrict origins via CORS_ORIGINS env var (comma-separated).
+    # Defaults to localhost:8080 for local development.
+    _cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8080").split(",")
+    _cors_origins_stripped = [o.strip() for o in _cors_origins if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_cors_origins_stripped,
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    # Security headers middleware (registered after CORS so it wraps everything)
+    app.add_middleware(SecurityHeadersMiddleware)
+
     app.include_router(api_router)
     app.include_router(ws_router)
 
-    # Mount static files for the ops-board frontend (legacy server.py compat)
+    # Catch-all SPA routes: serve static HTML for client-side navigation paths.
+    # These must be defined BEFORE the StaticFiles mount so FastAPI routes
+    # take priority over the static file handler.
     _static_dir = Path(__file__).resolve().parent / "static"
+
+    @app.get("/runs/{run_id:path}")
+    async def serve_run_page(run_id: str):
+        return FileResponse(os.path.join(str(_static_dir), "run.html"))
+
+    @app.get("/experiments/{spec_hash:path}")
+    async def serve_experiment_page(spec_hash: str):
+        return FileResponse(os.path.join(str(_static_dir), "experiment.html"))
+
+    # Mount static files for the ops-board frontend (legacy server.py compat)
     if _static_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
 

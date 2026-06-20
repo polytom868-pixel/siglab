@@ -4,10 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SigLab Experiment</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="/api">
     <link rel="stylesheet" href="/styles.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1f9ea;</text></svg>" />
   </head>
   <body>
+    <a href="#main-content" class="skip-link">Skip to content</a>
+    <noscript>
+      <div style="padding: 40px; text-align: center; background: #080c0a; color: #e2ebe5; font-family: sans-serif;">
+        <p>SigLab requires JavaScript to render the dashboard.</p>
+        <p><a href="/api/runs" style="color: #4ade80;">View raw API data</a></p>
+      </div>
+    </noscript>
     <nav class="navbar">
       <a class="navbar-brand" href="/">
         <svg class="navbar-logo-svg" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M15.868 0C7.10443 0 0 7.16341 0 16.0003C0 24.8372 7.10443 32 15.868 32C24.6316 32 31.7365 24.8366 31.7365 16.0003C31.7365 7.16397 24.6321 0 15.868 0ZM15.8669 3.44871C22.3266 3.44871 27.6436 8.35553 28.3162 14.653H22.582C22.4939 14.653 22.4092 14.6181 22.3461 14.5551L18.3949 10.5964C18.343 10.5441 18.2722 10.5148 18.1986 10.5148H13.5313C13.4577 10.5148 13.3874 10.5441 13.335 10.5964L9.37033 14.5714C9.31847 14.6237 9.24764 14.653 9.17402 14.653H3.41976C4.09234 8.35553 9.40714 3.44871 15.8669 3.44871ZM15.8663 28.5518C13.4738 28.5518 11.2414 27.8804 9.34245 26.7147L11.702 24.3491C11.7545 24.2962 11.8247 24.267 11.8983 24.267H19.8337C19.9074 24.267 19.9782 24.2962 20.0306 24.3485L22.3924 26.7147C20.4907 27.8804 18.2583 28.5518 15.8663 28.5518ZM25.2874 24.267H20.4388C20.3652 24.267 20.2944 24.2377 20.242 24.1854L17.6069 21.5431C17.5545 21.4902 17.4836 21.461 17.41 21.461H14.321C14.2473 21.461 14.1765 21.4902 14.1241 21.5431L11.4884 24.1854C11.4366 24.2377 11.3658 24.267 11.2921 24.267H6.44635C6.33091 24.1371 6.21937 24.0032 6.11007 23.866L9.75625 20.2098C9.80868 20.1575 9.8795 20.1277 9.95312 20.1277H21.7745C21.8481 20.1277 21.9189 20.157 21.9714 20.2093L25.6242 23.866C25.5155 24.0027 25.4028 24.1359 25.2874 24.267ZM27.6927 20.1288H22.5592C22.4856 20.1288 22.4147 20.0996 22.3623 20.0467L18.3949 16.0711C18.343 16.0188 18.2722 15.9896 18.1986 15.9896H13.5313C13.4577 15.9896 13.3874 16.0188 13.335 16.0711L9.37033 20.0467C9.31847 20.099 9.24764 20.1288 9.17402 20.1288H4.04382C3.89269 19.6942 3.76497 19.2482 3.66236 18.7922H5.59755C5.67172 18.7922 5.74199 18.763 5.79441 18.7107L9.75904 14.7356C9.81091 14.6833 9.88173 14.6541 9.95535 14.6541H21.7745C21.8481 14.6541 21.9189 14.6833 21.9714 14.7356L25.9421 18.7107C25.994 18.763 26.0648 18.7922 26.1384 18.7922H28.0736C27.9705 19.2482 27.8439 19.6942 27.6927 20.1288Z" fill="white"/></svg>
@@ -24,7 +34,7 @@
       </div>
     </nav>
 
-    <div class="page-shell">
+    <div class="page-shell" id="main-content">
       <header class="hero experiment-hero">
         <div>
           <p class="eyebrow">SoSoValue SigLab</p>
@@ -154,6 +164,7 @@
       </section>
     </div>
 
+    <div id="errorToast" class="toast-error hidden" role="alert"></div>
     <script src="/common.js"></script>
     <script src="/experiment.js"></script>
   </body>
