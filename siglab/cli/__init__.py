@@ -71,6 +71,7 @@ def main() -> None:
         dashboard as _dashboard_mod,
         sodex as _sodex_mod,
         paper as _paper_mod,
+        operator as _operator_mod,
     )
 
     _demo_mod.add_subparser(subparsers)
@@ -78,6 +79,7 @@ def main() -> None:
     _dashboard_mod.add_subparser(subparsers)
     _sodex_mod.add_subparser(subparsers)
     _paper_mod.add_subparser(subparsers)
+    _operator_mod.add_subparser(subparsers)
     tui_p = subparsers.add_parser("tui", help="Launch the SigLab Terminal UI.")
     tui_p.set_defaults(_handler="tui")
 
@@ -128,6 +130,9 @@ def main() -> None:
     if args.command == "tui":
         from siglab.tui.__main__ import main as _tui_main
         _tui_main()
+        return
+    if args.command == "operator":
+        asyncio.run(_operator_mod.run_operator(args))
         return
 
 if __name__ == "__main__":

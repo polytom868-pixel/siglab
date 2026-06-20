@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import uuid
 from pathlib import Path
 from typing import Any, cast
@@ -28,8 +29,33 @@ StatusDict = dict[str, Any]
 StatusTuple = tuple[bool, str]
 
 
+# ---------------------------------------------------------------------------
+# Double-gate: live execution guard
+# ---------------------------------------------------------------------------
+
+
+def _check_live_enabled() -> None:
+    """Refuse live execution unless ``SIGLAB_LIVE_ENABLED=1``.
+
+    Called when ``dry_run=False`` to enforce the operator's explicit
+    opt-in to live trading via environment variable.
+    """
+    if os.environ.get("SIGLAB_LIVE_ENABLED") != "1":
+        raise RuntimeError(
+            "dry_run=False requires SIGLAB_LIVE_ENABLED=1. "
+            "Set the environment variable to confirm live execution intent. "
+            "This is a safety gate — see siglab/live/runtime.py."
+        )
+
+
 class Strategy:
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *, dry_run: bool, **kwargs: Any) -> None:
+        if not isinstance(dry_run, bool):
+            raise TypeError("dry_run must be a bool")
+        # Double-gate: refuse live execution without env-var confirmation
+        if not dry_run:
+            _check_live_enabled()
+        self.dry_run = dry_run
         self.config = kwargs.get("config", {})
         self.name = kwargs.get("name", self.__class__.__name__)
 

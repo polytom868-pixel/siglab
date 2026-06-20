@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from collections import OrderedDict
 from typing import Any
 
@@ -208,6 +209,50 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
         payload = self._checked_payload(response, "signed.write")
         metrics.successes += 1
         return payload
+
+    async def place_market_order(
+        self,
+        *,
+        symbol_id: int,
+        is_buy: bool,
+        size: str,
+        reduce_only: bool = False,
+        cl_ord_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Bridge method: compose a market order and submit via the signed path.
+
+        Combines :meth:`new_order_request` + :meth:`send_signed_request`
+        into a single call for convenience.
+
+        Parameters
+        ----------
+        symbol_id : int
+            SoDEX asset (symbol) identifier.
+        is_buy : bool
+            ``True`` for a buy (long) order, ``False`` for sell (short).
+        size : str
+            Order quantity as a decimal string (e.g. ``"0.1"``).
+        reduce_only : bool
+            Whether the order may only reduce an existing position.
+        cl_ord_id : str, optional
+            Client-supplied order ID.  Auto-generated when omitted.
+
+        Returns
+        -------
+        dict
+            The signed-request response payload.
+        """
+        order = perps_order_item(
+            cl_ord_id=cl_ord_id or f"w9_{uuid.uuid4().hex[:12]}",
+            modifier=1,          # NORMAL
+            side=1 if is_buy else 2,  # BUY=1, SELL=2
+            order_type=2,        # MARKET
+            time_in_force=1,     # GTC
+            quantity=str(size),
+            reduce_only=reduce_only,
+        )
+        request = self.new_order_request(symbol_id=symbol_id, orders=[order])
+        return await self.send_signed_request(request)
 
 
 
