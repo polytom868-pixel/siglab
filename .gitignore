@@ -26,6 +26,7 @@ htmlcov/
 *.prof
 *.lprof
 *.npy
+*.parquet
 
 # ----- OS -----
 .DS_Store
@@ -70,15 +71,7 @@ logs/
 benchmarks/
 scripts/
 .agents/
-.claude/
-.cursor/
-.idea/
-.vscode/
 .mcp.json
-.env
-.env.*
-
-# ----- Reports, audits, plans, scratch work -----
 reports/
 
 # ----- Cache / runtime artifacts -----
@@ -99,25 +92,19 @@ wallet*
 siglab/live/deployed_agents/*
 !siglab/live/deployed_agents/__init__.py
 
-# ----- ALL TESTS, scratch notes, agent work — keep repo CORE only -----
-tests/
-agent_workspace/
-tmp/
-scratch/
-oneoff/
-one_offs/
-junk/
-logs/
-
-# ----- Auto-generated noise inside docs (overridden by per-file allow) -----
+# ----- Auto-generated noise inside docs -----
 docs/*gap*
 docs/*audit*.md
 docs/*validation*.md
 docs/refactor-correction-report.md
 docs/*surface*.yaml
+docs/screenshots/
+
+# ----- Root-level generated artifacts -----
+tmp_git_cmd.sh
+git-ls-files-output.txt
 
 # ----- Misc auto-generated -----
-.idea/
 *.swp
 *.bak
 *.tmp
