@@ -1,25 +1,17 @@
 {# Buildathon proof partial #}
+{% import "macros.html" as m %}
 {% set summary = summary or {} %}
 {% set buildathon = summary.get('buildathon') or {} %}
 {% set red_flags = buildathon.get('red_flags') or [] %}
 {% set demo_artifacts = buildathon.get('demo_artifacts') or [] %}
 
-<div class="ops-line">
-  <span class="key">SoSoValue Flow</span>
-  <span class="{% if buildathon.get('sosovalue_input_to_output') %}status-pass{% else %}status-fail{% endif %}">{% if buildathon.get('sosovalue_input_to_output') %}ready{% else %}blocked{% endif %}</span>
-</div>
-<div class="ops-line">
-  <span class="key">SoDEX Market Data</span>
-  <span class="{% if buildathon.get('sodex_public_market_data') %}status-pass{% else %}status-fail{% endif %}">{% if buildathon.get('sodex_public_market_data') %}ready{% else %}blocked{% endif %}</span>
-</div>
-<div class="ops-line">
-  <span class="key">Provider Metrics</span>
-  <span class="{% if buildathon.get('provider_metrics_present') %}status-pass{% else %}status-pending{% endif %}">{% if buildathon.get('provider_metrics_present') %}present{% else %}missing{% endif %}</span>
-</div>
-<div class="ops-line">
-  <span class="key">Market Report</span>
-  <span class="{% if buildathon.get('market_report_status') == 'ready' %}status-pass{% else %}status-fail{% endif %}">{{ buildathon.get('market_report_status') or 'missing' }}</span>
-</div>
+{% set flow_ready = 'ready' if buildathon.get('sosovalue_input_to_output') else 'blocked' %}
+{% set sodex_ready = 'ready' if buildathon.get('sodex_public_market_data') else 'blocked' %}
+{% set metrics_present = 'present' if buildathon.get('provider_metrics_present') else 'missing' %}
+{{ m.ops_line('SoSoValue Flow', flow_ready) }}
+{{ m.ops_line('SoDEX Market Data', sodex_ready) }}
+{{ m.ops_line('Provider Metrics', metrics_present) }}
+{{ m.ops_line('Market Report', buildathon.get('market_report_status') or 'missing') }}
 
 {% if red_flags|length > 0 %}
 <div class="ops-line"><span class="key">Red Flags</span><span class="status-fail">{{ red_flags|join('; ') }}</span></div>

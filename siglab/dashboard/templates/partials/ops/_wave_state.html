@@ -1,23 +1,24 @@
 {# Wave state partial #}
+{% import "macros.html" as m %}
 {% set summary = summary or {} %}
 {% set wave = summary.get('wave') or {} %}
 {% set agents = wave.get('agents') or [] %}
 {% set outputs = wave.get('outputs') or [] %}
 
-<div class="ops-line"><span class="key">Wave Number</span><span>{{ wave.get('wave_number') or '?' }}</span></div>
-<div class="ops-line"><span class="key">Phase</span><span>{{ wave.get('phase') or 'unknown' }}</span></div>
-<div class="ops-line"><span class="key">Status</span><span class="{% if wave.get('status') == 'running' %}status-pass{% else %}status-pending{% endif %}">{{ wave.get('status') or 'unknown' }}</span></div>
-<div class="ops-line"><span class="key">Goal</span><span>{{ wave.get('goal') or 'No goal recorded' }}</span></div>
-<div class="ops-line"><span class="key">Validation Status</span><span>{{ wave.get('validation_status') or 'unknown' }}</span></div>
-<div class="ops-line"><span class="key">Next Decision</span><span>{{ wave.get('next_decision') or 'none' }}</span></div>
+{{ m.ops_line('Wave Number', wave.get('wave_number') or '?') }}
+{{ m.ops_line('Phase', wave.get('phase') or 'unknown') }}
+{{ m.ops_line('Status', wave.get('status') or 'unknown') }}
+{{ m.ops_line('Goal', wave.get('goal') or 'No goal recorded') }}
+{{ m.ops_line('Validation Status', wave.get('validation_status') or 'unknown') }}
+{{ m.ops_line('Next Decision', wave.get('next_decision') or 'none') }}
 <div class="ops-line"><span class="key">Stop Allowed</span><span>{% if wave.get('stop_allowed') %}yes{% else %}no{% endif %}</span></div>
 
 {% if agents|length > 0 %}
-<div class="ops-line"><span class="key">Agents</span><span>{{ agents|join(', ') }}</span></div>
+{{ m.ops_line('Agents', agents|join(', ')) }}
 {% endif %}
 
 {% if outputs|length > 0 %}
-<div class="ops-line"><span class="key">Outputs</span><span>{{ outputs|join(', ') }}</span></div>
+{{ m.ops_line('Outputs', outputs|join(', ')) }}
 {% endif %}
 
 {% set unsafe = wave.get('unsafe_claims') or [] %}

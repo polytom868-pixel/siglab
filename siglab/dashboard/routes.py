@@ -668,6 +668,7 @@ async def partial_dashboard_summary(request: Request) -> Any:
         return {"error": "templates not configured"}
     data = state.runs_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/dashboard/_summary_cards.html",
         {"request": request, **data},
     )
@@ -687,6 +688,7 @@ async def partial_dashboard_runs(
     _family = family if family and family != "all" else None
     data = state.runs_payload(track=_track, family=_family)
     return state.templates.TemplateResponse(
+        request,
         "partials/dashboard/_run_cards.html",
         {"request": request, **data, "track": track, "family": family, "metric": "aggregate_score"},
     )
@@ -712,6 +714,7 @@ async def partial_run_summary(
     if run_id:
         selected_run = next((r for r in runs if r.get("run_session_id") == run_id), None)
     return state.templates.TemplateResponse(
+        request,
         "partials/run/_run_summary.html",
         {
             "request": request,
@@ -736,6 +739,7 @@ async def partial_run_family_pills(
     payload = state.experiments_payload()
     families = sorted(payload.get("summary", {}).get("families", []) or [])
     return state.templates.TemplateResponse(
+        request,
         "partials/run/_family_pills.html",
         {"request": request, "families": families, "family": family},
     )
@@ -760,6 +764,7 @@ async def partial_run_improvement_chart(
     if run_id:
         experiments = [e for e in experiments if e.get("run_session_id") == run_id]
     return state.templates.TemplateResponse(
+        request,
         "partials/run/_improvement_chart.html",
         {"request": request, "experiments": experiments, "metric": metric},
     )
@@ -785,6 +790,7 @@ async def partial_run_experiment_table(
     if _family:
         experiments = [e for e in experiments if e.get("family") == _family]
     return state.templates.TemplateResponse(
+        request,
         "partials/run/_experiment_table.html",
         {"request": request, "experiments": experiments},
     )
@@ -801,12 +807,14 @@ async def partial_run_detail_panel(
         return {"error": "templates not configured"}
     if not spec_hash:
         return state.templates.TemplateResponse(
+            request,
             "partials/run/_detail_panel.html",
             {"request": request, "experiment": {}},
         )
     payload = state.experiment_detail_payload(spec_hash)
     experiment = (payload or {}).get("experiment", {}) or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/run/_detail_panel.html",
         {"request": request, "experiment": experiment},
     )
@@ -826,6 +834,7 @@ async def partial_experiment_summary(
         payload = state.experiment_detail_payload(spec_hash)
         experiment = (payload or {}).get("experiment", {}) or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_experiment_summary.html",
         {"request": request, "experiment": experiment},
     )
@@ -846,6 +855,7 @@ async def partial_experiment_equity_chart(
         if payload:
             run = payload.get("canonical_run") or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_equity_chart.html",
         {"request": request, "run": run},
     )
@@ -866,6 +876,7 @@ async def partial_experiment_metrics_chart(
         if payload:
             run = payload.get("canonical_run") or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_metrics_chart.html",
         {"request": request, "run": run},
     )
@@ -893,6 +904,7 @@ async def partial_experiment_snapshot(
             series_available = bool(series.get("series_available"))
             compiled_metadata = series.get("compiled_metadata") or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_snapshot.html",
         {
             "request": request,
@@ -918,6 +930,7 @@ async def partial_experiment_deployment(
         payload = state.experiment_detail_payload(spec_hash)
         experiment = (payload or {}).get("experiment", {}) or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_deployment.html",
         {"request": request, "experiment": experiment},
     )
@@ -938,6 +951,7 @@ async def partial_experiment_heatmap(
         if payload:
             run = payload.get("canonical_run") or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_heatmap.html",
         {"request": request, "run": run},
     )
@@ -961,6 +975,7 @@ async def partial_experiment_trades(
             run = payload.get("canonical_run") or {}
             trades = run.get("trades") or []
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_trades.html",
         {
             "request": request,
@@ -986,6 +1001,7 @@ async def partial_experiment_actions(
         if payload:
             run = payload.get("canonical_run") or {}
     return state.templates.TemplateResponse(
+        request,
         "partials/experiment/_actions.html",
         {"request": request, "run": run},
     )
@@ -999,6 +1015,7 @@ async def partial_ops_summary(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_ops_summary.html",
         {"request": request, **payload},
     )
@@ -1012,6 +1029,7 @@ async def partial_ops_artifact_health(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_artifact_health.html",
         {"request": request, "artifact_status": payload.get("artifact_status", {})},
     )
@@ -1025,6 +1043,7 @@ async def partial_ops_wave_state(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_wave_state.html",
         {"request": request, "summary": payload.get("summary", {})},
     )
@@ -1038,6 +1057,7 @@ async def partial_ops_buildathon_proof(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_buildathon_proof.html",
         {"request": request, "summary": payload.get("summary", {})},
     )
@@ -1051,6 +1071,7 @@ async def partial_ops_market_state(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_market_state.html",
         {"request": request, "summary": payload.get("summary", {})},
     )
@@ -1064,6 +1085,7 @@ async def partial_ops_sodex_boundary(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_sodex_boundary.html",
         {"request": request, "summary": payload.get("summary", {})},
     )
@@ -1077,6 +1099,7 @@ async def partial_ops_telemetry_state(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_telemetry_state.html",
         {"request": request, "summary": payload.get("summary", {})},
     )
@@ -1090,6 +1113,7 @@ async def partial_ops_blockers(request: Request) -> Any:
         return {"error": "templates not configured"}
     payload = state.ops_payload()
     return state.templates.TemplateResponse(
+        request,
         "partials/ops/_blockers.html",
         {"request": request, "summary": payload.get("summary", {})},
     )
@@ -1107,6 +1131,7 @@ async def template_dashboard(request: Request) -> Any:
     if state.templates is None:
         return {"error": "templates not configured"}
     return state.templates.TemplateResponse(
+        request,
         "dashboard.html",
         {"request": request, "track": "all", "family": "all"},
     )
@@ -1119,6 +1144,7 @@ async def template_run(request: Request, run_id: str = "") -> Any:
     if state.templates is None:
         return {"error": "templates not configured"}
     return state.templates.TemplateResponse(
+        request,
         "run.html",
         {"request": request, "run_id": run_id, "track": "all", "family": "all"},
     )
@@ -1131,6 +1157,7 @@ async def template_experiment(request: Request, spec_hash: str = "") -> Any:
     if state.templates is None:
         return {"error": "templates not configured"}
     return state.templates.TemplateResponse(
+        request,
         "experiment.html",
         {"request": request, "spec_hash": spec_hash},
     )
@@ -1143,6 +1170,7 @@ async def template_ops(request: Request) -> Any:
     if state.templates is None:
         return {"error": "templates not configured"}
     return state.templates.TemplateResponse(
+        request,
         "ops.html",
         {"request": request},
     )

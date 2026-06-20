@@ -45,7 +45,7 @@
     <svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline">
       <rect x="0" y="0" width="360" height="110" fill="transparent"></rect>
       <line x1="10" y1="92" x2="350" y2="92" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
-      {% set max_idx = (values|length - 1)|max(1) %}
+      {% set max_idx = [values|length - 1, 1]|max %}
       <polyline fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
         points="{% for i in range(values|length) %}{{ 10 + (i / max_idx) * 340 }},{{ 10 + 82 - ((values[i]|float - y_lo) / (y_hi - y_lo)) * 82 }}{% if not loop.last %} {% endif %}{% endfor %}"></polyline>
       {% set best_val = values|max %}

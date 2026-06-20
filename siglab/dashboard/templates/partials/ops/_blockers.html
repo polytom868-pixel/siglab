@@ -1,4 +1,5 @@
 {# Blockers partial #}
+{% import "macros.html" as m %}
 {% set summary = summary or {} %}
 {% set wave = summary.get('wave') or {} %}
 {% set blockers = wave.get('blockers') or [] %}

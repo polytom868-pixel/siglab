@@ -1,14 +1,15 @@
 {# Market state partial #}
+{% import "macros.html" as m %}
 {% set summary = summary or {} %}
 {% set market = summary.get('market') or {} %}
 {% set warnings = market.get('warnings') or [] %}
 
-<div class="ops-line"><span class="key">Status</span><span class="{% if market.get('status') == 'ready' %}status-pass{% else %}status-pending{% endif %}">{{ market.get('status') or 'unknown' }}</span></div>
-<div class="ops-line"><span class="key">Entity</span><span>{{ market.get('entity') or 'n/a' }}</span></div>
-<div class="ops-line"><span class="key">Headline</span><span>{{ market.get('headline') or 'No signal data' }}</span></div>
-<div class="ops-line"><span class="key">Flow Direction</span><span>{{ market.get('flow_direction') or 'unknown' }}</span></div>
+{{ m.ops_line('Status', market.get('status') or 'unknown') }}
+{{ m.ops_line('Entity', market.get('entity') or 'n/a') }}
+{{ m.ops_line('Headline', market.get('headline') or 'No signal data') }}
+{{ m.ops_line('Flow Direction', market.get('flow_direction') or 'unknown') }}
 <div class="ops-line"><span class="key">Quote</span><span>bid: {{ market.get('quote_bid') or 'n/a' }} / ask: {{ market.get('quote_ask') or 'n/a' }}</span></div>
-<div class="ops-line"><span class="key">Stance</span><span>{{ market.get('stance') or 'unknown' }}</span></div>
+{{ m.ops_line('Stance', market.get('stance') or 'unknown') }}
 
 {% if warnings|length > 0 %}
 <div class="ops-line"><span class="key">Warnings</span></div>

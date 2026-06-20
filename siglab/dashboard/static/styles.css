@@ -177,9 +177,12 @@ body::before {
   50% { opacity: 0.6; box-shadow: 0 0 4px rgba(74, 222, 128, 0.3); }
 }
 
-.status-label {
-  font-size: 12px;
+.status-label,
+.run-card-meta,
+.asset-action-meta,
+#onboardingStepIndicator {
   color: var(--muted);
+  font-size: 12px;
 }
 
 /* Hamburger button — hidden on desktop */
@@ -445,19 +448,23 @@ label {
   color: var(--muted);
 }
 
+/* Shared form-widget base */
+button, .button-link, select, input[type="text"], input[type="number"] {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 14px 18px;
+  transition: all 150ms ease;
+}
+
 select,
 input[type="text"],
 input[type="number"],
 button {
   appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
   color: var(--text);
-  padding: 14px 18px;
   font-family: inherit;
   font-size: 13px;
-  transition: all 150ms ease;
 }
 
 select {
@@ -502,15 +509,11 @@ button:hover {
   font-size: 13px;
 }
 
-.button-link {
+.button-link,
+.legend-marker {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  padding: 14px 18px;
-  transition: all 150ms ease;
 }
 
 .button-link:hover {
@@ -543,9 +546,11 @@ button:hover {
   width: 100%;
 }
 
+.summary-grid,
 .deployment-grid {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
+.summary-grid { margin-bottom: 20px; }
 
 input[type="checkbox"] {
   accent-color: var(--green);
@@ -602,7 +607,6 @@ input[type="checkbox"] {
 }
 
 .summary-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin-bottom: 20px;
 }
 
@@ -686,7 +690,8 @@ input[type="checkbox"] {
   gap: 14px;
 }
 
-.run-card-track {
+.run-card-track,
+.family-card .family-track {
   margin-bottom: 8px;
   color: var(--green);
   font-size: 11px;
@@ -698,11 +703,6 @@ input[type="checkbox"] {
 .run-card h3 {
   font-size: 1rem;
   margin-bottom: 6px;
-}
-
-.run-card-meta {
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .run-card-badges {
@@ -733,7 +733,8 @@ input[type="checkbox"] {
 
 .run-sparkline {
   width: 100%;
-  height: 110px;
+  height: auto;
+  max-height: 110px;
   display: block;
   overflow: visible;
 }
@@ -768,9 +769,9 @@ input[type="checkbox"] {
   color: var(--text-secondary);
 }
 
-.run-card-stats .key {
-  color: var(--muted);
-}
+.run-card-stats .key,
+.kv .key,
+.page-info { color: var(--muted); }
 
 .run-card-links {
   display: flex;
@@ -855,15 +856,6 @@ input[type="checkbox"] {
   color: #fff;
 }
 
-.family-card .family-track {
-  margin-bottom: 8px;
-  color: var(--green);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
 .family-card .family-copy {
   margin: 0 0 10px;
   color: var(--text-secondary);
@@ -878,10 +870,6 @@ input[type="checkbox"] {
   font-size: 12px;
 }
 
-.family-card .family-meta strong {
-  color: var(--text-secondary);
-}
-
 /* ─── Chart ─── */
 
 .chart-panel {
@@ -892,6 +880,8 @@ input[type="checkbox"] {
   position: relative;
   height: 460px;
   padding: 8px 12px 20px;
+  aspect-ratio: 1200/460;
+  max-width: 100%;
 }
 
 .chart-legend {
@@ -971,8 +961,6 @@ input[type="checkbox"] {
   overflow: auto;
 }
 
-
-
 table {
   width: 100%;
   border-collapse: collapse;
@@ -1000,9 +988,9 @@ th {
   letter-spacing: 0.06em;
 }
 
-td {
-  color: var(--text-secondary);
-}
+td,
+.kv div:not(.key),
+.family-card .family-meta strong { color: var(--text-secondary); }
 
 tbody tr {
   cursor: pointer;
@@ -1146,14 +1134,6 @@ tbody tr.selected {
   font-size: 12px;
 }
 
-.kv .key {
-  color: var(--muted);
-}
-
-.kv div:not(.key) {
-  color: var(--text-secondary);
-}
-
 /* ─── Pills ─── */
 
 .pill-row {
@@ -1217,8 +1197,6 @@ pre {
   overflow: auto;
 }
 
-
-
 /* ─── Trace ─── */
 
 .trace-list {
@@ -1275,10 +1253,6 @@ pre {
   align-items: center;
 }
 
-.compact-chart-wrap {
-  height: 300px;
-}
-
 .asset-action-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
@@ -1305,14 +1279,10 @@ pre {
   margin-bottom: 4px;
 }
 
-.asset-action-meta {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .asset-action-svg {
   width: 100%;
-  height: 180px;
+  height: auto;
+  max-height: 180px;
   display: block;
   overflow: visible;
 }
@@ -1324,12 +1294,6 @@ pre {
   margin-top: 10px;
   color: var(--muted);
   font-size: 11px;
-}
-
-.legend-marker {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .legend-dot {
@@ -1376,31 +1340,21 @@ pre {
   padding: 12px;
 }
 
-
-
 .heatmap-svg {
   width: 100%;
-  min-width: 960px;
   height: auto;
   display: block;
+  min-width: 0;
 }
 
 /* ─── Status ─── */
 
-.status-pass {
-  color: var(--success);
-  font-weight: 500;
-}
-
-.status-fail {
-  color: var(--fail);
-  font-weight: 500;
-}
-
-.status-pending {
-  color: var(--amber);
-  font-weight: 500;
-}
+.status-pass,
+.status-fail,
+.status-pending { font-weight: 500; }
+.status-pass { color: var(--success); }
+.status-fail { color: var(--fail); }
+.status-pending { color: var(--amber); }
 
 /* ─── Empty States ─── */
 
@@ -1471,12 +1425,8 @@ pre {
   min-height: 40px;
 }
 
-.chart-wrap {
-  aspect-ratio: 1200/460;
-  max-width: 100%;
-}
-
 .compact-chart-wrap {
+  height: 300px;
   aspect-ratio: 1200/300;
   max-width: 100%;
 }
@@ -1689,22 +1639,19 @@ pre {
   max-height: 300px;
 }
 
-.run-sparkline {
-  width: 100%;
-  height: auto;
-  max-height: 110px;
-}
-
 .heatmap-svg {
   width: 100%;
   height: auto;
   min-width: 0; /* override the 960px min-width */
+  display: block;
 }
 
 .asset-action-svg {
   width: 100%;
   height: auto;
   max-height: 180px;
+  display: block;
+  overflow: visible;
 }
 
 /* ─── Focus Visible ─── */
@@ -1854,11 +1801,6 @@ tr[role="button"]:focus-visible,
   background: var(--surface-hover);
 }
 
-#onboardingStepIndicator {
-  font-size: 12px;
-  color: var(--muted);
-}
-
 @media (max-width: 640px) {
   .onboarding-banner {
     left: 16px;
@@ -1894,8 +1836,5 @@ tr[role="button"]:focus-visible,
 }
 .page-btn:hover:not(:disabled) {
   background: var(--surface-hover);
-}
-.page-info {
-  color: var(--muted);
 }
 

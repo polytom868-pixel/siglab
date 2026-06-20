@@ -1,28 +1,21 @@
 {# SoDEX boundary partial #}
+{% import "macros.html" as m %}
 {% set summary = summary or {} %}
 {% set sodex = summary.get('sodex') or {} %}
 {% set next_actions = sodex.get('next_actions') or [] %}
 
-<div class="ops-line">
-  <span class="key">Public Read Ready</span>
-  <span class="{% if sodex.get('public_read_ready') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('public_read_ready') %}yes{% else %}no{% endif %}</span>
-</div>
-<div class="ops-line">
-  <span class="key">Schema Pinned</span>
-  <span class="{% if sodex.get('schema_pinned') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('schema_pinned') %}yes{% else %}no{% endif %}</span>
-</div>
-<div class="ops-line">
-  <span class="key">Live Write Allowed</span>
-  <span class="{% if sodex.get('live_write_allowed') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('live_write_allowed') %}yes{% else %}no{% endif %}</span>
-</div>
+{% set pub_ready = 'yes' if sodex.get('public_read_ready') else 'no' %}
+{% set schema_pinned = 'yes' if sodex.get('schema_pinned') else 'no' %}
+{% set live_write = 'yes' if sodex.get('live_write_allowed') else 'no' %}
+{% set signed_ready = 'yes' if sodex.get('signed_path_ready') else 'no' %}
+{{ m.ops_line('Public Read Ready', pub_ready) }}
+{{ m.ops_line('Schema Pinned', schema_pinned) }}
+{{ m.ops_line('Live Write Allowed', live_write) }}
 {% if sodex.get('live_write_refusal_reason') %}
-<div class="ops-line"><span class="key">Refusal Reason</span><span class="status-fail">{{ sodex.get('live_write_refusal_reason') }}</span></div>
+{{ m.ops_line('Refusal Reason', sodex.get('live_write_refusal_reason')) }}
 {% endif %}
-<div class="ops-line">
-  <span class="key">Signed Path Ready</span>
-  <span class="{% if sodex.get('signed_path_ready') %}status-pass{% else %}status-fail{% endif %}">{% if sodex.get('signed_path_ready') %}yes{% else %}no{% endif %}</span>
-</div>
-<div class="ops-line"><span class="key">Request Budget</span><span>{{ sodex.get('request_weight_budget_per_minute') or 'n/a' }} / min</span></div>
+{{ m.ops_line('Signed Path Ready', signed_ready) }}
+{{ m.ops_line('Request Budget', sodex.get('request_weight_budget_per_minute') or 'n/a') }}
 
 {% if next_actions|length > 0 %}
 <div class="ops-line"><span class="key">Next Actions</span></div>
