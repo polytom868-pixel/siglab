@@ -87,6 +87,8 @@ sessions/
 
 # ----- Local experiment config -----
 mutable/
+challenges/
+tracks/
 
 # ----- Wallet / key material -----
 *.key
