@@ -16,7 +16,6 @@ from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -191,22 +190,34 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(ws_router)
 
-    # Catch-all SPA routes: serve static HTML for client-side navigation paths.
+    # SPA routes: render Jinja2 templates for client-side navigation paths.
     # These must be defined BEFORE the StaticFiles mount so FastAPI routes
     # take priority over the static file handler.
     _static_dir = Path(__file__).resolve().parent / "static"
 
+    @app.get("/")
+    async def serve_dashboard(request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, "dashboard.html", {"request": request})
+
+    @app.get("/ops")
+    async def serve_ops(request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, "ops.html", {"request": request})
+
     @app.get("/runs/{run_id:path}")
-    async def serve_run_page(run_id: str):
-        return FileResponse(os.path.join(str(_static_dir), "run.html"))
+    async def serve_run_page(run_id: str, request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, "run.html", {"request": request, "run_id": run_id})
 
     @app.get("/experiments/{spec_hash:path}")
-    async def serve_experiment_page(spec_hash: str):
-        return FileResponse(os.path.join(str(_static_dir), "experiment.html"))
+    async def serve_experiment_page(spec_hash: str, request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, "experiment.html", {"request": request, "spec_hash": spec_hash})
 
-    # Mount static files for the ops-board frontend (legacy server.py compat)
+    # Mount static files for JS/CSS/SVG assets (no html=True — templates handle HTML)
     if _static_dir.is_dir():
-        app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+        app.mount("/", StaticFiles(directory=str(_static_dir)), name="static")
 
     return app
 
