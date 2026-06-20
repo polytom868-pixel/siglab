@@ -7,7 +7,7 @@ import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Protocol, cast
+from typing import Any, Protocol, cast
 
 from eth_utils import keccak  # type: ignore[attr-defined]
 from eth_account import Account
@@ -49,6 +49,25 @@ class SoDEXNotReadyError(SoDEXSigningError):
     pass
 
 
+class SoDEXDryRunSigner:
+    """Dry-run signer that refuses any sign attempt.
+    
+    Used as the default when no real signer credentials are configured.
+    Ensures no signed request can be submitted to SoDEX without explicit
+    operator setup.
+    """
+
+    signer_type = "dry-run"
+
+    def sign_typed_payload(
+        self, *, domain: str, account_id: int, payload_hash: str, nonce: int
+    ) -> str:
+        raise SoDEXNotReadyError(
+            "SoDEX dry-run signer refuses to sign — configure a real signer "
+            "with SODEX_PRIVATE_KEY or SODEX_AWS_KMS_KEY_ARN environment variables."
+        )
+
+
 class SoDEXSigner(Protocol):
     signer_type: str
 
@@ -65,11 +84,12 @@ class SoDEXSignedRequest:
     weight: int = 20
 
 
-class SoDEXDryRunSigner:
-    signer_type = "dry-run"
-
-    def sign_typed_payload(self, *, domain: str, account_id: int, payload_hash: str, nonce: int) -> str:
-        raise SoDEXNotReadyError("Dry-run signer cannot produce live SoDEX signatures")
+def _validate_domain_inputs(*, domain: str, environment: str) -> None:
+    """Validate domain and environment before EIP-712 signing."""
+    if domain not in {"spot", "futures"}:
+        raise SoDEXConfigError("SoDEX signing domain must be 'spot' or 'futures'")
+    if environment not in {"mainnet", "testnet"}:
+        raise SoDEXConfigError("SoDEX environment must be 'mainnet' or 'testnet'")
 
 
 class SoDEXPrivateKeySigner:
@@ -82,6 +102,7 @@ class SoDEXPrivateKeySigner:
         self.environment = environment
 
     def sign_typed_payload(self, *, domain: str, account_id: int, payload_hash: str, nonce: int) -> str:
+        _validate_domain_inputs(domain=domain, environment=self.environment)
         typed_data = build_exchange_action_typed_data(
             domain=domain,
             environment=self.environment,
@@ -94,19 +115,21 @@ class SoDEXPrivateKeySigner:
 
 
 class SoDEXNonceManager:
+    """Monotonic nonce manager with atomic file persistence.
+
+    Time-window validation is only enforced on mainnet. Testnet relies on
+    replay protection alone, keeping the implementation simple for validation.
+    """
+
     def __init__(
         self,
         *,
         store_path: Path | None = None,
-        now_ms: Callable[[], int] | None = None,
-        window_past_ms: int = 2 * 24 * 60 * 60 * 1000,
-        window_future_ms: int = 24 * 60 * 60 * 1000,
+        environment: str = "testnet",
         high_water_size: int = 64,
     ) -> None:
         self.store_path = store_path
-        self.now_ms = now_ms or (lambda: int(time.time() * 1000))
-        self.window_past_ms = int(window_past_ms)
-        self.window_future_ms = int(window_future_ms)
+        self.environment = str(environment).strip().lower()
         self.high_water_size = int(high_water_size)
         self._seen: dict[str, deque[int]] = {}
         if store_path is not None and store_path.exists():
@@ -115,7 +138,7 @@ class SoDEXNonceManager:
                 self._seen[str(key)] = deque([int(v) for v in values], maxlen=self.high_water_size)
 
     def next_nonce(self, api_key_name: str) -> int:
-        now = int(self.now_ms())
+        now = int(time.time() * 1000)
         seen = self._seen_for(api_key_name)
         nonce = max(now, (max(seen) + 1) if seen else now)
         self.validate(api_key_name, nonce)
@@ -127,9 +150,11 @@ class SoDEXNonceManager:
         if not api_key_name:
             raise SoDEXNonceError("api_key_name is required for nonce validation")
         value = int(nonce)
-        now = int(self.now_ms())
-        if value <= now - self.window_past_ms or value >= now + self.window_future_ms:
-            raise SoDEXNonceError("nonce is outside SoDEX time window")
+        # Time-window validation only on mainnet
+        if self.environment == "mainnet":
+            now = int(time.time() * 1000)
+            if value <= now - 2 * 24 * 60 * 60 * 1000 or value >= now + 24 * 60 * 60 * 1000:
+                raise SoDEXNonceError("nonce is outside SoDEX time window (mainnet)")
         seen = self._seen_for(api_key_name)
         if value in seen:
             raise SoDEXNonceError("nonce was already used for this API key")
@@ -148,8 +173,6 @@ class SoDEXNonceManager:
         self.store_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {key: list(values) for key, values in self._seen.items()}
         data = json.dumps(payload, indent=2, ensure_ascii=True)
-        # Atomic write: stage in a temp file in the same directory, then os.replace
-        # so a crash mid-write cannot corrupt the nonce store.
         fd, tmp_path = tempfile.mkstemp(
             prefix=".nonce-", suffix=".tmp", dir=str(self.store_path.parent)
         )

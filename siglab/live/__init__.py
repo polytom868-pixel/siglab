@@ -31,7 +31,6 @@ from siglab.live.sodex_client import (
 from siglab.data.sodex_rate_limit import SoDEXWeightLimitError, SoDEXWeightScheduler
 from siglab.live.sodex_signing import (
     SoDEXConfigError,
-    SoDEXDryRunSigner,
     SoDEXNonceError,
     SoDEXNonceManager,
     SoDEXNotReadyError,
@@ -91,7 +90,6 @@ __all__ = [
     "SoDEXWebSocketFormatError",
     "SoDEXWebSocketTimeoutError",
     "SoDEXConfigError",
-    "SoDEXDryRunSigner",
     "SoDEXNonceError",
     "SoDEXNonceManager",
     "SoDEXNotReadyError",

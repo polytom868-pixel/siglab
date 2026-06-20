@@ -12,6 +12,7 @@ from siglab.path_utils import resolve_path_from_root
 from siglab.search.lineage import LineageStore
 from siglab.config import SiglabConfig
 from siglab.track_registry import track_label
+from siglab.cli.helpers import sodex_preflight_report
 
 SUPPORTED_DIRECTIONAL_FAMILIES = {
     "perp_multi_asset_decision",
@@ -213,10 +214,13 @@ class LiveDeploymentManager:
         if not resolved_config_path.exists():
             raise ValueError(f"SoDEX runtime config not found: {resolved_config_path}")
         if not dry_run:
-            raise ValueError(
-                "Live SoDEX deployment requires a real signed SoDEX runner/client path. "
-                "This build only supports dry-run package export."
-            )
+            report = sodex_preflight_report()
+            signed_path = report.get("signed_path", {})
+            if not signed_path.get("ready", False):
+                raise ValueError(
+                    "Live SoDEX deployment requires signing credentials. "
+                    f"Missing: {', '.join(signed_path.get('missing_prerequisites', []))}"
+                )
         if schedule:
             if not wallet_label:
                 raise ValueError("wallet_label is required when scheduling a runner job")

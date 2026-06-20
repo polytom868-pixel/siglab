@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import uuid
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,6 +15,7 @@ from siglab.live.sodex_signing import (
     SoDEXNonceManager,
     SoDEXPrivateKeySigner,
     SoDEXSigner,
+    perps_order_item,
     validate_account_id,
 )
 
@@ -60,7 +62,7 @@ class SoDEXExecutionAdapter:
             or signing.get("account_id")
             or self.config.get("sodex_account_id")
         )
-        environment = signing.get("environment") or self.config.get("sodex_environment") or "mainnet"
+        environment = signing.get("environment") or self.config.get("sodex_environment") or "testnet"
         nonce_store_path = signing.get("nonce_store_path") or self.config.get("sodex_nonce_store_path")
         private_key = signing.get("private_key") or self.config.get("sodex_private_key")
         signer: SoDEXSigner | None = signing.get("signer")
@@ -73,8 +75,7 @@ class SoDEXExecutionAdapter:
 
         account_id = validate_account_id(account_id_raw)
         store_path = Path(nonce_store_path) if nonce_store_path else None
-        nonce_manager = SoDEXNonceManager(store_path=store_path)
-        dry_run = bool(signing.get("dry_run", self.config.get("sodex_dry_run", True)))
+        nonce_manager = SoDEXNonceManager(store_path=store_path, environment=environment)
         signing["signer"] = signer
         self.config["sodex_signing"] = signing
         self.client = SoDEXSignedPerpsClient(
@@ -83,22 +84,36 @@ class SoDEXExecutionAdapter:
             signer=signer,
             nonce_manager=nonce_manager,
             environment=str(environment),
-            dry_run=dry_run,
+            dry_run=bool(signing.get("dry_run", self.config.get("sodex_dry_run", True))),
         )
         if not self.coin_to_asset:
             self.coin_to_asset = dict(getattr(self.client, "coin_to_asset", {}) or {})
         return self.dependency_report()
 
     async def update_leverage(self, **kwargs: Any) -> None:
-        method = self._resolve_client_method("update_leverage")
+        method = self._resolve_client_method("update_leverage", fallback="update_leverage_request")
         await _await_if_needed(method(**kwargs))
 
     async def place_market_order(self, **kwargs: Any) -> tuple[bool, str]:
-        method = self._resolve_client_method("place_market_order")
-        result = await _await_if_needed(method(**kwargs))
-        if isinstance(result, tuple) and len(result) == 2:
-            return bool(result[0]), str(result[1])
+        client = self._require_client()
+        asset_id = int(kwargs.get("asset_id", 0))
+        is_buy = bool(kwargs.get("is_buy", True))
+        size = float(kwargs.get("size", 0))
+        reduce_only = bool(kwargs.get("reduce_only", False))
+        order = perps_order_item(
+            cl_ord_id=f"siglab_{uuid.uuid4().hex[:12]}",
+            modifier=1,
+            side=1 if is_buy else 2,
+            order_type=2,
+            time_in_force=1,
+            quantity=str(size),
+            reduce_only=reduce_only,
+        )
+        request = client.new_order_request(symbol_id=asset_id, orders=[order])
+        result = await client.send_signed_request(request)
         if isinstance(result, dict):
+            if result.get("dry_run"):
+                return True, "dry-run market order submitted"
             ok = bool(result.get("ok", result.get("success", False)))
             return ok, str(result.get("message") or result.get("result") or result)
         return bool(result), str(result)
@@ -149,7 +164,7 @@ class SoDEXExecutionAdapter:
         signing = dict(self.config.get("sodex_signing") or {})
         api_key_name = signing.get("api_key_name") or self.config.get("sodex_api_key_name")
         account_id = signing.get("accountID") or signing.get("account_id") or self.config.get("sodex_account_id")
-        environment = signing.get("environment") or self.config.get("sodex_environment") or "mainnet"
+        environment = signing.get("environment") or self.config.get("sodex_environment") or "testnet"
         nonce_store = signing.get("nonce_store_path") or self.config.get("sodex_nonce_store_path")
         signer = signing.get("signer")
         required = {
@@ -163,8 +178,8 @@ class SoDEXExecutionAdapter:
                 or getattr(client, "update_leverage_request", None)
             ),
             "place_market_order": bool(
-                getattr(client, "place_market_order", None)
-                or (getattr(client, "new_order_request", None) and getattr(client, "send_signed_request", None))
+                getattr(client, "new_order_request", None)
+                and getattr(client, "send_signed_request", None)
             ),
             "all_mids": bool(
                 getattr(client, "all_mids", None)
@@ -197,6 +212,7 @@ class SoDEXExecutionAdapter:
             "required_methods": required,
             "missing_methods": [name for name, present in required.items() if not present],
             "wallet_address_configured": bool(self.wallet_address),
+            "dry_run": getattr(client, "dry_run", True) if client is not None else True,
             "signed_path": {
                 "ready": signed_ready,
                 "environment": str(environment),
@@ -256,6 +272,12 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         address = runtime.get("wallet_address") or runtime.get("address") or ""
         return str(address)
 
+    def _adapter_dry_run(self) -> bool:
+        """Read dry_run from the single source at SoDEXSignedPerpsClient."""
+        if self.sodex_adapter is None or self.sodex_adapter.client is None:
+            return True
+        return bool(getattr(self.sodex_adapter.client, "dry_run", True))
+
     async def setup(self) -> None:
         self.live_spec = self._load_live_spec()
         self.spec = SignalSpec.from_dict(dict(self.live_spec["spec"]))
@@ -264,9 +286,8 @@ class DirectionalPerpsSigLabStrategy(Strategy):
             self.config if isinstance(self.config, dict) else {},
             wallet_address=self._get_strategy_wallet_address(),
         )
-        runtime = dict(self.live_spec.get("runtime") or {})
         report = self.sodex_adapter.setup()
-        if not bool(runtime.get("dry_run", True)):
+        if not self._adapter_dry_run():
             signed_path = report.get("signed_path") or {}
             if not report["client_configured"] or report["missing_methods"] or not signed_path.get("ready"):
                 raise RuntimeError(f"Live SoDEX dependencies are incomplete: {report}")
@@ -282,8 +303,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         status = await self._build_live_status(include_trade_plan=True)
         strategy_status = dict(status["strategy_status"])
         plan = list(strategy_status.get("trade_plan") or [])
-        runtime = dict(self.live_spec.get("runtime") or {})
-        dry_run = bool(runtime.get("dry_run", True))
+        dry_run = self._adapter_dry_run()
         if not plan:
             return True, "No rebalance needed"
         if dry_run:
@@ -323,8 +343,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         if not current_positions:
             return True, "No open perp positions to close"
 
-        runtime = dict(self.live_spec.get("runtime") or {})
-        if bool(runtime.get("dry_run", True)):
+        if self._adapter_dry_run():
             return True, f"Dry run would close {len(current_positions)} perp positions"
 
         adapter = self._require_sodex_adapter()
@@ -407,7 +426,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
                 "source": target_snapshot.get("source"),
                 "bundle_as_of": target_snapshot.get("bundle_as_of"),
                 "latest_signal_timestamp": target_snapshot.get("timestamp"),
-                "dry_run": bool(runtime.get("dry_run", True)),
+                "dry_run": self._adapter_dry_run(),
                 "current_account_value": round(account_value, 6),
                 "target_weights": _compact_weights(
                     dict(target_snapshot["target_weights"])
