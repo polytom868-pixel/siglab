@@ -10,7 +10,8 @@ const { TRACK_LABELS, formatDateTime, formatNumber, formatPercent, escapeHtml,
   rectNode, lineNode, textNode, historyRange, formatSweepMaybePercent,
   safeParseJson, emptyChartText, apiFetch, setLoading, joinOrNone,
   renderPolicySweepBlock,
-  buildAxisTicks, sampleSeries, hasFiniteSeriesValues, metricSeries, seriesMinimum, seriesMaximum, renderChartLegend, formatAxisDateTime } = window.SigLabUi;
+  buildAxisTicks, sampleSeries, hasFiniteSeriesValues, metricSeries, seriesMinimum, seriesMaximum, renderChartLegend, formatAxisDateTime,
+  initThemeToggle, initAriaLive } = window.SigLabUi;
 
 const COLORS = {
   equity: "#4ade80",
@@ -31,6 +32,8 @@ const ACTION_META = {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+  initAriaLive();
+  initThemeToggle();
   PAGE_STATE.displayCapitalUsd = loadDisplayCapitalUsd();
   bindDisplayCapitalInput();
   const specHash = getSpecHash();
@@ -148,22 +151,14 @@ function renderDeployment(experiment) {
     : `
       <form id="deploymentForm" class="deployment-form">
         <div class="filters deployment-grid">
-          <label>
-            Wallet Label
-            <input id="deploymentWalletLabel" type="text" placeholder="basis_trading_strategy" />
-          </label>
-          <label>
-            Job Name
-            <input id="deploymentJobName" type="text" placeholder="siglab-job-name" />
-          </label>
-          <label>
-            Interval Seconds
-            <input id="deploymentInterval" type="number" min="60" step="60" value="600" />
-          </label>
-          <label>
-            Config Path
-            <input id="deploymentConfigPath" type="text" placeholder="use default config" />
-          </label>
+          <label for="deploymentWalletLabel">Wallet Label</label>
+          <input id="deploymentWalletLabel" type="text" placeholder="basis_trading_strategy" />
+          <label for="deploymentJobName">Job Name</label>
+          <input id="deploymentJobName" type="text" placeholder="siglab-job-name" />
+          <label for="deploymentInterval">Interval Seconds</label>
+          <input id="deploymentInterval" type="number" min="60" step="60" value="600" />
+          <label for="deploymentConfigPath">Config Path</label>
+          <input id="deploymentConfigPath" type="text" placeholder="use default config" />
           <label class="checkbox">
             <input id="deploymentSchedule" type="checkbox" />
             Schedule runner job
@@ -176,7 +171,7 @@ function renderDeployment(experiment) {
             <input id="deploymentLlmFinalize" type="checkbox" />
             Claude finalize notes
           </label>
-          <button type="submit">Deploy</button>
+          <button type="submit" aria-label="Deploy experiment">Deploy</button>
         </div>
       </form>
       <div id="deploymentResult" class="detail-copy"></div>
@@ -251,6 +246,7 @@ function validateDeploymentInput() {
 async function submitDeployment(specHash) {
   const resultNode = document.getElementById("deploymentResult");
   if (resultNode) {
+    resultNode.setAttribute("aria-live", "polite");
     resultNode.textContent = "Promoting...";
   }
 
@@ -602,7 +598,7 @@ function renderHeatmap(run) {
   const plotWidth = width - labelWidth - 16;
 
   const pieces = [
-    `<svg viewBox="0 0 ${width} ${height}"  class="heatmap-svg">`,
+    `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Position weight heatmap" class="heatmap-svg">`,
     `<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>`,
   ];
 
@@ -734,7 +730,7 @@ function assetActionSvg(symbol, trades, widthOverride) {
     .map((trade) => Number(trade.price))
     .filter((value) => Number.isFinite(value));
   if (!timestamps.length || !prices.length) {
-    return `<svg viewBox="0 0 ${width} ${height}"  class="asset-action-svg"><text x="16" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No retained prices for ${escapeHtml(symbol)}</text></svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Price chart for ${escapeHtml(symbol)}" class="asset-action-svg"><text x="16" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No retained prices for ${escapeHtml(symbol)}</text></svg>`;
   }
   let yMin = Math.min(...prices);
   let yMax = Math.max(...prices);
@@ -769,7 +765,7 @@ function assetActionSvg(symbol, trades, widthOverride) {
     .join("");
 
   return `
-    <svg viewBox="0 0 ${width} ${height}"  class="asset-action-svg">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Price chart for ${escapeHtml(symbol)}" class="asset-action-svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
       ${bands}
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
@@ -925,6 +921,26 @@ function drawLineChart(svg, tooltip, seriesList, options) {
       dot.setAttribute("fill", series.color);
       dot.setAttribute("stroke", "rgba(8, 12, 10, 0.6)");
       dot.setAttribute("stroke-width", "1.2");
+      dot.setAttribute("tabindex", "0");
+      dot.setAttribute("role", "button");
+      dot.addEventListener("focus", (event) => {
+        tooltip.innerHTML = `
+          <div class="meta">${escapeHtml(point.timestamp)}</div>
+          <strong>${escapeHtml(series.label)}</strong>
+          <div>${escapeHtml(series.formatter(point.value))}</div>
+        `;
+        tooltip.classList.remove("hidden");
+        const rect = dot.getBoundingClientRect();
+        const chartRect = svg.getBoundingClientRect();
+        moveTooltip({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }, tooltip);
+      });
+      dot.addEventListener("blur", () => tooltip.classList.add("hidden"));
+      dot.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          dot.focus();
+        }
+      });
       dot.addEventListener("mouseenter", (event) => {
         tooltip.innerHTML = `
           <div class="meta">${escapeHtml(point.timestamp)}</div>

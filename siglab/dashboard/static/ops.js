@@ -1,4 +1,5 @@
-const { escapeHtml, formatDateTime, toggleAutoRefresh, apiFetch } = window.SigLabUi;
+const { escapeHtml, formatDateTime, toggleAutoRefresh, apiFetch, initThemeToggle, initAriaLive } = window.SigLabUi;
+initAriaLive();
   const state = {
     refreshTimer: null,
     isRefreshing: false,
@@ -159,6 +160,7 @@ const { escapeHtml, formatDateTime, toggleAutoRefresh, apiFetch } = window.SigLa
   });
   document.getElementById("autoRefresh").addEventListener("change", schedule);
 
+  initThemeToggle();
   loadOps();
   schedule();
 

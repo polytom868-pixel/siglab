@@ -18,24 +18,25 @@
         <p><a href="/api/runs" style="color: #4ade80;">View raw API data</a></p>
       </div>
     </noscript>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation">
       <a class="navbar-brand" href="/">
         <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" />
         <span class="navbar-title">SoSoValue</span>
       </a>
       <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
       <div class="navbar-nav">
-        <a class="navbar-link" href="/">Dashboard</a>
-        <a class="navbar-link" href="/ops">Ops</a>
-        <a class="navbar-link active" href="#">Experiment</a>
+        <a class="navbar-link" aria-label="View runs dashboard" href="/">Dashboard</a>
+        <a class="navbar-link" aria-label="View operations board" href="/ops">Ops</a>
+        <a class="navbar-link active" aria-label="Current experiment detail" href="#">Experiment</a>
       </div>
       <div class="navbar-status">
         <span class="status-dot"></span>
         <span class="status-label">SigLab</span>
+        <button id="themeToggle" class="theme-toggle" aria-label="Switch to light mode" title="Switch theme">🌙</button>
       </div>
     </nav>
 
-    <div class="page-shell" id="main-content">
+    <div class="page-shell" id="main-content" role="main">
       <header class="hero experiment-hero">
         <div>
           <p class="eyebrow">SoSoValue SigLab</p>
@@ -59,7 +60,7 @@
           </div>
         </div>
         <div class="chart-wrap">
-          <svg id="equityChart" viewBox="0 0 1200 420"></svg>
+          <svg id="equityChart" role="img" aria-label="Portfolio equity chart" viewBox="0 0 1200 420"></svg>
           <div id="pageTooltip" class="tooltip hidden"></div>
         </div>
       </section>
@@ -73,7 +74,7 @@
             </div>
           </div>
         <div class="chart-wrap compact-chart-wrap">
-          <svg id="metricsChart" viewBox="0 0 1200 300"></svg>
+          <svg id="metricsChart" role="img" aria-label="Run metrics chart" viewBox="0 0 1200 300"></svg>
         </div>
         <div id="metricsLegend" class="chart-legend"></div>
       </div>
@@ -140,10 +141,10 @@
             <h2>Trade Tape</h2>
             <p id="tradeSubtitle">Executed trades for the canonical run.</p>
           </div>
-          <label class="inline-control">
+          <label class="inline-control" for="displayCapitalInput">
             <span>Display Capital (USD)</span>
-            <input id="displayCapitalInput" type="number" min="1000" step="1000" />
           </label>
+          <input id="displayCapitalInput" type="number" min="1000" step="1000" />
         </div>
         <div class="table-wrap custom-scrollbar">
           <table>
@@ -166,7 +167,7 @@
       </section>
     </div>
 
-    <div id="errorToast" class="toast-error hidden" role="alert"></div>
+    <div id="errorToast" class="toast-error hidden" role="alert" aria-live="assertive"></div>
     <script src="/constants.js"></script>
     <script src="/common.js"></script>
     <script src="/experiment.js"></script>

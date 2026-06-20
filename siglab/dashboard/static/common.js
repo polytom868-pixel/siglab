@@ -334,6 +334,47 @@
     return resizeObserver;
   }
 
+  function initThemeToggle() {
+    const toggle = document.getElementById("themeToggle");
+    if (!toggle) return;
+    const saved = localStorage.getItem("siglab.theme");
+    if (saved === "light") {
+      document.documentElement.setAttribute("data-theme", "light");
+      toggle.textContent = "☀️";
+      toggle.setAttribute("aria-label", "Switch to dark mode");
+    }
+    toggle.addEventListener("click", () => {
+      const isLight = document.documentElement.getAttribute("data-theme") === "light";
+      if (isLight) {
+        document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem("siglab.theme", "dark");
+        toggle.textContent = "🌙";
+        toggle.setAttribute("aria-label", "Switch to light mode");
+      } else {
+        document.documentElement.setAttribute("data-theme", "light");
+        localStorage.setItem("siglab.theme", "light");
+        toggle.textContent = "☀️";
+        toggle.setAttribute("aria-label", "Switch to dark mode");
+      }
+    });
+  }
+
+  function initAriaLive() {
+    const liveRegions = [
+      "summaryCards", "runCards", "experimentsTable", "detailContent",
+      "experimentSummary", "experimentSnapshot", "deploymentPanel",
+      "assetActionCharts", "positionHeatmap", "tradesTable",
+      "opsSummary", "artifactHealth", "waveState", "buildathonProof",
+      "marketState", "sodexBoundary", "telemetryState", "blockers"
+    ];
+    liveRegions.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && !el.hasAttribute("aria-live")) {
+        el.setAttribute("aria-live", "polite");
+      }
+    });
+  }
+
   window.SigLabUi = {
     formatNumber,
     formatPercent,
@@ -367,6 +408,8 @@
     formatAxisDateTime,
     populateMetricFilter,
     responsiveSvg,
+    initAriaLive,
+    initThemeToggle,
   };
 })();
 

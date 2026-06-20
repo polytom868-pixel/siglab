@@ -18,19 +18,20 @@
         <p><a href="/api/runs" style="color: #4ade80;">View raw API data</a></p>
       </div>
     </noscript>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation">
       <a class="navbar-brand" href="/">
         <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" />
         <span class="navbar-title">SoSoValue</span>
       </a>
       <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
       <div class="navbar-nav">
-        <a class="navbar-link" href="/">Runs</a>
-        <a class="navbar-link active" href="/ops">Ops</a>
+        <a class="navbar-link" aria-label="View runs dashboard" href="/">Runs</a>
+        <a class="navbar-link active" aria-label="View operations board" href="/ops">Ops</a>
       </div>
       <div class="navbar-status">
         <span class="status-dot"></span>
         <span class="status-label">SigLab</span>
+        <button id="themeToggle" class="theme-toggle" aria-label="Switch to light mode" title="Switch theme">🌙</button>
       </div>
     </nav>
 
@@ -49,7 +50,7 @@
             <input type="checkbox" id="autoRefresh" checked />
             Auto refresh
           </label>
-          <button id="refreshButton" type="button">Refresh</button>
+          <button id="refreshButton" type="button" aria-label="Refresh data">Refresh</button>
         </div>
       </header>
 
@@ -87,7 +88,7 @@
       </section>
     </main>
 
-    <div id="errorToast" class="toast-error hidden" role="alert"></div>
+    <div id="errorToast" class="toast-error hidden" role="alert" aria-live="assertive"></div>
     <script src="/constants.js"></script>
     <script src="/common.js"></script>
     <script src="/ops.js"></script>

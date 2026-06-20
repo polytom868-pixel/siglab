@@ -9,7 +9,7 @@
   --surface-glass: rgba(18, 28, 22, 0.78);
   --text: #e2ebe5;
   --text-secondary: #a3b5a8;
-  --muted: #6b7f70;
+  --muted: #7a8f7e;
   --border: rgba(255, 255, 255, 0.06);
   --border-accent: rgba(78, 204, 130, 0.12);
   --green: #4ade80;
@@ -165,7 +165,12 @@ body::before {
   border-radius: 50%;
   background: var(--green);
   box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
-  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .status-dot {
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
 }
 
 @keyframes pulse-dot {
@@ -188,6 +193,20 @@ body::before {
   cursor: pointer;
   padding: 8px;
   line-height: 1;
+}
+
+.theme-toggle {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background 150ms ease;
+}
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* ─── Layout ─── */
@@ -1408,6 +1427,13 @@ pre {
   vertical-align: middle;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-card, .skeleton-chart, .skeleton-row, .skeleton-text, .skeleton-inline {
+    animation: none;
+    background: var(--surface);
+  }
+}
+
 /* ─── CLS Mitigation ─── */
 
 #summaryCards, #runCards, #experimentsTable, #detailContent,
@@ -1567,7 +1593,8 @@ pre {
 
 /* ─── Light Mode ─── */
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: light),
+       [data-theme="light"] {
   :root {
     --bg: #f4f7f5;
     --bg-subtle: #e8edea;
@@ -1646,5 +1673,83 @@ pre {
   width: 100%;
   height: auto;
   max-height: 180px;
+}
+
+/* ─── Focus Visible ─── */
+
+/* Only show focus ring for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Hide focus ring for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Ensure all interactive elements are focusable */
+tr[role="button"]:focus-visible,
+[tabindex="0"]:focus-visible,
+.card[role="button"]:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* Detail panel heading focus */
+.detail-block h3:focus {
+  outline: none;
+  color: var(--green);
+}
+
+/* ─── Print Styles ─── */
+@media print {
+  .navbar, .navbar-status, .hero-controls,
+  #refreshButton, .checkbox, button, .button-link,
+  .skip-link, #errorToast, .mobile-tab-bar,
+  .theme-toggle, #navbarToggle {
+    display: none !important;
+  }
+
+  .page-shell {
+    max-width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+
+  .panel {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ccc;
+    background: #fff;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  h1, h2, h3 {
+    color: #000;
+    -webkit-text-fill-color: #000;
+    background: none;
+  }
+
+  .chart-wrap {
+    max-height: 300px;
+    overflow: hidden;
+  }
+
+  .table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .skeleton-card, .skeleton-chart, .skeleton-row, .skeleton-text {
+    animation: none;
+    background: #f0f0f0;
+  }
 }
 

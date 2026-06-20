@@ -18,23 +18,24 @@
         <p><a href="/api/runs" style="color: #4ade80;">View raw API data</a></p>
       </div>
     </noscript>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation">
       <a class="navbar-brand" href="/">
         <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" />
         <span class="navbar-title">SoSoValue</span>
       </a>
       <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
       <div class="navbar-nav">
-        <a class="navbar-link active" href="/">Runs</a>
-        <a class="navbar-link" href="/ops">Ops</a>
+        <a class="navbar-link active" aria-label="View runs dashboard" href="/">Runs</a>
+        <a class="navbar-link" aria-label="View operations board" href="/ops">Ops</a>
       </div>
       <div class="navbar-status">
         <span class="status-dot"></span>
         <span class="status-label">SigLab</span>
+        <button id="themeToggle" class="theme-toggle" aria-label="Switch to light mode" title="Switch theme">🌙</button>
       </div>
     </nav>
 
-    <div class="page-shell" id="main-content">
+    <div class="page-shell" id="main-content" role="main">
       <header class="hero">
         <div>
           <p class="eyebrow">SoSoValue SigLab</p>
@@ -45,30 +46,24 @@
           </p>
           <p class="scope-summary" id="scopeSummary">Viewing all tracks and all families.</p>
         </div>
-        <div class="hero-controls">
-          <label>
-            Track
-            <select id="trackFilter">
+        <div class="hero-controls" role="search">
+          <label for="trackFilter">Track</label>
+          <select id="trackFilter" aria-label="Filter by track">
               <option value="all">All Tracks</option>
               <option value="trend_signals">Directional Perps</option>
               <option value="yield_flows">Systematic Carry</option>
             </select>
-          </label>
-          <label>
-            Family
-            <select id="familyFilter">
+          <label for="familyFilter">Family</label>
+          <select id="familyFilter" aria-label="Filter by family">
               <option value="all">All Families</option>
             </select>
-          </label>
-          <label>
-            Metric
-            <select id="metricFilter"></select>
-          </label>
+          <label for="metricFilter">Metric</label>
+          <select id="metricFilter" aria-label="Select metric"></select>
           <label class="checkbox">
             <input type="checkbox" id="autoRefresh" checked />
             Auto refresh
           </label>
-          <button id="refreshButton" type="button">Refresh</button>
+          <button id="refreshButton" type="button" aria-label="Refresh data">Refresh</button>
         </div>
       </header>
 
@@ -89,7 +84,7 @@
       </section>
     </div>
 
-    <div id="errorToast" class="toast-error hidden" role="alert"></div>
+    <div id="errorToast" class="toast-error hidden" role="alert" aria-live="assertive"></div>
     <script src="/constants.js"></script>
     <script src="/common.js"></script>
     <script src="/home.js"></script>

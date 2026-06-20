@@ -26,9 +26,11 @@ const {
   safeParseJson,
   showError,
   apiFetch,
+  initAriaLive,
   setLoading,
   renderPolicySweepBlock,
   renderSummaryCards,
+  initThemeToggle,
 } = window.SigLabUi;
 
 const TRACK_COLORS = {
@@ -110,6 +112,8 @@ const FAMILY_GUIDE = {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+  initAriaLive();
+  initThemeToggle();
   state.lockedRunId = getRunId();
   if (state.lockedRunId) {
     state.selectedRunId = state.lockedRunId;
@@ -433,6 +437,14 @@ function renderFamilyGuide() {
     .join("");
 
   container.querySelectorAll(".family-card").forEach((card) => {
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("role", "button");
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        card.click();
+      }
+    });
     card.addEventListener("click", () => {
       const familyFilter = document.getElementById("familyFilter");
       if (familyFilter) {
@@ -545,7 +557,16 @@ function renderChart(experiments) {
       circle.setAttribute("fill", row.passed ? color : "rgba(255,255,255,0.12)");
       circle.setAttribute("stroke", row.deployd ? "#fff" : "rgba(255,255,255,0.2)");
       circle.setAttribute("stroke-width", row.deployd ? "2" : "1.2");
+      circle.setAttribute("aria-label", `${row.family} - ${metricMeta.formatter(metricValue(row, metricKey))}`);
       circle.style.cursor = "pointer";
+      circle.setAttribute("tabindex", "0");
+      circle.setAttribute("role", "button");
+      circle.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          circle.click();
+        }
+      });
       circle.addEventListener("mouseenter", (event) => showTooltip(event, row, metricKey));
       circle.addEventListener("mousemove", (event) => moveTooltip(event));
       circle.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
@@ -589,9 +610,20 @@ function renderTable(experiments) {
     .sort((a, b) => compareByMetricThenTime(a, b, metricKey))
     .forEach((row) => {
       const tr = document.createElement("tr");
+      tr.setAttribute("aria-label", `View experiment detail for ${row.family} - ${row.spec_hash}`);
       if (row.spec_hash === state.selectedHash) {
         tr.classList.add("selected");
       }
+      tr.setAttribute("tabindex", "0");
+      tr.setAttribute("role", "button");
+      tr.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          state.selectedHash = row.spec_hash;
+          renderTable(experiments);
+          renderDetail(state.selectedHash);
+        }
+      });
       tr.innerHTML = `
         <td>${escapeHtml(TRACK_LABELS[row.track] || row.track)}</td>
         <td>${escapeHtml(runIterationLabel(row))}</td>
@@ -618,6 +650,16 @@ function renderTable(experiments) {
       });
       tbody.appendChild(tr);
     });
+}
+
+function focusFirstHeading(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const heading = container.querySelector("h3, h2, h1");
+  if (heading) {
+    heading.setAttribute("tabindex", "-1");
+    heading.focus({ preventScroll: true });
+  }
 }
 
 async function renderDetail(specHash) {
@@ -856,6 +898,7 @@ async function renderDetail(specHash) {
       </div>
     </div>
   `;
+  focusFirstHeading("detailContent");
 }
 
 function showTooltip(event, row, metricKey) {

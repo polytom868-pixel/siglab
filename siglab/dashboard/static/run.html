@@ -18,24 +18,25 @@
         <p><a href="/api/runs" style="color: #4ade80;">View raw API data</a></p>
       </div>
     </noscript>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation">
       <a class="navbar-brand" href="/">
         <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" />
         <span class="navbar-title">SoSoValue</span>
       </a>
       <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
       <div class="navbar-nav">
-        <a class="navbar-link" href="/">Runs</a>
-        <a class="navbar-link" href="/ops">Ops</a>
-        <a class="navbar-link active" href="#">Run</a>
+        <a class="navbar-link" aria-label="View runs dashboard" href="/">Runs</a>
+        <a class="navbar-link" aria-label="View operations board" href="/ops">Ops</a>
+        <a class="navbar-link active" aria-label="Current run detail" href="#">Run</a>
       </div>
       <div class="navbar-status">
         <span class="status-dot"></span>
         <span class="status-label">SigLab</span>
+        <button id="themeToggle" class="theme-toggle" aria-label="Switch to light mode" title="Switch theme">🌙</button>
       </div>
     </nav>
 
-    <div class="page-shell" id="main-content">
+    <div class="page-shell" id="main-content" role="main">
       <header class="hero">
         <div>
           <p class="eyebrow">SoSoValue SigLab</p>
@@ -43,23 +44,19 @@
           <p class="subhead" id="runSubtitle">Per-run experiment history, improvement curve, and experiment detail.</p>
           <p class="scope-summary" id="scopeSummary">Loading run scope...</p>
         </div>
-        <div class="hero-controls">
-          <label>
-            Family
-            <select id="familyFilter">
+        <div class="hero-controls" role="search">
+          <label for="familyFilter">Family</label>
+          <select id="familyFilter" aria-label="Filter by family">
               <option value="all">All Families</option>
             </select>
-          </label>
-          <label>
-            Metric
-            <select id="metricFilter"></select>
-          </label>
+          <label for="metricFilter">Metric</label>
+          <select id="metricFilter" aria-label="Select metric" aria-describedby="metricDescription"></select>
           <label class="checkbox">
             <input type="checkbox" id="autoRefresh" checked />
             Auto refresh
           </label>
-          <button id="refreshButton" type="button">Refresh</button>
-          <a class="button-link" href="/">Back to Runs</a>
+          <button id="refreshButton" type="button" aria-label="Refresh data">Refresh</button>
+          <a class="button-link" aria-label="Return to run dashboard" href="/">Back to Runs</a>
         </div>
       </header>
 
@@ -71,7 +68,7 @@
             <h2>Family Guide</h2>
             <p id="familyGuideSubtitle">Families active inside this run. Click a card to filter the run view.</p>
           </div>
-          <button id="clearFamilyFilter" type="button">Show All</button>
+          <button id="clearFamilyFilter" type="button" aria-label="Show all families">Show All</button>
         </div>
         <div class="family-guide-grid" id="familyGuideCards"></div>
       </section>
@@ -84,7 +81,7 @@
           </div>
         </div>
         <div class="chart-wrap">
-          <svg id="chart" viewBox="0 0 1200 460"></svg>
+          <svg id="chart" role="img" aria-label="Improvement curve chart" viewBox="0 0 1200 460"></svg>
           <div id="tooltip" class="tooltip hidden"></div>
         </div>
       </section>
@@ -136,7 +133,7 @@
       </section>
     </div>
 
-    <div id="errorToast" class="toast-error hidden" role="alert"></div>
+    <div id="errorToast" class="toast-error hidden" role="alert" aria-live="assertive"></div>
     <script src="/constants.js"></script>
     <script src="/common.js"></script>
     <script src="/app.js"></script>
