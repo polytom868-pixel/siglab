@@ -23,8 +23,6 @@ from siglab.tui.widgets import SigLabStatusBar
 from siglab.tui.screens.market import MarketScreen
 from siglab.tui.screens.paper import PaperScreen
 from siglab.tui.screens.risk import RiskScreen
-from siglab.tui.screens.strategy import StrategyScreen
-from siglab.tui.screens.telemetry import TelemetryScreen
 from siglab.tui.screens.evidence import EvidenceScreen
 
 
@@ -34,9 +32,7 @@ NAV_ITEMS: list[tuple[str, str, str]] = [
     ("1", "[ MARKET ]", "market"),
     ("2", "[ PAPER  ]", "paper"),
     ("3", "[ RISK   ]", "risk"),
-    ("4", "[ STRATEGY ]", "strategy"),
-    ("5", "[ TELEMETRY]", "telemetry"),
-    ("6", "[ EVIDENCE ]", "evidence"),
+    ("4", "[ EVIDENCE ]", "evidence"),
 ]
 
 SCREEN_NAMES = {screen_id: label for _, label, screen_id in NAV_ITEMS}
@@ -115,7 +111,7 @@ class HelpScreen(ModalScreen[None]):
 
     # Global keyboard shortcuts (always shown)
     GLOBAL_KEYBINDINGS: ClassVar[list[tuple[str, str]]] = [
-        ("1-6", "Switch to screen"),
+        ("1-4", "Switch to screen"),
         ("q / Ctrl+Q / Ctrl+C", "Quit application"),
         ("? / F1", "Show this help"),
         ("k/j", "Navigate lists"),
@@ -148,25 +144,6 @@ class HelpScreen(ModalScreen[None]):
             ("r", "Refresh data"),
             ("j/k", "Scroll alerts"),
             ("f", "Cycle alert filter"),
-        ],
-        "strategy": [
-            ("j/k", "Navigate strategies"),
-            ("/", "Search strategies"),
-            ("Space", "Toggle select"),
-            ("c", "Toggle comparison"),
-            ("e", "Run evaluation"),
-            ("i", "Initialize deck"),
-            ("s", "Cycle sort column"),
-        ],
-        "telemetry": [
-            ("j/k", "Navigate runs"),
-            ("/", "Search runs"),
-            ("Space", "Toggle select"),
-            ("c", "Toggle comparison"),
-            ("d", "Cycle date range"),
-            ("f", "Cycle status filter"),
-            ("t", "Cycle track filter"),
-            ("v", "Toggle view"),
         ],
         "evidence": [
             ("/", "Filter evidence"),
@@ -270,8 +247,6 @@ _BUILTIN_SCREENS: dict[str, Callable[[], Screen[Any]]] = {
     "market": MarketScreen,
     "paper": PaperScreen,
     "risk": RiskScreen,
-    "strategy": StrategyScreen,
-    "telemetry": TelemetryScreen,
     "evidence": EvidenceScreen,
 }
 
@@ -312,9 +287,7 @@ class SigLabTUI(App[None]):
         Binding("1", "go_to_screen('market')", "Market", show=True),
         Binding("2", "go_to_screen('paper')", "Paper", show=True),
         Binding("3", "go_to_screen('risk')", "Risk", show=True),
-        Binding("4", "go_to_screen('strategy')", "Strategy", show=True),
-        Binding("5", "go_to_screen('telemetry')", "Telemetry", show=False),
-        Binding("6", "go_to_screen('evidence')", "Evidence", show=False),
+        Binding("4", "go_to_screen('evidence')", "Evidence", show=False),
     ]
 
     # Reactive state
@@ -398,12 +371,6 @@ class SigLabTUI(App[None]):
 
     def action_switch_to_risk(self) -> None:
         self._switch("risk")
-
-    def action_switch_to_strategy(self) -> None:
-        self._switch("strategy")
-
-    def action_switch_to_telemetry(self) -> None:
-        self._switch("telemetry")
 
     def action_switch_to_evidence(self) -> None:
         self._switch("evidence")

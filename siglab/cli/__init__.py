@@ -43,12 +43,6 @@ from siglab.cli.market import (
     market_report_html as _market_report_html,
 )
 
-# Telemetry module
-from siglab.cli.telemetry import (
-    provider_metric_paths_for_telemetry as _provider_metric_paths_for_telemetry,
-    trace_paths_for_telemetry as _trace_paths_for_telemetry,
-)
-
 # Sodex module
 from siglab.cli.sodex import (
     _sodex_preview_payload,
@@ -72,22 +66,16 @@ def main() -> None:
 
     # Import and register all subcommand parsers
     from siglab.cli import (
-        evidence as _evidence_mod,
         demo as _demo_mod,
         market as _market_mod,
-        telemetry as _telemetry_mod,
         dashboard as _dashboard_mod,
-        deploy as _deploy_mod,
         sodex as _sodex_mod,
         paper as _paper_mod,
     )
 
-    _evidence_mod.add_subparser(subparsers)
     _demo_mod.add_subparser(subparsers)
     _market_mod.add_subparser(subparsers)
-    _telemetry_mod.add_subparser(subparsers)
     _dashboard_mod.add_subparser(subparsers)
-    _deploy_mod.add_subparser(subparsers)
     _sodex_mod.add_subparser(subparsers)
     _paper_mod.add_subparser(subparsers)
     tui_p = subparsers.add_parser("tui", help="Launch the SigLab Terminal UI.")
@@ -100,12 +88,6 @@ def main() -> None:
     init_console(force_no_color=getattr(args, "no_color", False))
 
     # Dispatch by command name
-    if args.command == "evidence-build":
-        asyncio.run(_evidence_mod.run_evidence_build(args))
-        return
-    if args.command == "evidence-map":
-        _evidence_mod.run_evidence_map(args)
-        return
     if args.command == "demo":
         if args.demo_command == "run":
             _demo_mod.run_demo_run(args)
@@ -116,20 +98,11 @@ def main() -> None:
     if args.command == "market-report":
         _market_mod.run_command(args)
         return
-    if args.command == "telemetry-report":
-        _telemetry_mod.run_command(args)
-        return
     if args.command == "dashboard":
         _dashboard_mod.run_dashboard(args)
         return
     if args.command == "dashboard-start":
         _dashboard_mod.run_dashboard_start(args)
-        return
-    if args.command == "deploy":
-        asyncio.run(_deploy_mod.run_deploy(args))
-        return
-    if args.command == "deployments":
-        _deploy_mod.run_deployments(args)
         return
     if args.command == "sodex-preflight":
         _sodex_mod.run_sodex_preflight(args)
@@ -142,9 +115,6 @@ def main() -> None:
         return
     if args.command == "sodex-preview":
         _sodex_mod.run_sodex_preview(args)
-        return
-    if args.command == "telemetry-report":
-        _telemetry_mod.run_command(args)
         return
     if args.command == "paper-start":
         asyncio.run(_paper_mod.run_paper_start(args))
