@@ -1,0 +1,32 @@
+/* SigLab TUI — Theme Colors & Variables
+ *
+ * Color scheme: dark terminal theme with semantic tokens.
+ * All colors use Textual CSS variables ($<name>) for theming.
+ */
+
+/* === Primitive Color Palette === */
+$bg: #0a0a0a;
+$surface: #0d1210;
+$surface-raised: #162019;
+$text-primary: #e2ebe5;
+$text-secondary: #a3b5a8;
+$text-muted: #7d9483;
+
+$accent-green: #4ade80;
+$warning-yellow: #f0b456;
+$error-red: #f87171;
+$info-blue: #60a5fa;
+$accent-purple: #a78bfa;
+
+$border-dim: #2a3a30;
+$border-focus: #4ade80;
+
+/* === Semantic Tokens === */
+$success: $accent-green;
+$warning: $warning-yellow;
+$error: $error-red;
+$info: $info-blue;
+
+$panel-bg: $surface;
+$panel-border: $border-dim;
+$input-bg: #1a2a1f;

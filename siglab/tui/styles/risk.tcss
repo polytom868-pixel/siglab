@@ -1,0 +1,95 @@
+/* SigLab TUI — Risk Monitor Screen Styles
+ *
+ * Layout: two-column split with gauge/alerts on left,
+ * drawdown sparkline and correlation heatmap on right.
+ */
+
+RiskScreen {
+    layout: vertical;
+}
+
+#risk-layout {
+    layout: vertical;
+    height: 100%;
+}
+
+#risk-main {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#risk-left {
+    layout: vertical;
+    width: 38;
+    min-width: 32;
+    max-width: 42;
+    border-right: solid $border-dim;
+}
+
+#risk-right {
+    layout: vertical;
+    width: 1fr;
+}
+
+#risk-gauge {
+    height: auto;
+    min-height: 10;
+    border-bottom: solid $border-dim;
+}
+
+#risk-alerts {
+    height: 1fr;
+    min-height: 6;
+    overflow-y: auto;
+}
+
+#risk-drawdown {
+    height: auto;
+    min-height: 6;
+    border-bottom: solid $border-dim;
+}
+
+#risk-correlation {
+    height: 1fr;
+    min-height: 8;
+    overflow-y: auto;
+}
+
+#risk-status {
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+    dock: bottom;
+}
+
+/* === Risk Widget Styles === */
+RiskGaugeWidget {
+    height: auto;
+    min-height: 10;
+    padding: 0 1;
+    background: $surface;
+}
+
+DrawdownSparklineWidget {
+    height: auto;
+    min-height: 6;
+    padding: 0 1;
+    background: $bg;
+}
+
+CorrelationHeatmapWidget {
+    height: 1fr;
+    min-height: 8;
+    padding: 0 1;
+    overflow-y: auto;
+    background: $surface;
+}
+
+AlertStreamWidget {
+    height: 1fr;
+    min-height: 6;
+    padding: 0 1;
+    overflow-y: auto;
+    background: $bg;
+}

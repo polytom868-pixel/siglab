@@ -35,25 +35,13 @@ class SoSoValueAuthError(SoSoValueApiError):
 class SoSoValueRateLimitError(SoSoValueApiError):
     """SoSoValue rate limited the request."""
 
-
-class SoSoValueUpstreamFormatError(SoSoValueApiError):
-    """SoSoValue returned syntactically valid transport with invalid business shape."""
-
-
-class SoSoValueRetryableError(SoSoValueApiError):
-    """Upstream server returned a retryable error (5xx). Automatically retried."""
-
-
-class SoSoValueUpstreamServerError(SoSoValueRetryableError):
-    """SoSoValue returned a retryable or fatal upstream server error."""
+    def __init__(self, message: str, *, status_code: int | None = None, payload: Any = None, retry_after: float | None = None) -> None:
+        super().__init__(message, status_code=status_code, payload=payload)
+        self.retry_after = retry_after
 
 
 class SoSoValueTransportError(SoSoValueApiError):
     """Network, DNS, TLS, timeout, or socket transport failure."""
-
-
-class SoSoValueEmptyDataError(SoSoValueApiError):
-    """An endpoint returned no rows where business logic requires real data."""
 
 
 @dataclass(frozen=True)
@@ -83,13 +71,11 @@ class _EndpointMetrics:
     attempts: int = 0
     successes: int = 0
     retries: int = 0
-    cache_hits: int = 0
     rate_limits: int = 0
     transport_failures: int = 0
 
 
 class SoSoValueClient:
-    RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
     def __init__(
         self,
@@ -121,7 +107,6 @@ class SoSoValueClient:
         self._rate_limit_events: deque[float] = deque()
         self._rate_limit_lock = asyncio.Lock()
         self._inflight: dict[str, asyncio.Task[dict[str, Any]]] = {}
-        self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._metrics: dict[str, _EndpointMetrics] = {}
 
     @property
@@ -159,7 +144,7 @@ class SoSoValueClient:
         payload = await self.request(spec)
         data = payload.get("data")
         if not isinstance(data, dict):
-            raise SoSoValueUpstreamFormatError("etf.current_metrics data was not an object", payload=data)
+            raise SoSoValueApiError("etf.current_metrics data was not an object", payload=data)
         self._validate_etf_current_metrics(data)
         return dict(data)
 
@@ -176,135 +161,7 @@ class SoSoValueClient:
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
 
-    async def currency_market_snapshot(self, currency_id: str) -> dict[str, Any]:
-        """Get currency market snapshot.
-
-        GET /currencies/{currency_id}/market-snapshot
-        """
-        spec = SoSoValueRequestSpec(
-            name="currency.market_snapshot",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path=f"/currencies/{currency_id}/market-snapshot",
-            ttl_s=30.0,
-        )
-        payload = await self.request(spec)
-        data = payload.get("data")
-        if not isinstance(data, dict):
-            raise SoSoValueUpstreamFormatError("currency.market_snapshot data was not an object", payload=data)
-        return dict(data)
-
-    async def currency_klines(
-        self,
-        currency_id: str,
-        *,
-        interval: str = "1d",
-        start_time: int | None = None,
-        end_time: int | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        """Get currency historical klines.
-
-        GET /currencies/{currency_id}/klines
-        Only daily (1d) interval is supported.
-        Query range limited to most recent 3 months.
-        """
-        if interval not in ("1d",):
-            raise SoSoValueConfigError(f"currency_klines interval must be '1d', got {interval!r}")
-        params: dict[str, Any] = {"interval": interval, "limit": max(1, min(500, int(limit)))}
-        if start_time is not None:
-            params["start_time"] = int(start_time)
-        if end_time is not None:
-            params["end_time"] = int(end_time)
-        spec = SoSoValueRequestSpec(
-            name="currency.klines",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path=f"/currencies/{currency_id}/klines",
-            params=params,
-            ttl_s=60.0,
-        )
-        payload = await self.request(spec)
-        return self._rows_from_data(payload.get("data"), spec)
-
-    async def etf_list(self, *, symbol: str = "BTC", country_code: str = "US") -> list[dict[str, Any]]:
-        """Get ETF list for a currency symbol and country code.
-
-        GET /etfs?symbol={symbol}&country_code={country_code}
-        """
-        spec = SoSoValueRequestSpec(
-            name="etf.list",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path="/etfs",
-            params={"symbol": symbol, "country_code": country_code},
-            ttl_s=60.0,
-        )
-        payload = await self.request(spec)
-        return self._rows_from_data(payload.get("data"), spec)
-
-    async def etf_summary_history(
-        self,
-        *,
-        symbol: str = "BTC",
-        country_code: str = "US",
-        start_date: str | None = None,
-        end_date: str | None = None,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
-        """Get ETF aggregate historical data.
-
-        GET /etfs/summary-history
-        Query range limited to most recent 1 month.
-        """
-        params: dict[str, Any] = {
-            "symbol": symbol,
-            "country_code": country_code,
-            "limit": max(1, min(300, int(limit))),
-        }
-        if start_date is not None:
-            params["start_date"] = start_date
-        if end_date is not None:
-            params["end_date"] = end_date
-        spec = SoSoValueRequestSpec(
-            name="etf.summary_history",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path="/etfs/summary-history",
-            params=params,
-            ttl_s=60.0,
-            required_fields=("date", "total_net_inflow", "total_value_traded", "total_net_assets", "cum_net_inflow"),
-            identity_fields=("date",),
-            require_non_empty=True,
-        )
-        payload = await self.request(spec)
-        return self._rows_from_data(payload.get("data"), spec)
-
-    async def etf_market_snapshot(self, ticker: str) -> dict[str, Any]:
-        """Get ETF market snapshot for a ticker.
-
-        GET /etfs/{ticker}/market-snapshot
-        """
-        spec = SoSoValueRequestSpec(
-            name="etf.market_snapshot",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path=f"/etfs/{ticker}/market-snapshot",
-            ttl_s=60.0,
-        )
-        payload = await self.request(spec)
-        data = payload.get("data")
-        if not isinstance(data, dict):
-            raise SoSoValueUpstreamFormatError("etf.market_snapshot data was not an object", payload=data)
-        return dict(data)
-
-    async def featured_news(
-        self,
-        *,
-        page_num: int = 1,
-        page_size: int = 10,
-        category_list: list[int] | None = None,
-    ) -> list[dict[str, Any]]:
+    async def _fetch_featured_news_page(self, *, page_num: int = 1, page_size: int = 10, category_list: list[int] | None = None) -> list[dict[str, Any]]:
         self._validate_news_page_size(page_size)
         params: dict[str, Any] = {
             "pageNum": int(page_num),
@@ -331,7 +188,7 @@ class SoSoValueClient:
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
         return await self._paginate(
-            self.featured_news,
+            self._fetch_featured_news_page,
             max_pages,
             page_size=page_size,
             category_list=category_list,
@@ -404,12 +261,6 @@ class SoSoValueClient:
         if not self.is_configured:
             raise SoSoValueConfigError("SOSOVALUE_API_KEY is required for SoSoValue API calls")
         key = self._cache_key(spec)
-        now = time.monotonic()
-        if spec.ttl_s > 0:
-            cached = self._cache.get(key)
-            if cached and cached[0] > now:
-                self._endpoint_metrics(spec.name).cache_hits += 1
-                return dict(cached[1])
         task = self._inflight.get(key)
         if task is None:
             task = asyncio.create_task(self._request_uncached(spec, key))
@@ -433,8 +284,6 @@ class SoSoValueClient:
                 elapsed_ms = (time.perf_counter() - started) * 1000.0
                 metrics.latencies_ms.append(elapsed_ms)
                 metrics.successes += 1
-                if spec.ttl_s > 0:
-                    self._cache[cache_key] = (time.monotonic() + spec.ttl_s, payload)
                 return payload
             except SoSoValueRateLimitError as exc:
                 metrics.rate_limits += 1
@@ -442,14 +291,17 @@ class SoSoValueClient:
             except SoSoValueTransportError as exc:
                 metrics.transport_failures += 1
                 last_error = exc
-            except SoSoValueUpstreamServerError as exc:
+            except SoSoValueApiError as exc:
                 last_error = exc
-            except SoSoValueApiError:
-                raise
+                if not self._is_retryable(spec.method, exc.status_code):
+                    raise
             if attempt >= self.retries:
                 break
             metrics.retries += 1
-            await asyncio.sleep(self._backoff_s(attempt))
+            if isinstance(last_error, SoSoValueRateLimitError) and last_error.retry_after is not None and last_error.retry_after > 0:
+                await asyncio.sleep(float(last_error.retry_after))
+            else:
+                await asyncio.sleep(self._backoff_s(attempt))
         raise last_error or SoSoValueTransportError(f"{spec.name} request failed without a captured error")
 
     async def _single_http_attempt(self, spec: SoSoValueRequestSpec) -> dict[str, Any]:
@@ -473,21 +325,34 @@ class SoSoValueClient:
         if status in (401, 403):
             raise SoSoValueAuthError(f"{spec.name} auth failed with HTTP {status}", status_code=status)
         if status == 429:
-            raise SoSoValueRateLimitError(f"{spec.name} rate limited with HTTP 429", status_code=status)
-        if status in self.RETRYABLE_STATUS_CODES:
-            raise SoSoValueUpstreamServerError(f"{spec.name} retryable upstream HTTP {status}", status_code=status)
+            retry_after: float | None = None
+            try:
+                retry_after = float(response.headers.get("Retry-After", ""))
+            except (ValueError, TypeError):
+                pass
+            raise SoSoValueRateLimitError(f"{spec.name} rate limited with HTTP 429", status_code=status, retry_after=retry_after)
         if status >= 400:
-            raise SoSoValueUpstreamServerError(f"{spec.name} upstream HTTP {status}", status_code=status)
+            raise SoSoValueApiError(f"{spec.name} upstream HTTP {status}", status_code=status)
 
         try:
             payload = response.json()
         except ValueError as exc:
-            raise SoSoValueUpstreamFormatError(f"{spec.name} returned malformed JSON", status_code=status) from exc
+            raise SoSoValueApiError(f"{spec.name} returned malformed JSON", status_code=status) from exc
         return self._validate_payload(spec, payload, status)
+
+    def _is_retryable(self, method: str, status: int | None) -> bool:
+        """Idempotent-only retry: GET/HEAD retry on 429/502/503/504; POST/PUT/DELETE only on 429."""
+        if status is None:
+            return False
+        if status == 429:
+            return True
+        if method.upper() in ("GET", "HEAD"):
+            return status in (502, 503, 504)
+        return False
 
     def _validate_payload(self, spec: SoSoValueRequestSpec, payload: Any, status_code: int) -> dict[str, Any]:
         if not isinstance(payload, dict):
-            raise SoSoValueUpstreamFormatError(
+            raise SoSoValueApiError(
                 f"{spec.name} response was not a JSON object",
                 status_code=status_code,
                 payload=payload,
@@ -495,7 +360,7 @@ class SoSoValueClient:
         code = payload.get("code")
         if code not in (None, 0, "0"):
             message = str(payload.get("msg") or payload.get("message") or "SoSoValue API returned a non-zero code")
-            raise SoSoValueUpstreamFormatError(message, status_code=status_code, payload=payload)
+            raise SoSoValueApiError(message, status_code=status_code, payload=payload)
         if "data" in payload:
             self._rows_from_data(payload.get("data"), spec)
         return payload
@@ -510,15 +375,15 @@ class SoSoValueClient:
         elif data in (None, ""):
             rows = []
         else:
-            raise SoSoValueUpstreamFormatError(f"{spec.name} data had unsupported shape", payload=data)
+            raise SoSoValueApiError(f"{spec.name} data had unsupported shape", payload=data)
         if spec.require_non_empty and not rows:
-            raise SoSoValueEmptyDataError(f"{spec.name} returned empty data", payload=data)
+            raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
         if spec.identity_fields or spec.required_fields:
             optional = tuple(f for f in spec.required_fields if f not in spec.identity_fields)
             for idx, row in enumerate(rows):
                 missing_id = [f for f in spec.identity_fields if f not in row]
                 if missing_id:
-                    raise SoSoValueUpstreamFormatError(
+                    raise SoSoValueApiError(
                         f"{spec.name} row {idx} missing identity fields: {', '.join(missing_id)}", payload=row)
                 self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
         return rows
@@ -528,7 +393,6 @@ class SoSoValueClient:
         all_latencies: list[float] = []
         totals = {
             "retry_count": 0,
-            "cache_hits": 0,
             "attempts": 0,
             "successes": 0,
             "429_count": 0,
@@ -538,7 +402,6 @@ class SoSoValueClient:
             latencies = sorted(metrics.latencies_ms)
             all_latencies.extend(latencies)
             totals["retry_count"] += metrics.retries
-            totals["cache_hits"] += metrics.cache_hits
             totals["attempts"] += metrics.attempts
             totals["successes"] += metrics.successes
             totals["429_count"] += metrics.rate_limits
@@ -549,7 +412,6 @@ class SoSoValueClient:
                 "attempts": metrics.attempts,
                 "successes": metrics.successes,
                 "retry_count": metrics.retries,
-                "cache_hits": metrics.cache_hits,
                 "429_count": metrics.rate_limits,
                 "transport_failures": metrics.transport_failures,
             }
@@ -559,7 +421,6 @@ class SoSoValueClient:
             "p50_ms": _percentile(all_latencies, 50),
             "p95_ms": _percentile(all_latencies, 95),
             "retry_count": totals["retry_count"],
-            "cache_hit_ratio": totals["cache_hits"] / attempts,
             "429_count": totals["429_count"],
             "transport_failures": totals["transport_failures"],
             "success_rate": totals["successes"] / attempts,
@@ -578,7 +439,8 @@ class SoSoValueClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
                 verify=self._verify_config(),
-                limits=httpx.Limits(max_connections=16, max_keepalive_connections=8),
+                http2=True,
+                limits=httpx.Limits(max_connections=50, max_keepalive_connections=10, keepalive_expiry=30.0),
             )
         return self._client
 
@@ -632,14 +494,14 @@ class SoSoValueClient:
                                            f"etf.current_metrics aggregate `{agg}`")
         rows = data.get("list")
         if not isinstance(rows, list) or not rows:
-            raise SoSoValueEmptyDataError("etf.current_metrics returned no ETF rows", payload=data)
+            raise SoSoValueApiError("etf.current_metrics returned no ETF rows", payload=data)
         row_optional = ("id", "institute", "netAssets", "netAssetsPercentage", "dailyNetInflow",
                         "cumNetInflow", "dailyValueTraded", "fee", "discountPremiumRate")
         for idx, row in enumerate(rows):
             if not isinstance(row, dict):
-                raise SoSoValueUpstreamFormatError(f"etf.current_metrics row {idx} was not an object", payload=row)
+                raise SoSoValueApiError(f"etf.current_metrics row {idx} was not an object", payload=row)
             if "ticker" not in row:
-                raise SoSoValueUpstreamFormatError(
+                raise SoSoValueApiError(
                     f"etf.current_metrics row {idx} missing identity field: ticker", payload=row)
             self._fill_optional_fields(row, row_optional, f"etf.current_metrics row {idx}")
 
@@ -694,4 +556,3 @@ class SoSoValueClient:
         except Exception:
             pass
         return True
-

@@ -1,0 +1,1 @@
+cd /home/eya/soso/siglab && git ls-files | sort

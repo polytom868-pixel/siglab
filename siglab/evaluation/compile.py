@@ -57,21 +57,59 @@ def _time_series_zscore(
     return scored.replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
 
-def _weighted_score(
+def _weighted_scoring(
     feature_frames: dict[str, pd.DataFrame],
     selected_features: list[str],
     feature_weights: dict[str, float],
     *,
     normalization: str = "cross_sectional",
     z_window: int = 72,
-) -> pd.DataFrame:
+    return_components: bool = False,
+) -> pd.DataFrame | dict[str, pd.DataFrame]:
+    """
+    Compute a weighted composite score (and optionally per-feature components)
+    from a set of normalised feature frames.
+
+    Parameters
+    ----------
+    feature_frames : dict[str, pd.DataFrame]
+        Resolved feature frames keyed by feature name.
+    selected_features : list[str]
+        Ordered list of feature names to include.
+    feature_weights : dict[str, float]
+        Weight per feature (absolute values are normalised to sum to 1).
+    normalization : str
+        ``"cross_sectional"`` (default) or ``"time_series"``.
+    z_window : int
+        Rolling window for time-series normalisation.
+    return_components : bool
+        If True, return a dict of per-feature weighted DataFrames.
+        If False (default), return the combined score DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame or dict[str, pd.DataFrame]
+    """
     chosen = [feature for feature in selected_features if feature in feature_frames]
+    if return_components and not chosen:
+        return {}
     if not chosen:
         raise ValueError("Spec did not reference any compiled features")
 
     weight_total = sum(abs(float(feature_weights.get(name, 1.0))) for name in chosen)
     if weight_total == 0:
         weight_total = float(len(chosen))
+
+    if return_components:
+        components: dict[str, pd.DataFrame] = {}
+        for name in chosen:
+            if normalization == "time_series" or feature_frames[name].shape[1] <= 1:
+                component = _time_series_zscore(feature_frames[name], window=z_window)
+            else:
+                component = _cross_sectional_zscore(feature_frames[name])
+            weight = float(feature_weights.get(name, 1.0)) / weight_total
+            components[name] = (component * weight).fillna(0.0)
+        return components
 
     score = None
     for name in chosen:
@@ -84,33 +122,6 @@ def _weighted_score(
 
     assert score is not None
     return score.fillna(0.0)
-
-
-def _weighted_component_frames(
-    feature_frames: dict[str, pd.DataFrame],
-    selected_features: list[str],
-    feature_weights: dict[str, float],
-    *,
-    normalization: str = "cross_sectional",
-    z_window: int = 72,
-) -> dict[str, pd.DataFrame]:
-    chosen = [feature for feature in selected_features if feature in feature_frames]
-    if not chosen:
-        return {}
-
-    weight_total = sum(abs(float(feature_weights.get(name, 1.0))) for name in chosen)
-    if weight_total == 0:
-        weight_total = float(len(chosen))
-
-    components: dict[str, pd.DataFrame] = {}
-    for name in chosen:
-        if normalization == "time_series" or feature_frames[name].shape[1] <= 1:
-            component = _time_series_zscore(feature_frames[name], window=z_window)
-        else:
-            component = _cross_sectional_zscore(feature_frames[name])
-        weight = float(feature_weights.get(name, 1.0)) / weight_total
-        components[name] = (component * weight).fillna(0.0)
-    return components
 
 
 def _align_cross_sectional_frame(
@@ -864,19 +875,21 @@ async def compile_spec(
             aliases=feature_aliases,
             raw_frames=raw_frames,
         )
-        score = _weighted_score(
+        score = _weighted_scoring(
             feature_frames,
             spec.features,
             feature_weights,
             normalization="time_series",
             z_window=72,
+            return_components=False,
         )
-        signal_components = _weighted_component_frames(
+        signal_components = _weighted_scoring(
             feature_frames,
             spec.features,
             feature_weights,
             normalization="time_series",
             z_window=72,
+            return_components=True,
         )
         pair_policy = _pair_policy_parameters(
             family=spec.family,
@@ -964,19 +977,21 @@ async def compile_spec(
             aliases=feature_aliases,
             raw_frames=raw_frames,
         )
-        score = _weighted_score(
+        score = _weighted_scoring(
             feature_frames,
             spec.features,
             feature_weights,
             normalization="time_series",
             z_window=72,
+            return_components=False,
         )
-        signal_components = _weighted_component_frames(
+        signal_components = _weighted_scoring(
             feature_frames,
             spec.features,
             feature_weights,
             normalization="time_series",
             z_window=72,
+            return_components=True,
         )
         score = _align_cross_sectional_frame(score, tradable_symbols=symbols)
         signal_components = _align_cross_sectional_components(
@@ -1059,11 +1074,12 @@ async def compile_spec(
             aliases=feature_aliases,
             raw_frames=raw_frames,
         )
-        score = _weighted_score(feature_frames, spec.features, feature_weights)
-        signal_components = _weighted_component_frames(
+        score = _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False)
+        signal_components = _weighted_scoring(
             feature_frames,
             spec.features,
             feature_weights,
+            return_components=True,
         )
         regime_gate_mask, regime_gate_metadata = _resolve_regime_gates(
             spec.regime_gates,
@@ -1162,7 +1178,7 @@ async def compile_spec(
         )
         feature_frames = _mask_feature_frames(feature_frames, pt_state["eligible"])
         score = _ensure_single_eligible_scores(
-            _weighted_score(feature_frames, spec.features, feature_weights),
+            _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False),
             pt_state["eligible"],
         )
         positions = _build_ranked_positions(
@@ -1261,7 +1277,7 @@ async def compile_spec(
         )
         feature_frames = _mask_feature_frames(feature_frames, pt_state["eligible"])
         score = _ensure_single_eligible_scores(
-            _weighted_score(feature_frames, spec.features, feature_weights),
+            _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False),
             pt_state["eligible"],
         )
         pt_positions = _build_ranked_positions(
@@ -1408,11 +1424,12 @@ async def compile_spec(
             aliases=feature_aliases,
             raw_frames=raw_frames,
         )
-        score = _weighted_score(feature_frames, spec.features, feature_weights)
-        signal_components = _weighted_component_frames(
+        score = _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False)
+        signal_components = _weighted_scoring(
             feature_frames,
             spec.features,
             feature_weights,
+            return_components=True,
         )
         regime_gate_mask, regime_gate_metadata = _resolve_regime_gates(
             spec.regime_gates,

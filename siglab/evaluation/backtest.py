@@ -7,6 +7,7 @@ Used by ``runner.py`` to evaluate strategy performance over historical data.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -136,6 +137,60 @@ def run_backtest(
     )
 
 
+def _cagr_safe(
+    begin_value: float,
+    end_value: float,
+    periods: int,
+) -> float | None:
+    """
+    Compute a bounded CAGR with overflow protection.
+
+    Edge-case guards:
+      1. If *begin_value* <= 0: return None (cannot compute CAGR).
+      2. Ratio is clamped to [1e-10, 1e10] to prevent numerical overflow.
+      3. Result is clamped to [-100.0, 100.0].
+      4. Wrapped in try/except with a ``decimal.Decimal`` fallback for
+         platforms where ``math.pow`` raises ``OverflowError``.
+
+    Parameters
+    ----------
+    begin_value : float
+        Starting equity value.
+    end_value : float
+        Ending equity value.
+    periods : int
+        Number of periods (must be >= 1).
+
+    Returns
+    -------
+    float | None
+        Bounded CAGR value, or None if computation is not possible.
+    """
+    if begin_value <= 0:
+        return None
+    if periods < 1:
+        return None
+    try:
+        ratio = max(min(end_value / begin_value, 1e10), 1e-10)
+        cagr = math.pow(ratio, 1.0 / float(periods)) - 1.0
+    except (OverflowError, FloatingPointError, ValueError):
+        try:
+            from decimal import Decimal, getcontext
+            getcontext().prec = 28
+            ratio = Decimal(str(end_value)) / Decimal(str(begin_value))
+            if ratio <= 0:
+                return None
+            if ratio > 1e10:
+                ratio = Decimal("1e10")
+            elif ratio < 1e-10:
+                ratio = Decimal("1e-10")
+            periods_dec = Decimal(str(periods))
+            cagr = float(ratio ** (Decimal(1) / periods_dec) - Decimal(1))
+        except Exception:
+            return None
+    return max(min(cagr, 100.0), -100.0)
+
+
 def _stats(equity: pd.Series, returns: pd.Series) -> dict[str, Any]:
     """Compute summary statistics from equity curve and returns."""
     total_return = float(equity.iloc[-1] / equity.iloc[0] - 1.0) if len(equity) else 0.0
@@ -144,10 +199,12 @@ def _stats(equity: pd.Series, returns: pd.Series) -> dict[str, Any]:
     mean = float(returns.mean()) if len(returns) else 0.0
     std = float(returns.std()) if len(returns) else 0.0
     sharpe = mean / std * (annual_factor ** 0.5) if std > 0 else 0.0
-    try:
-        cagr = float((1.0 + total_return) ** (annual_factor / periods) - 1.0) if total_return > -1.0 else -1.0
-    except (OverflowError, FloatingPointError):
-        cagr = float("inf") if total_return > 0 else -1.0
+    cagr = (
+        _cagr_safe(float(equity.iloc[0]), float(equity.iloc[-1]), periods)
+        if total_return > -1.0 and len(equity) >= 2
+        else -1.0 if total_return <= -1.0
+        else 0.0
+    )
     drawdown = equity / equity.cummax() - 1.0
     max_drawdown = float(drawdown.min()) if len(drawdown) else 0.0
     calmar = cagr / abs(max_drawdown) if max_drawdown < 0 else 0.0

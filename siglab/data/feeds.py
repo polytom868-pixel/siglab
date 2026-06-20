@@ -260,9 +260,9 @@ class MarketDataProvider:
         self.sosovalue = SoSoValueClient(
             api_key=settings.sosovalue_api_key_override,
             endpoints=SoSoValueEndpoints(
-                openapi_base_url=settings.sosovalue_openapi_base_url,
-                etf_base_url=settings.sosovalue_etf_base_url,
-                news_base_url=settings.sosovalue_news_base_url,
+                openapi_base_url=settings.sosovalue_base_url,
+                etf_base_url=settings.sosovalue_base_url,
+                news_base_url=settings.sosovalue_base_url,
             ),
             timeout_s=settings.sosovalue_timeout_s,
             retries=settings.sosovalue_retries,
