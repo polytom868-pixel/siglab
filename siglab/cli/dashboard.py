@@ -1,7 +1,4 @@
-"""Dashboard subcommands: dashboard-start.
-
-Unified port: reads $PORT env var, defaults to 8080.
-"""
+"""Dashboard subcommands: dashboard-start."""
 
 from __future__ import annotations
 

@@ -24,11 +24,7 @@ except ImportError:
 
 
 def _fast_json_loads(data: bytes) -> Any:
-    """Parse JSON bytes with the fastest available decoder.
-
-    Uses ``orjson`` when available (~3-5x faster), falls back to stdlib
-    ``json.loads()`` on bytes directly (avoids httpx text-decoding overhead).
-    """
+    """Parse JSON bytes with the fastest available decoder."""
     if _HAS_ORJSON:
         return _orjson.loads(data)
     return json.loads(data)
@@ -617,12 +613,7 @@ class SoSoValueClient:
         return metrics
 
     async def _acquire_rate_slot(self) -> None:
-        """Throttle to the conservative per-minute request cap.
-
-        Process-local: coordinates calls within a single client/process only;
-        the upstream API-key quota (20 req/min) can still be exceeded when
-        multiple processes share one key. The cap is conservative on purpose.
-        """
+        """Throttle to the conservative per-minute request cap."""
         limit = int(self.conservative_rate_limit_per_minute)
         if limit <= 0:
             return

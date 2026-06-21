@@ -1,9 +1,4 @@
-"""Run context — lightweight dependency bag for live operations.
-
-Extracted from ``siglab.orchestration.run_context`` before deletion
-of the orchestration/ module.  Uses ``DeploymentStore`` instead of the
-deleted ``LineageStore``.
-"""
+"""Run context — lightweight dependency bag for live operations."""
 
 from __future__ import annotations
 

@@ -1,8 +1,4 @@
-"""Sparkline widget for rendering ASCII price charts in the terminal.
-
-Uses Unicode block characters (▁▂▃▄▅▆▇█) to render compact price
-visualisations suitable for terminal UIs.
-"""
+"""Sparkline widget for rendering ASCII price charts in the terminal."""
 
 from __future__ import annotations
 
@@ -26,26 +22,7 @@ def sparkline_text(
     bearish_color: str = ERROR_RED,
     neutral_color: str = TEXT_MUTED,
 ) -> Text:
-    """Render a sequence of price values as a Rich ``Text`` sparkline.
-
-    Each value is mapped to one of the 8 Unicode block characters.
-    Colour is green if the overall trend is up, red if down.
-
-    Parameters
-    ----------
-    values : Sequence[float]
-        Price values (oldest first). Accepts any Sequence including
-        tuples, memoryview, and list slices — no copy is made.
-    width : int
-        Maximum character width of the sparkline.
-    bullish_color, bearish_color, neutral_color : str
-        Rich colour names for the trend direction.
-
-    Returns
-    -------
-    Text
-        Rich-renderable sparkline text.
-    """
+    """Render a sequence of price values as a Rich ``Text`` sparkline."""
     if not values:
         return Text("─" * width, style=neutral_color)
 
@@ -102,18 +79,7 @@ def sparkline_text(
 
 
 def ohlc_summary(candles: Sequence[dict[str, Any]]) -> str:
-    """Render a compact OHLC summary line from candle dicts.
-
-    Parameters
-    ----------
-    candles : Sequence[dict]
-        Each dict must have 'open', 'high', 'low', 'close' keys.
-
-    Returns
-    -------
-    str
-        Formatted string like ``O:67,210  H:67,890  L:66,800  C:67,432``.
-    """
+    """Render a compact OHLC summary line from candle dicts."""
     if not candles:
         return "No candle data"
     last = candles[-1]
@@ -147,10 +113,5 @@ class SparklineWidget(Static):
         return sparkline_text(self.values, width=self._chart_width)
 
     def set_values(self, values: Sequence[float]) -> None:
-        """Update the sparkline data.
-
-        Accepts any Sequence (tuple, list, memoryview).  A new list is
-        only created when *values* is not already a list, to preserve
-        Textual reactivity while avoiding redundant copies.
-        """
+        """Update the sparkline data."""
         self.values = values if isinstance(values, list) else list(values)

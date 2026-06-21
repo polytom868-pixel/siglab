@@ -34,11 +34,7 @@ StatusTuple = tuple[bool, str]
 
 
 def _check_live_enabled() -> None:
-    """Refuse live execution unless ``SIGLAB_LIVE_ENABLED=1``.
-
-    Called when ``dry_run=False`` to enforce the operator's explicit
-    opt-in to live trading via environment variable.
-    """
+    """Refuse live execution unless SIGLAB_LIVE_ENABLED=1."""
     if os.environ.get("SIGLAB_LIVE_ENABLED") != "1":
         raise RuntimeError(
             "dry_run=False requires SIGLAB_LIVE_ENABLED=1. "
@@ -74,14 +70,7 @@ class SoDEXExecutionAdapter:
         )
 
     def setup(self) -> dict[str, Any]:
-        """Wire a real ``SoDEXSignedPerpsClient`` from signing config.
-
-        When signing credentials are present in ``config["sodex_signing"]`` and no
-        client was pre-injected, construct a ``SoDEXSignedPerpsClient`` with a
-        matching nonce manager and assign it to ``self.client``. When credentials
-        are absent, leave the client unset so ``_require_client`` gates live use.
-        Returns the post-setup ``dependency_report()``.
-        """
+        """Wire a real SoDEXSignedPerpsClient from signing config."""
         if self.client is not None:
             return self.dependency_report()
 

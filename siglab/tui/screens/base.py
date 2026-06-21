@@ -1,9 +1,4 @@
-"""Base screen class for the SigLab TUI.
-
-Provides common lifecycle, bindings, loading state, status bar
-management, optional API client ownership, and a declarative
-search/filter contract shared by all screens.
-"""
+"""Base screen class for the SigLab TUI."""
 
 from __future__ import annotations
 
@@ -27,12 +22,7 @@ from rich.text import Text
 
 
 def render_header(result: Text, text: str, width: int = 50) -> None:
-    """Append a styled "TITLE" + horizontal-rule header to ``result``.
-
-    Centralizes the pattern shared by telemetry widgets (and similar
-    Static subclasses): a bold uppercase title followed by a
-    ``BORDER_DIM`` rule.  Mutates ``result`` in place — no allocation.
-    """
+    """Append a styled "TITLE" + horizontal-rule header to ``result``."""
     result.append(f" {text}\n", style=f"bold {TEXT_PRIMARY}")
     result.append("\u2500" * width + "\n", style=BORDER_DIM)
 
@@ -43,21 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseScreen(Screen[None]):
-    """Base screen with common lifecycle, bindings, and loading state.
-
-    Provides:
-    - 7 common BINDINGS (escape, r, j, k, ctrl+c, /, ?)
-    - ``is_loading`` / ``status_text`` reactives
-    - Timer-based auto-refresh with configurable interval
-    - LoadingIndicator management
-    - Error-friendly status updates
-    - Optional API client ownership (set ``_api_client_class`` or pass ``api_client``)
-    - Declarative search/filter contract (set ``_search_input_id`` + ``_search_list_id``)
-    - ``action_go_back``, ``action_refresh_now``, ``action_move_up/down``,
-      ``action_focus_search``
-
-    Subclasses implement ``_fetch_data()`` for the actual data loading.
-    """
+    """Base screen with common lifecycle, bindings, and loading state."""
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "go_back", "Back", show=True),
@@ -149,11 +125,7 @@ class BaseScreen(Screen[None]):
     async def _fetch_multiple(
         self, *fetch_fns: Coroutine[Any, Any, None], label: str = "data"
     ) -> int:
-        """Run multiple fetch coroutines with per-function error handling.
-
-        Returns the number of successful fetches.  On partial failure
-        the status bar is updated with a partial-update message.
-        """
+        """Run multiple fetch coroutines with per-function error handling."""
         successes = 0
         for fn in fetch_fns:
             try:
@@ -188,22 +160,14 @@ class BaseScreen(Screen[None]):
     # ── Search / filter support ──────────────────────────────────────
 
     def action_focus_search(self) -> None:
-        """Focus the search/filter input widget.
-
-        Subclasses that set ``_search_input_id`` get this for free.
-        Screens with non-standard search widgets should override.
-        """
+        """Focus the search/filter input widget."""
         if self._search_input_id:
             safe_query(
                 self, f"#{self._search_input_id}", Input, lambda w: w.focus()
             )
 
     def _on_search_input_changed(self, event: Input.Changed) -> bool:
-        """Handle a search Input.Changed event for the declarative contract.
-
-        Returns ``True`` if the event was consumed by the base-class
-        search wiring, ``False`` if the subclass should handle it.
-        """
+        """Handle a search Input.Changed event for the declarative contract."""
         if not self._search_input_id or not self._search_list_id:
             return False
         if event.input.id != self._search_input_id:
@@ -230,13 +194,7 @@ class BaseScreen(Screen[None]):
         self.call_after_refresh(self._refresh_all)
 
     def action_move_up(self) -> None:
-        """Move selection up in the primary list widget.
-
-        If ``_search_list_id`` is set, delegates to the list widget's
-        ``action_move_up``.  Otherwise falls back to focus traversal.
-        After moving, calls ``_on_selection_changed`` so subclasses can
-        update detail panels.
-        """
+        """Move selection up in the primary list widget."""
         if self._search_list_id:
             from siglab.tui.widgets.base import FilterableListWidget
 
@@ -249,13 +207,7 @@ class BaseScreen(Screen[None]):
         self._on_selection_changed()
 
     def action_move_down(self) -> None:
-        """Move selection down in the primary list widget.
-
-        If ``_search_list_id`` is set, delegates to the list widget's
-        ``action_move_down``.  Otherwise falls back to focus traversal.
-        After moving, calls ``_on_selection_changed`` so subclasses can
-        update detail panels.
-        """
+        """Move selection down in the primary list widget."""
         if self._search_list_id:
             from siglab.tui.widgets.base import FilterableListWidget
 
@@ -268,9 +220,4 @@ class BaseScreen(Screen[None]):
         self._on_selection_changed()
 
     def _on_selection_changed(self) -> None:
-        """Hook called after ``action_move_up``/``action_move_down``.
-
-        Subclasses override this to update detail panels when the
-        primary list selection changes.  Default is a no-op so
-        screens without a detail panel don't need to override.
-        """
+        """Hook called after ``action_move_up``/``action_move_down``."""

@@ -1,14 +1,4 @@
-"""
-Promotion engine for paper-to-live trading.
-
-Computes composite scores from trading metrics and determines promotion
-eligibility based on weighted sub-scores (PnL, Sharpe, win-rate, drawdown)
-with minimum trading days and consecutive-day requirements.
-
-The core scoring functions operate on raw metric dicts, making them
-straightforward to test with known inputs. Session-level extraction
-helpers bridge the engine to ``SoDEXPaperPerpsClient`` sessions.
-"""
+"""Promotion engine for paper-to-live trading."""
 
 from __future__ import annotations
 
@@ -48,10 +38,7 @@ MAX_TOLERABLE_DRAWDOWN: float = -0.30  # ≤ -30 % drawdown → zero score
 # ---------------------------------------------------------------------------
 
 def _normalize_pnl(pnl: float) -> float:
-    """Normalise total return to [0, 1].
-
-    ≤ 0 %  → 0,  ≥ *target_annual_return* → 1, linear in between.
-    """
+    """Normalise total return to [0, 1]."""
     if pnl <= 0.0:
         return 0.0
     if pnl >= TARGET_ANNUAL_RETURN:
@@ -74,10 +61,7 @@ def _normalize_win_rate(win_rate: float) -> float:
 
 
 def _normalize_drawdown(max_drawdown: float) -> float:
-    """Normalise max drawdown (negative) to [0, 1].
-
-    Drawdown ≥ 0 → 1.0, ≤ *max_tolerable* → 0.0, linear in between.
-    """
+    """Normalise max drawdown (negative) to [0, 1]."""
     if max_drawdown >= 0.0:
         return 1.0
     if max_drawdown <= MAX_TOLERABLE_DRAWDOWN:
@@ -85,24 +69,10 @@ def _normalize_drawdown(max_drawdown: float) -> float:
     return 1.0 - abs(max_drawdown) / abs(MAX_TOLERABLE_DRAWDOWN)
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 def compute_sub_scores(metrics: dict[str, Any]) -> dict[str, float]:
-    """Compute normalised [0, 1] sub-scores from raw metrics.
-
-    Parameters
-    ----------
-    metrics : dict
-        Must contain keys ``total_return``, ``sharpe``, ``win_rate``,
-        ``max_drawdown``.
-
-    Returns
-    -------
-    dict[str, float]
-        Sub-scores keyed by name, each capped to [0, 1].
-    """
+    """Compute normalised [0, 1] sub-scores from raw metrics."""
     return {
         "pnl": _normalize_pnl(float(metrics.get("total_return", 0))),
         "sharpe": _normalize_sharpe(float(metrics.get("sharpe", 0))),
@@ -115,21 +85,7 @@ def compute_composite_score(
     metrics: dict[str, Any],
     weights: dict[str, float] | None = None,
 ) -> float:
-    """Compute weighted composite score from raw metrics.
-
-    Parameters
-    ----------
-    metrics : dict
-        Must contain keys ``total_return``, ``sharpe``, ``win_rate``,
-        ``max_drawdown``.
-    weights : dict, optional
-        Sub-score weights.  Defaults to equal weighting.
-
-    Returns
-    -------
-    float
-        Composite score in [0, 1].
-    """
+    """Compute weighted composite score from raw metrics."""
     w = weights if weights is not None else dict(DEFAULT_WEIGHTS)
     sub_scores = compute_sub_scores(metrics)
 
@@ -153,29 +109,7 @@ def promotion_eligible(
     min_trading_days: int | None = None,
     weights: dict[str, float] | None = None,
 ) -> tuple[bool, str]:
-    """Check whether a paper session is promotion-eligible.
-
-    Parameters
-    ----------
-    daily_metrics : list[dict]
-        Chronological list of daily metric dicts, each containing
-        ``total_return``, ``sharpe``, ``win_rate``, ``max_drawdown``.
-    threshold : float, optional
-        Composite-score threshold.  Default: 0.65.
-    consecutive_days : int, optional
-        How many consecutive days must exceed *threshold*.
-        Default: 5.
-    min_trading_days : int, optional
-        Absolute minimum number of trading days required.
-        Default: 10.
-    weights : dict, optional
-        Sub-score weights forwarded to ``compute_composite_score``.
-
-    Returns
-    -------
-    tuple[bool, str]
-        ``(eligible, human-readable reason)``.
-    """
+    """Check whether a paper session is promotion-eligible."""
     t = threshold if threshold is not None else DEFAULT_PROMOTION_THRESHOLD
     c = consecutive_days if consecutive_days is not None else DEFAULT_CONSECUTIVE_DAYS
     m = min_trading_days if min_trading_days is not None else DEFAULT_MIN_TRADING_DAYS
@@ -239,21 +173,7 @@ def extract_session_metrics(
     client: SoDEXPaperPerpsClient,
     session_id: str,
 ) -> dict[str, Any]:
-    """Extract raw aggregate metrics from a paper trading session.
-
-    Parameters
-    ----------
-    client : SoDEXPaperPerpsClient
-        The paper trading client holding the session.
-    session_id : str
-        Session identifier.
-
-    Returns
-    -------
-    dict
-        Raw metrics: ``total_return``, ``sharpe``, ``win_rate``,
-        ``max_drawdown``, ``trade_count``, ``total_pnl``.
-    """
+    """Extract raw aggregate metrics from a paper trading session."""
     session = client.get_session(session_id)
 
     filled_orders: list[Any] = []
@@ -351,24 +271,7 @@ def extract_daily_metrics(
     client: SoDEXPaperPerpsClient,
     session_id: str,
 ) -> list[dict[str, Any]]:
-    """Extract per-trading-day raw metrics from a paper session.
-
-    Each element of the returned list corresponds to one trading day and
-    contains the same keys as the dict accepted by ``compute_composite_score``,
-    computed from that day's fills only.
-
-    Parameters
-    ----------
-    client : SoDEXPaperPerpsClient
-        The paper trading client.
-    session_id : str
-        Session identifier.
-
-    Returns
-    -------
-    list[dict]
-        Chronological list of daily metric dicts.
-    """
+    """Extract per-trading-day raw metrics from a paper session."""
     session = client.get_session(session_id)
 
     filled_orders: list[Any] = []

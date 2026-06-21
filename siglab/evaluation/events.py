@@ -1,14 +1,4 @@
-"""
-PT (perpetual futures) market event analysis and gate evaluation.
-
-WARNING Merged from events.py + gates.py into a single module.
-
-Provides roll detection, market state classification, universe
-summarization, and gate evaluation for PT trading strategies.
-
-Backward-compat shim at ``siglab.evaluation.gates`` maintains
-import compatibility.
-"""
+"""PT (perpetual futures) market event analysis and gate evaluation."""
 
 from __future__ import annotations
 
@@ -160,13 +150,7 @@ def detect_pt_roll_events(
 
 
 def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]]:
-    """
-    Evaluate all gates for a given track and evaluation summary.
-
-    Returns (passed: bool, reasons: list[str]) where ``passed`` is True only
-    when all gates pass, and ``reasons`` lists the human-readable tags of
-    any failing gates.
-    """
+    """Evaluate all gates for a given track and evaluation summary."""
     track = cast(str, resolve_track(track))
     reasons: list[str] = []
 

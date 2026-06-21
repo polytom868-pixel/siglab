@@ -1,21 +1,4 @@
-"""
-SoDEX Paper Perps Client — simulated paper trading on real SoDEX klines.
-
-Provides ``SoDEXPaperPerpsClient``, a paper trading engine that uses
-real SoDEX market data (klines, funding rates) to simulate order
-execution without submitting live trades.
-
-Session state is persisted as JSON files (atomic write) for survivability
-across process restarts.
-
-Order lifecycle
----------------
-OPEN → FILLED (when kline crosses limit) / CANCELLED / EXPIRED
-
-Exception hierarchy
---------------------
-* ``PaperClientError`` — base error for paper trading operations
-"""
+"""SoDEX Paper Perps Client — simulated paper trading on real SoDEX klines."""
 
 from __future__ import annotations
 
@@ -48,15 +31,11 @@ logger = logging.getLogger(__name__)
 
 E = TypeVar("E", bound=Enum)
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
 FUNDING_INTERVAL_HOURS = 8  # Standard perp funding interval
 DEFAULT_TIME_IN_FORCE_HOURS = 72  # Default TIF for paper orders
 
-# ---------------------------------------------------------------------------
 # Exceptions
-# ---------------------------------------------------------------------------
 
 
 class PaperClientError(ValueError):
@@ -67,9 +46,7 @@ class PaperSessionNotFoundError(PaperClientError):
     """Raised when a session ID does not exist."""
 
 
-# ---------------------------------------------------------------------------
 # Enums
-# ---------------------------------------------------------------------------
 
 
 class PaperOrderStatus(str, Enum):
@@ -96,9 +73,7 @@ class PaperTimeInForce(str, Enum):
     GTX = "GTX"  # Good-til-cancelled (post-only)
 
 
-# ---------------------------------------------------------------------------
 # Data classes
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -220,9 +195,7 @@ class PaperSession:
         return session
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _generate_session_id() -> str:
@@ -290,26 +263,12 @@ def _validate_time_in_force(tif: str) -> PaperTimeInForce:
     return _coerce_enum(tif, PaperTimeInForce, "time_in_force; expected GTC, IOC, FOK, or GTX")
 
 
-# ---------------------------------------------------------------------------
 # SoDEXPaperPerpsClient
-# ---------------------------------------------------------------------------
 
 
 class SoDEXPaperPerpsClient:
     """
     Paper trading simulator using real SoDEX market data.
-
-    Uses ``SoDEXFeeds`` for live kline prices and funding rates.
-    Session state is persisted as JSON files (atomic temp-file replace).
-
-    Parameters
-    ----------
-    feeds : SoDEXFeeds or None
-        SoDEX market data feed for klines and funding rates.
-        If ``None``, funding processing and feed-dependent operations
-        are skipped gracefully.
-    sessions_dir : str or Path
-        Directory for ``.json`` session files (default: ``sessions/``).
     """
 
     def __init__(
@@ -326,24 +285,10 @@ class SoDEXPaperPerpsClient:
         self.min_notional_usd = min_notional_usd
         self._sessions: dict[str, PaperSession] = {}
 
-    # ------------------------------------------------------------------
     # Session management
-    # ------------------------------------------------------------------
 
     def create_session(self, name: str | None = None) -> str:
-        """
-        Create a new paper trading session.
-
-        Parameters
-        ----------
-        name : str, optional
-            A human-readable label for the session.
-
-        Returns
-        -------
-        str
-            The unique session ID.
-        """
+        """Create a new paper trading session."""
         session_id = _generate_session_id()
         session = PaperSession(
             session_id=session_id,
@@ -402,9 +347,7 @@ class SoDEXPaperPerpsClient:
             raise PaperClientError("Invalid session_id")
         return self.sessions_dir / f"{session_id}.json"
 
-    # ------------------------------------------------------------------
     # Order management
-    # ------------------------------------------------------------------
 
     def place_order(
         self,
@@ -417,31 +360,7 @@ class SoDEXPaperPerpsClient:
         price: float | None = None,
         time_in_force: str = "GTC",
     ) -> dict[str, Any]:
-        """
-        Place a paper order.
-
-        Parameters
-        ----------
-        session_id : str
-            Target session ID.
-        symbol : str
-            Perp symbol (e.g. ``"BTC-USD"``).
-        side : str
-            ``"BUY"`` or ``"SELL"``.
-        quantity : float
-            Order quantity (positive).
-        order_type : str
-            ``"LIMIT"`` or ``"MARKET"``.
-        price : float, optional
-            Limit price (required for LIMIT orders).
-        time_in_force : str
-            ``"GTC"``, ``"IOC"``, ``"FOK"``, or ``"GTX"``.
-
-        Returns
-        -------
-        dict
-            The created order record.
-        """
+        """Place a paper order."""
         # Validate inputs
         symbol = _validate_symbol(symbol)
         qty = _validate_quantity(quantity)
@@ -504,21 +423,7 @@ class SoDEXPaperPerpsClient:
         session_id: str,
         order_id: str,
     ) -> dict[str, Any]:
-        """
-        Cancel an open order.
-
-        Parameters
-        ----------
-        session_id : str
-            Target session ID.
-        order_id : str
-            Order ID to cancel.
-
-        Returns
-        -------
-        dict
-            The updated order record.
-        """
+        """Cancel an open order."""
         session = self.get_session(session_id)
         order = session.orders.get(order_id)
         if order is None:
@@ -542,23 +447,7 @@ class SoDEXPaperPerpsClient:
         symbol: str | None = None,
         status: str | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Get orders for a session.
-
-        Parameters
-        ----------
-        session_id : str
-            Target session ID.
-        symbol : str, optional
-            Filter by symbol.
-        status : str, optional
-            Filter by order status.
-
-        Returns
-        -------
-        list[dict]
-            List of order records.
-        """
+        """Get orders for a session."""
         session = self.get_session(session_id)
         orders = list(session.orders.values())
         if symbol:
@@ -583,9 +472,7 @@ class SoDEXPaperPerpsClient:
             raise PaperClientError(f"order {order_id} not found in session {session_id}")
         return order.to_dict()
 
-    # ------------------------------------------------------------------
     # Positions
-    # ------------------------------------------------------------------
 
     def get_positions(
         self,
@@ -593,40 +480,17 @@ class SoDEXPaperPerpsClient:
         *,
         symbol: str | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Get positions for a session.
-
-        Parameters
-        ----------
-        session_id : str
-            Target session ID.
-        symbol : str, optional
-            Filter by symbol.
-
-        Returns
-        -------
-        list[dict]
-            List of position records.
-        """
+        """Get positions for a session."""
         session = self.get_session(session_id)
         positions = list(session.positions.values())
         if symbol:
             positions = [p for p in positions if p.symbol == _validate_symbol(symbol)]
         return [p.to_dict() for p in positions]
 
-    # ------------------------------------------------------------------
     # PnL
-    # ------------------------------------------------------------------
 
     def get_pnl(self, session_id: str) -> dict[str, Any]:
-        """
-        Get PnL summary for a session.
-
-        Returns
-        -------
-        dict
-            PnL summary with realized, unrealized, total fields.
-        """
+        """Get PnL summary for a session."""
         session = self.get_session(session_id)
         realized = session.pnl
         unrealized = sum(
@@ -644,16 +508,7 @@ class SoDEXPaperPerpsClient:
         }
 
     def get_session_status(self, session_id: str) -> dict[str, Any]:
-        """
-        Get full session status with positions, PnL, and orders.
-
-        This is the canonical status payload expected by VAL-CLI-016.
-
-        Returns
-        -------
-        dict
-            Status with position, pnl, orders fields.
-        """
+        """Get full session status with positions, PnL, and orders."""
         session = self.get_session(session_id)
         return {
             "session_id": session_id,
@@ -682,9 +537,7 @@ class SoDEXPaperPerpsClient:
         except (SoDEXUpstreamError, SoDEXTransportError):
             return {}
 
-    # ------------------------------------------------------------------
     # Kline processing (order matching and fills)
-    # ------------------------------------------------------------------
 
     async def process_klines(
         self,
@@ -693,29 +546,7 @@ class SoDEXPaperPerpsClient:
         *,
         symbol: str | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Process new klines for a session, matching open orders.
-
-        Parameters
-        ----------
-        session_id : str
-            Target session ID.
-        klines : pd.DataFrame or list[dict]
-            Kline data. Can be a DataFrame (from SoDEXFeeds) or raw kline
-            dicts (with keys like o, h, l, c, t).
-        symbol : str, optional
-            Perp symbol these klines belong to (e.g. ``"BTC-USD"``). When
-            provided, it is stamped onto each kline so :meth:`_match_orders`
-            only fills orders whose symbol matches. DataFrames from
-            :meth:`SoDEXFeeds.fetch_klines` carry no symbol column, so the
-            caller must supply it. If omitted, klines keep any existing ``s``
-            field (symbol-less klines match orders on any symbol).
-
-        Returns
-        -------
-        list[dict]
-            List of fill events that occurred.
-        """
+        """Process new klines, matching open orders."""
         session = self.get_session(session_id)
         fills: list[dict[str, Any]] = []
 
@@ -787,15 +618,7 @@ class SoDEXPaperPerpsClient:
         *,
         symbol: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Convert a klines DataFrame to a list of raw-style kline dicts.
-
-        The SoDEXFeeds frame has no symbol column (klines are fetched
-        per-symbol), so *symbol* is stamped onto every dict as ``"s"`` when
-        provided — letting :meth:`_match_orders` skip orders on other symbols.
-        The index is a UTC ``DatetimeIndex`` (raw per-candle timestamps for
-        sub-hourly intervals, hour-rounded otherwise); each is converted to
-        epoch-ms under the ``"t"`` key.
-        """
+        """Convert a klines DataFrame to a list of raw-style kline dicts."""
         kline_dicts: list[dict[str, Any]] = []
         for idx, row in df.iterrows():
             ts = int(pd.Timestamp(idx).timestamp() * 1000) if isinstance(idx, pd.Timestamp) else 0
@@ -911,14 +734,7 @@ class SoDEXPaperPerpsClient:
             session.positions[order.symbol] = pos
 
         # Update position, realizing PnL on any reducing portion.
-        #
-        # A fill can (a) open a new position, (b) increase it, (c) reduce it,
-        # or (d) reduce it to zero and flip to the opposite side. For a flip
-        # the order is split into two legs: the closing leg realizes PnL at
-        # the old entry price up to the flat point, and the flip leg opens a
-        # fresh position at the fill price.
         if pos.quantity == 0:
-            # Open new position at the fill price.
             pos.quantity = order.quantity if order.side == PaperOrderSide.BUY else -order.quantity
             pos.entry_price = fill_price
         else:
@@ -927,20 +743,17 @@ class SoDEXPaperPerpsClient:
                 (not long_pos and order.side == PaperOrderSide.BUY)
             if reducing:
                 close_qty = min(order.quantity, abs(pos.quantity))
-                # Realize PnL only on the portion that closes the position.
                 pnl_realized = compute_trade_pnl(
                     fill_price, close_qty, pos.quantity, pos.entry_price, order.side.value,
                 )
                 session.pnl += pnl_realized
                 pos.realized_pnl += pnl_realized
 
-                remaining = order.quantity - close_qty  # flip portion, if any
+                remaining = order.quantity - close_qty
                 if remaining > 0:
-                    # Flipped to the opposite side: open a fresh position.
                     pos.quantity = remaining if order.side == PaperOrderSide.BUY else -remaining
                     pos.entry_price = fill_price
                 else:
-                    # Pure reduction (possibly to flat).
                     if long_pos:
                         pos.quantity -= order.quantity
                     else:
@@ -948,15 +761,12 @@ class SoDEXPaperPerpsClient:
                     if pos.quantity == 0:
                         pos.entry_price = 0.0
             else:
-                # Increasing the position: average the entry price.
                 add_qty = order.quantity if order.side == PaperOrderSide.BUY else -order.quantity
                 new_qty = pos.quantity + add_qty
                 pos.entry_price = compute_avg_entry(
                     pos.quantity, pos.entry_price, add_qty, fill_price,
                 )
                 pos.quantity = new_qty
-
-        # Mark positions with zero quantity for cleanup
         if pos.quantity == 0:
             del session.positions[order.symbol]
 
@@ -999,10 +809,7 @@ class SoDEXPaperPerpsClient:
         return liq_events
 
     def _expire_orders(self, session: PaperSession) -> bool:
-        """Expire orders whose time_in_force has elapsed.
-
-        Returns True if any orders were expired.
-        """
+        """Expire orders whose time_in_force has elapsed."""
         now = _now_timestamp()
         expired_any = False
         for order in list(session.orders.values()):
@@ -1030,14 +837,7 @@ class SoDEXPaperPerpsClient:
         *,
         force: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Apply funding costs to all open positions using real SoDEX
-        funding rates.
-
-        Funding is applied on 8-hour intervals. The method checks the
-        current funding rate from SoDEX mark_prices and applies it to
-        open positions.
-        """
+        """Apply funding costs to all open positions using real SoDEX"""
         session = self.get_session(session_id)
         if not session.positions:
             return []

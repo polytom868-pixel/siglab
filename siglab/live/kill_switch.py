@@ -1,11 +1,4 @@
-"""Kill switch — emergency stop mechanisms for live trading.
-
-Provides three independent kill-switch mechanisms:
-
-1. **File-watch trigger** — when ``/tmp/siglab.KILL`` exists, all trading halts.
-2. **SIGUSR1 signal handler** — graceful shutdown on demand.
-3. **Daily loss threshold** — automatic halt at -5 % daily drawdown.
-"""
+"""Kill switch — emergency stop mechanisms for live trading."""
 
 from __future__ import annotations
 
@@ -47,11 +40,7 @@ def _sigusr1_handler(signum: int, _frame: Any | None) -> None:
 
 
 def _install_signal_handler() -> None:
-    """Install the SIGUSR1 handler (safe to call multiple times).
-
-    Silently no-ops when not on the main thread or when SIGUSR1 is
-    unavailable on the current platform.
-    """
+    """Install the SIGUSR1 handler (safe to call multiple times)."""
     try:
         signal.signal(signal.SIGUSR1, _sigusr1_handler)
     except (ValueError, AttributeError):
@@ -73,20 +62,7 @@ def check_file_trigger() -> bool:
 
 
 def check_daily_loss(equity: float, start_equity: float) -> bool:
-    """Check whether the daily loss threshold has been breached.
-
-    Parameters
-    ----------
-    equity : float
-        Current portfolio equity.
-    start_equity : float
-        Portfolio equity at the start of the trading day.
-
-    Returns
-    -------
-    bool
-        ``True`` when the daily return is at or below -5 %.
-    """
+    """Check whether the daily loss threshold has been breached."""
     if start_equity <= 0.0:
         return False
     daily_return = (equity - start_equity) / start_equity
@@ -102,25 +78,7 @@ def check_kill_switch(
     equity: float | None = None,
     start_equity: float | None = None,
 ) -> tuple[bool, str]:
-    """Combined kill-switch check: file-trigger + signal + daily loss.
-
-    All three mechanisms are checked in order.  The first triggered
-    mechanism sets the global kill flag so subsequent calls return
-    immediately.
-
-    Parameters
-    ----------
-    equity : float, optional
-        Current portfolio equity (required for the daily-loss check).
-    start_equity : float, optional
-        Start-of-day equity (required for the daily-loss check).
-
-    Returns
-    -------
-    tuple[bool, str]
-        ``(kill_engaged, reason)``.  When ``kill_engaged`` is ``True``,
-        all trading should cease immediately.
-    """
+    """Combined kill-switch check: file-trigger + signal + daily loss."""
     global _kill_triggered
 
     # 1. File-watch trigger

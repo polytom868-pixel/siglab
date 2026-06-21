@@ -30,10 +30,7 @@ STALE_THRESHOLD_SECONDS = 7 * 24 * 3600  # 7 days
 
 
 def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
-    """Load all .npy session files and extract equity curves.
-
-    Returns a list of (session_name, equity_array) pairs.
-    """
+    """Load all .npy session files and extract equity curves."""
     npy_files = sorted(sessions_dir.glob("*.npy"))
     curves: list[tuple[str, np.ndarray]] = []
     for npy_file in npy_files:
@@ -74,12 +71,7 @@ def empty_risk_response() -> dict[str, Any]:
 
 
 def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int = 365) -> dict[str, Any]:
-    """Compute full risk metrics from session data.
-
-    Returns a dict with composite_score, max_drawdown, correlation_matrix,
-    sub_scores, drawdown_history, strategy_names, alerts, sharpe_ratio,
-    current_drawdown, recovery_periods, and strategy_count.
-    """
+    """Compute full risk metrics from session data."""
     curves = load_equity_curves(sessions_dir)
     if not curves:
         return empty_risk_response()

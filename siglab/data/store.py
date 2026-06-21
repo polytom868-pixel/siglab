@@ -83,27 +83,12 @@ class ParquetLake:
         key: str,
         max_age_hours: float,
     ) -> int:
-        """Remove cached files older than *max_age_hours* in a namespace/key.
-
-        Deletes ``.parquet`` and ``.json`` files whose modification time
-        is older than ``now - max_age_hours``.  Only files directly inside
-        the namespace/key directory are removed — sub-directories are
-        left untouched.
-
-        Returns the number of files removed.
-        """
+        """Remove cached files older than *max_age_hours* in a namespace/key."""
         target_dir = self._target_dir(namespace, key)
         return self._prune_dir(target_dir, max_age_hours)
 
     def prune_all(self, default_max_age_hours: float) -> int:
-        """Remove cached files older than *default_max_age_hours* across
-        every namespace/key directory in the lake.
-
-        Iterates through all first-level (namespace) and second-level
-        (key) directories and applies :meth:`prune` to each.
-
-        Returns the total number of files removed.
-        """
+        """Remove cached files older than *default_max_age_hours* across"""
         total = 0
         if not self.root.is_dir():
             return 0

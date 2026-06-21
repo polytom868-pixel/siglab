@@ -3,16 +3,7 @@
 # dependencies = []
 # ///
 
-"""Demo subcommands: demo run, demo manifest.
-
-PEP 723 inline metadata:
-  This module provides CLI subcommands for buildathon demo operations.
-  - demo run      — one-shot judge-friendly summary (preflight + manifest + market + telemetry)
-  - demo manifest — index and verify demo artifacts
-
-Migrated from 4 commands (demo-report, demo-manifest, demo-refresh, wave-status)
-to 2 nested subcommands (demo run, demo manifest) under a single ``demo`` parent.
-"""
+"""Demo subcommands: demo run, demo manifest."""
 
 from __future__ import annotations
 
@@ -72,20 +63,7 @@ def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser
 
 
 def run_demo_run(args: argparse.Namespace) -> None:
-    """One-shot judge-friendly demo summary: collection -> manifest -> summary.
-
-    Chains:
-      1. sodex-preflight  — public-read / signed-path / live-write readiness
-      2. demo-manifest    — artifact index, readiness flags, unsafe-claims
-      3. market-report    — BTC market status from SoSoValue + SoDEX evidence
-      4. telemetry-report — trace / tool / provider-metric counts
-
-    Handles KeyboardInterrupt: cleans up any partial output file and prints a
-    user-facing message instead of a raw traceback.
-
-    ``--json`` strict mode: emits *only* the JSON payload on stdout (no info
-    lines, no progress messages) so consumers can pipe into ``jq`` or similar.
-    """
+    """One-shot judge-friendly demo summary: collection -> manifest -> summary."""
     settings = load_settings()
     output_path: Path | None = None
 

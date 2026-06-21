@@ -1,18 +1,4 @@
-"""Paper Trading TUI screen for SigLab.
-
-Displays:
-- Positions table with symbol, size, entry price, mark price, unrealized PnL
-- Order form supporting MARKET and LIMIT order types
-- Order history showing all orders with status
-- PnL sparkline chart showing performance over time
-
-Connects to CLI bridge for paper-start/status commands.
-Auto-refreshes positions and PnL on a timer.
-
-Zero-copy data flow: API response dicts are stored as references
-without intermediate copies.  PnL history is shared by reference.
-Mark prices dict is shared between screen and widget.
-"""
+"""Paper Trading TUI screen for SigLab."""
 
 from __future__ import annotations
 
@@ -65,11 +51,7 @@ PNL_HISTORY_MAX = 120  # Max PnL data points for sparkline
 
 
 class PositionsTableWidget(Static):
-    """Displays open positions with symbol, size, entry, mark, and PnL.
-
-    Zero-copy: positions list and mark_prices dict are stored as
-    references from the screen — no per-refresh copies.
-    """
+    """Displays open positions with symbol, size, entry, mark, and PnL."""
 
     positions: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
     mark_prices: reactive[dict[str, float]] = reactive(dict, layout=True)
@@ -240,16 +222,7 @@ class PnlChartWidget(Static):
 
 
 class OrderFormWidget(Static):
-    """Order entry form for MARKET and LIMIT orders.
-
-    Layout:
-    - Symbol input
-    - Side toggle (BUY/SELL)
-    - Order type select (MARKET/LIMIT)
-    - Quantity input
-    - Price input (only for LIMIT)
-    - Submit button (Enter)
-    """
+    """Order entry form for MARKET and LIMIT orders."""
 
     DEFAULT_CSS = """
     OrderFormWidget {
@@ -552,10 +525,7 @@ class PaperScreen(BaseScreen):
     # ── Session Management ────────────────────────────────────────────
 
     async def _find_existing_session(self, name: str) -> dict[str, Any] | None:
-        """Check for an existing session with the given name.
-
-        Kept as a separate method so tests can mock it independently.
-        """
+        """Check for an existing session with the given name."""
         if self._api is None:
             return None
         data = await self._api.list_paper_sessions()
@@ -628,11 +598,7 @@ class PaperScreen(BaseScreen):
             logger.warning("paper-status failed: %s", exc)
 
     def _update_positions(self, positions: list[dict[str, Any]]) -> None:
-        """Update the positions table widget.
-
-        Zero-copy: passes the positions list and mark_prices dict
-        as references — no intermediate copies.
-        """
+        """Update the positions table widget."""
         def _update(w: PositionsTableWidget) -> None:
             w.positions = positions
             w.mark_prices = self._mark_prices
@@ -645,13 +611,7 @@ class PaperScreen(BaseScreen):
                    lambda w: setattr(w, "orders", orders))
 
     def _update_pnl(self, pnl_data: dict[str, Any]) -> None:
-        """Update PnL summary and sparkline history.
-
-        Zero-copy: the screen's ``_pnl_history`` list is shared by
-        reference with the chart widget.  Appending to the screen's
-        list and then assigning the *same* object to the widget avoids
-        the previous ``list(self._pnl_history)`` copy on every cycle.
-        """
+        """Update PnL summary and sparkline history."""
         # Update account summary — store reference to API response dict
         def _update_summary(w: AccountSummaryWidget) -> None:
             w.pnl_data = pnl_data

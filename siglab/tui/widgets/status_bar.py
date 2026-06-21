@@ -1,7 +1,4 @@
-"""Status bar widget for the SigLab TUI.
-
-Displays version info, connection status, and current time.
-"""
+"""Status bar widget for the SigLab TUI."""
 
 from __future__ import annotations
 
@@ -18,10 +15,7 @@ from siglab.tui.formatting import ACCENT_GREEN, ERROR_RED, TEXT_MUTED
 
 
 class SigLabStatusBar(Widget):
-    """A status bar showing connection state, version, and current time.
-
-    Composed of several ``Static`` widgets arranged in a horizontal bar.
-    """
+    """A status bar showing connection state, version, and current time."""
     last_error: reactive[Optional[str]] = reactive(None)
 
     DEFAULT_CSS = """
@@ -94,10 +88,6 @@ class SigLabStatusBar(Widget):
         self.query_one("#status-right", Static).update(right)
 
     def set_connected(self, connected: bool) -> None:
-        """Update the connection status indicator.
-
-        Args:
-            connected: Whether the API client is connected.
-        """
+        """Update the connection status indicator."""
         self._connected = connected
         self._update_display()

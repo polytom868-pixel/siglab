@@ -1,14 +1,4 @@
-"""Evidence Graph and Demo Flow TUI screen for SigLab.
-
-Displays:
-- Evidence graph browser (nodes/edges in ASCII tree)
-- Filter evidence by type, source, currency
-- Interactive buildathon demo flow walkthrough
-- Each demo step shows command and output
-
-Connects to the FastAPI dashboard via TuiApiClient
-and uses CLI bridge for demo step execution.
-"""
+"""Evidence Graph and Demo Flow TUI screen for SigLab."""
 
 from __future__ import annotations
 
@@ -125,12 +115,7 @@ def _kind_style(kind: str) -> str:
 
 
 class EvidenceGraphWidget(Static):
-    """Displays evidence nodes and edges in an ASCII tree view.
-
-    Zero-copy: stores references to node and edge lists from the API
-    response.  Filtering produces a new list of references (no dict
-    copies).
-    """
+    """Displays evidence nodes and edges in an ASCII tree view."""
 
     __slots__ = ("_graph_nodes", "_edges", "_filter_kind", "_filter_text")
 
@@ -144,11 +129,7 @@ class EvidenceGraphWidget(Static):
         self._filter_text: str = ""
 
     def update_graph(self, nodes: Sequence[dict[str, Any]], edges: Sequence[dict[str, Any]]) -> None:
-        """Store nodes and edges as immutable tuples.
-
-        Accepts any Sequence (list, tuple).  Individual dicts are
-        shared by reference — no data is copied.
-        """
+        """Store nodes and edges as immutable tuples."""
         self._graph_nodes = tuple(nodes)
         self._edges = tuple(edges)
         self.refresh()
@@ -250,11 +231,7 @@ class EvidenceGraphWidget(Static):
 
 
 class EdgeDetailWidget(Static):
-    """Shows edge/connection details for selected evidence.
-
-    Zero-copy: stores a reference to the edges tuple from the graph
-    widget — shared, not copied.
-    """
+    """Shows edge/connection details for selected evidence."""
 
     __slots__ = ("_edges",)
 
@@ -461,12 +438,7 @@ class DemoFlowWidget(Static):
 
 
 class EvidenceScreen(BaseScreen):
-    """Evidence Graph and Demo Flow screen.
-
-    Two-pane layout:
-    - Left: Evidence graph browser with filters
-    - Right: Interactive demo flow walkthrough
-    """
+    """Evidence Graph and Demo Flow screen."""
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("tab", "switch_pane", "Switch Pane", show=True),
@@ -521,12 +493,7 @@ class EvidenceScreen(BaseScreen):
         await self._refresh_graph()
 
     async def _refresh_graph(self) -> None:
-        """Fetch evidence graph data from the API.
-
-        Zero-copy: the API response nodes/edges lists are converted
-        to tuples once in the graph widget; the edge widget shares
-        the same tuple reference.
-        """
+        """Fetch evidence graph data from the API."""
         if self._api is None:
             return
         self.graph_loading = True
@@ -610,10 +577,7 @@ class EvidenceScreen(BaseScreen):
         demo.retreat_step()
 
     async def _run_demo_step(self, step_data: dict[str, Any]) -> int:
-        """Execute a single demo step and record the result on the widget.
-
-        Returns the CLI returncode (or ``-1`` on exception).
-        """
+        """Execute a single demo step and record the result on the widget."""
         import asyncio
 
         demo = self.query_one("#demo-flow", DemoFlowWidget)

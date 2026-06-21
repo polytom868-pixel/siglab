@@ -1,8 +1,4 @@
-"""Base widget classes for the SigLab TUI.
-
-Provides reusable base classes that eliminate duplicated patterns
-across list widgets and comparison widgets in screen modules.
-"""
+"""Base widget classes for the SigLab TUI."""
 
 from __future__ import annotations
 
@@ -19,19 +15,7 @@ T = TypeVar("T")
 
 
 class FilterableListWidget(Static, Generic[T]):
-    """Base for list widgets with filtering, selection, and optional multi-select.
-
-    Subclasses must implement:
-    - ``_matches(item)`` — filter predicate
-    - ``_render_item(item, index, is_selected)`` — per-item rendering
-    - ``_get_item_key(item)`` — unique key for multi-select (optional)
-
-    Provides:
-    - ``selected_index`` reactive with navigation actions
-    - ``_filter_text`` with ``set_filter()``
-    - Multi-select via ``toggle_select()`` / ``get_selected_hashes()``
-    - Single-pass filtering via ``_apply_filters()``
-    """
+    """Base for list widgets with filtering, selection, and optional multi-select."""
 
     selected_index: reactive[int] = reactive(0)
 
@@ -136,11 +120,7 @@ class FilterableListWidget(Static, Generic[T]):
 
 
 class ComparisonWidget(Static):
-    """Base for side-by-side comparison of 2+ items.
-
-    Subclasses must define ``_metrics`` as a list of
-    ``(label, key, format_str)`` tuples.
-    """
+    """Base for side-by-side comparison of 2+ items."""
 
     _COLORS: ClassVar[list[str]] = [
         "#4ade80",  # green

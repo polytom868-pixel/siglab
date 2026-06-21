@@ -1,8 +1,4 @@
-"""Shared formatting helpers and color constants for the SigLab TUI.
-
-Centralizes color references and formatting functions to avoid duplication
-across screen modules and ensure theme consistency.
-"""
+"""Shared formatting helpers and color constants for the SigLab TUI."""
 
 from __future__ import annotations
 
@@ -48,10 +44,7 @@ CAUTION = WARNING_YELLOW
 
 
 def friendly_error(exc: Exception) -> str:
-    """Convert an exception into a user-friendly error message.
-
-    Avoids leaking Python internals (tracebacks, module paths) to the user.
-    """
+    """Convert an exception into a user-friendly error message."""
     import httpx
 
     if isinstance(exc, httpx.ConnectError):
@@ -152,11 +145,7 @@ def format_return(ret: float | None) -> Text:
 
 
 def truncate(text: str, width: int) -> str:
-    """Truncate text to width with ellipsis.
-
-    Handles edge cases: width <= 0 returns empty string, width == 1
-    returns just the ellipsis character.
-    """
+    """Truncate text to width with ellipsis."""
     if width <= 0:
         return ""
     if len(text) <= width:
@@ -205,13 +194,7 @@ def severity_color(severity: str) -> str:
 
 
 def format_confidence(conf: float | None) -> "Text":
-    """Format a numeric confidence value (0.0–1.0) as coloured Rich Text.
-
-    Thresholds:
-      - >= 0.8  → green (high confidence)
-      - >= 0.5  → yellow (moderate)
-      - < 0.5   → red (low)
-    """
+    """Format a numeric confidence value (0.0–1.0) as coloured Rich Text."""
     if conf is None:
         return Text("\u2500", style=TEXT_MUTED)
     label = f"{conf:.0%}"
@@ -228,11 +211,7 @@ def format_confidence(conf: float | None) -> "Text":
 
 
 def status_style(passed: bool | None, deployed: bool = False) -> tuple[str, str]:
-    """Return ``(dot_char, color_hex)`` for a pass/fail/deployed status.
-
-    Used by list widgets and detail views to render consistent
-    status indicators without duplicating the colour mapping logic.
-    """
+    """Return ``(dot_char, color_hex)`` for a pass/fail/deployed status."""
     if deployed:
         return ("\u25b2", INFO_BLUE)
     if passed is None:
@@ -262,14 +241,7 @@ def order_status_style(status: str) -> str:
 
 
 def gauge_color(score: float) -> str:
-    """Return colour hex for a 0.0–1.0 score gauge.
-
-    Semantics: 1.0 = best/healthiest, 0.0 = worst.
-    Thresholds:
-      - >= 0.7 → green (healthy)
-      - >= 0.4 → yellow (moderate)
-      - < 0.4  → red (high risk)
-    """
+    """Return colour hex for a 0.0–1.0 score gauge."""
     if score != score:  # NaN
         return TEXT_MUTED
     if score < 0.4:
@@ -281,22 +253,7 @@ def gauge_color(score: float) -> str:
 
 
 def safe_query(screen: _Queryable, widget_id: str, widget_type: type[Any], fn: Callable[[Any], Any] | None = None) -> Any:
-    """Safely query a widget and optionally apply a function to it.
-
-    Eliminates the pervasive ``try: self.query_one(id, Type).fn()
-    except Exception: pass`` pattern.  Returns the widget when *fn*
-    is ``None``, or the function result otherwise.
-
-    Usage::
-
-        # Get widget reference
-        widget = safe_query(self, "#my-id", MyWidget)
-
-        # Apply mutation
-        safe_query(self, "#my-id", MyWidget, lambda w: setattr(w, "data", data))
-        safe_query(self, "#my-id", MyWidget, lambda w: w.refresh())
-        safe_query(self, "#my-id", Static, lambda w: w.update(text))
-    """
+    """Safely query a widget and optionally apply a function to it."""
     try:
         widget = screen.query_one(widget_id, widget_type)
         if fn is not None:
@@ -310,12 +267,7 @@ def safe_query(screen: _Queryable, widget_id: str, widget_type: type[Any], fn: C
 
 
 def sanitize_status_text(text: str, max_len: int = 120) -> str:
-    """Sanitize text for display in a status bar.
-
-    Strips ANSI escape codes, control characters, newlines, and
-    truncates to *max_len* characters.  Prevents raw subprocess
-    stderr from corrupting the TUI layout.
-    """
+    """Sanitize text for display in a status bar."""
     import re
     # Strip ANSI escape sequences
     clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
@@ -330,11 +282,7 @@ def sanitize_status_text(text: str, max_len: int = 120) -> str:
 
 
 def bar_gauge(value: float, width: int = 10, *, filled_char: str = "\u2588", empty_char: str = "\u2591") -> str:
-    """Render an ASCII bar gauge string.
-
-    *value* should be in ``[0.0, 1.0]``.  Returns a string of
-    *filled_char* and *empty_char* characters.
-    """
+    """Render an ASCII bar gauge string."""
     filled = max(0, min(width, int(value * width)))
     return filled_char * filled + empty_char * (width - filled)
 

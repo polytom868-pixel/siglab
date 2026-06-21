@@ -1,15 +1,4 @@
-"""Zero-copy typed views for TUI data flow.
-
-Provides frozen dataclass wrappers that reference API response dicts
-without copying data. Widgets consume these views instead of creating
-intermediate dict/list copies on every refresh cycle.
-
-Design principles:
-- ``__slots__`` on every class to minimise per-instance memory
-- Frozen dataclasses prevent accidental mutation
-- ``from_dict`` classmethods wrap raw dicts without copying values
-- Views are cheap to create and safe to share between widgets
-"""
+"""Zero-copy typed views for TUI data flow."""
 
 from __future__ import annotations
 
@@ -22,11 +11,7 @@ from typing import Any, Sequence, cast
 
 @dataclass(frozen=True, slots=True)
 class TickerView:
-    """Read-only view of a 24-hour ticker entry from the API.
-
-    Wraps a raw dict without copying; field access is via ``__getattr__``
-    delegation so callers no longer need ``dict.get()`` chains.
-    """
+    """Read-only view of a 24-hour ticker entry from the API."""
 
     _raw: dict[str, Any]
 
@@ -60,12 +45,7 @@ class TickerView:
 
 @dataclass(frozen=True, slots=True)
 class SymbolEntry:
-    """Derived symbol entry for the symbol list widget.
-
-    Created once per ticker refresh and shared with the symbol list,
-    avoiding the repeated dict comprehension that was building new
-    dicts on every cycle.
-    """
+    """Derived symbol entry for the symbol list widget."""
 
     name: str
     symbol: str
@@ -418,9 +398,5 @@ class StrategyEntry:
 
 
 def closes_from_klines(klines: Sequence[dict[str, Any]]) -> tuple[float, ...]:
-    """Extract close prices as a tuple (zero-copy for tuple of floats).
-
-    Returns a tuple instead of a list to signal immutability and
-    avoid downstream ``list()`` copies.
-    """
+    """Extract close prices as a tuple (zero-copy for tuple of floats)."""
     return tuple(float(k.get("close", 0)) for k in klines)

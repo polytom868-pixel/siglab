@@ -1,7 +1,4 @@
-"""Shared utility functions for CLI subcommand modules.
-
-Extracted from siglab/cli.py to avoid duplication across subcommand modules.
-"""
+"""Shared utility functions for CLI subcommand modules."""
 
 from __future__ import annotations
 

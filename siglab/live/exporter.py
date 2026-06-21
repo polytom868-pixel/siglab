@@ -103,16 +103,7 @@ def deployment_readiness(detail: dict[str, Any]) -> dict[str, Any]:
 
 
 class LiveDeploymentManager:
-    """Live deployment orchestrator for SigLab experiments.
-
-    This build only supports dry-run package export. Real SoDEX execution and
-    scheduled runner jobs require an operator-provided signed client that is not
-    wired here; ``deploy`` refuses them via ``_preflight_deploy_boundary``.
-
-    The manager never accepts a ``client`` argument: a SoDEX client is not part
-    of this class's contract. Passing ``client=...`` raises ``TypeError``
-    naturally so caller bugs surface instead of being silently swallowed.
-    """
+    """Live deployment orchestrator for SigLab experiments."""
 
     def __init__(
         self,

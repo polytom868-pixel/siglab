@@ -1,9 +1,4 @@
-"""
-Backtesting engine for research evaluation.
-
-Provides the core ``run_backtest`` function and supporting data structures.
-Used by ``runner.py`` to evaluate strategy performance over historical data.
-"""
+"""Backtesting engine for research evaluation."""
 
 from __future__ import annotations
 
@@ -50,12 +45,7 @@ def run_backtest(
     target_weights: pd.DataFrame,
     config: BacktestConfig,
 ) -> BacktestResult:
-    """
-    Run a single backtest given prices and target weights.
-
-    Returns a ``BacktestResult`` with equity curve, returns, positions,
-    trades, and summary statistics.
-    """
+    """Run a single backtest given prices and target weights."""
     prices = prices.sort_index().astype(float)
     weights = target_weights.reindex(prices.index).ffill().fillna(0.0).astype(float)
     returns = prices.pct_change().replace([np.inf, -np.inf], np.nan).fillna(0.0)
@@ -142,30 +132,8 @@ def _cagr_safe(
     end_value: float,
     periods: int,
 ) -> float | None:
-    """
-    Compute a bounded CAGR with overflow protection.
+    """Compute a bounded CAGR with overflow protection."""
 
-    Edge-case guards:
-      1. If *begin_value* <= 0: return None (cannot compute CAGR).
-      2. Ratio is clamped to [1e-10, 1e10] to prevent numerical overflow.
-      3. Result is clamped to [-100.0, 100.0].
-      4. Wrapped in try/except with a ``decimal.Decimal`` fallback for
-         platforms where ``math.pow`` raises ``OverflowError``.
-
-    Parameters
-    ----------
-    begin_value : float
-        Starting equity value.
-    end_value : float
-        Ending equity value.
-    periods : int
-        Number of periods (must be >= 1).
-
-    Returns
-    -------
-    float | None
-        Bounded CAGR value, or None if computation is not possible.
-    """
     if begin_value <= 0:
         return None
     if periods < 1:

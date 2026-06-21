@@ -1,10 +1,4 @@
-"""SoDEX clients.
-
-``SoDEXPublicPerpsClient`` (data-layer concern) now lives in
-``siglab.data.sodex_client``.  ``SoDEXSignedPerpsClient`` (live-layer
-concern that depends on signing material) remains here and inherits
-from the data-layer public client.
-"""
+"""SoDEX clients."""
 from __future__ import annotations
 
 import logging
@@ -220,29 +214,7 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
         reduce_only: bool = False,
         cl_ord_id: str | None = None,
     ) -> dict[str, Any]:
-        """Bridge method: compose a market order and submit via the signed path.
-
-        Combines :meth:`new_order_request` + :meth:`send_signed_request`
-        into a single call for convenience.
-
-        Parameters
-        ----------
-        symbol_id : int
-            SoDEX asset (symbol) identifier.
-        is_buy : bool
-            ``True`` for a buy (long) order, ``False`` for sell (short).
-        size : str
-            Order quantity as a decimal string (e.g. ``"0.1"``).
-        reduce_only : bool
-            Whether the order may only reduce an existing position.
-        cl_ord_id : str, optional
-            Client-supplied order ID.  Auto-generated when omitted.
-
-        Returns
-        -------
-        dict
-            The signed-request response payload.
-        """
+        """Bridge method: compose a market order and submit via the signed path."""
         order = perps_order_item(
             cl_ord_id=cl_ord_id or f"w9_{uuid.uuid4().hex[:12]}",
             modifier=1,          # NORMAL

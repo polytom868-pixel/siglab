@@ -1,9 +1,4 @@
-"""SigLab FastAPI dashboard application.
-
-Merged from legacy server.py (Track 2.3).  Serves the ops-board
-frontend from ``static/``, exposes REST + WebSocket endpoints,
-and supports CORS for demo / multi-origin deployment.
-"""
+"""SigLab FastAPI dashboard application."""
 
 from __future__ import annotations
 
@@ -31,12 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Set security-related HTTP headers on every response.
-
-    Includes Content-Security-Policy, HSTS-family headers, and
-    permission restrictions.  Added *after* CORS so the CSP
-    reflects the final response.
-    """
+    """Set security-related HTTP headers on every response."""
 
     async def dispatch(self, request, call_next):
         response: Response = await call_next(request)
@@ -170,11 +160,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application.
-
-    Includes CORS middleware, REST router, WebSocket router,
-    and static file serving for the ops-board frontend.
-    """
+    """Create and configure the FastAPI application."""
     app = FastAPI(
         title="SigLab Dashboard",
         version="0.1.0",

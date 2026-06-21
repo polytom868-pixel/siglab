@@ -1,12 +1,4 @@
-"""DeploymentStore — minimal SQLite store for deployment records.
-
-Extracted from ``siglab.search.lineage.LineageStore`` before deletion
-of the search/ module.  Provides only the methods needed by operator-facing
-code (``live/exporter.py``, ``cli/deploy.py``).
-
-The underlying DB schema mirrors the original ``deployments`` and
-``experiments`` tables created by ``LineageStore._init_db()``.
-"""
+"""DeploymentStore — minimal SQLite store for deployment records."""
 
 from __future__ import annotations
 

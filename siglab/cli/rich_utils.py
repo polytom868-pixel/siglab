@@ -1,9 +1,4 @@
-"""Rich formatting utilities for the SigLab CLI.
-
-Provides a shared console instance, semantic color helpers,
-table/panel/progress factories, and JSON syntax highlighting.
-Respects --no-color flag and NO_COLOR env var.
-"""
+"""Rich formatting utilities for the SigLab CLI."""
 
 from __future__ import annotations
 
@@ -35,15 +30,7 @@ SIGLAB_THEME = Theme(
 
 
 def make_console(*, force_no_color: bool = False) -> Console:
-    """Build a Rich Console respecting NO_COLOR and --no-color.
-
-    Args:
-        force_no_color: When True, disables all ANSI styling regardless
-                        of environment.  Set from the parsed --no-color flag.
-
-    Returns:
-        A themed Rich Console instance.
-    """
+    """Build a Rich Console respecting NO_COLOR and --no-color."""
     no_color = force_no_color or bool(os.environ.get("NO_COLOR"))
     is_tty = sys.stdout.isatty()
     return Console(
@@ -79,14 +66,7 @@ def init_console(*, force_no_color: bool = False) -> Console:
 
 
 def print_json(data: object, *, indent: int = 2, sort_keys: bool = True) -> None:
-    """Print JSON with syntax highlighting in terminal, plain JSON when piped/no_color.
-
-    Uses plain json.dumps (no ANSI) when:
-    - stdout is not a terminal (piped)
-    - NO_COLOR env var is set
-    - --no-color flag was passed
-    Otherwise uses Rich JSON syntax highlighting.
-    """
+    """Print JSON with syntax highlighting in terminal, plain JSON when piped/no_color."""
     console = get_console()
     # Use plain JSON when: no_color set, NO_COLOR env, not a TTY, or piped
     no_color = console.no_color or bool(os.environ.get("NO_COLOR")) or not sys.stdout.isatty()

@@ -1,8 +1,4 @@
-"""FastAPI HTTP client for the SigLab TUI.
-
-Connects to the FastAPI dashboard (default port from $PORT or 8080).
-Supports both HTTP REST and WebSocket connections.
-"""
+"""FastAPI HTTP client for the SigLab TUI."""
 
 from __future__ import annotations
 
@@ -20,12 +16,7 @@ WsCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class TuiApiClient:
-    """Async HTTP client for the SigLab FastAPI dashboard.
-
-    Args:
-        base_url: Base URL of the FastAPI dashboard (default http://localhost:8080).
-        timeout: Request timeout in seconds (default 10).
-    """
+    """Async HTTP client for the SigLab FastAPI dashboard."""
 
     def __init__(
         self, base_url: str = "http://localhost:8080", timeout: float = 10.0
@@ -49,21 +40,7 @@ class TuiApiClient:
         return self._client
 
     async def _request_with_retry(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-        """Single retry with 0.5s backoff on transient errors.
-
-        Args:
-            method: HTTP method name (e.g. "get", "post", "delete").
-            path: URL path relative to base_url.
-            **kwargs: Forwarded to the httpx client method (params, json, etc.).
-
-        Returns:
-            Parsed JSON response dict.
-
-        Raises:
-            httpx.HTTPStatusError: On 4xx errors or repeated 5xx failures.
-            httpx.ConnectError: If connection fails after retry.
-            httpx.TimeoutException: If request times out after retry.
-        """
+        """Single retry with 0.5s backoff on transient errors."""
         client = await self._ensure_client()
         try:
             return await self._do_request(client, method, path, **kwargs)
@@ -98,63 +75,31 @@ class TuiApiClient:
             self._client = None
 
     async def get_health(self) -> dict[str, Any]:
-        """Fetch the /health endpoint.
-
-        Returns:
-            Dict with status, version, uptime_seconds fields.
-        """
+        """Fetch the /health endpoint."""
         return await self._get("/health")
 
     async def get_config(self) -> dict[str, Any]:
-        """Fetch the /config endpoint.
-
-        Returns:
-            Dict with system, sosovalue, claude configuration.
-        """
+        """Fetch the /config endpoint."""
         return await self._get("/config")
 
     async def get_ops_board(self) -> dict[str, Any]:
-        """Fetch the /ops-board endpoint.
-
-        Returns:
-            Dict with artifact_status, summary, and service_health.
-        """
+        """Fetch the /ops-board endpoint."""
         return await self._get("/ops-board")
 
     async def get_evidence_graph(self) -> dict[str, Any]:
-        """Fetch the /evidence-graph endpoint.
-
-        Returns:
-            Dict with nodes and edges arrays.
-        """
+        """Fetch the /evidence-graph endpoint."""
         return await self._get("/evidence-graph")
 
     async def get_skill_report(self) -> dict[str, Any]:
-        """Fetch the /skill-report endpoint.
-
-        Returns:
-            Dict with per-skill metrics.
-        """
+        """Fetch the /skill-report endpoint."""
         return await self._get("/skill-report")
 
     async def get_telemetry_report(self) -> dict[str, Any]:
-        """Fetch the /ops-board telemetry data.
-
-        Alias for :meth:`get_ops_board` — the ops-board endpoint serves
-        both artifact status and service health used by the telemetry
-        browser screen.
-
-        Returns:
-            Dict with artifact_status, service_health, and summary.
-        """
+        """Fetch the /ops-board telemetry data."""
         return await self.get_ops_board()
 
     async def get_risk(self) -> dict[str, Any]:
-        """Fetch the /risk endpoint.
-
-        Returns:
-            Dict with composite_score, max_drawdown, correlation_matrix.
-        """
+        """Fetch the /risk endpoint."""
         return await self._get("/risk")
 
     # ── Strategy Research ──────────────────────────────────────────────
@@ -164,15 +109,7 @@ class TuiApiClient:
         track: str | None = None,
         family: str | None = None,
     ) -> dict[str, Any]:
-        """Fetch strategy list from the ancestry/experiment database.
-
-        Args:
-            track: Optional track filter.
-            family: Optional family filter.
-
-        Returns:
-            Dict with 'strategies' list and 'count'.
-        """
+        """Fetch strategy list from the ancestry/experiment database."""
         params: dict[str, str] = {}
         if track:
             params["track"] = track
@@ -181,69 +118,31 @@ class TuiApiClient:
         return await self._get("/strategies", params=params)
 
     async def get_strategy_detail(self, spec_hash: str) -> dict[str, Any]:
-        """Fetch detailed results for a single strategy.
-
-        Args:
-            spec_hash: The strategy's spec hash.
-
-        Returns:
-            Dict with spec, summary, equity_curve, etc.
-        """
+        """Fetch detailed results for a single strategy."""
         return await self._get(f"/strategies/{spec_hash}")
 
     async def get_benchmark_status(self, deck: str = "trend_signals_external") -> dict[str, Any]:
-        """Fetch benchmark deck status.
-
-        Args:
-            deck: Benchmark deck name.
-
-        Returns:
-            Dict with state, recent_results.
-        """
+        """Fetch benchmark deck status."""
         return await self._get("/benchmark/status", params={"deck": deck})
 
     async def get_benchmark_results(self, deck: str = "trend_signals_external") -> dict[str, Any]:
-        """Fetch benchmark evaluation results.
-
-        Args:
-            deck: Benchmark deck name.
-
-        Returns:
-            Dict with results list.
-        """
+        """Fetch benchmark evaluation results."""
         return await self._get("/benchmark/results", params={"deck": deck})
 
     # ── Market Data ──────────────────────────────────────────────────
 
     async def get_market_symbols(self) -> dict[str, Any]:
-        """Fetch all tradable SoDEX perp symbols.
-
-        Returns:
-            Dict with 'symbols' list and 'count'.
-        """
+        """Fetch all tradable SoDEX perp symbols."""
         return await self._get("/market/symbols")
 
     async def get_market_tickers(self) -> dict[str, Any]:
-        """Fetch 24-hour ticker data for all perp symbols.
-
-        Returns:
-            Dict with 'tickers' list and 'count'.
-        """
+        """Fetch 24-hour ticker data for all perp symbols."""
         return await self._get("/market/tickers")
 
     async def get_market_klines(
         self, symbol: str, interval: str = "1h", limit: int = 60
     ) -> dict[str, Any]:
-        """Fetch kline/candlestick data for a perp symbol.
-
-        Args:
-            symbol: Perp symbol (e.g. "BTC-USD").
-            interval: Kline interval (1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M).
-            limit: Maximum number of candles.
-
-        Returns:
-            Dict with 'klines' list, 'symbol', 'interval', 'count'.
-        """
+        """Fetch kline/candlestick data for a perp symbol."""
         return await self._get(
             f"/market/klines/{symbol}",
             params={"interval": interval, "limit": limit},
@@ -252,15 +151,7 @@ class TuiApiClient:
     async def get_market_orderbook(
         self, symbol: str, limit: int = 20
     ) -> dict[str, Any]:
-        """Fetch order book depth for a perp symbol.
-
-        Args:
-            symbol: Perp symbol (e.g. "BTC-USD").
-            limit: Number of price levels per side.
-
-        Returns:
-            Dict with 'bids', 'asks', 'symbol'.
-        """
+        """Fetch order book depth for a perp symbol."""
         return await self._get(
             f"/market/orderbook/{symbol}",
             params={"limit": limit},
@@ -269,69 +160,30 @@ class TuiApiClient:
     # ── Paper Trading ────────────────────────────────────────────────
 
     async def list_paper_sessions(self) -> dict[str, Any]:
-        """List all paper trading sessions.
-
-        Returns:
-            Dict with 'sessions' list.
-        """
+        """List all paper trading sessions."""
         return await self._get("/paper/sessions")
 
     async def create_paper_session(self, name: str | None = None) -> dict[str, Any]:
-        """Create a new paper trading session.
-
-        Args:
-            name: Optional session label.
-
-        Returns:
-            Dict with 'session_id' and 'name'.
-        """
+        """Create a new paper trading session."""
         body: dict[str, Any] = {}
         if name:
             body["name"] = name
         return await self._post("/paper/sessions", json=body)
 
     async def get_paper_session(self, session_id: str) -> dict[str, Any]:
-        """Get paper trading session status.
-
-        Args:
-            session_id: The session ID.
-
-        Returns:
-            Dict with session_id, name, position, pnl, orders.
-        """
+        """Get paper trading session status."""
         return await self._get(f"/paper/sessions/{session_id}")
 
     async def get_paper_positions(self, session_id: str) -> dict[str, Any]:
-        """Get positions for a paper trading session.
-
-        Args:
-            session_id: The session ID.
-
-        Returns:
-            Dict with 'positions' list.
-        """
+        """Get positions for a paper trading session."""
         return await self._get(f"/paper/sessions/{session_id}/positions")
 
     async def get_paper_orders(self, session_id: str) -> dict[str, Any]:
-        """Get orders for a paper trading session.
-
-        Args:
-            session_id: The session ID.
-
-        Returns:
-            Dict with 'orders' list.
-        """
+        """Get orders for a paper trading session."""
         return await self._get(f"/paper/sessions/{session_id}/orders")
 
     async def get_paper_pnl(self, session_id: str) -> dict[str, Any]:
-        """Get PnL summary for a paper trading session.
-
-        Args:
-            session_id: The session ID.
-
-        Returns:
-            Dict with realized_pnl, unrealized_pnl, total_pnl, etc.
-        """
+        """Get PnL summary for a paper trading session."""
         return await self._get(f"/paper/sessions/{session_id}/pnl")
 
     async def place_paper_order(
@@ -344,19 +196,7 @@ class TuiApiClient:
         order_type: str = "MARKET",
         price: float | None = None,
     ) -> dict[str, Any]:
-        """Place a paper order.
-
-        Args:
-            session_id: Target session ID.
-            symbol: Perp symbol (e.g. "BTC-USD").
-            side: "BUY" or "SELL".
-            quantity: Order quantity.
-            order_type: "MARKET" or "LIMIT".
-            price: Limit price (required for LIMIT orders).
-
-        Returns:
-            Dict with order details.
-        """
+        """Place a paper order."""
         body: dict[str, Any] = {
             "symbol": symbol,
             "side": side,
@@ -372,15 +212,7 @@ class TuiApiClient:
     async def cancel_paper_order(
         self, session_id: str, order_id: str
     ) -> dict[str, Any]:
-        """Cancel a paper order.
-
-        Args:
-            session_id: Target session ID.
-            order_id: Order ID to cancel.
-
-        Returns:
-            Dict with updated order details.
-        """
+        """Cancel a paper order."""
         return await self._request_with_retry(
             "delete", f"/paper/sessions/{session_id}/orders/{order_id}"
         )
@@ -388,14 +220,7 @@ class TuiApiClient:
     # ── WebSocket ────────────────────────────────────────────────────
 
     async def ws_connect(self) -> Any:
-        """Connect to the WebSocket endpoint.
-
-        Returns:
-            A websockets client connection.
-
-        Raises:
-            Exception: If the connection fails.
-        """
+        """Connect to the WebSocket endpoint."""
         import websockets
 
         ws_url = self._base_url.replace("http://", "ws://").replace(
@@ -405,14 +230,7 @@ class TuiApiClient:
         return ws
 
     async def ws_subscribe_risk(self, callback: WsCallback) -> None:
-        """Subscribe to risk_score updates via WebSocket.
-
-        Connects, subscribes to risk_score, and calls callback for each
-        incoming risk_score message. Runs until cancelled.
-
-        Args:
-            callback: Async function called with each risk_score message dict.
-        """
+        """Subscribe to risk_score updates via WebSocket."""
         try:
             ws = await self.ws_connect()
             try:

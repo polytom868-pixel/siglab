@@ -1,8 +1,4 @@
-"""SigLab CLI package — modular subcommand modules.
-
-This module sets up the argument parser and dispatches to the appropriate
-subcommand module. All subcommands are organized into domain-specific modules.
-"""
+"""SigLab CLI package — modular subcommand modules."""
 
 from __future__ import annotations
 

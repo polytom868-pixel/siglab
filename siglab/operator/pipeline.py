@@ -1,16 +1,4 @@
-"""OperatorPipeline — research-to-decision production pipeline.
-
-Transforms evidence records into trade signals, applies risk checks,
-positions via the paper client, and enforces dry-run boundaries.
-
-Typical usage::
-
-    pipeline = OperatorPipeline(dry_run=True, paper_client=client)
-    signal, position, risk = await pipeline.run_once(spec, market_data)
-
-    if risk.passed and signal.direction != "HOLD":
-        order = pipeline.position_to_paper(signal, session_id="...")
-"""
+"""OperatorPipeline — research-to-decision production pipeline."""
 
 from __future__ import annotations
 
@@ -35,17 +23,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RiskReport:
-    """Outcome of a risk-check cycle.
-
-    Attributes
-    ----------
-    passed : bool
-        ``True`` when no hard risk limits are breached.
-    reasons : list[str]
-        Human-readable messages explaining pass / fail decisions.
-    composite_score : float
-        Aggregate risk score in ``[0, 1]`` (1 = best).
-    """
+    """Outcome of a risk-check cycle."""
 
     passed: bool
     reasons: list[str] = field(default_factory=list)
@@ -54,23 +32,7 @@ class RiskReport:
 
 @dataclass
 class TradeSignal:
-    """A trade decision produced from evidence evaluation.
-
-    Attributes
-    ----------
-    direction : str
-        ``"BUY"``, ``"SELL"``, or ``"HOLD"``.
-    symbol : str
-        Target asset symbol (empty for ``HOLD``).
-    confidence : float
-        Aggregate confidence in ``[0, 1]``.
-    size : float
-        Proposed position size (absolute units).
-    reasoning : str
-        Human-readable justification.
-    timestamp : str
-        ISO-8601 timestamp of when the signal was produced.
-    """
+    """A trade decision produced from evidence evaluation."""
 
     direction: str  # "BUY" | "SELL" | "HOLD"
     symbol: str
@@ -82,16 +44,7 @@ class TradeSignal:
 
 @dataclass
 class Position:
-    """A planned or executed position.
-
-    Attributes
-    ----------
-    symbol : str
-    side : str
-    quantity : float
-    entry_price : float
-    timestamp : str
-    """
+    """A planned or executed position."""
 
     symbol: str
     side: str
@@ -106,24 +59,11 @@ class Position:
 
 
 class OperatorPipeline:
-    """Orchestrates the full research-to-decision pipeline.
-
-    Transforms *evidence* → *trade signal* → *risk check* → *position*,
-    with dry-run enforcement and ``SoDEXPaperPerpsClient`` integration.
-
-    Parameters
-    ----------
-    dry_run : bool
-        **Required** — no default.  When ``True``, paper orders are
-        constructed but never forwarded to the paper client.
-    paper_client : SoDEXPaperPerpsClient or None
-        Paper trading client for simulated execution.  Required when
-        calling :meth:`position_to_paper` with ``dry_run=False``.
-    """
+    """Orchestrates the full research-to-decision pipeline."""
 
     def __init__(
         self,
-        dry_run: bool,  # required — no default
+        dry_run: bool,
         paper_client: SoDEXPaperPerpsClient | None = None,
     ) -> None:
         if not isinstance(dry_run, bool):
@@ -140,25 +80,7 @@ class OperatorPipeline:
         self,
         evidence_records: list[dict[str, Any]],
     ) -> TradeSignal:
-        """Aggregate raw evidence records into a consensus trade signal.
-
-        Each record should contain at minimum:
-
-        - ``signal``: ``"BUY"`` | ``"SELL"`` | ``"HOLD"``
-        - ``confidence``: float in ``[0, 1]``
-        - ``weight``: relative importance (default ``1.0``)
-        - ``symbol``: asset symbol (optional)
-
-        Parameters
-        ----------
-        evidence_records : list[dict]
-            Evidence records from the research pipeline.
-
-        Returns
-        -------
-        TradeSignal
-            The consensus signal.
-        """
+        """Aggregate raw evidence records into a consensus trade signal."""
         if not evidence_records:
             return TradeSignal(
                 direction="HOLD",
@@ -239,25 +161,7 @@ class OperatorPipeline:
         portfolio_value: float = 100_000.0,
         allocation: dict[str, float] | None = None,
     ) -> RiskReport:
-        """Run risk checks before execution.
-
-        Delegates to :mod:`siglab.risk.guardian` for circuit-breaker,
-        concentration-limit, and position-sizing checks.
-
-        Parameters
-        ----------
-        signal : TradeSignal
-            The proposed trade signal.
-        portfolio_value : float
-            Current portfolio equity.
-        allocation : dict or None
-            Current allocation map for concentration checks.
-
-        Returns
-        -------
-        RiskReport
-            Pass/fail status with reasons and composite score.
-        """
+        """Run risk checks before execution."""
         reasons: list[str] = []
 
         if signal.direction == "HOLD":
@@ -332,27 +236,7 @@ class OperatorPipeline:
         *,
         mark_price: float | None = None,
     ) -> dict[str, Any]:
-        """Convert a trade signal into a paper order.
-
-        Delegates to :attr:`paper_client` (``SoDEXPaperPerpsClient``).
-        When :attr:`dry_run` is ``True`` the order metadata is returned
-        but the paper client is never called.
-
-        Parameters
-        ----------
-        signal : TradeSignal
-            The trade signal to execute.
-        session_id : str
-            Paper-trading session identifier.
-        mark_price : float, optional
-            Override mark price (currently unused; reserved for limit
-            orders in future iterations).
-
-        Returns
-        -------
-        dict
-            Order result dict or dry-run stub.
-        """
+        """Convert a trade signal into a paper order."""
         if signal.direction == "HOLD":
             return {"status": "noop", "reason": "HOLD signal — no order placed"}
 
@@ -402,26 +286,7 @@ class OperatorPipeline:
         spec: dict[str, Any],
         market_data: dict[str, Any],
     ) -> tuple[TradeSignal, Position | None, RiskReport]:
-        """Full single-pass pipeline: evidence → signal → risk → position.
-
-        This is the primary entry point for a single evaluation cycle.
-
-        Parameters
-        ----------
-        spec : dict
-            Strategy specification containing at least ``evidence`` or
-            ``evidence_records`` and optional ``runtime`` configuration.
-        market_data : dict
-            Current market snapshot.  Expected keys include
-            ``portfolio_value``, ``price`` / ``mark_price`` / ``mids``,
-            and ``allocation``.
-
-        Returns
-        -------
-        tuple[TradeSignal, Position | None, RiskReport]
-            ``(signal, position, risk_report)``.  ``position`` is
-            ``None`` when the signal is ``HOLD`` or risk checks fail.
-        """
+        """Full single-pass pipeline: evidence → signal → risk → position."""
         # Step 1 — Extract evidence from spec
         evidence_records: list[dict[str, Any]] = list(
             spec.get("evidence", spec.get("evidence_records", []))

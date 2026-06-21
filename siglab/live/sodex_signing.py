@@ -50,12 +50,7 @@ class SoDEXNotReadyError(SoDEXSigningError):
 
 
 class SoDEXDryRunSigner:
-    """Dry-run signer that refuses any sign attempt.
-    
-    Used as the default when no real signer credentials are configured.
-    Ensures no signed request can be submitted to SoDEX without explicit
-    operator setup.
-    """
+    """Dry-run signer that refuses any sign attempt."""
 
     signer_type = "dry-run"
 
@@ -115,11 +110,7 @@ class SoDEXPrivateKeySigner:
 
 
 class SoDEXNonceManager:
-    """Monotonic nonce manager with atomic file persistence.
-
-    Time-window validation is only enforced on mainnet. Testnet relies on
-    replay protection alone, keeping the implementation simple for validation.
-    """
+    """Monotonic nonce manager with atomic file persistence."""
 
     def __init__(
         self,

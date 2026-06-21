@@ -1,8 +1,4 @@
-"""SigLab TUI — Main application with navigation shell.
-
-Provides a Textual-based terminal interface with a navigation sidebar,
-content area, and status bar. Acts as the shell for all TUI screens.
-"""
+"""SigLab TUI — Main application with navigation shell."""
 
 from __future__ import annotations
 
@@ -261,12 +257,7 @@ for _idx, _label, _screen_id in NAV_ITEMS:
 
 
 class SigLabTUI(App[None]):
-    """SigLab Terminal UI — main application class.
-
-    Provides a navigation shell with sidebar, content area, and status bar.
-    Screens are registered in the SCREENS dict and switched via
-    ``push_screen()``.
-    """
+    """SigLab Terminal UI — main application class."""
 
     TITLE = "SigLab"
     SUB_TITLE = "Terminal Dashboard"

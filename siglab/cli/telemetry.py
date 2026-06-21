@@ -16,11 +16,7 @@ def build_telemetry_payload(
     trace_paths: list[Path],
     provider_metric_paths: list[Path],
 ) -> dict[str, Any]:
-    """Aggregate trace + provider-metrics into one telemetry payload.
-
-    Adds three bookkeeping fields to the aggregated result so callers can see
-    how many artifacts were scanned and whether provider metrics are present.
-    """
+    """Aggregate trace + provider-metrics into one telemetry payload."""
     payload = aggregate_trace_telemetry(trace_paths)
     payload["trace_paths_scanned"] = len(trace_paths)
     payload["provider_metrics"] = aggregate_provider_metrics_artifacts(provider_metric_paths)

@@ -1,8 +1,4 @@
-"""Shared loading indicator widget for the SigLab TUI.
-
-Provides an animated spinner that cycles through Unicode braille characters
-to give visual feedback during data fetches and long operations.
-"""
+"""Shared loading indicator widget for the SigLab TUI."""
 
 from __future__ import annotations
 
@@ -20,18 +16,7 @@ _SPINNER_FRAMES = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
 
 
 class LoadingIndicator(Static):
-    """Animated spinner widget that shows activity during data fetches.
-
-    Displays a cycling braille character when ``loading`` is True,
-    and a static status text when idle.
-
-    Usage::
-
-        loading = LoadingIndicator(id="my-loading")
-        loading.loading = True   # starts spinning
-        loading.loading = False  # stops spinning, shows status
-        loading.status_text = "Live \u00b7 refreshed"
-    """
+    """Animated spinner widget that shows activity during data fetches."""
 
     loading: reactive[bool] = reactive(False)
     status_text: reactive[str] = reactive("")

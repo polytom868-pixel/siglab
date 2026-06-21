@@ -6,19 +6,7 @@ from typing import Any, Awaitable, Callable, Sequence, cast
 
 
 def percentile(values: list[float], percentile: int) -> float | None:
-    """Calculate percentile using R-7 linear interpolation.
-
-    R-7 is the default interpolation method used by NumPy, R, and most
-    statistical software. It linearly interpolates between adjacent
-    ranked values rather than selecting the nearest rank.
-
-    Args:
-        values: List of numeric values (will be sorted internally).
-        percentile: Percentile to compute (0-100).
-
-    Returns:
-        The interpolated percentile value, or None if values is empty.
-    """
+    """Calculate percentile using R-7 linear interpolation."""
     if not values:
         return None
     ordered = sorted(values)

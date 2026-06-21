@@ -1,14 +1,4 @@
-"""Risk Monitoring TUI screen for SigLab.
-
-Displays:
-- Composite risk score gauge (ASCII bar, 0-100%)
-- Max drawdown sparkline (historical drawdown chart)
-- Correlation matrix heatmap (ASCII grid with color-coded cells)
-- Alert stream (timestamp/severity/message log)
-
-Connects to FastAPI /risk endpoint and WebSocket for real-time updates.
-Auto-refreshes every 15 seconds.
-"""
+"""Risk Monitoring TUI screen for SigLab."""
 
 from __future__ import annotations
 
@@ -80,10 +70,7 @@ def _correlation_block(value: float) -> str:
 
 
 class RiskGaugeWidget(Static):
-    """ASCII bar gauge showing composite risk score (0-100%).
-
-    Zero-copy: stores references to score data from the API response.
-    """
+    """ASCII bar gauge showing composite risk score (0-100%)."""
 
     composite_score: reactive[float | None] = reactive(None, layout=True)
     sub_scores: reactive[dict[str, float]] = reactive(dict, layout=True)
@@ -344,14 +331,7 @@ class AlertStreamWidget(Static):
 
 
 class RiskScreen(BaseScreen):
-    """Risk monitoring screen showing portfolio risk metrics.
-
-    Layout:
-    - Left column: Composite score gauge + Alert stream
-    - Right column: Drawdown sparkline + Correlation matrix heatmap
-
-    Supports WebSocket risk_score subscription for real-time updates.
-    """
+    """Risk monitoring screen showing portfolio risk metrics."""
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("f", "filter_alerts", "Filter", show=False),
@@ -397,12 +377,7 @@ class RiskScreen(BaseScreen):
         await super().on_unmount()
 
     async def _ws_risk_loop(self) -> None:
-        """Subscribe to risk_score WebSocket updates in background.
-
-        Reconnects with exponential backoff (capped at 30s) when the
-        subscription drops. Backoff only doubles — it does NOT reset
-        between iterations, so a sustained outage throttles retries.
-        """
+        """Subscribe to risk_score WebSocket updates in background."""
         if self._api is None:
             return
         backoff = 1.0
@@ -452,12 +427,7 @@ class RiskScreen(BaseScreen):
         )
 
     async def _fetch_risk_data(self) -> None:
-        """Fetch risk metrics from the /risk endpoint.
-
-        Zero-copy: API response fields are passed directly as
-        references to widget reactive attributes.  Lists from the
-        response are stored as-is (no intermediate copies).
-        """
+        """Fetch risk metrics from the /risk endpoint."""
         if self._api is None:
             return
         try:
@@ -501,11 +471,7 @@ class RiskScreen(BaseScreen):
                        lambda w: setattr(w, "alerts", []))
 
     def _apply_alert_filter(self) -> None:
-        """Apply the current severity filter to the alert list.
-
-        Zero-copy: when showing all alerts, shares the reference to
-        ``_all_alerts`` instead of creating a copy.
-        """
+        """Apply the current severity filter to the alert list."""
         if self._filter_severity == "all":
             # Share reference — no copy needed
             filtered = self._all_alerts

@@ -1,10 +1,4 @@
-"""
-SigLab Risk Guardian Module.
-
-Provides portfolio risk analysis: composite scoring, drawdown monitoring,
-cross-strategy correlation, concentration limits, position sizing,
-and historical drawdown tracking.
-"""
+"""SigLab Risk Guardian Module."""
 
 from siglab.risk.guardian import (
     AlertEvent,

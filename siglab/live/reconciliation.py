@@ -1,16 +1,4 @@
-"""
-Backtest vs paper PnL reconciliation engine.
-
-Compares a backtest PnL series with a paper trading PnL series over
-overlapping time windows and produces divergence metrics:
-
-* **Correlation coefficient** — how closely the two PnL series move together
-* **Tracking error** — standard deviation of the return differences
-* **Bias** — mean of the return differences (backtest minus paper)
-
-When tracking error exceeds a configurable threshold the engine emits a
-divergence warning.
-"""
+"""Backtest vs paper PnL reconciliation engine."""
 
 from __future__ import annotations
 
@@ -35,14 +23,7 @@ DEFAULT_DIVERGENCE_WARNING_THRESHOLD: float = 0.05  # 5 % tracking error
 
 
 class ReconciliationEngine:
-    """Compare backtest and paper PnL series.
-
-    Parameters
-    ----------
-    divergence_threshold : float, optional
-        Tracking error above this level triggers a divergence warning.
-        Default: 0.05 (5 %).
-    """
+    """Compare backtest and paper PnL series."""
 
     def __init__(self, divergence_threshold: float | None = None) -> None:
         self.divergence_threshold = (
@@ -56,30 +37,7 @@ class ReconciliationEngine:
         backtest_pnl: pd.Series,
         paper_pnl: pd.Series,
     ) -> dict[str, Any]:
-        """Compare backtest and paper PnL over overlapping time windows.
-
-        Parameters
-        ----------
-        backtest_pnl : pd.Series
-            Time-indexed backtest PnL (returns).  Index must be
-            datetime-like.
-        paper_pnl : pd.Series
-            Time-indexed paper trading PnL (returns).  Index must be
-            datetime-like.
-
-        Returns
-        -------
-        dict
-            Result dictionary with keys:
-
-            * ``overlapping_periods`` — number of common time points
-            * ``correlation`` — Pearson correlation of overlapping returns
-            * ``tracking_error`` — std(backtest_returns - paper_returns)
-            * ``bias`` — mean(backtest_returns - paper_returns)
-            * ``divergence_warning`` — true when tracking error > threshold
-            * ``start_date`` — start of overlapping window
-            * ``end_date`` — end of overlapping window
-        """
+        """Compare backtest and paper PnL over overlapping time windows."""
         # Align on overlapping index
         common_idx = backtest_pnl.index.intersection(paper_pnl.index)
         if len(common_idx) < 2:

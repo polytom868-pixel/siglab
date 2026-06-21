@@ -13,7 +13,7 @@ import httpx
 from siglab.llm_metadata import (
     resolve_llm_api_key,
     resolve_llm_base_url,
-    resolve_llm_model as resolve_llm_model,  # re-exported for test mocking
+    resolve_llm_model as resolve_llm_model,
     resolve_llm_provider,
     resolve_llm_thinking_mode,
 )
@@ -25,7 +25,6 @@ _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[Any] | Any]
 
-# input, output, cache_write, cache_read in B.AI Credits/Token.
 BAI_CREDITS_PER_TOKEN: dict[str, tuple[float, float, float, float]] = {
     "minimax-m2.7": (0.30, 1.20, 0.375, 0.06),
     "minimax-m2.5": (0.30, 1.20, 0.30, 0.03),
@@ -60,7 +59,6 @@ BAI_CREDITS_PER_TOKEN: dict[str, tuple[float, float, float, float]] = {
     "gemini-3.1-pro": (2.00, 12.00, 2.00, 0.20),
     "gemini-3-flash": (0.50, 3.00, 0.50, 0.05),
 }
-
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -194,26 +192,20 @@ class LLMProviderError(RuntimeError):
 class LLMConfigError(LLMProviderError):
     """Missing or invalid provider configuration."""
 
-
 class LLMAuthError(LLMProviderError):
     """Provider authentication failed."""
-
 
 class LLMRateLimitError(LLMProviderError):
     """Provider rate limited the request."""
 
-
 class LLMQuotaError(LLMProviderError):
     """Provider account has insufficient balance or quota for the request."""
-
 
 class LLMTransportError(LLMProviderError):
     """Network, DNS, TLS, timeout, or socket transport failure."""
 
-
 class LLMUpstreamError(LLMProviderError):
     """Provider returned an upstream HTTP failure."""
-
 
 class LLMFormatError(LLMProviderError):
     """Provider returned a response shape the loop cannot use."""
@@ -1172,7 +1164,6 @@ class ClaudeClient:
                     outcome = tool.handler(arguments)
                     result = await outcome if hasattr(outcome, "__await__") else outcome
                 except Exception as exc:
-                    # Catch-all: tool handlers can raise anything; return error result.
                     result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
                 else:
                     latency_ms = (time.perf_counter() - started) * 1000.0

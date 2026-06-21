@@ -1,19 +1,4 @@
-"""Market Overview TUI screen for SigLab.
-
-Displays:
-- Symbol list with search/filter
-- Klines chart (ASCII sparkline)
-- Real-time ticker table (24h change, volume, mark price)
-- Order book depth (bids/asks with levels)
-
-Connects to the FastAPI dashboard via TuiApiClient.
-Auto-refreshes every 30 seconds.
-
-Zero-copy data flow: ticker data fetched once is shared between
-SymbolListWidget and TickerTableWidget as references.  Kline close
-prices are extracted as tuples (immutable sequence) so sparkline
-can render without copying.
-"""
+"""Market Overview TUI screen for SigLab."""
 
 from __future__ import annotations
 
@@ -121,12 +106,7 @@ class SymbolListWidget(FilterableListWidget[SymbolEntry]):
 
 
 class KlinesChartWidget(Static):
-    """Renders an ASCII sparkline chart of kline data with OHLC summary.
-
-    Zero-copy: stores a reference to the klines list from the API
-    response.  Close prices are extracted as a tuple (immutable
-    sequence) so ``sparkline_text`` can render without copying.
-    """
+    """Renders an ASCII sparkline chart of kline data with OHLC summary."""
 
     __slots__ = ("_closes_cache",)
 
@@ -147,12 +127,7 @@ class KlinesChartWidget(Static):
         self._closes_cache: tuple[float, ...] = ()
 
     def set_candles(self, klines: list[dict[str, Any]]) -> None:
-        """Store a reference to klines and pre-compute close tuple.
-
-        The klines list itself is stored by reference (no copy).
-        Close prices are extracted once into an immutable tuple that
-        ``sparkline_text`` can iterate without further allocation.
-        """
+        """Store a reference to klines and pre-compute close tuple."""
         self.candles = klines
         self._closes_cache = closes_from_klines(klines)
 
@@ -192,11 +167,7 @@ class KlinesChartWidget(Static):
 
 
 class TickerTableWidget(Static):
-    """Displays 24h ticker data for all perp symbols in a table.
-
-    Zero-copy: stores a reference to the tickers list from the API
-    response — no data is copied into widget state.
-    """
+    """Displays 24h ticker data for all perp symbols in a table."""
 
     tickers: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
 
@@ -237,11 +208,7 @@ class TickerTableWidget(Static):
 
 
 class OrderBookWidget(Static):
-    """Renders order book depth with bids and asks side by side.
-
-    Zero-copy: bids and asks are stored as tuples (immutable sequences)
-    shared from the API response — no per-refresh list copies.
-    """
+    """Renders order book depth with bids and asks side by side."""
     bids: reactive[tuple[list[Any], ...]] = reactive(tuple, layout=True)
     asks: reactive[tuple[list[Any], ...]] = reactive(tuple, layout=True)
     symbol: reactive[str] = reactive(DEFAULT_SYMBOL)
@@ -336,15 +303,7 @@ class OrderBookWidget(Static):
 
 
 class MarketScreen(BaseScreen):
-    """Market overview screen showing perp market data.
-
-    Layout:
-    - Top: Search bar for symbol filtering
-    - Left: Symbol list with selection
-    - Right top: Klines chart (ASCII sparkline)
-    - Right middle: Ticker table
-    - Right bottom: Order book depth
-    """
+    """Market overview screen showing perp market data."""
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = BaseScreen.BINDINGS + [
         Binding("enter", "select_symbol", "Select", show=False),

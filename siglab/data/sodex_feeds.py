@@ -1,23 +1,4 @@
-"""
-SoDEX public REST perp market data source with ParquetLake caching.
-
-Provides ``SoDEXFeeds``, a high-level data feed that wraps
-``SoDEXPublicPerpsClient`` with DataFrame conversion and persistent
-caching via ``ParquetLake``.
-
-Supported intervals for klines
--------------------------------
-``1m``, ``5m``, ``15m``, ``30m``, ``1h``, ``4h``, ``1d``, ``1w``, ``1M``
-
-Exception hierarchy
---------------------
-All exceptions extend ``SoDEXError`` (re-exported from the live client):
-
-* ``SoDEXTransportError`` — network, DNS, TLS, timeout failures
-* ``SoDEXRateLimitError`` — 429 rate-limit response
-* ``SoDEXUpstreamError`` — business-logic / HTTP error responses
-* ``SoDEXFormatError`` — malformed response envelope
-"""
+"""SoDEX public REST perp market data source with ParquetLake caching."""
 
 from __future__ import annotations
 
@@ -106,32 +87,10 @@ DEFAULT_TRADES_CACHE_TTL_HOURS = 0.08
 
 # ---------------------------------------------------------------------------
 # SoDEXFeeds
-# ---------------------------------------------------------------------------
 
 
 class SoDEXFeeds:
-    """
-    High-level SoDEX perp market data feed with ParquetLake caching.
-
-    Wraps ``SoDEXPublicPerpsClient`` and adds DataFrame conversion for
-    structured data, persistent caching, and graceful handling of
-    nonexistent symbols (returns empty data instead of raising).
-
-    Parameters
-    ----------
-    lake : ParquetLake
-        Caching backend.
-    base_url : str
-        SoDEX perp REST API base URL (default: mainnet).
-    timeout_s : float
-        Per-request timeout in seconds.
-    retries : int
-        Number of retries on transport / 5xx errors.
-    klines_cache_ttl_hours : float
-        How long kline data stays fresh in the lake cache.
-    symbols_cache_ttl_hours : float
-        How long the symbol list stays fresh.
-    """
+    """High-level SoDEX perp market data feed with ParquetLake caching."""
 
     def __init__(
         self,
@@ -172,9 +131,7 @@ class SoDEXFeeds:
         """Release the underlying HTTP client resources."""
         await self._http_client.aclose()
 
-    # ------------------------------------------------------------------
     # Klines
-    # ------------------------------------------------------------------
 
     async def fetch_klines(
         self,
@@ -186,31 +143,7 @@ class SoDEXFeeds:
         end_time: int | None = None,
         skip_cache: bool = False,
     ) -> pd.DataFrame:
-        """
-        Fetch kline / candlestick data for a perp symbol.
-
-        Returns a DataFrame with columns ``timestamp, open, high, low,
-        close, volume, quote_volume``.
-
-        Parameters
-        ----------
-        symbol : str
-            Perp symbol, e.g. ``"BTC-USD"``.
-        interval : str
-            One of ``1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M``.
-        limit : int
-            Maximum number of candles (default 100).
-        start_time, end_time : int, optional
-            Filter by millisecond epoch.
-        skip_cache : bool
-            If True, bypass the lake cache and always hit the API.
-
-        Returns
-        -------
-        pd.DataFrame
-            Columns ``[timestamp, open, high, low, close, volume,
-            quote_volume]``.  Empty if the symbol does not exist.
-        """
+        """Fetch kline / candlestick data for a perp symbol."""
         interval = str(interval).lower()
         if interval not in KLINE_INTERVALS:
             raise ValueError(
@@ -281,13 +214,7 @@ class SoDEXFeeds:
 
     @staticmethod
     def _klines_to_frame(rows: list[dict[str, Any]], *, interval: str | None = None) -> pd.DataFrame:
-        """Convert raw SoDEX kline dicts to a typed DataFrame.
-
-        The timestamp index is rounded to the candle boundary only when the
-        interval is >= 1h.  Sub-hourly intervals (1m/5m/15m/30m) keep their
-        raw per-candle timestamps — rounding them to 1h collapsed distinct
-        candles into duplicate indices (H5).
-        """
+        """Convert raw SoDEX kline dicts to a typed DataFrame."""
         if not rows:
             return SoDEXFeeds._empty_klines_frame()
 
@@ -350,14 +277,7 @@ class SoDEXFeeds:
         *,
         skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Fetch all tradable perp symbols with metadata.
-
-        Returns a list of dicts, each containing symbol metadata such as
-        ``name``, ``pricePrecision``, ``quantityPrecision``,
-        ``minNotional``, ``maxLeverage``, ``marginTiers``, ``status``,
-        etc.
-        """
+        """Fetch all tradable perp symbols with metadata."""
         return await self._fetch_and_cache_json_list(
             "symbols",
             cache_path=("sodex_symbols", "all_symbols"),
@@ -375,12 +295,7 @@ class SoDEXFeeds:
         symbol: str | None = None,
         skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Fetch 24-hour ticker statistics.
-
-        If *symbol* is provided, only data for that symbol is returned.
-        Otherwise, all symbols are returned.
-        """
+        """Fetch 24-hour ticker statistics."""
         cache_key = f"tickers_{symbol}" if symbol else "tickers_all"
         return await self._fetch_and_cache_json_list(
             "tickers",
@@ -400,11 +315,7 @@ class SoDEXFeeds:
         symbol: str | None = None,
         skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Fetch current mark prices, index prices, and funding rates.
-
-        If *symbol* is provided, only data for that symbol is returned.
-        """
+        """Fetch current mark prices, index prices, and funding rates."""
         cache_key = f"mark_prices_{symbol}" if symbol else "mark_prices_all"
         return await self._fetch_and_cache_json_list(
             "mark_prices",
@@ -424,12 +335,7 @@ class SoDEXFeeds:
         symbol: str | None = None,
         skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Fetch best bid/ask for perp symbols.
-
-        If *symbol* is provided, only the matching entry is returned
-        (as a single-element list).
-        """
+        """Fetch best bid/ask for perp symbols."""
         cache_key = f"book_tickers_{symbol}" if symbol else "book_tickers_all"
         return await self._fetch_and_cache_json_list(
             "book_tickers",
@@ -450,12 +356,7 @@ class SoDEXFeeds:
         *,
         skip_cache: bool = False,
     ) -> dict[str, Any]:
-        """
-        Fetch order book depth for a perp symbol.
-
-        Returns a dict with ``bids`` and ``asks`` arrays, each
-        containing ``[price, size]`` pairs.
-        """
+        """Fetch order book depth for a perp symbol."""
         if not symbol or not symbol.strip():
             return {"bids": [], "asks": [], "symbol": symbol}
 
@@ -493,13 +394,7 @@ class SoDEXFeeds:
         *,
         skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
-        """
-        Fetch recent trades for a perp symbol.
-
-        Returns a list of trade dicts with fields like ``t`` (trade ID),
-        ``T`` (timestamp ms), ``s`` (symbol), ``S`` (side), ``p``
-        (price), ``q`` (quantity).
-        """
+        """Fetch recent trades for a perp symbol."""
         if not symbol or not symbol.strip():
             return []
 
@@ -516,10 +411,5 @@ class SoDEXFeeds:
     # ------------------------------------------------------------------
 
     def metrics_snapshot(self) -> dict[str, Any]:
-        """
-        Return client-level metrics for the underlying HTTP client.
-
-        Includes per-endpoint latency percentiles, attempt counts,
-        success rates, and weight-scheduler state.
-        """
+        """Return client-level metrics for the underlying HTTP client."""
         return self._client.metrics_snapshot()

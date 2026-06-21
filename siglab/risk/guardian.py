@@ -1,12 +1,4 @@
-"""
-Portfolio Risk Guardian Module.
-
-Composite risk scoring, drawdown analysis, cross-strategy correlation,
-concentration breach detection, risk-limit-aware position sizing,
-alert thresholds, and historical drawdown event tracking.
-
-All functions are designed to handle empty/edge-case input gracefully.
-"""
+"""Portfolio Risk Guardian Module."""
 
 from __future__ import annotations
 
@@ -20,9 +12,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Default weights for composite risk score
-# ---------------------------------------------------------------------------
 
 DEFAULT_RISK_WEIGHTS: dict[str, float] = {
     "sharpe": 0.25,
@@ -96,13 +86,7 @@ class DrawdownEvent:
 
 @dataclass
 class CircuitBreakerState:
-    """Tracks trading risk state for circuit breaker pattern.
-
-    Tiers (from plan):
-      Tier 1 — max_risk_per_trade_pct (1-2% of equity per trade)
-      Tier 2 — max_daily_drawdown_pct (3-5% of equity per day)
-      Tier 3 — max_consecutive_losses (3-5 in a row → cooldown)
-    """
+    """Tracks trading risk state for circuit breaker pattern."""
 
     equity: float = 0.0
     daily_start_equity: float = 0.0
@@ -145,11 +129,7 @@ class CircuitBreakerState:
 
 
 def _normalize_sharpe_score(sharpe: float) -> float:
-    """Normalise Sharpe ratio to [0, 1] risk score contribution.
-
-    Higher Sharpe → lower risk contribution.
-    Clipped to [SHARPE_MIN, SHARPE_MAX] before normalisation.
-    """
+    """Normalise Sharpe ratio to [0, 1] risk score contribution."""
     clipped = max(SHARPE_MIN, min(SHARPE_MAX, sharpe))
     if clipped >= SHARPE_TARGET:
         return 1.0
@@ -159,11 +139,7 @@ def _normalize_sharpe_score(sharpe: float) -> float:
 
 
 def _normalize_drawdown_score(drawdown: float) -> float:
-    """Normalise drawdown to [0, 1] risk score contribution.
-
-    More negative drawdown → higher risk (lower score).
-    Clipped to [DRAWDOWN_MIN, DRAWDOWN_MAX].
-    """
+    """Normalise drawdown to [0, 1] risk score contribution."""
     clipped = max(DRAWDOWN_MIN, min(DRAWDOWN_MAX, drawdown))
     if clipped >= 0.0:
         return 1.0
@@ -173,10 +149,7 @@ def _normalize_drawdown_score(drawdown: float) -> float:
 
 
 def _score_below_target(clipped: float, target: float) -> float:
-    """Map a clipped value to [0, 1] where 0 = at/over target, 1 = at/below 0.
-
-    Used by *concentration* and *correlation*: higher values are riskier.
-    """
+    """Map a clipped value to [0, 1] where 0 = at/over target, 1 = at/below 0."""
     if clipped <= 0.0:
         return 1.0
     if clipped >= target:
@@ -185,22 +158,13 @@ def _score_below_target(clipped: float, target: float) -> float:
 
 
 def _normalize_concentration_score(deviation: float) -> float:
-    """Normalise concentration deviation to [0, 1] risk score contribution.
-
-    *deviation* is the fraction by which allocation exceeds the limit
-    (0.0 = at or under limit, 1.0 = 100 % over limit).
-    Clipped to [CONCENTRATION_MIN, CONCENTRATION_MAX].
-    """
+    """Normalise concentration deviation to [0, 1] risk score contribution."""
     clipped = max(CONCENTRATION_MIN, min(CONCENTRATION_MAX, deviation))
     return _score_below_target(clipped, CONCENTRATION_TARGET)
 
 
 def _normalize_correlation_score(avg_correlation: float) -> float:
-    """Normalise average pairwise correlation to [0, 1] risk score contribution.
-
-    Higher correlation → higher concentration risk (lower score).
-    Clipped to [CORRELATION_MIN, CORRELATION_MAX].
-    """
+    """Normalise average pairwise correlation to [0, 1] risk score contribution."""
     clipped = max(CORRELATION_MIN, min(CORRELATION_MAX, avg_correlation))
     return _score_below_target(clipped, CORRELATION_TARGET)
 
@@ -212,32 +176,7 @@ def compute_composite_score(
     correlation_risk: float = 0.0,
     weights: dict[str, float] | None = None,
 ) -> float:
-    """Compute a composite portfolio risk score as a weighted sum.
-
-    Each input is clipped to a valid range and normalised to [0, 1] before
-    combination, where 1.0 = best/least risky and 0.0 = worst/most risky.
-
-    Parameters
-    ----------
-    sharpe : float
-        Sharpe ratio of the portfolio. Higher is better.
-    drawdown : float
-        Maximum drawdown (negative or zero). Less negative is better.
-    concentration : float
-        Allocation deviation fraction (0.0 = on target, higher = over limit).
-        Lower is better.
-    correlation_risk : float
-        Average pairwise correlation among strategies (0.0 to 1.0).
-        Lower is better.
-    weights : dict, optional
-        Custom weights for (sharpe, drawdown, concentration, correlation_risk).
-        Defaults to equal-ish weighting.
-
-    Returns
-    -------
-    float
-        Composite risk score in [0, 1].
-    """
+    """Compute a composite portfolio risk score as a weighted sum."""
     w = weights if weights is not None else dict(DEFAULT_RISK_WEIGHTS)
 
     scores = {
@@ -263,11 +202,7 @@ def compute_composite_score(
 
 
 def _drawdown_series(equity_curve: np.ndarray) -> np.ndarray:
-    """Compute the full drawdown series for an equity curve.
-
-    Uses the running-max formula: (equity - peak) / peak at each point.
-    Returns a zero array for empty/non-ndarray inputs.
-    """
+    """Compute the full drawdown series for an equity curve."""
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size == 0:
         return np.array([], dtype=float)
     peak = np.maximum.accumulate(equity_curve)
@@ -276,21 +211,7 @@ def _drawdown_series(equity_curve: np.ndarray) -> np.ndarray:
 
 
 def max_drawdown(equity_curve: np.ndarray) -> float:
-    """Compute the maximum drawdown of an equity curve.
-
-    Uses the running-max formula: (equity - peak) / peak at each point.
-    Returns the largest (most negative) value, or 0.0 for empty/monotonic series.
-
-    Parameters
-    ----------
-    equity_curve : np.ndarray
-        1-D array of equity values (e.g., portfolio value over time).
-
-    Returns
-    -------
-    float
-        Maximum drawdown as a fraction (negative or 0.0).
-    """
+    """Compute the maximum drawdown of an equity curve."""
     drawdown = _drawdown_series(equity_curve)
     if drawdown.size == 0:
         return 0.0
@@ -298,22 +219,7 @@ def max_drawdown(equity_curve: np.ndarray) -> float:
 
 
 def current_drawdown(equity_curve: np.ndarray) -> float:
-    """Compute the current drawdown from the most recent peak.
-
-    Unlike ``max_drawdown`` (which looks at historical maximum), this
-    measures decline from the running peak at the *last* point only.
-
-    Parameters
-    ----------
-    equity_curve : np.ndarray
-        1-D array of equity values.
-
-    Returns
-    -------
-    float
-        Current drawdown as a fraction (negative or 0.0).
-        Returns 0.0 for empty arrays.
-    """
+    """Compute the current drawdown from the most recent peak."""
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size == 0:
         return 0.0
 
@@ -328,22 +234,7 @@ def current_drawdown(equity_curve: np.ndarray) -> float:
 
 
 def recovery_time(equity_curve: np.ndarray) -> int | None:
-    """Compute the number of periods from trough to full recovery.
-
-    When the series is still in a drawdown (i.e., the last value is below
-    the running peak), or there is no drawdown at all, returns ``None``.
-
-    Parameters
-    ----------
-    equity_curve : np.ndarray
-        1-D array of equity values.
-
-    Returns
-    -------
-    int or None
-        Number of periods from the trough to recovery, or None if still
-        in drawdown, empty, or monotonic (no drawdown occurred).
-    """
+    """Compute the number of periods from trough to full recovery."""
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size < 2:
         return None
 
@@ -381,24 +272,7 @@ def recovery_time(equity_curve: np.ndarray) -> int | None:
 
 
 def correlation_matrix(strategy_returns: list[np.ndarray]) -> np.ndarray:
-    """Compute an N×N correlation matrix from N strategy return series.
-
-    Uses pairwise Pearson correlation on overlapping periods.
-
-    Parameters
-    ----------
-    strategy_returns : list[np.ndarray]
-        List of 1-D arrays, one per strategy, of return values. Arrays may
-        have different lengths; only overlapping periods are used for each
-        pair.
-
-    Returns
-    -------
-    np.ndarray
-        N×N correlation matrix with 1.0 on the diagonal.
-        Returns empty (0, 0) array if fewer than 2 strategies or any
-        strategy has insufficient data (fewer than 2 observations).
-    """
+    """Compute an N×N correlation matrix from N strategy return series."""
     n = len(strategy_returns)
     if n < 2:
         return np.empty((0, 0))
@@ -448,23 +322,7 @@ def check_concentration(
     allocation: dict[str, float],
     limits: dict[str, float],
 ) -> BreachReport:
-    """Check if strategy/category allocations exceed configured limits.
-
-    Parameters
-    ----------
-    allocation : dict
-        Mapping of strategy/category name to its allocation (as fraction
-        of total portfolio, e.g., 0.25 = 25 %).
-    limits : dict
-        Mapping of strategy/category name to its maximum allowed allocation.
-        Also accepts a ``"default"`` key as a fallback limit for any
-        strategy not explicitly listed.
-
-    Returns
-    -------
-    BreachReport
-        Report with breach status, allocation, limits, and list of breaches.
-    """
+    """Check if strategy/category allocations exceed configured limits."""
     breaches: list[dict[str, Any]] = []
     default_limit = limits.get("default")
 
@@ -492,25 +350,7 @@ def check_risk_thresholds(
     metrics: dict[str, float],
     thresholds: dict[str, dict[str, Any]],
 ) -> list[AlertEvent]:
-    """Check risk metrics against configured alert thresholds.
-
-    Parameters
-    ----------
-    metrics : dict
-        Mapping of metric name to its current value.
-    thresholds : dict
-        Mapping of metric name to its threshold config. Each entry may have:
-        - ``"warning"``: float threshold for warning severity
-        - ``"critical"``: float threshold for critical severity
-        - ``"direction"``: ``"above"`` or ``"below"`` (default: ``"above"``)
-          Whether the alert triggers when value is above or below threshold.
-        - ``"info"``: float threshold for info severity (optional)
-
-    Returns
-    -------
-    list[AlertEvent]
-        Chronological list of alert events for breached thresholds.
-    """
+    """Check risk metrics against configured alert thresholds."""
     now = datetime.now(UTC).isoformat()
     events: list[AlertEvent] = []
 
@@ -562,28 +402,7 @@ def compute_position_size(
     volatility: float,
     max_size: float,
 ) -> float:
-    """Compute a risk-budget-aware position size.
-
-    Uses the formula: size = risk_budget / volatility, capped at max_size.
-    Higher volatility produces smaller positions (fewer units at risk).
-
-    Parameters
-    ----------
-    risk_budget : float
-        The amount of capital at risk (as a fraction of portfolio, e.g., 0.02
-        = 2 %). Must be >= 0.
-    volatility : float
-        Expected volatility (standard deviation of returns) of the asset.
-        Must be > 0 to avoid division by zero.
-    max_size : float
-        Maximum allowed position size (as fraction of portfolio, e.g., 0.25
-        = 25 %).
-
-    Returns
-    -------
-    float
-        Computed position size, clamped to [0, max_size].
-    """
+    """Compute a risk-budget-aware position size."""
     if risk_budget < 0.0:
         risk_budget = 0.0
     if volatility <= 0.0:
@@ -601,24 +420,7 @@ def compute_position_size(
 
 
 def track_drawdown_events(equity_curve: np.ndarray) -> list[DrawdownEvent]:
-    """Track all significant drawdown events from an equity curve.
-
-    A drawdown event starts when the equity drops from a peak and ends when
-    it recovers back to that peak level. Events are identified by scanning
-    for peak-to-trough-to-recovery cycles.
-
-    Parameters
-    ----------
-    equity_curve : np.ndarray
-        1-D array of equity values, indexed chronologically.
-
-    Returns
-    -------
-    list[DrawdownEvent]
-        Chronological list of drawdown events with start, peak, trough,
-        and recovery timestamps (as period indices). ``recovery_date`` is
-        ``None`` for events still in drawdown.
-    """
+    """Track all significant drawdown events from an equity curve."""
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size < 2:
         return []
 

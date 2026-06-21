@@ -1,12 +1,4 @@
-"""
-Read-only signal narrative layer.
-
-Builds human-readable narrative strings from a canonical_run dict produced
-by the evaluation pipeline.  All data already exists in the dict — no new
-computation or pipeline changes are introduced.
-
-Assertions fulfilled: VAL-NARR-001 (Narrative output >= 200 characters)
-"""
+"""Read-only signal narrative layer."""
 
 from __future__ import annotations
 
@@ -20,13 +12,7 @@ from siglab.evaluation.backtest import _cagr_safe
 # ---------------------------------------------------------------------------
 
 def _fmt(value: float, precision: int = 4) -> str:
-    """
-    Format *value* to *precision* significant digits.
-
-    Returns ``"N/A"`` for None or non-finite values, ``"0.0"`` for zero,
-    plain-decimal notation for values whose integer part spans fewer than
-    *precision* + 4 digits, and scientific notation otherwise.
-    """
+    """Format *value* to *precision* significant digits."""
     if value is None:
         return "N/A"
     if not isinstance(value, (int, float)):
@@ -60,11 +46,7 @@ def _narrative_header(run_meta: dict) -> str:
 
 
 def _narrative_evidence_sources(evidence: dict) -> str:
-    """Describe the evidence sources that produced this evaluation.
-
-    Reads from the ``evaluation_windows`` list in canonical_run to describe
-    how the historical data was partitioned.
-    """
+    """Describe the evidence sources that produced this evaluation."""
     windows = list(evidence.get("evaluation_windows") or [])
     if not windows:
         return "Evidence sources: none recorded."
@@ -85,11 +67,7 @@ def _narrative_evidence_sources(evidence: dict) -> str:
 
 
 def _narrative_performance_summary(stats: dict) -> str:
-    """Build a performance summary from canonical run stats.
-
-    Reads from the canonical run's equity curve and drawdown curve to produce
-    total return, CAGR, max drawdown, and related metrics.
-    """
+    """Build a performance summary from canonical run stats."""
     equity_payload = stats.get("equity_curve") or {}
     equity_values = list(equity_payload.get("values") or [])
     drawdown_payload = stats.get("drawdown_curve") or {}
@@ -126,10 +104,7 @@ def _narrative_performance_summary(stats: dict) -> str:
 
 
 def _narrative_feature_decomposition(features: dict) -> str:
-    """Describe the top feature contributors during the drawdown window.
-
-    Reads from ``pre_audit_drawdown_pack.top_feature_contributors``.
-    """
+    """Describe the top feature contributors during the drawdown window."""
     drawdown_pack = features.get("pre_audit_drawdown_pack") or {}
     contributors = list(drawdown_pack.get("top_feature_contributors") or [])
     signal_story = dict(drawdown_pack.get("signal_story") or {})
@@ -168,11 +143,7 @@ def _narrative_feature_decomposition(features: dict) -> str:
 
 
 def _narrative_drawdown_analysis(drawdown: dict) -> str:
-    """Describe the worst drawdown episode.
-
-    Reads from ``pre_audit_drawdown_pack`` for drawdown details and from
-    ``pre_audit_context_pack.equity_shift_pack`` for broader context.
-    """
+    """Describe the worst drawdown episode."""
     drawdown_pack = drawdown.get("pre_audit_drawdown_pack") or {}
     context_pack = dict(drawdown.get("pre_audit_context_pack") or {})
     equity_shift = dict(context_pack.get("equity_shift_pack") or {})
@@ -208,11 +179,7 @@ def _narrative_drawdown_analysis(drawdown: dict) -> str:
 
 
 def _narrative_exemplar_trades(trades: dict) -> str:
-    """Describe best and worst trades from the exemplar set.
-
-    Reads from ``pre_audit_context_pack.exemplar_trades`` which contains
-    ``winners`` and ``losers`` lists.
-    """
+    """Describe best and worst trades from the exemplar set."""
     if not trades:
         return "=== Exemplar Trades ===\nNo exemplar trade data available."
 
@@ -263,11 +230,7 @@ def _narrative_exemplar_trades(trades: dict) -> str:
 
 
 def _narrative_regime_context(regime: dict) -> str:
-    """Describe the market regimes observed during the evaluation period.
-
-    Reads from ``pre_audit_context_pack.trade_regime_pack`` which contains
-    regime breakdowns (market trend, volatility, funding, breadth, etc.).
-    """
+    """Describe the market regimes observed during the evaluation period."""
     context_pack = dict(regime.get("pre_audit_context_pack") or {})
     regime_pack = dict(context_pack.get("trade_regime_pack") or {})
 
@@ -314,10 +277,7 @@ def _narrative_regime_context(regime: dict) -> str:
 
 
 def _narrative_gate_diagnostics(gates: dict) -> str:
-    """Describe gate diagnostics and any bottleneck tags.
-
-    Reads from ``pre_audit_context_pack.gate_diagnostics``.
-    """
+    """Describe gate diagnostics and any bottleneck tags."""
     if isinstance(gates, list):
         # Called with a list — not the expected dict, return empty
         return "=== Gate Diagnostics ===\nNo gate diagnostics available."
@@ -387,23 +347,7 @@ def _narrative_gate_diagnostics(gates: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def build_signal_narrative(canonical_run: dict) -> str:
-    """
-    Build a complete human-readable signal evaluation narrative from a
-    canonical_run dict.
-
-    Parameters
-    ----------
-    canonical_run : dict
-        The ``canonical_run`` dict from the evaluation pipeline output
-        (returned as ``evaluation["canonical_run"]``).
-
-    Returns
-    -------
-    str
-        Multi-section narrative describing the strategy's performance,
-        drawdown, feature decomposition, exemplar trades, regime context,
-        and gate diagnostics.
-    """
+    """Build a complete human-readable signal evaluation narrative."""
     sections: list[str] = []
 
     sections.append(_narrative_header(canonical_run))

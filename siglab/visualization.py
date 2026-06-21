@@ -1,7 +1,4 @@
-"""Visualization helpers for SigLab evidence graphs.
-
-Provides HTML graph rendering for evidence store summaries.
-"""
+"""Visualization helpers for SigLab evidence graphs."""
 
 from __future__ import annotations
 
@@ -14,20 +11,7 @@ def write_evidence_graph_html(
     summary_path: Path,
     output_path: Path,
 ) -> Path:
-    """Render an evidence summary JSON file as a standalone HTML graph.
-
-    Parameters
-    ----------
-    summary_path : Path
-        Path to the evidence summary JSON (list of record dicts).
-    output_path : Path
-        Destination path for the generated HTML file.
-
-    Returns
-    -------
-    Path
-        The ``output_path`` that was written to.
-    """
+    """Render an evidence summary JSON file as a standalone HTML graph."""
     try:
         with open(summary_path, "r") as f:
             records: list[dict[str, Any]] = json.load(f)

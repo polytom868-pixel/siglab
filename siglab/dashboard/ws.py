@@ -1,8 +1,4 @@
-"""WebSocket handlers for SigLab Dashboard.
-
-Provides real-time market data (klines, tickers, positions, risk)
-over a single WebSocket endpoint.
-"""
+"""WebSocket handlers for SigLab Dashboard."""
 
 from __future__ import annotations
 
@@ -28,13 +24,7 @@ router = APIRouter()
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    """WebSocket endpoint for streaming klines, ticks, and positions.
-
-    Supports:
-    - Ping/pong for keepalive
-    - Subscription to symbols for kline/position data
-    - JSON message format with 'action', 'symbol', 'type' fields
-    """
+    """WebSocket endpoint for streaming klines, ticks, and positions."""
     await websocket.accept()
     state = websocket.app.state.dashboard
     manager = state.ws_manager
@@ -196,10 +186,7 @@ async def _stream_initial_data(
     symbol: str,
     sub_type: str,
 ) -> None:
-    """Stream a snapshot of initial data for a subscribed symbol.
-
-    Uses cached SoDEX feeds when available instead of zero-filled mock data.
-    """
+    """Stream a snapshot of initial data for a subscribed symbol."""
     if sub_type == "klines":
         await _send_json(websocket, {
             "type": "klines",

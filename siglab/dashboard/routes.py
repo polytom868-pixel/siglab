@@ -1,9 +1,4 @@
-"""FastAPI REST routes for SigLab Dashboard.
-
-Merged from the legacy server.py (Track 2.3).  Provides experiments,
-runs, ops, evidence graph, skill report, risk, and market-data
-endpoints.
-"""
+"""FastAPI REST routes for SigLab Dashboard."""
 
 from __future__ import annotations
 
@@ -30,9 +25,7 @@ SIGLAB_VERSION = "0.1.0"
 _DEFAULT_PORT = int(os.environ.get("PORT", "8080"))
 
 
-# ---------------------------------------------------------------------------
 # Health
-# ---------------------------------------------------------------------------
 
 
 @router.get("/health")
@@ -47,9 +40,7 @@ async def health(request: Request) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # Config
-# ---------------------------------------------------------------------------
 
 
 def _config_to_dict(config: SiglabConfig) -> dict[str, Any]:
@@ -96,9 +87,7 @@ async def get_config(request: Request) -> dict[str, Any]:
     return _config_to_dict(state.config)
 
 
-# ---------------------------------------------------------------------------
 # Experiments (legacy server.py compat)
-# ---------------------------------------------------------------------------
 
 
 @router.get("/api/experiments")
@@ -167,9 +156,7 @@ async def api_experiment_deploy(
     return await state.deploy_experiment(spec_hash=spec_hash, payload=body)
 
 
-# ---------------------------------------------------------------------------
 # Ops Board / API Ops
-# ---------------------------------------------------------------------------
 
 
 def _load_artifact(root_dir: Path, relative_path: str) -> dict[str, Any]:
@@ -231,7 +218,6 @@ def _summarize_ops_artifacts(
             "sodex_preflight": artifacts.get("sodex_preflight", {}).get("status"),
             "wave_status": artifacts.get("wave_status", {}).get("status"),
         },
-        "note": "Artifact summaries provide a high-level buildathon status overview.",
     }
 
 
@@ -252,7 +238,6 @@ async def ops_board(request: Request) -> dict[str, Any]:
         "wave_status": _load_artifact(runs_dir, "wave_status_latest.json"),
     }
 
-    # Service health probe: check external dependencies
     service_health = {
         "dashboard": {"status": "running", "port": _DEFAULT_PORT},
         "siglab_db": {
@@ -276,8 +261,7 @@ async def ops_board(request: Request) -> dict[str, Any]:
                 "freshness": art.get("freshness"),
                 "error": art.get("error"),
             }
-            for name, art in artifacts.items()
-        },
+            for name, art in artifacts.items()},
         "summary": _summarize_ops_artifacts(artifacts),
         "service_health": service_health,
     }
@@ -290,9 +274,7 @@ async def api_ops(request: Request) -> dict[str, Any]:
     return state.ops_payload()
 
 
-# ---------------------------------------------------------------------------
 # Evidence Graph
-# ---------------------------------------------------------------------------
 
 
 def _build_evidence_graph(state: DashboardState) -> dict[str, Any] | None:
@@ -319,9 +301,9 @@ def _build_evidence_graph(state: DashboardState) -> dict[str, Any] | None:
         logger.warning("Failed to load evidence summary: %s", exc)
         return None
 
-    source_counts = dict(summary.get("source_counts") or {})
-    entity_counts = dict(summary.get("entity_counts") or {})
-    links = list(summary.get("top_links") or summary.get("links") or [])
+    source_counts = summary.get("source_counts") or {}
+    entity_counts = summary.get("entity_counts") or {}
+    links = summary.get("top_links") or summary.get("links") or []
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
@@ -375,10 +357,7 @@ def _build_evidence_graph(state: DashboardState) -> dict[str, Any] | None:
                 "warning": link.get("warning"),
                 "day_gap": link.get("day_gap"),
             })
-    return {"nodes": list(nodes.values()), "edges": edges}
-
-
-@router.get("/evidence-graph")
+    return {"nodes": list(nodes.values()), "edges": edges}@router.get("/evidence-graph")
 async def evidence_graph(request: Request) -> dict[str, Any]:
     """Return evidence graph nodes and edges with metadata."""
     logger.debug("Evidence graph requested")
@@ -389,13 +368,11 @@ async def evidence_graph(request: Request) -> dict[str, Any]:
     return graph
 
 
-# ---------------------------------------------------------------------------
 # Skill Report
-# ---------------------------------------------------------------------------
 
 
 def _build_skill_report(state: DashboardState) -> list[dict[str, Any]]:
-    """Aggregate per-skill metrics from experiment tool traces."""
+    """Aggregate per-skill metrics from tool traces."""
     if state.lineage is None:
         return []
     try:
@@ -415,7 +392,6 @@ def _build_skill_report(state: DashboardState) -> list[dict[str, Any]]:
                 research_summary = {}
         if not isinstance(research_summary, dict):
             continue
-
         tool_trace = research_summary.get("llm_tool_trace") or {}
         trace = tool_trace.get("trace") or {}
         tool_calls = list(trace.get("tool_calls") or [])
@@ -429,7 +405,7 @@ def _build_skill_report(state: DashboardState) -> list[dict[str, Any]]:
                 except (OSError, json.JSONDecodeError, TypeError, ValueError):
                     continue
                 stage_trace = stage_payload.get("claude_trace") or {}
-                for call in list(stage_trace.get("tool_calls") or []):
+                for call in stage_trace.get("tool_calls") or []:
                     tool_calls.append(call)
 
         for call in tool_calls:
@@ -489,7 +465,6 @@ def _build_skill_report(state: DashboardState) -> list[dict[str, Any]]:
 
 
 def _classify_skill(name: str, usage_count: int) -> str:
-    """Classify a skill based on its name and usage patterns."""
     high_value_patterns = {
         "probe_", "compare_intended_vs_frozen_spec",
         "search_features", "suggest_feature_set", "inspect_feature",
@@ -510,7 +485,7 @@ def _classify_skill(name: str, usage_count: int) -> str:
 
 @router.get("/skill-report")
 async def skill_report(request: Request) -> dict[str, Any]:
-    """Return per-skill metrics with classification."""
+    """Return per-skill metrics."""
     logger.debug("Skill report requested")
     state = request.app.state.dashboard
     report = _build_skill_report(state)
@@ -522,9 +497,7 @@ async def skill_report(request: Request) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # Risk
-# ---------------------------------------------------------------------------
 
 
 def _compute_risk_metrics(state: DashboardState) -> dict[str, Any]:
@@ -551,11 +524,7 @@ def _compute_risk_metrics(state: DashboardState) -> dict[str, Any]:
 
 @router.get("/risk")
 async def risk(request: Request) -> dict[str, Any]:
-    """Return portfolio risk metrics: composite score, drawdown, correlation.
-
-    Returns data computed from available paper trading sessions.
-    Returns None-valued fields when no data is available.
-    """
+    """Return portfolio risk metrics: composite score, drawdown, correlation."""
     logger.debug("Risk metrics requested")
     state = request.app.state.dashboard
     metrics = _compute_risk_metrics(state)
@@ -565,14 +534,12 @@ async def risk(request: Request) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # Market Data (SoDEX perps)
-# ---------------------------------------------------------------------------
 
 
 @router.get("/market/symbols")
 async def market_symbols(request: Request) -> dict[str, Any]:
-    """Return all tradable SoDEX perp symbols with metadata."""
+    """Return all tradable SoDEX perp symbols."""
     logger.debug("Market symbols requested")
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
@@ -588,7 +555,7 @@ async def market_symbols(request: Request) -> dict[str, Any]:
 
 @router.get("/market/tickers")
 async def market_tickers(request: Request) -> dict[str, Any]:
-    """Return 24-hour ticker data for all SoDEX perp symbols."""
+    """Return 24-hour ticker data for SoDEX perps."""
     logger.debug("Market tickers requested")
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
@@ -652,9 +619,7 @@ async def market_orderbook(
         return {"bids": [], "asks": [], "symbol": symbol, "error": "Internal error"}
 
 
-# ---------------------------------------------------------------------------
 # HTMX Partial Endpoints (additive — old JSON API remains intact)
-# ---------------------------------------------------------------------------
 
 
 @router.get("/partials/dashboard/summary")

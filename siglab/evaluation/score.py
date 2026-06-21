@@ -1,11 +1,4 @@
-"""
-Scoring utilities for research evaluation.
-
-Provides serialization helpers and summary aggregation with bounded
-score components to prevent numerical explosion.
-
-Assertions fulfilled: VAL-EVAL-012 (Score component caps prevent numerical explosion)
-"""
+"""Scoring utilities for research evaluation."""
 
 from __future__ import annotations
 
@@ -30,12 +23,7 @@ def serialize_stats(stats: dict[str, Any]) -> dict[str, Any]:
 
 
 def _safe_nanmedian(values: np.ndarray, default: float = 0.0) -> float:
-    """Compute nanmedian with a safe fallback.
-
-    Strips both NaN and Inf values before computing the median to avoid
-    RuntimeWarnings from numpy's internal reduce operations on non-finite
-    input.
-    """
+    """Compute nanmedian with a safe fallback."""
     finite = values[np.isfinite(values)]
     if finite.size == 0:
         return default
@@ -54,12 +42,7 @@ def _safe_nanmin(values: np.ndarray, default: float = 0.0) -> float:
 
 
 def _bounded(value: float, *, lower: float, upper: float) -> float:
-    """
-    Clamp *value* to [*lower*, *upper*].
-
-    Non-finite values (NaN, inf) are replaced with 0.0 before clamping.
-    This prevents numerical explosion in composite scores.
-    """
+    """Clamp *value* to [*lower*, *upper*]."""
     if not np.isfinite(value):
         return 0.0
     return min(max(float(value), lower), upper)
@@ -70,12 +53,7 @@ def summarize_window_results(
     window_results: list[dict[str, Any]],
     asset_breadth: int,
 ) -> dict[str, Any]:
-    """
-    Aggregate per-window backtest results into a single summary dict.
-
-    Score components are individually bounded via ``_bounded`` to prevent
-    any single extreme value from dominating the aggregate score.
-    """
+    """Aggregate per-window backtest results into a single summary dict."""
     sharpe = np.array([row["stats"]["sharpe"] for row in window_results], dtype=float)
     total_return = np.array(
         [row["stats"]["total_return"] for row in window_results], dtype=float

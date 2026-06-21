@@ -1,6 +1,4 @@
-"""Shared dashboard state — ported from legacy server.py DashboardApp.
-Replaces the legacy LineageStore dependency with inline SQLite queries.
-"""
+"""Shared dashboard state — ported from legacy server.py DashboardApp."""
 
 from __future__ import annotations
 
@@ -45,12 +43,7 @@ def _dashboard_rows(db_path: str | Path, track: str | None = None, family: str |
     try:
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
-        query = """
-            SELECT created_at, track, family, spec_hash, parent_hash,
-                   aggregate_score, passed, deployd, spec_json,
-                   research_summary, summary_json, artifact_path
-            FROM experiments
-        """
+        query = "SELECT created_at, track, family, spec_hash, parent_hash, aggregate_score, passed, deployd, spec_json, research_summary, summary_json, artifact_path FROM experiments"
         params: list[Any] = []
         conditions: list[str] = []
         if track:
@@ -677,7 +670,7 @@ class DashboardState:
             return canonical_run
 
         equity_curve = {**canonical_run.get("equity_curve", {})}
-        timestamps = list(equity_curve.get("index") or [])
+        timestamps = equity_curve.get("index") or []
         size = len(timestamps)
         if size < 2:
             canonical_run["visual_split"] = {
