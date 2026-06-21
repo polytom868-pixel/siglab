@@ -262,6 +262,19 @@ def compute_composite_score(
 # ---------------------------------------------------------------------------
 
 
+def _drawdown_series(equity_curve: np.ndarray) -> np.ndarray:
+    """Compute the full drawdown series for an equity curve.
+
+    Uses the running-max formula: (equity - peak) / peak at each point.
+    Returns a zero array for empty/non-ndarray inputs.
+    """
+    if not isinstance(equity_curve, np.ndarray) or equity_curve.size == 0:
+        return np.array([], dtype=float)
+    peak = np.maximum.accumulate(equity_curve)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(peak > 0, (equity_curve - peak) / peak, 0.0)
+
+
 def max_drawdown(equity_curve: np.ndarray) -> float:
     """Compute the maximum drawdown of an equity curve.
 
@@ -278,13 +291,9 @@ def max_drawdown(equity_curve: np.ndarray) -> float:
     float
         Maximum drawdown as a fraction (negative or 0.0).
     """
-    if not isinstance(equity_curve, np.ndarray) or equity_curve.size == 0:
+    drawdown = _drawdown_series(equity_curve)
+    if drawdown.size == 0:
         return 0.0
-
-    peak = np.maximum.accumulate(equity_curve)
-    # Avoid division by zero: where peak == 0, drawdown is 0
-    with np.errstate(divide="ignore", invalid="ignore"):
-        drawdown = np.where(peak > 0, (equity_curve - peak) / peak, 0.0)
     return float(np.min(drawdown))
 
 

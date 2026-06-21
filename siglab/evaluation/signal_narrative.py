@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from siglab.evaluation.backtest import _cagr_safe
+
 
 # ---------------------------------------------------------------------------
 # Float formatting helper
@@ -99,10 +101,7 @@ def _narrative_performance_summary(stats: dict) -> str:
         total_ret = (end / begin - 1.0) if begin > 0 else None
         periods = len(equity_values)
         if total_ret is not None and total_ret > -1.0 and begin > 0:
-            import math
-            ratio = max(min(end / begin, 1e10), 1e-10)
-            cagr = math.pow(ratio, 1.0 / max(periods, 1)) - 1.0
-            cagr = max(min(cagr, 100.0), -100.0)
+            cagr = _cagr_safe(begin, end, periods)
         else:
             cagr = None
     else:

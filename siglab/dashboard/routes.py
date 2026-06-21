@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from siglab.config import SiglabConfig
 from siglab.dashboard.dashboard_state import DashboardState
+from siglab.utils import _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,6 @@ router = APIRouter()
 SIGLAB_VERSION = "0.1.0"
 
 _DEFAULT_PORT = int(os.environ.get("PORT", "8080"))
-
-
-def _now_iso() -> str:
-    """Return the current UTC time as an ISO-8601 string."""
-    return datetime.now(UTC).isoformat()
 
 
 # ---------------------------------------------------------------------------

@@ -43,6 +43,5 @@ def family_policy_schema(spec: dict[str, Any] | None) -> str | None:
     return _family_capability(spec, "policy_schema")
 
 
-def family_prompt_module(spec: dict[str, Any] | None) -> str | None:
-    return _family_capability(spec, "prompt_module")
+
 

@@ -10,19 +10,10 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any
 
 from rich.console import Console
 from rich.json import JSON
-from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
+
 from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
@@ -128,62 +119,11 @@ def make_table(
     )
 
 
-def print_key_value_pairs(
-    title: str | None,
-    pairs: list[tuple[str, str, str]],
-) -> None:
-    """Render key-value pairs as a table.
-
-    Each pair is (label, value, style) where style is a Rich style name
-    applied to the value cell (e.g. "success", "error", "warning").
-    """
-    table = make_table(title=title)
-    table.add_column("Field", style="label", no_wrap=True)
-    table.add_column("Value")
-    for label, value, style in pairs:
-        table.add_row(label, Text(value, style=style))
-    console = get_console()
-    console.print(table)
-
-
-# ── Panel factory ────────────────────────────────────────────────────────
-
-
-def print_panel(
-    content: str | Text,
-    title: str | None = None,
-    *,
-    border_style: str = "info",
-    expand: bool = False,
-) -> None:
-    """Print content in a Rich Panel."""
-    console = get_console()
-    console.print(Panel(content, title=title, border_style=border_style, expand=expand))
-
 
 def print_status_line(message: str, *, style: str = "info") -> None:
     """Print a single styled status line (replaces bare print of status text)."""
     console = get_console()
     console.print(Text(message, style=style))
-
-
-# ── Progress bar factory ─────────────────────────────────────────────────
-
-
-def make_progress(**kwargs: Any) -> Progress:
-    """Create a consistently styled progress bar for long operations.
-
-    Default columns: spinner, description, bar, M/N, elapsed time.
-    """
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=get_console(),
-        **kwargs,
-    )
 
 
 # ── Semantic print helpers ───────────────────────────────────────────────
@@ -216,18 +156,6 @@ def print_warning(message: str) -> None:
 def print_info(message: str) -> None:
     """Print an informational message with blue info sign."""
     _print_styled(message, "info")
-
-
-def print_header(title: str) -> None:
-    """Print a section header with a horizontal rule."""
-    console = get_console()
-    console.rule(f"[bold]{title}")
-
-
-def print_muted(message: str) -> None:
-    """Print a dimmed/muted message."""
-    console = get_console()
-    console.print(f"[muted]{message}[/]")
 
 
 # ── Status style mapper ──────────────────────────────────────────────────

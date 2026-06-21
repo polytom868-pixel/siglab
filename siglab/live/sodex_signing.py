@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-from eth_utils import keccak  # type: ignore[attr-defined]
+from eth_utils import keccak
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 __all__ = ["keccak"]

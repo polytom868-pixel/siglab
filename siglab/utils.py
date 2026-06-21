@@ -2,14 +2,7 @@ from __future__ import annotations
 
 import math
 import hashlib
-from typing import Any, Awaitable, Callable, Protocol, Sequence, cast
-
-
-
-class _HttpResponse(Protocol):
-    """Minimal HTTP response protocol for decode helpers."""
-    status: int
-    def text(self) -> str: ...
+from typing import Any, Awaitable, Callable, Sequence, cast
 
 
 def percentile(values: list[float], percentile: int) -> float | None:
@@ -125,50 +118,12 @@ async def async_limiter_call(callable: Callable[[], Awaitable[Any]], *, rate_lim
     async with sem:
         return await callable()
 
-def decode_status_error(response: _HttpResponse) -> str | None:
-    try:
-        status = int(getattr(response, "status", 0) or 0)
-    except (TypeError, ValueError):
-        status = 0
-    if 200 <= status < 300:
-        return None
-    try:
-        body = response.text()
-    except (AttributeError, TypeError, ValueError):
-        return f"HTTP {status}"
-    if not body:
-        return f"HTTP {status}"
-    try:
-        import json as _json
-        parsed = _json.loads(body)
-    except (ValueError, TypeError):
-        return f"HTTP {status}: {body[:200]}"
-    if isinstance(parsed, dict):
-        for key in ("error", "message", "msg", "detail"):
-            value = parsed.get(key)
-            if value:
-                return f"HTTP {status}: {value}"
-    return f"HTTP {status}: {body[:200]}"
-
-
-def decode_json_envelope(response: _HttpResponse) -> Any:
-    try:
-        body = response.text()
-    except Exception as exc:
-        raise RuntimeError(f"failed to read response body: {exc}") from exc
-    try:
-        import json as _json
-        return _json.loads(body)
-    except Exception as exc:
-        raise RuntimeError(f"failed to decode JSON envelope: {exc}; body={body[:200]}") from exc
-
-
 # ── Deduplicated helpers (moved from llm/ and dashboard/ modules) ──────────
 
 def _now_iso() -> str:
-    """Current UTC timestamp as ISO-8601 string (second precision)."""
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """Current UTC timestamp as ISO-8601 string (microsecond precision)."""
+    from datetime import UTC, datetime
+    return datetime.now(UTC).isoformat()
 
 
 def _compact_scalar(value: object) -> object:

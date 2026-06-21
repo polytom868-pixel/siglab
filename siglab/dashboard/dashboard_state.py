@@ -1,12 +1,5 @@
 """Shared dashboard state — ported from legacy server.py DashboardApp.
-
-Holds the runtime state and all data-payload methods formerly in
-``DashboardApp`` so that both FastAPI routes and WebSocket handlers
-can access experiments, runs, ops, and deployment data through a
-single shared object.
-
-Replaces the legacy ``LineageStore`` dependency with inline SQLite
-queries against the same schema (created by ``DeploymentStore``).
+Replaces the legacy LineageStore dependency with inline SQLite queries.
 """
 
 from __future__ import annotations
@@ -33,10 +26,10 @@ from siglab.llm_metadata import (
 )
 from siglab.path_utils import display_path, resolve_path_from_root
 from siglab.track_registry import canonical_track_name, resolve_track, track_label
+from siglab.utils import _now_iso
 
 
 class _LineageStore(Protocol):
-    """Backward-compat shim for removed LineageStore."""
     def dashboard_rows(self) -> list[dict[str, Any]]: ...
 
 
@@ -45,7 +38,6 @@ def _is_finite_number(value: object) -> bool:
 
 
 def _dashboard_rows(db_path: str | Path, track: str | None = None, family: str | None = None) -> list[dict[str, Any]]:
-    """Query the experiments table for dashboard display (replaces LineageStore.dashboard_rows)."""
     path = Path(db_path)
     if not path.exists():
         return []
@@ -95,7 +87,6 @@ def _dashboard_rows(db_path: str | Path, track: str | None = None, family: str |
 
 
 def _run_summaries(db_path: str | Path, track: str | None = None, family: str | None = None) -> list[dict[str, Any]]:
-    """Aggregate experiment rows into run summaries (replaces LineageStore.run_summaries)."""
     rows = _dashboard_rows(db_path, track=track, family=family)
     runs_map: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -170,11 +161,7 @@ def _run_summaries(db_path: str | Path, track: str | None = None, family: str | 
 
 @dataclass
 class DashboardState:
-    """Central state container for the FastAPI dashboard.
-
-    Holds the config, deployment store, and provides all data-payload
-    methods used by REST endpoints and WebSocket handlers.
-    """
+    """Central state container for the FastAPI dashboard."""
 
     config: SiglabConfig | None = None
     deployment_store: DeploymentStore | None = None
@@ -185,24 +172,16 @@ class DashboardState:
     start_time: float = 0.0
     _json_cache: dict[str, Any] = field(default_factory=dict)
 
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
+    # --- Internals ---
 
     def _dashboard_llm_provider(self) -> str:
-        if self.config is None:
-            return "unknown"
-        return resolve_llm_provider(self.config)
+        return "unknown" if self.config is None else resolve_llm_provider(self.config)
 
     def _dashboard_llm_model(self) -> str:
-        if self.config is None:
-            return "unknown"
-        return default_llm_model_display(self.config, provider=self._dashboard_llm_provider())
+        return "unknown" if self.config is None else default_llm_model_display(self.config, provider=self._dashboard_llm_provider())
 
     def _display_path(self, value: str | Path | None) -> str | None:
-        if self.config is None:
-            return str(value) if value else None
-        return display_path(value, root_dir=self.config.root_dir)
+        return display_path(value, root_dir=self.config.root_dir) if self.config is not None else (str(value) if value else None)
 
     def _display_deployment(self, deployment: dict[str, Any] | None) -> dict[str, Any] | None:
         if not deployment:
@@ -233,13 +212,9 @@ class DashboardState:
         return payload
 
     def _db_path(self) -> Path | None:
-        if self.config is None:
-            return None
-        return self.config.ancestry_db_path
+        return None if self.config is None else self.config.ancestry_db_path
 
-    # ------------------------------------------------------------------
-    # Trace helpers
-    # ------------------------------------------------------------------
+    # --- Trace helpers ---
 
     def _normalize_trace_stage(
         self,
@@ -250,12 +225,12 @@ class DashboardState:
     ) -> dict[str, Any] | None:
         if not isinstance(payload, dict):
             return None
-        trace = dict(payload.get("claude_trace") or {})
+        trace = {**payload.get("claude_trace", {})}
         if not trace:
             for key in ("attempts", "planner_attempts", "repair_attempts"):
                 attempts = list(payload.get(key) or [])
                 for attempt in reversed(attempts):
-                    attempt_trace = dict((attempt or {}).get("claude_trace") or {})
+                    attempt_trace = {**(attempt or {}).get("claude_trace", {})}
                     if attempt_trace:
                         trace = attempt_trace
                         break
@@ -265,7 +240,7 @@ class DashboardState:
             return None
         tool_calls = []
         for call in list(trace.get("tool_calls") or []):
-            normalized_call = dict(call or {})
+            normalized_call = {**(call or {})}
             normalized_call.setdefault("stage", stage_name)
             tool_calls.append(normalized_call)
         model = trace.get("model")
@@ -285,7 +260,7 @@ class DashboardState:
 
     def _resolve_tool_trace_stages(self, research_summary: dict[str, Any]) -> list[dict[str, Any]]:
         stages: list[dict[str, Any]] = []
-        workspace = dict(research_summary.get("workspace") or {})
+        workspace = {**research_summary.get("workspace", {})}
         for stage_name, path_key in (
             ("planner", "planner_trace_path"),
             ("writer", "writer_trace_path"),
@@ -304,12 +279,12 @@ class DashboardState:
         if stages:
             return stages
 
-        tool_trace = dict(research_summary.get("llm_tool_trace") or {})
-        trace_core = dict(tool_trace.get("trace") or {})
+        tool_trace = {**research_summary.get("llm_tool_trace", {})}
+        trace_core = {**tool_trace.get("trace", {})}
         if tool_trace or trace_core:
             legacy_calls = []
             for call in list(trace_core.get("tool_calls") or []):
-                normalized_call = dict(call or {})
+                normalized_call = {**(call or {})}
                 normalized_call.setdefault("stage", "proposal")
                 legacy_calls.append(normalized_call)
             return [
@@ -389,15 +364,13 @@ class DashboardState:
                 row["classification"] = "LOW_VALUE"
             if row["invocation_count"] > 8 and row["classification"] in {"LOW_VALUE", "MEDIUM_VALUE"}:
                 row["classification"] = "NOISY"
-            normalized = dict(row)
+            normalized = {**row}
             normalized["stages"] = sorted(row["stages"])
             normalized["latency_cost_ms"] = round(float(normalized["latency_cost_ms"]), 3)
             report.append(normalized)
         return report
 
-    # ------------------------------------------------------------------
-    # Workspace / Run placeholders
-    # ------------------------------------------------------------------
+    # --- Workspace / Run placeholders ---
 
     def _workspace_run_placeholders(
         self,
@@ -478,22 +451,15 @@ class DashboardState:
         )
         return placeholders
 
-    # ------------------------------------------------------------------
-    # Experiment annotation
-    # ------------------------------------------------------------------
+    # --- Experiment annotation ---
 
     def _experiment_detail(self, spec_hash: str) -> dict[str, Any] | None:
-        """Look up an experiment by spec hash from the deployment store."""
         if self.deployment_store is not None:
             return self.deployment_store.experiment_detail(spec_hash)
         db_path = self._db_path()
         if db_path is None:
             return None
-        rows = _dashboard_rows(str(db_path))
-        for row in rows:
-            if row.get("spec_hash") == spec_hash:
-                return row
-        return None
+        return next((row for row in _dashboard_rows(str(db_path)) if row.get("spec_hash") == spec_hash), None)
 
     def _annotated_experiments(
         self,
@@ -509,7 +475,7 @@ class DashboardState:
         )
 
     def _now_iso(self) -> str:
-        return datetime.now(UTC).isoformat()
+        return _now_iso()
 
     def _annotate_experiment(
         self,
@@ -517,11 +483,11 @@ class DashboardState:
         *,
         include_artifact: bool = False,
     ) -> dict[str, Any]:
-        spec = dict(experiment.get("spec") or {})
-        summary = dict(experiment.get("summary") or {})
-        research_summary = dict(experiment.get("research_summary") or {})
+        spec = {**experiment.get("spec", {})}
+        summary = {**experiment.get("summary", {})}
+        research_summary = {**experiment.get("research_summary", {})}
         raw_artifact_path = experiment.get("artifact_path")
-        artifact = dict(experiment.get("artifact") or {}) if include_artifact else {}
+        artifact = {**experiment.get("artifact", {})} if include_artifact else {}
         if not artifact and raw_artifact_path and self.config is not None:
             artifact_path = resolve_path_from_root(raw_artifact_path, root_dir=self.config.root_dir)
             if artifact_path.exists():
@@ -566,14 +532,14 @@ class DashboardState:
             summary["audit_max_drawdown"] = None
             summary["audit_liquidated"] = None
 
-        bias_controls = dict(compiled_metadata.get("bias_controls") or {})
-        params = dict(spec.get("params") or {})
-        tool_trace = dict(research_summary.get("llm_tool_trace") or {})
+        bias_controls = {**compiled_metadata.get("bias_controls", {})}
+        params = {**spec.get("params", {})}
+        tool_trace = {**research_summary.get("llm_tool_trace", {})}
         tool_trace_stages = self._resolve_tool_trace_stages(research_summary)
         aggregated_tool_calls: list[dict[str, Any]] = []
         for stage in tool_trace_stages:
             for call in list(stage.get("tool_calls") or []):
-                normalized_call = dict(call or {})
+                normalized_call = {**(call or {})}
                 normalized_call.setdefault("stage", stage.get("stage"))
                 aggregated_tool_calls.append(normalized_call)
         primary_tool_trace = next(
@@ -586,7 +552,7 @@ class DashboardState:
         experiment["spec"] = spec
         experiment["summary"] = summary
         experiment["research_summary"] = research_summary
-        run_context = dict(research_summary.get("run_context") or {})
+        run_context = {**research_summary.get("run_context", {})}
         experiment["run_session_id"] = str(
             run_context.get("run_session_id") or f"legacy::{experiment.get('spec_hash')}"
         )
@@ -604,14 +570,12 @@ class DashboardState:
             else None
         )
         experiment["run_phase_label"] = str(run_context.get("phase_label") or "")
-        if experiment["run_iteration_number"] is not None and experiment["run_phase_label"]:
-            experiment["run_iteration_label"] = (
-                f"{experiment['run_phase_label']} {experiment['run_iteration_number']}"
-            )
-        elif experiment["run_iteration_number"] is not None:
-            experiment["run_iteration_label"] = f"iter {experiment['run_iteration_number']}"
-        else:
-            experiment["run_iteration_label"] = ""
+        rin = experiment["run_iteration_number"]
+        experiment["run_iteration_label"] = (
+            f"{experiment['run_phase_label']} {rin}" if rin is not None and experiment["run_phase_label"]
+            else f"iter {rin}" if rin is not None
+            else ""
+        )
         experiment["series_available"] = bool(artifact.get("canonical_run"))
         experiment["tool_trace_stages"] = tool_trace_stages
         experiment["tool_trace"] = {
@@ -636,7 +600,7 @@ class DashboardState:
         }
         experiment["tool_call_count"] = len(aggregated_tool_calls)
         experiment["skill_value_report"] = self._skill_value_report(aggregated_tool_calls)
-        lifecycle_policy = dict(compiled_metadata.get("lifecycle_policy") or {})
+        lifecycle_policy = {**compiled_metadata.get("lifecycle_policy", {})}
         experiment["roll_lifecycle"] = {
             "policy": lifecycle_policy,
             "roll_event_count": int(compiled_metadata.get("roll_event_count") or 0),
@@ -680,7 +644,7 @@ class DashboardState:
         experiment["artifact_path"] = self._display_path(raw_artifact_path)
         experiment["live_deployment"] = self._display_deployment(experiment.get("deployment"))
         if include_artifact and artifact:
-            artifact = dict(artifact)
+            artifact = {**artifact}
             artifact.pop("canonical_run", None)
         experiment["artifact"] = artifact if include_artifact else experiment.get("artifact")
         return experiment
@@ -712,7 +676,7 @@ class DashboardState:
         if canonical_run.get("visual_split"):
             return canonical_run
 
-        equity_curve = dict(canonical_run.get("equity_curve") or {})
+        equity_curve = {**canonical_run.get("equity_curve", {})}
         timestamps = list(equity_curve.get("index") or [])
         size = len(timestamps)
         if size < 2:
@@ -752,9 +716,7 @@ class DashboardState:
         canonical_run.setdefault("evaluation_windows", [])
         return canonical_run
 
-    # ------------------------------------------------------------------
-    # Payload builders
-    # ------------------------------------------------------------------
+    # --- Payload builders ---
 
     def experiments_payload(
         self,
@@ -846,7 +808,7 @@ class DashboardState:
             )
         annotated_runs = []
         for row in runs:
-            annotated = dict(row)
+            annotated = {**row}
             annotated["track"] = resolve_track(annotated.get("track"))
             annotated["track_label"] = track_label(annotated.get("track"))
             run_session_id = str(annotated.get("run_session_id") or "")
@@ -894,9 +856,7 @@ class DashboardState:
             "runs": annotated_runs,
         }
 
-    # ------------------------------------------------------------------
-    # Ops board
-    # ------------------------------------------------------------------
+    # --- Ops board ---
 
     def _load_ops_artifact(self, relative_path: str) -> dict[str, Any]:
         if self.config is None:
@@ -934,16 +894,16 @@ class DashboardState:
         self,
         artifacts: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
-        demo = dict(artifacts["demo_manifest"].get("payload") or {})
-        telemetry = dict(artifacts["telemetry"].get("payload") or {})
-        market = dict(artifacts["market_report"].get("payload") or {})
-        preflight = dict(artifacts["sodex_preflight"].get("payload") or {})
-        wave = dict(artifacts["wave_status"].get("payload") or {})
-        readiness = dict(demo.get("readiness") or {})
-        decision_support = dict(market.get("decision_support") or {})
-        signal_summary = dict(market.get("signal_summary") or {})
-        signed_path = dict(preflight.get("signed_path") or {})
-        provider_metrics = dict(telemetry.get("provider_metrics") or {})
+        demo = {**artifacts["demo_manifest"].get("payload", {})}
+        telemetry = {**artifacts["telemetry"].get("payload", {})}
+        market = {**artifacts["market_report"].get("payload", {})}
+        preflight = {**artifacts["sodex_preflight"].get("payload", {})}
+        wave = {**artifacts["wave_status"].get("payload", {})}
+        readiness = {**demo.get("readiness", {})}
+        decision_support = {**market.get("decision_support", {})}
+        signal_summary = {**market.get("signal_summary", {})}
+        signed_path = {**preflight.get("signed_path", {})}
+        provider_metrics = {**telemetry.get("provider_metrics", {})}
         return {
             "buildathon": {
                 "sosovalue_flow": readiness.get("sosovalue_input_to_output"),
@@ -1026,9 +986,7 @@ class DashboardState:
             "summary": self._summarize_ops_artifacts(artifacts),
         }
 
-    # ------------------------------------------------------------------
-    # Experiment detail / series
-    # ------------------------------------------------------------------
+    # --- Experiment detail / series ---
 
     def experiment_detail_payload(self, spec_hash: str) -> dict[str, Any] | None:
         detail = self._experiment_detail(spec_hash)
@@ -1066,9 +1024,9 @@ class DashboardState:
         detail = self._experiment_detail(spec_hash)
         if detail is None:
             return None
-        artifact = dict(detail.get("artifact") or {})
-        annotated = self._annotate_experiment(dict(detail), include_artifact=True)
-        canonical_run = self._augment_canonical_run(dict(artifact.get("canonical_run") or {}))
+        artifact = {**detail.get("artifact", {})}
+        annotated = self._annotate_experiment({**detail}, include_artifact=True)
+        canonical_run = self._augment_canonical_run({**artifact.get("canonical_run", {})})
         return {
             "generated_at": self._now_iso(),
             "experiment": {
@@ -1101,9 +1059,7 @@ class DashboardState:
             or {},
         }
 
-    # ------------------------------------------------------------------
-    # Deployment
-    # ------------------------------------------------------------------
+    # --- Deployment ---
 
     async def deploy_experiment(
         self,
@@ -1113,7 +1069,6 @@ class DashboardState:
     ) -> dict[str, Any]:
         if self.config is None:
             return {"generated_at": self._now_iso(), "deployment": None, "error": "config not loaded"}
-        # Reconstruct a temporary store if not yet set
         store = self.deployment_store
         if store is None:
             store = DeploymentStore(self.config.ancestry_db_path)

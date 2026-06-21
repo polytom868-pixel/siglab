@@ -19,7 +19,7 @@ from siglab.llm_metadata import (
 )
 from siglab.llm.policy import LLMRoutingPolicy
 from siglab.config import SiglabConfig
-from siglab.utils import _compact_scalar, _estimate_message_tokens, int_or_zero, percentile as _percentile
+from siglab.utils import _compact_scalar, _estimate_message_tokens, int_or_zero, percentile as _percentile, safe_float
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -60,6 +60,110 @@ BAI_CREDITS_PER_TOKEN: dict[str, tuple[float, float, float, float]] = {
     "gemini-3.1-pro": (2.00, 12.00, 2.00, 0.20),
     "gemini-3-flash": (0.50, 3.00, 0.50, 0.05),
 }
+
+
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_DEFAULT_LIST_CACHE_TTL_S = 600.0
+
+
+@dataclass(frozen=True)
+class OpenRouterModelInfo:
+    model_id: str
+    name: str
+    prompt_usd_per_token: float
+    completion_usd_per_token: float
+
+
+def _openrouter_client(timeout_s: float) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(timeout=timeout_s, connect=min(10.0, timeout_s), read=timeout_s, write=30.0, pool=10.0),
+        limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
+    )
+
+
+async def _openrouter_list_models(
+    *,
+    cache_ttl: float = OPENROUTER_DEFAULT_LIST_CACHE_TTL_S,
+    api_key: str | None = None,
+    timeout_s: float = 30.0,
+) -> dict[str, OpenRouterModelInfo]:
+    now = time.monotonic()
+    cache = cast(dict[str, OpenRouterModelInfo], _openrouter_list_models.__dict__.setdefault("_cache", {}))
+    cached_at_raw = _openrouter_list_models.__dict__.get("_cached_at")
+    cached_at: float | None = cached_at_raw if isinstance(cached_at_raw, (int, float)) else None
+    if isinstance(cached_at, float) and cache and (now - cached_at) < cache_ttl:
+        return cache
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    async with _openrouter_client(timeout_s) as client:
+        response = await client.get(OPENROUTER_MODELS_URL, headers=headers)
+        response.raise_for_status()
+        payload = response.json()
+    raw_models = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_models, list):
+        raw_models = []
+    out: dict[str, OpenRouterModelInfo] = {}
+    for entry in raw_models:
+        if not isinstance(entry, dict):
+            continue
+        model_id = str(entry.get("id") or "").strip()
+        if not model_id:
+            continue
+        pricing = entry.get("pricing") or {}
+        if not isinstance(pricing, dict):
+            pricing = {}
+        prompt_usd = _parse_usd_string(pricing.get("prompt"))
+        completion_usd = _parse_usd_string(pricing.get("completion"))
+        out[model_id] = OpenRouterModelInfo(
+            model_id=model_id,
+            name=str(entry.get("name") or model_id),
+            prompt_usd_per_token=prompt_usd,
+            completion_usd_per_token=completion_usd,
+        )
+    _openrouter_list_models.__dict__["_cache"] = out
+    _openrouter_list_models.__dict__["_cached_at"] = now
+    return out
+
+
+def _openrouter_estimate_cost(
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    *,
+    catalog: dict[str, OpenRouterModelInfo] | None = None,
+) -> float:
+    if catalog is None:
+        catalog = cast(dict[str, OpenRouterModelInfo], _openrouter_list_models.__dict__.get("_cache", {}))
+    info = (catalog.get(model) or catalog.get(model.strip().lower())) if isinstance(catalog, dict) else None
+    if info is None:
+        return 0.0
+    return (max(0, int(prompt_tokens)) * info.prompt_usd_per_token) + (
+        max(0, int(completion_tokens)) * info.completion_usd_per_token
+    )
+
+
+def _openrouter_refuse_if_over_budget(
+    estimated_cost_usd: float,
+    *,
+    max_call_usd: float | None,
+) -> None:
+    if max_call_usd is None:
+        return
+    if float(estimated_cost_usd) > float(max_call_usd):
+        raise LLMQuotaError(
+            f"OpenRouter estimated call cost ${estimated_cost_usd:.6f} exceeds "
+            f"OPENROUTER_MAX_CALL_USD=${float(max_call_usd):.6f}",
+            provider="openrouter",
+        )
+
+
+def _parse_usd_string(value: float | int | str | None) -> float:
+    if value is None:
+        return 0.0
+    coerced = safe_float(value, default=0.0)
+    return max(0.0, coerced) if coerced is not None else 0.0
 
 
 @dataclass
@@ -137,6 +241,36 @@ class ClaudeClient:
         self._context_pressure_events: list[dict[str, Any]] = []
         self._credit_pressure_events: list[dict[str, Any]] = []
         self.routing_policy = LLMRoutingPolicy(settings)
+        self._usage_cost_usd = 0.0
+        self._auth_key_cache: dict[str, Any] | None = None
+        self._auth_key_cached_at: float = 0.0
+
+    def _openrouter_auth_key(self) -> dict[str, Any] | None:
+        if (
+            self._auth_key_cache
+            and (time.time() - self._auth_key_cached_at) < 60.0
+        ):
+            return self._auth_key_cache
+        api_key = self._provider_api_key()
+        if not api_key:
+            return None
+        try:
+            req = httpx.Request(
+                "GET",
+                "https://openrouter.ai/api/v1/auth/key",
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            )
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.send(req)
+                resp.raise_for_status()
+                payload = resp.json()
+        except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        self._auth_key_cache = payload
+        self._auth_key_cached_at = time.time()
+        return payload
 
     @property
     def is_configured(self) -> bool:
@@ -555,6 +689,50 @@ class ClaudeClient:
                 credit_event["severity"] = "ok"
                 self._credit_pressure_events.append(credit_event)
 
+        if provider_name == "openrouter":
+            estimated_input_tokens = _estimate_message_tokens(messages)
+            context_limit = int(getattr(self.settings, "openrouter_context_tokens", 0) or 0)
+            if context_limit > 0:
+                projected_total = estimated_input_tokens + requested_output_tokens
+                pressure_ratio = projected_total / float(context_limit)
+                if pressure_ratio >= 0.85:
+                    event = {
+                        "stage": str(stage or "default"),
+                        "model": selected_model,
+                        "estimated_input_tokens": estimated_input_tokens,
+                        "requested_output_tokens": requested_output_tokens,
+                        "context_limit_tokens": context_limit,
+                        "projected_total_tokens": projected_total,
+                        "pressure_ratio": round(pressure_ratio, 4),
+                        "severity": "critical" if pressure_ratio >= 1.0 else "warning",
+                    }
+                    self._context_pressure_events.append(event)
+                    if pressure_ratio >= 1.0 and max_tokens is None:
+                        requested_output_tokens = max(512, context_limit - estimated_input_tokens - 256)
+                        event["requested_output_tokens_after_clamp"] = requested_output_tokens
+            max_call_usd = getattr(self.settings, "openrouter_max_call_usd", None)
+            estimated_cost = _openrouter_estimate_cost(
+                model=selected_model,
+                prompt_tokens=estimated_input_tokens,
+                completion_tokens=requested_output_tokens,
+            )
+            cost_event = {
+                "stage": str(stage or "default"),
+                "model": selected_model,
+                "estimated_input_tokens": estimated_input_tokens,
+                "requested_output_tokens": requested_output_tokens,
+                "estimated_cost_usd": round(estimated_cost, 8),
+                "max_call_usd": float(max_call_usd) if max_call_usd is not None else None,
+                "pricing_source": OPENROUTER_MODELS_URL,
+                "usd_priced": True,
+            }
+            _openrouter_refuse_if_over_budget(estimated_cost, max_call_usd=max_call_usd)
+            if max_call_usd is not None:
+                cost_event["severity"] = "ok" if estimated_cost <= float(max_call_usd) else "critical"
+            else:
+                cost_event["severity"] = "ok"
+            self._credit_pressure_events.append(cost_event)
+
         payload: dict[str, Any] = {
             "model": selected_model,
             "messages": messages,
@@ -563,6 +741,8 @@ class ClaudeClient:
             "max_tokens": requested_output_tokens,
             "stream": False,
         }
+        if provider_name == "openrouter":
+            payload["usage"] = {"include": True}
         if tools:
             payload["tools"] = [tool.schema() for tool in tools]
             payload["tool_choice"] = "auto"
@@ -626,11 +806,20 @@ class ClaudeClient:
                         break
                     if status == 429:
                         self._rate_limits += 1
-                        last_error = LLMRateLimitError(
-                            f"{self._provider_label()} rate limited with HTTP 429",
-                            provider=self.provider_name,
-                            status_code=status,
-                        )
+                        body_429 = (response.text or "")[:500].lower()
+                        if "free-models-per-day" in body_429 or "quota" in body_429:
+                            self.routing_policy.mark_quota_failure(model, "LLMQuotaError")
+                            last_error = LLMQuotaError(
+                                f"{self._provider_label()} quota exceeded with HTTP 429: {body_429[:200]}",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
+                        else:
+                            last_error = LLMRateLimitError(
+                                f"{self._provider_label()} rate limited with HTTP 429",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
                     elif status in {408, 500, 502, 503, 504}:
                         last_error = LLMUpstreamError(
                             f"{self._provider_label()} upstream HTTP {status}",
@@ -654,6 +843,15 @@ class ClaudeClient:
                                 status_code=status,
                             )
                             break
+                        if status in (400, 422) and (
+                            "is not a valid model ID" in str(detail)
+                            or "invalid model" in lower_detail
+                        ):
+                            raise LLMFormatError(
+                                f"OpenRouter invalid model: {str(detail)[:200]}",
+                                provider=self.provider_name,
+                                status_code=status,
+                            )
                         if (
                             "context" in lower_detail
                             or "maximum context" in lower_detail
@@ -709,6 +907,8 @@ class ClaudeClient:
     def metrics_snapshot(self) -> dict[str, Any]:
         latencies = sorted(self._latencies_ms)
         attempts = max(1, self._request_count)
+        cost_usd_value = round(self._usage_cost_usd, 8) if self._priced_token_count else None
+        is_openrouter = self.provider_name == "openrouter"
         return {
             "provider": self.provider_name,
             "model": self._provider_model(thinking_override=None),
@@ -724,19 +924,27 @@ class ClaudeClient:
                 "total_tokens": self._total_tokens,
                 "cache_write_tokens": self._cache_write_tokens,
                 "cache_read_tokens": self._cache_read_tokens,
-                "credits_estimate": round(self._usage_credits, 6) if self._priced_token_count else None,
-                "priced_tokens": self._priced_token_count,
-                "cost_usd": None,
+                "credits_estimate": round(self._usage_credits, 6) if self._priced_token_count and not is_openrouter else None,
+                "cost_usd": cost_usd_value,
                 "cost_status": (
-                    "verified_bai_credit_estimate_usd_unpriced"
-                    if self._priced_token_count
-                    else "unpriced_token_usage_only"
+                    "verified_openrouter_usd_priced"
+                    if is_openrouter and self._priced_token_count
+                    else (
+                        "verified_bai_credit_estimate_usd_unpriced"
+                        if self._priced_token_count
+                        else "unpriced_token_usage_only"
+                    )
                 ),
                 "pricing_source": (
-                    "https://docs.b.ai/llmservice/pricing-and-usage/"
-                    if self._priced_token_count
-                    else None
+                    OPENROUTER_MODELS_URL
+                    if is_openrouter and self._priced_token_count
+                    else (
+                        "https://docs.b.ai/llmservice/pricing-and-usage/"
+                        if self._priced_token_count
+                        else None
+                    )
                 ),
+                "model_pricing_source": OPENROUTER_MODELS_URL if is_openrouter else None,
             },
             "context_pressure": {
                 "event_count": len(self._context_pressure_events),
@@ -797,6 +1005,24 @@ class ClaudeClient:
                     + (cache_read * cache_read_rate)
                     + (completion * output_rate)
                 )
+                self._priced_token_count += prompt + completion
+        if self.provider_name != "bai":
+            cost_value = usage.get("cost")
+            if cost_value is None and self.provider_name == "openrouter":
+                cost_value = _openrouter_estimate_cost(
+                    model=str(model or ""),
+                    prompt_tokens=prompt,
+                    completion_tokens=completion,
+                )
+            if cost_value is not None:
+                try:
+                    cost_float = safe_float(cost_value, default=0.0)
+                except (TypeError, ValueError):
+                    cost_float = 0.0
+            else:
+                cost_float = 0.0
+            if cost_float is not None:
+                self._usage_cost_usd += cost_float
                 self._priced_token_count += prompt + completion
 
     def _http(self, *, timeout_s: float | None) -> httpx.AsyncClient:
@@ -1018,4 +1244,6 @@ def _json_clone(value: object) -> object:
     return json.loads(json.dumps(value, ensure_ascii=True, default=str))
 
 
+_openrouter_list_models.__dict__["_cache"] = {}
+_openrouter_list_models.__dict__["_cached_at"] = 0.0
 

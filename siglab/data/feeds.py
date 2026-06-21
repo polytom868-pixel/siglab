@@ -47,7 +47,6 @@ STABLE_PT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Maximum bars to forward-fill before treating a gap as missing data.
 MAX_FFILL_BARS = 5
 
 
@@ -99,14 +98,8 @@ def _dedupe_time_index(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.groupby(level=0).last().sort_index()
 
 
-
-
 def _percentile_map(series: pd.Series, percentiles: list[float]) -> dict[str, float | None]:
-    """Compute percentile values for *series*, returning a ``{pN: value}`` map.
-
-    Non-finite values are dropped before calculation.  Returns ``None``
-    for each percentile if the cleaned series is empty.
-    """
+    """Compute percentile values for series, returning a {pN: value} map."""
     clean = pd.to_numeric(series, errors="coerce").replace([float("inf"), float("-inf")], pd.NA).dropna()
     if clean.empty:
         return {f"p{int(percentile)}": None for percentile in percentiles}
@@ -522,7 +515,6 @@ class MarketDataProvider:
                 for market in lending_markets[:5]
             ]
 
-        # SoSoValue evidence: ETF inflow + featured news
         sosovalue_etf: Any
         sosovalue_news: Any
         sosovalue_etf, sosovalue_news = await asyncio.gather(
@@ -627,7 +619,6 @@ class MarketDataProvider:
                 interval=interval,
             )
         else:
-            # Use real SoDEX perp klines instead of synthetic ETF-proxy data
             bundle = await self._fetch_perp_bundle_sodex(
                 symbols=symbols,
                 lookback_days=lookback_days,
@@ -696,7 +687,6 @@ class MarketDataProvider:
         if cached:
             return list(cached)[:limit]
 
-        # Pendle PT market data source is not available; return empty
         return []
 
     async def fetch_pt_histories(
@@ -1054,30 +1044,15 @@ class MarketDataProvider:
         lookback_days: int,
         interval: str,
     ) -> dict[str, Any]:
-        """Fetch real perp klines and funding rates from SoDEX.
-
-        Uses ``SoDEXFeeds.fetch_klines()`` for historical price data and
-        ``SoDEXFeeds.fetch_mark_prices()`` for the latest funding rates.
-
-        Returns
-        -------
-        dict
-            With keys ``prices``, ``funding``, ``source`` (``"sodex_perp_klines"``),
-            ``bundle_as_of``, and ``bundle_id``.
-        """
-        # Lazy import to avoid circular dependency (live.runtime -> siglab.data)
+        """Fetch perp klines and funding rates from SoDEX."""
         from siglab.data.sodex_feeds import SoDEXFeeds
 
         if self.sodex_feeds is None:
             self.sodex_feeds = SoDEXFeeds(lake=self.lake)
 
         as_of = self._active_as_of or datetime.now(UTC)
-
-        # Estimate how many bars to request given the lookback period
         interval_hours = _interval_to_hours(interval)
         num_bars = max(100, min(1000, int(lookback_days * 24.0 / max(interval_hours, 1.0))))
-
-        # Fetch klines for each symbol
         price_series_list: list[pd.Series] = []
         valid_symbols: list[str] = []
         for base_symbol in symbols:
@@ -1101,14 +1076,10 @@ class MarketDataProvider:
                 "SoDEX returned no kline data for any requested symbol; "
                 "cannot build perp bundle"
             )
-
-        # Align all price series to a common timestamp index
-        prices = pd.concat(price_series_list, axis=1).sort_index()
+            prices = pd.concat(price_series_list, axis=1).sort_index()
         prices = prices.ffill(limit=MAX_FFILL_BARS).dropna(how="any")
         if prices.empty:
             raise ValueError("No common non-null price coverage after aligning SoDEX klines")
-
-        # Fetch latest funding snapshot for fallback values
         funding_rate_map: dict[str, float] = {}
         try:
             mark_prices = await self.sodex_feeds.fetch_mark_prices()
@@ -1121,7 +1092,6 @@ class MarketDataProvider:
         except Exception:
             logger.exception("SoDEX mark_prices fetch failed; funding snapshots unavailable")
 
-        # Fetch historical funding rates per symbol and build aligned funding frame
         funding_series_list: list[pd.Series] = []
         start_ms = int(prices.index.min().timestamp() * 1000)
         end_ms = int(prices.index.max().timestamp() * 1000)
@@ -1170,11 +1140,7 @@ class MarketDataProvider:
         }
 
     async def fetch_etf_historical_inflow(self, *, etf_type: str = "us-btc-spot") -> list[dict[str, Any]]:
-        """Fetch historical ETF inflow data from SoSoValue.
-
-        Cached: lake JSON (6 h TTL).
-        HTTP: ``SoSoValueClient.etf_historical_inflow`` on cache miss.
-        """
+        """Fetch historical ETF inflow data from SoSoValue."""
         cache_key = f"historical_inflow_{etf_type}"
         cached = None
         if hasattr(self.lake, "latest_json"):
@@ -1194,11 +1160,7 @@ class MarketDataProvider:
         currency_id: int | None = None,
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch featured news articles from SoSoValue and persist to the lake.
-
-        Always-fresh: no cache, always hits the API.
-        HTTP: ``SoSoValueClient.featured_news_by_currency``.
-        """
+        """Fetch featured news from SoSoValue."""
         rows = await self.sosovalue.featured_news_by_currency(
             page_num=page_num,
             page_size=page_size,
@@ -1210,11 +1172,7 @@ class MarketDataProvider:
         return normalized
 
     def _normalize_news_item(self, row: dict[str, Any]) -> dict[str, Any]:
-        """Normalise a SoSoValue news item into a flat dict.
-
-        Extracts the first multilingual content entry for ``title`` and
-        ``summary``, and flattens tags, matched currencies, and metadata.
-        """
+        """Normalise a SoSoValue news item into a flat dict."""
         multilingual = list(row.get("multilanguageContent") or [])
         first_content = dict(multilingual[0] or {}) if multilingual else {}
         return {
@@ -1229,12 +1187,7 @@ class MarketDataProvider:
         }
 
     def _bundle_cache_key(self, kind: str, **params: Any) -> str:
-        """Derive a deterministic cache key scoped to the active bundle.
-
-        When no bundle is active the key depends only on *kind* and
-        *params*; otherwise the active ``bundle_id`` is included so that
-        different bundles never share cache entries.
-        """
+        """Deterministic cache key scoped to the active bundle."""
         if self._active_bundle_id is None:
             base = {"kind": kind, **params}
         else:
@@ -1242,19 +1195,12 @@ class MarketDataProvider:
         return short_hash(jsonable_dict(base), 20)
 
     def _warm_cache_key(self, kind: str, **params: Any) -> str:
-        """Derive a deterministic cache key for the warm (cross-bundle) cache.
-
-        Unlike ``_bundle_cache_key``, the bundle ID is never included so
-        that warm-cache entries survive across bundles within a session.
-        """
+        """Deterministic cache key for the warm (cross-bundle) cache."""
         base = {"kind": kind, **params}
         return short_hash(jsonable_dict(base), 20)
 
     def _bind_bundle_to_active_context(self, bundle: dict[str, Any]) -> dict[str, Any]:
-        """Stamp the active ``bundle_id`` and ``bundle_as_of`` onto *bundle*.
-
-        Returns a deep copy so the warm-cache original is not mutated.
-        """
+        """Stamp the active bundle_id and bundle_as_of onto bundle copy."""
         rebound = copy.deepcopy(bundle)
         rebound["bundle_id"] = self._active_bundle_id
         rebound["bundle_as_of"] = (self._active_as_of or datetime.now(UTC)).isoformat()
@@ -1267,11 +1213,7 @@ class MarketDataProvider:
         prices: pd.DataFrame,
         funding: pd.DataFrame | None = None,
     ) -> None:
-        """Persist price (and optionally funding) DataFrames to the lake.
-
-        Also records each frame as a bundle component for manifest
-        tracking.
-        """
+        """Persist price/funding frames to the lake and record as bundle component."""
         self.lake.write_frame("market_bundle_prices", cache_key, prices)
         self._record_bundle_component(
             namespace="market_bundle_prices",
@@ -1287,7 +1229,7 @@ class MarketDataProvider:
             )
 
     def _persist_bundle_json(self, cache_key: str, payload: object) -> None:
-        """Persist a JSON-serialisable payload to the lake and record it as a bundle component."""
+        """Persist JSON payload to the lake and record as bundle component."""
         self.lake.write_json("market_bundle_json", cache_key, payload)
         self._record_bundle_component(
             namespace="market_bundle_json",
@@ -1302,11 +1244,7 @@ class MarketDataProvider:
         cache_key: str,
         kind: str,
     ) -> None:
-        """Register a persisted artifact as a bundle manifest component.
-
-        No-op when no bundle is active.  Deduplicates identical
-        components and updates the on-disk manifest.
-        """
+        """Register a persisted artifact as a bundle manifest component."""
         if self._active_bundle_id is None:
             return
         component = {
@@ -1321,11 +1259,7 @@ class MarketDataProvider:
         self._write_bundle_manifest(self._bundle_manifest)
 
     def _write_bundle_manifest(self, payload: dict[str, Any]) -> None:
-        """Merge *payload* into the bundle manifest and persist to the lake.
-
-        No-op when neither an active bundle ID nor a ``bundle_id`` key
-        in *payload* is present.
-        """
+        """Merge payload into the bundle manifest and persist to the lake."""
         if self._active_bundle_id is None and not payload.get("bundle_id"):
             return
         self._bundle_manifest = {
@@ -1339,12 +1273,8 @@ class MarketDataProvider:
         )
 
 
-
 def jsonable_iteration_payload(*, track: str, parent_hash: str, as_of: datetime) -> str:
-    """Serialise iteration bundle identity fields to a sorted JSON string.
-
-    Used to derive a deterministic bundle ID via SHA-256.
-    """
+    """Serialise iteration bundle identity fields to a sorted JSON string."""
     return json.dumps(
         {
             "track": track,
@@ -1356,6 +1286,6 @@ def jsonable_iteration_payload(*, track: str, parent_hash: str, as_of: datetime)
 
 
 def jsonable_dict(payload: dict[str, Any]) -> str:
-    """Serialise a dict to a sorted JSON string, coercing non-serialisable values via ``str``."""
+    """Serialise a dict to a sorted JSON string."""
     return json.dumps(payload, sort_keys=True, default=str)
 

@@ -6,16 +6,6 @@ from pathlib import Path
 from typing import Any
 
 
-def read_json_if_exists(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return {}
-    return dict(payload) if isinstance(payload, dict) else {}
-
-
 def load_json_path(value: str | Path | None, *, root_dir: Path | None = None) -> dict[str, Any] | None:
     if not value:
         return None
@@ -33,12 +23,6 @@ def write_json(path: Path, payload: object, *, indent: int = 2, ensure_ascii: bo
     path.write_text(
         json.dumps(payload, indent=indent, ensure_ascii=ensure_ascii, default=str)
     )
-
-
-def write_text_if_changed(path: Path, content: str) -> None:
-    if path.exists() and path.read_text() == content:
-        return
-    path.write_text(content)
 
 
 def json_clone(value: object) -> object:

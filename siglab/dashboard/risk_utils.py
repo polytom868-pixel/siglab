@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from siglab.risk.guardian import (
+    _drawdown_series,
     compute_composite_score,
     correlation_matrix,
     current_drawdown,
@@ -101,10 +102,8 @@ def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int = 365) -> 
 
     # Drawdown history for sparkline (from worst session)
     first_eq = equity_arrays[worst_idx] if equity_arrays else np.array([])
-    if first_eq.size > 0:
-        peak = np.maximum.accumulate(first_eq)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            dd_series = np.where(peak > 0, (first_eq - peak) / peak, 0.0)
+    dd_series = _drawdown_series(first_eq)
+    if dd_series.size > 0:
         n = len(dd_series)
         if n > 60:
             step = n / 60

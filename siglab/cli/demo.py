@@ -31,7 +31,6 @@ from siglab.cli.helpers import (
     display_paths,
     latest_path,
     load_json_if_exists,
-    split_cli_list,
     sodex_preflight_report,
 )
 from siglab.cli.market import build_market_report
@@ -362,27 +361,3 @@ def _demo_manifest_html(manifest: dict[str, Any]) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Wave status payload builder (used internally and by tests)
-# ---------------------------------------------------------------------------
-
-
-def _build_wave_status_payload(args: argparse.Namespace) -> dict[str, Any]:
-    blockers = split_cli_list(args.blockers)
-    return {
-        "generated_at": datetime.now(UTC).isoformat(),
-        "wave_number": int(args.wave_number),
-        "phase": str(args.phase or "execution"),
-        "status": str(args.status or "running"),
-        "goal": str(args.goal or "").strip(),
-        "agents": split_cli_list(args.agents),
-        "outputs": split_cli_list(args.outputs),
-        "blockers": blockers,
-        "validation_status": str(args.validation_status or "not_run"),
-        "next_decision": str(args.next_decision or "").strip(),
-        "stop_allowed": False,
-        "unsafe_claims": [
-            "signed SoDEX live execution remains unproven",
-            "private/account SoDEX WebSocket remains unvalidated",
-        ],
-    }

@@ -14,14 +14,11 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from siglab.utils import _now_iso
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _now_iso() -> str:
-    """Return the current UTC time as an ISO-8601 string."""
-    return datetime.now(UTC).isoformat()
 
 
 # ---------------------------------------------------------------------------

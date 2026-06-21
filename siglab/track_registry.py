@@ -40,17 +40,6 @@ def storage_track_name(track: str | None) -> str | None:
     return TRACK_STORAGE_NAMES.get(canonical, canonical)
 
 
-def matching_track_names(track: str | None) -> tuple[str, ...]:
-    canonical = canonical_track_name(track)
-    if canonical is None:
-        return ()
-    storage = storage_track_name(canonical)
-    names = [canonical]
-    if storage and storage not in names:
-        names.append(storage)
-    return tuple(names)
-
-
 def track_label(track: str | None) -> str:
     canonical = canonical_track_name(track)
     if canonical is None:

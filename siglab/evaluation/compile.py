@@ -37,7 +37,6 @@ PERP_EXECUTION_PROFILES = {
 }
 PAIR_STATEFUL_POLICY_SCHEMA = "pair_stateful"
 
-# Shared pipeline: shift(1) + resolve_feature_frames + _weighted_scoring + _resolve_regime_gates
 def _shared_scoring_pipeline(
     raw_frames: dict[str, pd.DataFrame],
     spec: SignalSpec,
@@ -113,8 +112,6 @@ def _build_shared_metadata(
 
 
 def _cross_sectional_zscore(frame: pd.DataFrame) -> pd.DataFrame:
-    # Strip infinities before computation to avoid RuntimeWarning
-    # from pandas nanops when subtracting inf - inf.
     cleaned = frame.replace([np.inf, -np.inf], np.nan)
     mean = cleaned.mean(axis=1)
     std = cleaned.std(axis=1).replace(0.0, np.nan)
@@ -143,30 +140,7 @@ def _weighted_scoring(
     z_window: int = 72,
     return_components: bool = False,
 ) -> pd.DataFrame | dict[str, pd.DataFrame]:
-    """
-    Compute a weighted composite score (and optionally per-feature components)
-    from a set of normalised feature frames.
-
-    Parameters
-    ----------
-    feature_frames : dict[str, pd.DataFrame]
-        Resolved feature frames keyed by feature name.
-    selected_features : list[str]
-        Ordered list of feature names to include.
-    feature_weights : dict[str, float]
-        Weight per feature (absolute values are normalised to sum to 1).
-    normalization : str
-        ``"cross_sectional"`` (default) or ``"time_series"``.
-    z_window : int
-        Rolling window for time-series normalisation.
-    return_components : bool
-        If True, return a dict of per-feature weighted DataFrames.
-        If False (default), return the combined score DataFrame.
-
-    Returns
-    -------
-    pd.DataFrame or dict[str, pd.DataFrame]
-    """
+    """Weighted composite score from normalised feature frames."""
     chosen = [feature for feature in selected_features if feature in feature_frames]
     if return_components and not chosen:
         return {}
@@ -214,8 +188,6 @@ def _align_cross_sectional_frame(
     if extra_columns:
         extras = clean[extra_columns]
         if not extras.empty:
-            # Market-wide one-column features like GLOBAL should act as a common
-            # overlay across tradable symbols, not as synthetic assets.
             overlay = extras.mean(axis=1)
             broadcast = pd.DataFrame(
                 {symbol: overlay for symbol in tradable_symbols},
@@ -274,15 +246,11 @@ def _resolve_gate_mask(
     score_index: pd.Index,
     regime_gate_mask: pd.Series | None,
 ) -> pd.Series:
-    if regime_gate_mask is not None:
-        return (
-            regime_gate_mask.reindex(score_index)
-            .ffill()
-            .fillna(False)
-            .astype(bool)
-        )
-    return pd.Series(True, index=score_index, dtype=bool)
-
+    return (
+        regime_gate_mask.reindex(score_index).ffill().fillna(False).astype(bool)
+        if regime_gate_mask is not None
+        else pd.Series(True, index=score_index, dtype=bool)
+    )
 
 
 def _build_ranked_positions(
@@ -318,7 +286,7 @@ def _build_ranked_positions(
 
         if long_count > 0:
             sorted_idx = clean_idx[np.argsort(-clean_values)]
-            candidates = list(sorted_idx[:min(long_count, len(sorted_idx))])
+            candidates = sorted_idx[:min(long_count, len(sorted_idx))]
             if require_positive_longs:
                 candidates = [idx for idx in candidates if row[idx] > 0.0]
             if min_abs_score > 0.0:
@@ -327,7 +295,7 @@ def _build_ranked_positions(
 
         if short_count > 0:
             sorted_idx = clean_idx[np.argsort(clean_values)]
-            candidates = list(sorted_idx[:min(short_count, len(sorted_idx))])
+            candidates = sorted_idx[:min(short_count, len(sorted_idx))]
             if min_abs_score > 0.0:
                 candidates = [idx for idx in candidates if row[idx] <= -min_abs_score]
             short_indices = candidates
@@ -653,6 +621,8 @@ def _resolve_regime_gates(
     }
 
 
+def _global_frame(s: pd.Series) -> pd.DataFrame:
+    return pd.to_numeric(s, errors="coerce").rename("GLOBAL").to_frame()
 
 
 def _perp_global_raw_frames(
@@ -662,25 +632,13 @@ def _perp_global_raw_frames(
     prices = prices.sort_index()
     funding = funding.reindex(prices.index).ffill().fillna(0.0)
     returns_1h = prices.pct_change()
-    market_price_mean = prices.mean(axis=1)
-    market_funding_mean = funding.mean(axis=1)
-    market_funding_dispersion = funding.std(axis=1)
-    market_breadth_24h = prices.pct_change(24).gt(0.0).mean(axis=1)
-    market_co_movement_72h = _mean_pairwise_rolling_corr(returns_1h, window=72)
-    market_realized_vol_168h = returns_1h.rolling(168).std().mean(axis=1)
     return {
-        "market_price_mean": pd.to_numeric(market_price_mean, errors="coerce").rename("GLOBAL").to_frame(),
-        "market_funding_mean": pd.to_numeric(market_funding_mean, errors="coerce").rename("GLOBAL").to_frame(),
-        "market_funding_dispersion": pd.to_numeric(
-            market_funding_dispersion,
-            errors="coerce",
-        ).rename("GLOBAL").to_frame(),
-        "market_breadth_24h": pd.to_numeric(market_breadth_24h, errors="coerce").rename("GLOBAL").to_frame(),
-        "market_co_movement_72h": pd.to_numeric(market_co_movement_72h, errors="coerce").rename("GLOBAL").to_frame(),
-        "market_realized_vol_168h": pd.to_numeric(
-            market_realized_vol_168h,
-            errors="coerce",
-        ).rename("GLOBAL").to_frame(),
+        "market_price_mean": _global_frame(prices.mean(axis=1)),
+        "market_funding_mean": _global_frame(funding.mean(axis=1)),
+        "market_funding_dispersion": _global_frame(funding.std(axis=1)),
+        "market_breadth_24h": _global_frame(prices.pct_change(24).gt(0.0).mean(axis=1)),
+        "market_co_movement_72h": _global_frame(_mean_pairwise_rolling_corr(returns_1h, window=72)),
+        "market_realized_vol_168h": _global_frame(returns_1h.rolling(168).std().mean(axis=1)),
     }
 
 
@@ -706,16 +664,19 @@ def _pair_raw_frames(
     asset_2_price = prices[asset_2_symbol].replace([np.inf, -np.inf], np.nan)
     asset_1_funding = funding[asset_1_symbol].replace([np.inf, -np.inf], np.nan)
     asset_2_funding = funding[asset_2_symbol].replace([np.inf, -np.inf], np.nan)
+
+    def _pair_frame(s: pd.Series) -> pd.DataFrame:
+        return s.rename("PAIR").to_frame().reindex(prices.index)
+
     ratio = asset_1_price.div(asset_2_price).replace([np.inf, -np.inf], np.nan)
     funding_spread = asset_1_funding.sub(asset_2_funding, fill_value=0.0)
-    index = prices.index
     return {
-        "asset_1_price": asset_1_price.rename("PAIR").to_frame().reindex(index),
-        "asset_2_price": asset_2_price.rename("PAIR").to_frame().reindex(index),
-        "asset_1_funding": asset_1_funding.rename("PAIR").to_frame().reindex(index),
-        "asset_2_funding": asset_2_funding.rename("PAIR").to_frame().reindex(index),
-        "price_ratio": ratio.rename("PAIR").to_frame().reindex(index),
-        "funding_spread": funding_spread.rename("PAIR").to_frame().reindex(index),
+        "asset_1_price": _pair_frame(asset_1_price),
+        "asset_2_price": _pair_frame(asset_2_price),
+        "asset_1_funding": _pair_frame(asset_1_funding),
+        "asset_2_funding": _pair_frame(asset_2_funding),
+        "price_ratio": _pair_frame(ratio),
+        "funding_spread": _pair_frame(funding_spread),
         **_perp_global_raw_frames(prices[[asset_1_symbol, asset_2_symbol]], funding[[asset_1_symbol, asset_2_symbol]]),
     }
 
@@ -827,9 +788,6 @@ def _build_lending_price_frames(
         1.0 + carry_apy.shift(1).fillna(0.0).mul(dt_years, axis=0).clip(lower=-0.99)
     ).cumprod()
     return root_prices.reindex(carry_factor.index).ffill().mul(carry_factor)
-
-
-
 
 
 def _history_bounds(frame: pd.DataFrame) -> dict[str, str | None]:

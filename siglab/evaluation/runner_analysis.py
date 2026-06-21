@@ -1,9 +1,5 @@
 """
-Pre-audit analysis functions extracted from runner.py — merged module.
-
-WARNING MERGED from analysis_utils, runner_utils, runner_episodes, runner_regime,
-and runner_analysis into a single tightly-coupled module.
-
+Pre-audit analysis for runner.py — merged module.
 Backward-compat shims at each original path maintain import compatibility.
 """
 
@@ -17,50 +13,7 @@ import pandas as pd
 
 from siglab.utils import safe_float as _safe_float
 
-__all__ = [
-    # analysis_utils
-    "mean_pairwise_rolling_corr",
-    "pre_audit_trade_episodes",
-    # runner_utils
-    "_series_has_finite_values",
-    "_series_total_return",
-    "_series_last_value",
-    "_series_min_value",
-    "_series_values",
-    "_series_from_payload",
-    "_pre_audit_end_idx",
-    # runner_episodes
-    "_row_position_signature",
-    "_episode_asset_lists",
-    "_row_direction_label",
-    "_pair_position_episodes",
-    "_holding_period_buckets",
-    "_episode_direction_counts",
-    # runner_regime
-    "_slice_performance_stats",
-    "_pair_regime_state",
-    "_lookup_timestamp",
-    "_regime_binary_label",
-    "_pair_regime_snapshot",
-    "_pair_trade_episodes_with_regime",
-    "_pair_regime_diagnostics",
-    "_trade_regime_pack",
-    "_window_regime_summary",
-    "_equity_window_trade_stats",
-    # runner_analysis
-    "_pre_audit_drawdown_pack",
-    "_pre_audit_equity_shift_pack",
-    "_pre_audit_time_bin_pack",
-    "_entry_feature_contributors",
-    "_pre_audit_exemplar_trades",
-    "_pair_gate_diagnostics",
-    "_policy_context_from_metadata",
-    "_pre_audit_context_pack",
-]
-
-# =========================================================================
-# analysis_utils — shared analysis utilities
-# =========================================================================
+# --- analysis_utils ---
 
 
 def mean_pairwise_rolling_corr(
@@ -68,7 +21,6 @@ def mean_pairwise_rolling_corr(
     *,
     window: int,
 ) -> pd.Series:
-    """Compute rolling pairwise correlation mean across all column pairs."""
     columns = list(returns.columns)
     if not columns:
         return pd.Series(dtype=float)
@@ -84,13 +36,12 @@ def mean_pairwise_rolling_corr(
 
 
 def pre_audit_trade_episodes(canonical_run: dict[str, Any]) -> list[dict[str, Any]]:
-    """Filter trade episodes to pre-audit-holdout windows only."""
-    episodes = list(canonical_run.get("trade_episodes") or [])
+    episodes = canonical_run.get("trade_episodes") or []
     if not episodes:
         return []
-    visual_split = dict(canonical_run.get("visual_split") or {})
+    visual_split = {**canonical_run.get("visual_split", {})}
     audit_start = None
-    for window in list(visual_split.get("ranges") or []):
+    for window in visual_split.get("ranges") or []:
         if str(window.get("kind") or "") == "audit_holdout":
             audit_start = pd.Timestamp(window.get("start_timestamp"))
             break
@@ -110,14 +61,11 @@ def pre_audit_trade_episodes(canonical_run: dict[str, Any]) -> list[dict[str, An
     return filtered
 
 
-# Backward-compat aliases used by code originally in runner_regime / runner_analysis
 _mean_pairwise_rolling_corr = mean_pairwise_rolling_corr
 _pre_audit_trade_episodes_from_canonical = pre_audit_trade_episodes
 
 
-# =========================================================================
-# runner_utils — series helpers
-# =========================================================================
+# --- runner_utils ---
 
 
 def _series_has_finite_values(payload: dict[str, Any] | None) -> bool:
@@ -156,7 +104,7 @@ def _series_values(
     *,
     end_idx: int | None = None,
 ) -> list[float]:
-    values_raw = list((payload or {}).get("values") or [])
+    values_raw = (payload or {}).get("values") or []
     if end_idx is not None:
         values_raw = values_raw[: max(0, min(len(values_raw), int(end_idx)))]
     return [float(value) for value in values_raw if value is not None]
@@ -167,8 +115,8 @@ def _series_from_payload(
     *,
     end_idx: int | None = None,
 ) -> pd.Series:
-    index_values = list((payload or {}).get("index") or [])
-    raw_values = list((payload or {}).get("values") or [])
+    index_values = (payload or {}).get("index") or []
+    raw_values = (payload or {}).get("values") or []
     limit = len(raw_values) if end_idx is None else max(0, min(len(raw_values), int(end_idx)))
     if limit <= 0:
         return pd.Series(dtype=float)
@@ -183,16 +131,14 @@ def _pre_audit_end_idx(
     visual_split: dict[str, Any],
     series_payload: dict[str, Any] | None,
 ) -> int | None:
-    for row in list((visual_split or {}).get("ranges") or []):
+    for row in (visual_split or {}).get("ranges") or []:
         if str(row.get("kind") or "") == "audit_holdout":
             return int(row.get("start_idx") or 0)
-    values = list((series_payload or {}).get("values") or [])
+    values = (series_payload or {}).get("values") or []
     return len(values) if values else None
 
 
-# =========================================================================
-# runner_episodes — trade episode extraction
-# =========================================================================
+# --- runner_episodes ---
 
 
 def _row_position_signature(row: pd.Series, *, epsilon: float = 1e-9) -> tuple[tuple[str, int], ...]:
@@ -206,7 +152,6 @@ def _row_position_signature(row: pd.Series, *, epsilon: float = 1e-9) -> tuple[t
 
 
 def _make_position_signatures(frame: pd.DataFrame, *, epsilon: float = 1e-9) -> pd.Series:
-    """Vectorised version: compute position signatures for all rows at once."""
     arr = frame.to_numpy(dtype=float, na_value=np.nan)
     columns = list(frame.columns)
     result: list[tuple[tuple[str, int], ...]] = []
@@ -255,7 +200,6 @@ def _row_direction_label(row: pd.Series, *, epsilon: float = 1e-9) -> str:
 
 
 def _row_direction_label_np(values: np.ndarray, columns: list[str], epsilon: float = 1e-9) -> str:
-    """Numpy-optimised version of _row_direction_label for batch use."""
     vals = np.where(np.isfinite(values), values, 0.0)
     abs_mask = np.abs(vals) > epsilon
     if not abs_mask.any():
@@ -407,9 +351,7 @@ def _episode_direction_counts(trade_episodes: list[dict[str, Any]]) -> dict[str,
     return counts
 
 
-# =========================================================================
-# runner_regime — regime state, snapshot, diagnostics
-# =========================================================================
+# --- runner_regime ---
 
 
 def _slice_performance_stats(
@@ -594,7 +536,7 @@ def _pair_regime_snapshot(
     aligned_timestamp = _lookup_timestamp(regime_state["index"], timestamp)
     if aligned_timestamp is None:
         return {}
-    thresholds = dict(regime_state.get("thresholds") or {})
+    thresholds = {**regime_state.get("thresholds", {})}
     market_trend_value = _safe_float(regime_state["market_trend"].get(aligned_timestamp))
     market_volatility_value = _safe_float(regime_state["market_volatility"].get(aligned_timestamp))
     funding_level_value = _safe_float(regime_state["funding_level"].get(aligned_timestamp))
@@ -701,7 +643,7 @@ def _pair_regime_diagnostics(
     )
     if not regime_state.get("available"):
         return {"available": False}
-    thresholds = dict(regime_state.get("thresholds") or {})
+    thresholds = {**regime_state.get("thresholds", {})}
     bar_slices: dict[str, list[dict[str, Any]]] = {
         "market_trend": [
             _slice_performance_stats(
@@ -852,7 +794,7 @@ def _trade_regime_pack(trade_episodes: list[dict[str, Any]]) -> dict[str, Any]:
         return {}
     label_keys: list[str] = []
     for episode in trade_episodes:
-        entry_regime = dict(episode.get("entry_regime") or {})
+        entry_regime = {**episode.get("entry_regime", {})}
         label_keys.extend(
             key for key, value in entry_regime.items() if key.endswith("_label") and value
         )
@@ -932,7 +874,7 @@ def _window_regime_summary(
             return None
         return _safe_float(values.mean())
 
-    thresholds = dict(regime_state.get("thresholds") or {})
+    thresholds = {**regime_state.get("thresholds", {})}
     market_trend = _mean_value(regime_state["market_trend"])
     market_volatility = _mean_value(regime_state["market_volatility"])
     funding_level = _mean_value(regime_state["funding_level"])
@@ -1094,9 +1036,7 @@ def _equity_window_trade_stats(
     }
 
 
-# =========================================================================
-# runner_analysis — pre-audit analysis, gate diagnostics, context packing
-# =========================================================================
+# --- runner_analysis ---
 
 
 def _pre_audit_drawdown_pack(
@@ -1133,9 +1073,9 @@ def _pre_audit_drawdown_pack(
 
     equity_payload = canonical_run.get("equity_curve")
     drawdown_payload = canonical_run.get("drawdown_curve")
-    index_values = list((equity_payload or {}).get("index") or [])
-    equity_values = list((equity_payload or {}).get("values") or [])
-    drawdown_values = list((drawdown_payload or {}).get("values") or [])
+    index_values = (equity_payload or {}).get("index") or []
+    equity_values = (equity_payload or {}).get("values") or []
+    drawdown_values = (drawdown_payload or {}).get("values") or []
     limit = len(equity_values) if end_idx is None else max(0, min(len(equity_values), int(end_idx)))
     if limit < 2:
         start_timestamp = index_values[0] if index_values else None
@@ -1259,7 +1199,7 @@ def _pre_audit_drawdown_pack(
         }
 
     feature_story: list[dict[str, Any]] = []
-    for feature, frame in dict(signal_components or {}).items():
+    for feature, frame in (signal_components or {}).items():
         if frame is None or frame.empty or window_positions.empty:
             continue
         component = frame.iloc[:limit].fillna(0.0)
@@ -1430,7 +1370,7 @@ def _entry_feature_contributors(
     timestamp: str | int | float | pd.Timestamp | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for feature, frame in dict(signal_components or {}).items():
+    for feature, frame in (signal_components or {}).items():
         if frame is None or frame.empty:
             continue
         aligned_timestamp = _lookup_timestamp(frame.index, timestamp)
@@ -1478,7 +1418,7 @@ def _pre_audit_exemplar_trades(
             "bars": _safe_float(episode.get("bars"), default=None),
             "total_return": _safe_float(episode.get("total_return"), default=None),
             "entry_score": entry_score,
-            "entry_regime": dict(episode.get("entry_regime") or {}),
+            "entry_regime": {**episode.get("entry_regime", {})},
             "entry_feature_contributors": _entry_feature_contributors(
                 signal_components=signal_components,
                 timestamp=entry_timestamp,
@@ -1525,10 +1465,8 @@ def _pair_gate_diagnostics(
     pair_mode = score_frame.shape[1] == 1 and target_frame.shape[1] >= 2
     score_cols = list(score_frame.columns)
 
-    # position_signature via vectorised helper
     position_signature = _make_position_signatures(target_frame)
 
-    # active_score_signature — numpy based
     if pair_mode:
         score_vals = score_arr[:, 0]
         active_sig: list[tuple[tuple[str, int], ...]] = []
@@ -1570,9 +1508,7 @@ def _pair_gate_diagnostics(
             aligned_1d = (score_arr[:, 0] * primary_sign) > 0.0
             active_alignment = aligned_1d[active_mask_1d].tolist()
         else:
-            # Fully vectorised alignment: element-wise sign equality masked by active columns
             sign_eq = (score_sign == position_sign).astype(float)
-            # Zero out inactive columns per row
             active_col_mask = target_abs > 1e-9
             sign_eq_masked = sign_eq * active_col_mask
             row_counts = active_col_mask.sum(axis=1, where=~np.isnan(active_col_mask))
@@ -1608,9 +1544,9 @@ def _pair_gate_diagnostics(
                 float((~gate_mask)[active_mask_1d].mean()) if bool(active_mask_1d.any()) else None
             ),
             "exit_on_break": bool(
-                dict(compiled_metadata.get("regime_gates") or {}).get("exit_on_break", True)
+                compiled_metadata.get("regime_gates", {}).get("exit_on_break", True)
             ),
-            "entry": list(dict(compiled_metadata.get("regime_gates") or {}).get("entry") or []),
+            "entry": compiled_metadata.get("regime_gates", {}).get("entry") or [],
         }
         active_frac_gate = _safe_float(regime_gate_summary.get("active_fraction"))
         if active_frac_gate is not None and active_frac_gate < 0.30:
@@ -1665,18 +1601,18 @@ def _policy_context_from_metadata(compiled_metadata: dict[str, Any]) -> dict[str
         "gross_target": _safe_float(compiled_metadata.get("gross_target"), default=None),
         "max_gross_target": _safe_float(compiled_metadata.get("max_gross_target"), default=None),
     }
-    sweep = dict(compiled_metadata.get("pair_policy_sweep") or {})
+    sweep = {**compiled_metadata.get("pair_policy_sweep", {})}
     if sweep:
         policy["policy_sweep"] = {
             "applied": bool(sweep.get("applied")),
             "train_window_count": int(sweep.get("train_window_count", 0) or 0),
             "trial_count": int(sweep.get("trial_count", 0) or 0),
             "best_train_score": _safe_float(
-                dict(sweep.get("best_train_summary") or {}).get("aggregate_score"),
+                sweep.get("best_train_summary", {}).get("aggregate_score"),
                 default=None,
             ),
             "best_train_return": _safe_float(
-                dict(sweep.get("best_train_summary") or {}).get("median_total_return"),
+                sweep.get("best_train_summary", {}).get("median_total_return"),
                 default=None,
             ),
         }
