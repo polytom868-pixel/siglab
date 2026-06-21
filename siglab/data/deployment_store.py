@@ -203,7 +203,7 @@ class DeploymentStore:
         if artifact_path and Path(artifact_path).exists():
             try:
                 artifact_payload = json.loads(Path(artifact_path).read_text())
-            except Exception:
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
                 artifact_payload = None
 
         spec = _spec_payload(row[8])

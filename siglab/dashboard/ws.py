@@ -61,7 +61,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             except asyncio.TimeoutError:
                 try:
                     await _send_json(websocket, {"type": "ping", "timestamp": _now_iso()})
-                except Exception:
+                except (OSError, ValueError):
+                    logger.debug("WebSocket send error in ping keepalive")
                     break
                 continue
 
@@ -312,7 +313,8 @@ async def _stream_positions(websocket: WebSocket) -> None:
                     "current_price": 0.0,
                     "unrealized_pnl": 0.0,
                 })
-            except Exception:
+            except (OSError, ValueError, TypeError):
+                logger.debug("Failed to read npy session file %s", npy_file)
                 continue
 
         await _send_json(websocket, {
@@ -384,4 +386,5 @@ async def _send_json(websocket: WebSocket, data: dict[str, Any]) -> None:
     try:
         await websocket.send_json(data)
     except Exception:
+        logger.debug("WebSocket send_json failed (client likely disconnected)")
         pass

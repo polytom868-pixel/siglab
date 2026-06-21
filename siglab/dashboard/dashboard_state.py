@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from siglab.config import SiglabConfig
 from siglab.data.deployment_store import DeploymentStore
-from siglab.io_utils import json_safe, load_json_path
+from siglab.io_utils import load_json_path
 from siglab.live import LiveDeploymentManager, deployment_readiness
 from siglab.llm import ClaudeClient
 from siglab.llm_metadata import (
@@ -84,7 +84,7 @@ def _dashboard_rows(db_path: str | Path, track: str | None = None, family: str |
                 "artifact_path": row["artifact_path"],
             })
         conn.close()
-    except Exception:
+    except (sqlite3.Error, OSError):
         pass
     return rows
 
@@ -517,7 +517,7 @@ class DashboardState:
             if artifact_path.exists():
                 try:
                     artifact = dict(json.loads(artifact_path.read_text()))
-                except Exception:
+                except (json.JSONDecodeError, OSError, UnicodeDecodeError):
                     artifact = {}
         compiled_metadata = artifact.get("compiled_metadata") or artifact.get("compiledMetadata") or {}
 

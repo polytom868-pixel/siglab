@@ -8,6 +8,8 @@ and supports CORS for demo / multi-origin deployment.
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import os
 import time
 from contextlib import asynccontextmanager
@@ -24,6 +26,8 @@ from siglab.config import SiglabConfig, load_settings
 from siglab.dashboard.dashboard_state import DashboardState
 from siglab.dashboard.routes import router as api_router
 from siglab.dashboard.ws import router as ws_router
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -93,7 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state = DashboardState()
     try:
         state.config = load_settings()
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         from pathlib import Path as _Path
 
         state.config = SiglabConfig(
@@ -111,6 +115,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         state.deployment_store = DeploymentStore(state.config.ancestry_db_path)
     except Exception:
+        logger.exception("Failed to create DeploymentStore, running without it")
         state.deployment_store = None
 
     state.static_dir = Path(__file__).resolve().parent / "static"

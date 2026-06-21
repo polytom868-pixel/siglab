@@ -11,7 +11,6 @@ from siglab.data import MarketDataProvider, ParquetLake
 from siglab.live.signal_compile import compile_spec
 from siglab.risk.guardian import (
     CircuitBreakerState,
-    check_concentration,
     compute_position_size,
 )
 from siglab.schemas import SignalSpec
@@ -417,6 +416,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         if self._adapter_dry_run():
             return True, f"Dry run would close {len(current_positions)} perp positions"
 
+        runtime = dict(self.live_spec.get("runtime") or {})
         adapter = self._require_sodex_adapter()
         address = self._get_strategy_wallet_address()
         closed = 0

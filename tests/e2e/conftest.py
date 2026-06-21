@@ -16,8 +16,6 @@ import shutil
 import subprocess
 import sys
 import time
-import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -51,7 +49,7 @@ def _wait_for_server(url: str = "http://127.0.0.1:8080/health", timeout: int = 4
 # Server lifecycle
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def server(request: pytest.FixtureRequest) -> None:
     """Start the SigLab dashboard server with seeded test data.
 
@@ -140,7 +138,7 @@ def server(request: pytest.FixtureRequest) -> None:
 
 
 @pytest.fixture(scope="session")
-def browser():
+def browser() -> object:
     """Launch a headless Chromium instance for the test session."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -149,7 +147,7 @@ def browser():
 
 
 @pytest.fixture
-def page(browser):
+def page(browser: object) -> object:
     """Create a new browser context + page per test with 1280x720 viewport.
 
     Console messages are printed to stdout for debugging.

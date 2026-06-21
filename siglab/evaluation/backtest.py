@@ -186,7 +186,7 @@ def _cagr_safe(
                 ratio = Decimal("1e-10")
             periods_dec = Decimal(str(periods))
             cagr = float(ratio ** (Decimal(1) / periods_dec) - Decimal(1))
-        except Exception:
+        except (ValueError, TypeError, ArithmeticError, ZeroDivisionError):
             return None
     return max(min(cagr, 100.0), -100.0)
 

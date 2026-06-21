@@ -10,7 +10,6 @@ Assertions fulfilled: VAL-NARR-001 (Narrative output >= 200 characters)
 
 from __future__ import annotations
 
-from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +97,6 @@ def _narrative_performance_summary(stats: dict) -> str:
         end = float(equity_values[-1])
         total_ret = (end / begin - 1.0) if begin > 0 else None
         periods = len(equity_values)
-        annual_factor = 365.25 * 24.0
         if total_ret is not None and total_ret > -1.0 and begin > 0:
             import math
             ratio = max(min(end / begin, 1e10), 1e-10)

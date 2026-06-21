@@ -266,7 +266,6 @@ def _ensure_single_eligible_scores(
             1.0,
         )
     return adjusted
-    return adjusted
 
 def _resolve_gate_mask(
     score_index: pd.Index,

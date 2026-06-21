@@ -106,9 +106,9 @@ class EvidenceStore:
         if entity is not None:
             needle = entity.lower()
             rows = [row for row in rows if needle in str(row.get("entity", "")).lower()]
-        for field, value in (("module", module), ("relation", relation)):
+        for field_name, value in (("module", module), ("relation", relation)):
             if value is not None:
-                rows = [row for row in rows if str(row.get(field)) == value]
+                rows = [row for row in rows if str(row.get(field_name)) == value]
         return rows[: max(0, int(limit))]
 
     def linked_relations(self, *, max_day_gap: int = 1) -> list[dict[str, Any]]:

@@ -38,7 +38,6 @@ from siglab.live.position_ledger import (
     compute_avg_entry,
     compute_funding_cost,
     compute_trade_pnl,
-    update_position,
 )
 from siglab.live.sodex_client import SoDEXTransportError, SoDEXUpstreamError
 
@@ -382,7 +381,7 @@ class SoDEXPaperPerpsClient:
     ) -> bool:
         try:
             data = self._read_session_file(path)
-        except Exception:
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
             logger.warning("Failed to read session file %s", path)
             return False
         sessions.append(
@@ -1102,7 +1101,7 @@ class SoDEXPaperPerpsClient:
             with os.fdopen(fd, "w") as f:
                 json.dump(data, f)
             os.replace(tmp_path, str(path))
-        except BaseException:
+        except (OSError, TypeError, ValueError):
             try:
                 os.unlink(tmp_path)
             except OSError:

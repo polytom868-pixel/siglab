@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import html
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -35,7 +34,7 @@ from siglab.cli.helpers import (
     split_cli_list,
     sodex_preflight_report,
 )
-from siglab.cli.market import build_market_report, market_report_html
+from siglab.cli.market import build_market_report
 from siglab.cli.telemetry import (
     build_telemetry_payload,
     provider_metric_paths_for_telemetry,
@@ -175,6 +174,8 @@ def run_demo_run(args: argparse.Namespace) -> None:
             try:
                 narrative_text = build_signal_narrative({})
             except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Signal narrative build failed")
                 narrative_text = "[Narrative unavailable]"
             payload["narrative"] = narrative_text
 
@@ -219,7 +220,8 @@ def run_demo_run(args: argparse.Namespace) -> None:
 
 def _demo_run_html(payload: dict[str, Any]) -> str:
     """Minimal HTML page displaying the demo-run summary payload."""
-    _esc = lambda v: html.escape(str(v))
+    def _esc(v: Any) -> str:
+        return html.escape(str(v))
     summary = _esc(payload.get("summary", ""))
 
     def kv_rows(d: dict[str, Any]) -> str:

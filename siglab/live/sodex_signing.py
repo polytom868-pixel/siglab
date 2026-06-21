@@ -180,7 +180,7 @@ class SoDEXNonceManager:
             with os.fdopen(fd, "w") as fh:
                 fh.write(data)
             os.replace(tmp_path, self.store_path)
-        except BaseException:
+        except OSError:
             try:
                 os.unlink(tmp_path)
             except OSError:

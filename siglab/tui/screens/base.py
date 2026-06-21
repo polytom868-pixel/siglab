@@ -121,7 +121,7 @@ class BaseScreen(Screen[None]):
         if self._owns_api and self._api is not None:
             try:
                 await self._api.close()
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
     # ── Data fetching skeleton ───────────────────────────────────────
@@ -136,7 +136,7 @@ class BaseScreen(Screen[None]):
             self._update_status_error(friendly_error(exc))
             try:
                 self.notify(friendly_error(exc), severity="error")
-            except Exception:
+            except (AttributeError, TypeError):
                 pass  # No active app context (e.g., in tests)
             logger.warning("%s refresh failed: %s", self.__class__.__name__, exc)
         finally:
@@ -169,22 +169,17 @@ class BaseScreen(Screen[None]):
         """Toggle the LoadingIndicator widget."""
         if not self._loading_widget_id:
             return
-        try:
-            w = self.query_one(self._loading_widget_id, LoadingIndicator)
+        w = safe_query(self, self._loading_widget_id, LoadingIndicator)
+        if w is not None:
             w.loading = loading
             if not loading:
                 w.status_text = self.status_text
-        except Exception:
-            pass
 
     def _update_status_text(self, text: str) -> None:
         """Update status_text reactive and the status widget."""
         self.status_text = text
         if self._status_widget_id:
-            try:
-                self.query_one(self._status_widget_id, Static).update(text)
-            except Exception:
-                pass
+            safe_query(self, self._status_widget_id, Static, lambda w: w.update(text))
 
     def _update_status_error(self, error: str) -> None:
         """Update status bar with a friendly error message and retry hint."""

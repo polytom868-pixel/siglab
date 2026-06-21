@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
-from siglab.utils import safe_float as _safe_float
 
 
 def _series_has_finite_values(payload: dict[str, Any] | None) -> bool:

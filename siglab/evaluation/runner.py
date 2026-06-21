@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import math
-from typing import Any, cast
+from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from siglab.data.feeds import MarketDataProvider
@@ -18,15 +17,12 @@ from siglab.config import SiglabConfig
 from siglab.evaluator.backtesting import BacktestConfig  # via shim for mock compat
 
 from siglab.utils import safe_float as _safe_float
-from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
-from siglab.evaluation.analysis_utils import pre_audit_trade_episodes as _pre_audit_trade_episodes_from_canonical
 
 # Import from extracted sub-modules
 from siglab.evaluation.runner_regime import (
     _pair_regime_diagnostics,
     _pair_regime_state,
     _pair_trade_episodes_with_regime,
-    _window_regime_summary,
 )
 from siglab.evaluation.runner_serialize import (
     _policy_summary_spec,
@@ -35,32 +31,16 @@ from siglab.evaluation.runner_serialize import (
     _unique_float_values,
     _unique_int_values,
 )
-from siglab.evaluation.runner_episodes import (
-    _row_direction_label,
-    _row_position_signature,
-    _episode_asset_lists,
-    _episode_direction_counts,
-    _pair_position_episodes,
-    _holding_period_buckets,
-)
 from siglab.evaluation.runner_analysis import (
     _pre_audit_context_pack,
     _pre_audit_drawdown_pack,
-    _entry_feature_contributors,
-    _pair_gate_diagnostics,
-    _pre_audit_equity_shift_pack,
-    _pre_audit_exemplar_trades,
-    _pre_audit_time_bin_pack,
-    _policy_context_from_metadata,
 )
 from siglab.evaluation.runner_utils import (
     _pre_audit_end_idx,
-    _series_from_payload,
     _series_has_finite_values,
     _series_last_value,
     _series_min_value,
     _series_total_return,
-    _series_values,
 )
 
 # Lazy wrappers so unittest.mock.patch("siglab.evaluator.core.compile_spec") works.

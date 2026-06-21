@@ -31,15 +31,6 @@ siglab = "siglab.cli:main"
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.pytest.ini_options]
-markers = [
-    "integration: marks tests that make real API calls or run CLI subprocesses (run with -m integration)",
-    "asyncio: marks async test cases",
-    "tmux: marks tmux-based TUI tests that spawn terminal sessions (run with -m tmux)",
-]
-asyncio_mode = "auto"
-addopts = "-n auto --dist=loadscope --max-worker-restart=0"
-
 [dependency-groups]
 dev = [
     "ruff (>=0.15.6,<0.16.0)",

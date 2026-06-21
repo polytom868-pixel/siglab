@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import pickle
 import time
 from pathlib import Path
 from typing import Any
@@ -48,7 +49,8 @@ def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
                         curves.append((npy_file.stem, eq.astype(float)))
                 elif data.dtype in (np.float64, np.float32):
                     curves.append((npy_file.stem, data))
-        except Exception:
+        except (OSError, ValueError, TypeError, pickle.UnpicklingError):
+            logger.debug("Failed to load npy equity curve %s", npy_file)
             continue
     return curves
 

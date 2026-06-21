@@ -102,6 +102,12 @@ async def run_with_backoff(coro_factory: Callable[[], Awaitable[Any]], *, max_re
             attempt += 1
             if attempt >= max_retries:
                 raise
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "run_with_backoff attempt %d/%d failed, retrying",
+                attempt, max_retries,
+            )
             await asyncio.sleep(backoff_s * (2 ** (attempt - 1)))
 
 
@@ -120,14 +126,14 @@ def decode_status_error(response: Any) -> str | None:
         return None
     try:
         body = response.text()
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return f"HTTP {status}"
     if not body:
         return f"HTTP {status}"
     try:
         import json as _json
         parsed = _json.loads(body)
-    except Exception:
+    except (ValueError, TypeError):
         return f"HTTP {status}: {body[:200]}"
     if isinstance(parsed, dict):
         for key in ("error", "message", "msg", "detail"):

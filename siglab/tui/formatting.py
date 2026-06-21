@@ -446,6 +446,8 @@ def safe_query(screen: Any, widget_id: str, widget_type: type[Any], fn: Callable
         if fn is not None:
             return fn(widget)
         return widget
+    except (AttributeError, TypeError, ValueError):
+        return None
     except Exception:
         return None
 

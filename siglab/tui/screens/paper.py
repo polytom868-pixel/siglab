@@ -578,14 +578,13 @@ class PaperScreen(BaseScreen):
                     self.session_name = existing.get("name", "tui-session")
                     self.status_text = f"Resumed session {self.session_id[:8]}…"
                     self.is_loading = False
-                    try:
-                        form = self.query_one("#order-form", OrderFormWidget)
-                        form.set_symbol("BTC-USD")
-                    except Exception:
-                        logger.debug("Could not set default symbol on order form")
+                    safe_query(
+                        self, "#order-form", OrderFormWidget,
+                        lambda f: f.set_symbol("BTC-USD"),
+                    )
                     await self._refresh_all()
                     return
-            except Exception as exc:
+            except (ConnectionError, TimeoutError, ValueError, KeyError) as exc:
                 logger.debug("Session reuse check failed, creating new: %s", exc)
 
             data = await self._api.create_paper_session("tui-session")
@@ -594,14 +593,13 @@ class PaperScreen(BaseScreen):
             self.status_text = f"Session {self.session_id[:8]}… ready"
             self.is_loading = False
             # Update form widget with default symbol
-            try:
-                form = self.query_one("#order-form", OrderFormWidget)
-                form.set_symbol("BTC-USD")
-            except Exception:
-                logger.debug("Could not set default symbol on order form")
+            safe_query(
+                self, "#order-form", OrderFormWidget,
+                lambda f: f.set_symbol("BTC-USD"),
+            )
             # Initial data fetch
             await self._refresh_all()
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, ValueError, KeyError) as exc:
             self.status_text = f"Init error: {exc}"
             self.is_loading = False
             logger.warning("Session init failed: %s", exc)

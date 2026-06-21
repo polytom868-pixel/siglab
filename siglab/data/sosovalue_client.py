@@ -545,14 +545,15 @@ class SoSoValueClient:
             return self.verify
         try:
             return ssl.create_default_context()
-        except Exception:
-            pass
+        except (ssl.SSLError, OSError):
+            logger.debug("ssl.create_default_context() failed, trying certifi fallback")
         try:
             import certifi
 
             path = Path(certifi.where())
             if path.exists():
                 return ssl.create_default_context(cafile=str(path))
-        except Exception:
+        except (ssl.SSLError, OSError, ImportError, FileNotFoundError):
+            logger.debug("certifi SSL context creation also failed, disabling verification")
             pass
         return True

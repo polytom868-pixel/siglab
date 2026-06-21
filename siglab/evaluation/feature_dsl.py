@@ -86,7 +86,7 @@ def is_valid_feature_expression(
             cache={},
             validate_only=True,
         )
-    except Exception:
+    except (ValueError, TypeError, KeyError, ZeroDivisionError, RecursionError):
         return False
     return True
 

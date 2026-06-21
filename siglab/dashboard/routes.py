@@ -164,7 +164,7 @@ async def api_experiment_deploy(
     """Deploy an experiment by spec hash (legacy compat)."""
     try:
         body = await request.json()
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         body = {}
     state = request.app.state.dashboard
     return await state.deploy_experiment(spec_hash=spec_hash, payload=body)

@@ -80,9 +80,14 @@ async def run_paper_status(args: argparse.Namespace) -> None:
                         try:
                             await client.process_klines(args.session, klines, symbol=sym)
                         except Exception:
-                            pass
+                            import logging
+                            logging.getLogger(__name__).exception(
+                                "process_klines failed for %s", sym
+                            )
 
         except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Paper status fetch failed")
             pass
         status = client.get_session_status(args.session)
 
@@ -90,7 +95,7 @@ async def run_paper_status(args: argparse.Namespace) -> None:
         try:
             mark_prices = await client.get_mark_prices()
             status["mark_prices"] = mark_prices
-        except Exception:
+        except (ConnectionError, TimeoutError, ValueError, KeyError):
             status["mark_prices"] = {}
 
         print_json(status)

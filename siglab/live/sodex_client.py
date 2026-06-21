@@ -35,6 +35,7 @@ from siglab.live.sodex_signing import (
     http_body_from_action_payload,
     perps_cancel_order_body,
     perps_new_order_body,
+    perps_order_item,
     perps_schedule_cancel_body,
     perps_update_leverage_body,
     perps_update_margin_body,

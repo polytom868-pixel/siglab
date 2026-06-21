@@ -788,7 +788,7 @@ class MarketDataProvider:
                     exclude_frozen=True,
                 )
             except Exception:
-                logger.warning("delta_lab.screen_lending failed for basis=%s, skipping", basis)
+                logger.exception("delta_lab.screen_lending failed for basis=%s, skipping", basis)
                 continue
             for row in payload.get("data") or []:
                 if allowed_chain_ids and int(row.get("chain_id") or 0) not in allowed_chain_ids:
@@ -882,7 +882,7 @@ class MarketDataProvider:
                     series="price,lending",
                 )
             except Exception:
-                logger.warning("delta_lab.get_asset_timeseries failed for %s, skipping", basis_symbol)
+                logger.exception("delta_lab.get_asset_timeseries failed for %s, skipping", basis_symbol)
                 continue
             price_df = payload.get("price")
             lending_df = payload.get("lending")
@@ -1087,7 +1087,7 @@ class MarketDataProvider:
                     limit=num_bars,
                 )
             except Exception:
-                logger.warning("SoDEX klines fetch failed for %s, skipping", sodex_symbol)
+                logger.exception("SoDEX klines fetch failed for %s, skipping", sodex_symbol)
                 continue
             if klines is not None and not klines.empty:
                 series = klines["close"].rename(base_symbol)
@@ -1117,7 +1117,7 @@ class MarketDataProvider:
                     if base in symbols:
                         funding_rate_map[base] = float(mp.get("fundingRate") or 0.0)
         except Exception:
-            logger.warning("SoDEX mark_prices fetch failed; funding snapshots unavailable")
+            logger.exception("SoDEX mark_prices fetch failed; funding snapshots unavailable")
 
         # Fetch historical funding rates per symbol and build aligned funding frame
         funding_series_list: list[pd.Series] = []
@@ -1141,7 +1141,7 @@ class MarketDataProvider:
                 else:
                     fs = pd.Series(funding_rate_map.get(base_symbol, 0.0), index=prices.index, name=base_symbol)
             except Exception:
-                logger.warning("funding_history failed for %s, using latest snapshot", sodex_symbol)
+                logger.exception("funding_history failed for %s, using latest snapshot", sodex_symbol)
                 fs = pd.Series(funding_rate_map.get(base_symbol, 0.0), index=prices.index, name=base_symbol)
             funding_series_list.append(fs)
         funding = pd.concat(funding_series_list, axis=1).astype(float) if funding_series_list else pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
