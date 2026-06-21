@@ -12,10 +12,8 @@ from textual.widgets import ListItem, ListView, Static
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.formatting import INFO_BLUE, TEXT_MUTED
 from siglab.tui.widgets import SigLabStatusBar
-from siglab.tui.screens.market import MarketScreen
-from siglab.tui.screens.paper import PaperScreen
-from siglab.tui.screens.risk import RiskScreen
-from siglab.tui.screens.evidence import EvidenceScreen
+from siglab.tui.screens.evidence import EvidenceScreen, MarketScreen
+from siglab.tui.screens.paper import PaperScreen, RiskScreen
 NAV_ITEMS: list[tuple[str, str, str]] = [('1', '[ MARKET ]', 'market'), ('2', '[ PAPER  ]', 'paper'), ('3', '[ RISK   ]', 'risk'), ('4', '[ EVIDENCE ]', 'evidence')]
 SCREEN_NAMES = {screen_id: label for _, label, screen_id in NAV_ITEMS}
 SCREEN_IDS = {screen_id for _, _, screen_id in NAV_ITEMS}

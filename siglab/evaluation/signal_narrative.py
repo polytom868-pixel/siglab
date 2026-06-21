@@ -17,7 +17,6 @@ def _fmt(value: float, precision: int=4) -> str:
     if magnitude <= precision + 4:
         return f'{value:.{precision}f}' if abs(value) < 1 else f'{value:.{precision}f}'
     return f'{value:.{precision}e}'
-
 def _narrative_header(run_meta: dict) -> str:
     liquidated = bool(run_meta.get('liquidated', False))
     liq_tag = ' [LIQUIDATED]' if liquidated else ''
@@ -25,7 +24,6 @@ def _narrative_header(run_meta: dict) -> str:
     trade_count = run_meta.get('trade_count', 0)
     parts = ['=== Signal Evaluation Narrative ===', f'Leverage: {_fmt(leverage)}x | Trades: {trade_count}{liq_tag}']
     return '\n'.join(parts)
-
 def _narrative_evidence_sources(evidence: dict) -> str:
     windows = list(evidence.get('evaluation_windows') or [])
     if not windows:
@@ -41,7 +39,6 @@ def _narrative_evidence_sources(evidence: dict) -> str:
         src += f'  - {role}: {count} window(s)\n'
     src += f'  Split strategy: {note}'
     return src
-
 def _narrative_performance_summary(stats: dict) -> str:
     equity_payload = stats.get('equity_curve') or {}
     equity_values = list(equity_payload.get('values') or [])
@@ -66,7 +63,6 @@ def _narrative_performance_summary(stats: dict) -> str:
     if liquidated:
         lines.append('Status: LIQUIDATED')
     return '\n'.join(lines)
-
 def _narrative_feature_decomposition(features: dict) -> str:
     drawdown_pack = features.get('pre_audit_drawdown_pack') or {}
     contributors = list(drawdown_pack.get('top_feature_contributors') or [])
@@ -99,7 +95,6 @@ def _narrative_feature_decomposition(features: dict) -> str:
             feat_line += f' | aligned: {_fmt(aligned * 100.0)}%'
         lines.append(feat_line)
     return '\n'.join(lines)
-
 def _narrative_drawdown_analysis(drawdown: dict) -> str:
     drawdown_pack = drawdown.get('pre_audit_drawdown_pack') or {}
     context_pack = dict(drawdown.get('pre_audit_context_pack') or {})
@@ -120,7 +115,6 @@ def _narrative_drawdown_analysis(drawdown: dict) -> str:
     if pre_peak.get('trade_count', 0) > 0:
         lines.append(f'Pre-drawdown: {pre_peak['trade_count']} trades, win rate {_fmt(pre_peak.get('win_rate', 0.0) * 100.0)}%, avg return {_fmt(pre_peak.get('avg_return', 0.0))}')
     return '\n'.join((line for line in lines if line))
-
 def _narrative_exemplar_trades(trades: dict) -> str:
     if not trades:
         return '=== Exemplar Trades ===\nNo exemplar trade data available.'
@@ -164,7 +158,6 @@ def _narrative_exemplar_trades(trades: dict) -> str:
     trade_count = len(winners) + len(losers)
     lines.append(f'Total exemplar trades shown: {trade_count}')
     return '\n'.join(lines)
-
 def _narrative_regime_context(regime: dict) -> str:
     context_pack = dict(regime.get('pre_audit_context_pack') or {})
     regime_pack = dict(context_pack.get('trade_regime_pack') or {})
@@ -193,7 +186,6 @@ def _narrative_regime_context(regime: dict) -> str:
             line += f' (wr={_fmt(win_rate_worst * 100.0)}%, n={total_trades_worst})'
         lines.append(line)
     return '\n'.join(lines)
-
 def _narrative_gate_diagnostics(gates: dict) -> str:
     if isinstance(gates, list):
         return '=== Gate Diagnostics ===\nNo gate diagnostics available.'
@@ -243,7 +235,6 @@ def _narrative_gate_diagnostics(gates: dict) -> str:
         if entry_score is not None and exit_score is not None:
             lines.append(f'Policy: entry={_fmt(entry_score)}, exit={_fmt(exit_score)}')
     return '\n'.join(lines)
-
 def build_signal_narrative(canonical_run: dict) -> str:
     """Build a complete human-readable signal evaluation narrative."""
     sections: list[str] = []
