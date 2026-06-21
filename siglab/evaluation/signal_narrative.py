@@ -10,6 +10,7 @@ Assertions fulfilled: VAL-NARR-001 (Narrative output >= 200 characters)
 
 from __future__ import annotations
 
+from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +208,7 @@ def _narrative_drawdown_analysis(drawdown: dict) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def _narrative_exemplar_trades(trades: list) -> str:
+def _narrative_exemplar_trades(trades: dict) -> str:
     """Describe best and worst trades from the exemplar set.
 
     Reads from ``pre_audit_context_pack.exemplar_trades`` which contains
@@ -296,8 +297,8 @@ def _narrative_regime_context(regime: dict) -> str:
             continue
         best = str(entry.get("best_label", "?"))
         worst = str(entry.get("worst_label", "?"))
-        best_row = next((r for r in rows if r.get("label") == best), {})
-        worst_row = next((r for r in rows if r.get("label") == worst), {})
+        best_row: dict[str, Any] = next((r for r in rows if r.get("label") == best), {})
+        worst_row: dict[str, Any] = next((r for r in rows if r.get("label") == worst), {})
         total_trades_best = best_row.get("trade_count", 0)
         win_rate_best = best_row.get("win_rate")
         total_trades_worst = worst_row.get("trade_count", 0)
@@ -313,7 +314,7 @@ def _narrative_regime_context(regime: dict) -> str:
     return "\n".join(lines)
 
 
-def _narrative_gate_diagnostics(gates: list) -> str:
+def _narrative_gate_diagnostics(gates: dict) -> str:
     """Describe gate diagnostics and any bottleneck tags.
 
     Reads from ``pre_audit_context_pack.gate_diagnostics``.

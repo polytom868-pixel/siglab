@@ -5,4 +5,6 @@ This module re-exports ``compile_spec`` from the real implementation in
 replacing the deleted ``siglab.evaluator.compile`` shim.
 """
 
-from siglab.evaluation.compile import compile_spec  # noqa: F401
+from siglab.evaluation.compile import compile_spec
+
+__all__ = ["compile_spec"]

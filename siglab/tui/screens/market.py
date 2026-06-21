@@ -61,7 +61,7 @@ ORDERBOOK_LIMIT = 15
 # ── Symbol List Widget ───────────────────────────────────────────────
 
 
-class SymbolListWidget(FilterableListWidget):
+class SymbolListWidget(FilterableListWidget[SymbolEntry]):
     """Vertical list of perp symbols with selection highlighting."""
 
     __slots__ = ()
@@ -93,17 +93,17 @@ class SymbolListWidget(FilterableListWidget):
             )
         raise TypeError(f"Cannot convert {type(item).__name__} to SymbolEntry")
 
-    def set_symbols(self, entries: Sequence[Any]) -> None:
+    def set_symbols(self, entries: Sequence[SymbolEntry | dict[str, Any]]) -> None:
         """Update the full symbol list."""
         self.set_data([self._to_symbol_entry(e) for e in entries])
 
-    def _matches(self, item: Any) -> bool:
+    def _matches(self, item: SymbolEntry) -> bool:
         ft = self._filter_text.upper().strip()
         if not ft:
             return True
         return ft in item.name.upper() or ft in item.symbol.upper()
 
-    def _render_item(self, item: Any, index: int, is_selected: bool) -> Text:
+    def _render_item(self, item: SymbolEntry, index: int, is_selected: bool) -> Text:
         display = f"  {item.name:<18}"
         if is_selected:
             return Text(display, style=f"bold #000000 on {ACCENT_GREEN}")

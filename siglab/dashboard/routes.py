@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from siglab.config import SiglabConfig
+from siglab.dashboard.dashboard_state import DashboardState
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +299,7 @@ async def api_ops(request: Request) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _build_evidence_graph(state: Any) -> dict[str, Any] | None:
+def _build_evidence_graph(state: DashboardState) -> dict[str, Any] | None:
     """Build an evidence graph from the latest evidence store summary."""
     config = state.config
     if config is None:
@@ -397,7 +398,7 @@ async def evidence_graph(request: Request) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _build_skill_report(state: Any) -> list[dict[str, Any]]:
+def _build_skill_report(state: DashboardState) -> list[dict[str, Any]]:
     """Aggregate per-skill metrics from experiment tool traces."""
     if state.lineage is None:
         return []
@@ -530,7 +531,7 @@ async def skill_report(request: Request) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _compute_risk_metrics(state: Any) -> dict[str, Any]:
+def _compute_risk_metrics(state: DashboardState) -> dict[str, Any]:
     """Compute risk metrics from available data in the dashboard state."""
     from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
 
@@ -829,7 +830,7 @@ async def partial_experiment_summary(
     state = request.app.state.dashboard
     if state.templates is None:
         return {"error": "templates not configured"}
-    experiment = {}
+    experiment: dict[str, Any] = {}
     if spec_hash:
         payload = state.experiment_detail_payload(spec_hash)
         experiment = (payload or {}).get("experiment", {}) or {}

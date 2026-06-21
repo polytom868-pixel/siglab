@@ -21,7 +21,7 @@ class AssetUniverse:
     max_days_to_expiry: int = 180
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | None) -> "AssetUniverse":
+    def from_dict(cls: type[AssetUniverse], payload: dict[str, Any] | None) -> AssetUniverse:
         payload = payload or {}
         return cls(
             basis_groups=list(payload.get("basis_groups") or []),
@@ -45,7 +45,7 @@ class RiskBounds:
     max_leverage: float = 1.0
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | None) -> "RiskBounds":
+    def from_dict(cls: type[RiskBounds], payload: dict[str, Any] | None) -> RiskBounds:
         payload = payload or {}
         return cls(
             max_asset_weight=float(payload.get("max_asset_weight", 0.35)),
@@ -69,7 +69,7 @@ class SignalSpec:
     params: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "SignalSpec":
+    def from_dict(cls: type[SignalSpec], payload: dict[str, Any]) -> SignalSpec:
         return cls(
             track=str(payload["track"]),
             family=str(payload["family"]),

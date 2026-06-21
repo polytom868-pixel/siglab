@@ -6,7 +6,7 @@ import random
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol, cast
 
 
 class SoDEXWebSocketError(RuntimeError):
@@ -137,7 +137,7 @@ class SoDEXWebSocketClient:
             if self._connect is None:
                 import websockets
 
-                self._connection = await websockets.connect(self.url)  # type: ignore[assignment]
+                self._connection = cast(WebSocketConnection, await websockets.connect(self.url))
             else:
                 self._connection = await self._connect(self.url)
             self.metrics.connections += 1

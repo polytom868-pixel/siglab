@@ -17,7 +17,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from fastapi.templating import Jinja2Templates
 
@@ -35,7 +35,12 @@ from siglab.path_utils import display_path, resolve_path_from_root
 from siglab.track_registry import canonical_track_name, resolve_track, track_label
 
 
-def _is_finite_number(value: Any) -> bool:
+class _LineageStore(Protocol):
+    """Backward-compat shim for removed LineageStore."""
+    def dashboard_rows(self) -> list[dict[str, Any]]: ...
+
+
+def _is_finite_number(value: object) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(float(value))
 
 
@@ -173,8 +178,11 @@ class DashboardState:
 
     config: SiglabConfig | None = None
     deployment_store: DeploymentStore | None = None
+    lineage: _LineageStore | None = None
     static_dir: Path | None = None
     templates: Jinja2Templates | None = None
+    ws_manager: Any = None
+    start_time: float = 0.0
     _json_cache: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
@@ -182,6 +190,8 @@ class DashboardState:
     # ------------------------------------------------------------------
 
     def _dashboard_llm_provider(self) -> str:
+        if self.config is None:
+            return "unknown"
         return resolve_llm_provider(self.config)
 
     def _dashboard_llm_model(self) -> str:

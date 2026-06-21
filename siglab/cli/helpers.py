@@ -5,14 +5,40 @@ Extracted from siglab/cli.py to avoid duplication across subcommand modules.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, Protocol, cast
 
+from siglab.config import SiglabConfig
 from siglab.path_utils import resolve_path_from_root
+from siglab.schemas import SignalSpec
+
+
+class _ResearchProvider(Protocol):
+    is_configured: bool
+
+
+class _MarketDataProvider(Protocol):
+    def current_bundle_context(self) -> dict[str, Any]: ...
+
+
+class _AncestryStore(Protocol):
+    def best(self, track: str, run_session_id: str | None = ...) -> dict[str, Any] | None: ...
+    def experiment_detail(self, spec_hash: str) -> dict[str, Any] | None: ...
+    def dashboard_rows(self, track: str = ..., family: str = ..., run_session_id: str | None = ...) -> list[dict[str, Any]]: ...
+    def recent(self, track: str, limit: int = ...) -> list[dict[str, Any]]: ...
+
+
+class _Mutator(Protocol):
+    def canonical_dict(self) -> dict[str, Any]: ...
+
+
+class _ArgParser(Protocol):
+    def add_argument(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
 def latest_path(directory: Path, pattern: str) -> Path | None:
@@ -97,7 +123,7 @@ def _record_timestamp(row: dict[str, Any]) -> datetime | None:
     return parsed
 
 
-def float_or_none(value: Any) -> float | None:
+def float_or_none(value: float | int | str | None) -> float | None:
     from siglab.utils import safe_float
     return safe_float(value)
 
@@ -284,7 +310,7 @@ def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
     }
 
 
-def parse_sodex_enum(value: Any, aliases: dict[str, int], field_name: str) -> int:
+def parse_sodex_enum(value: str, aliases: dict[str, int], field_name: str) -> int:
     raw = str(value).strip()
     if raw.isdigit():
         parsed = int(raw)
@@ -298,7 +324,7 @@ def parse_sodex_enum(value: Any, aliases: dict[str, int], field_name: str) -> in
     raise SystemExit(1)
 
 
-def require_sosovalue_config(settings: Any) -> Path:
+def require_sosovalue_config(settings: SiglabConfig) -> Path:
     config_path = resolve_path_from_root(
         settings.sosovalue_config_path,
         root_dir=settings.root_dir,
@@ -315,20 +341,20 @@ def require_sosovalue_config(settings: Any) -> Path:
     return config_path
 
 
-def display_deployment_record(*, settings: Any, record: dict[str, Any]) -> dict[str, Any]:
+def display_deployment_record(*, settings: SiglabConfig, record: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(record)
     for key in ["strategy_dir", "spec_path", "manifest_path", "readme_path", "config_path"]:
         normalized[key] = display_path_static(normalized.get(key), root_dir=settings.root_dir)
     return normalized
 
 
-def display_path_static(value: Any, root_dir: Path) -> str:
+def display_path_static(value: str | Path | None, root_dir: Path) -> str:
     """Resolve a path for display, relative to root_dir if possible."""
     from siglab.path_utils import display_path as _dp
     return cast(str, _dp(value, root_dir=root_dir))
 
 
-def strip_audit_fields(payload: Any) -> Any:
+def strip_audit_fields(payload: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
     if isinstance(payload, dict):
         cleaned: dict[str, Any] = {}
         for key, value in payload.items():
@@ -355,7 +381,7 @@ def agent_safe_memory_packet(packet: dict[str, Any]) -> dict[str, Any]:
     return cast(dict[str, Any], strip_audit_fields(dict(packet or {})))
 
 
-def tool_only_external_research(*, web_researcher: Any) -> dict[str, Any]:
+def tool_only_external_research(*, web_researcher: _ResearchProvider) -> dict[str, Any]:
     return {
         "enabled": bool(web_researcher.is_configured),
         "provider": "tool_only",
@@ -367,9 +393,9 @@ def tool_only_external_research(*, web_researcher: Any) -> dict[str, Any]:
 def minimal_research_summary(
     *,
     track: str,
-    parent: Any,
-    provider: Any,
-    web_researcher: Any,
+    parent: SignalSpec,
+    provider: _MarketDataProvider,
+    web_researcher: _ResearchProvider,
     run_context: dict[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -385,7 +411,7 @@ def minimal_research_summary(
 
 def incumbent_detail(
     *,
-    ancestry: Any,
+    ancestry: _AncestryStore,
     track: str,
     run_session_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -402,9 +428,9 @@ def base_spec_payload_for_family(
     *,
     track: str,
     family: str,
-    parent: Any,
-    ancestry: Any,
-    mutator: Any,
+    parent: SignalSpec,
+    ancestry: _AncestryStore,
+    mutator: _Mutator,
     run_session_id: str | None = None,
     custom_symbols: list[str] | None = None,
     use_historical_seeds: bool = False,
@@ -443,10 +469,10 @@ def base_spec_payload_for_family(
 def pick_deterministic_parent(
     *,
     track: str,
-    ancestry: Any,
-    seed_specs: list[Any],
+    ancestry: _AncestryStore,
+    seed_specs: list[SignalSpec],
     iteration_number: int,
-) -> Any:
+) -> SignalSpec:
     from collections import Counter
 
     recent_rows = ancestry.recent(track, limit=500)
@@ -475,7 +501,7 @@ def spec_trade_style(spec: dict[str, Any]) -> str:
 
 
 def write_artifact(
-    settings: Any,
+    settings: SiglabConfig,
     track: str,
     evaluation: dict[str, Any],
 ) -> Path:
@@ -562,7 +588,7 @@ def print_run_reflection_short(*, track: str, reflection: dict[str, Any]) -> Non
         get_console().print(table2)
 
 
-def _format_optional_pct(value: Any) -> str:
+def _format_optional_pct(value: float | int | str | None) -> str:
     if value is None:
         return "n/a"
     try:
@@ -571,7 +597,7 @@ def _format_optional_pct(value: Any) -> str:
         return "n/a"
 
 
-def _format_optional_number(value: Any) -> str:
+def _format_optional_number(value: float | int | str | None) -> str:
     if value is None:
         return "n/a"
     try:
@@ -583,7 +609,7 @@ def _format_optional_number(value: Any) -> str:
 def external_research_from_llm_trace(
     *,
     llm_trace: dict[str, Any] | None,
-    web_researcher: Any,
+    web_researcher: _ResearchProvider,
 ) -> dict[str, Any]:
     payload = tool_only_external_research(web_researcher=web_researcher)
     trace = dict((llm_trace or {}).get("trace") or {})
@@ -624,7 +650,7 @@ def _render_html_template(name: str, **kwargs: Any) -> str:
     return _HTML_CACHE[name].format(**kwargs)
 
 
-def add_json_flag(parser: Any, *, dest: str = "as_json", default: bool = False, help_text: str | None = None) -> None:
+def add_json_flag(parser: argparse.ArgumentParser, *, dest: str = "as_json", default: bool = False, help_text: str | None = None) -> None:
     parser.add_argument(
         "--json",
         action="store_true",
@@ -634,17 +660,17 @@ def add_json_flag(parser: Any, *, dest: str = "as_json", default: bool = False, 
     )
 
 
-def maybe_print_json(payload: Any, *, as_json: bool) -> None:
+def maybe_print_json(payload: object, *, as_json: bool) -> None:
     if as_json:
         print(json.dumps(payload, indent=2, default=str))
 
 
 def write_json_and_maybe_print(
     path: Path,
-    payload: Any,
+    payload: object,
     *,
     as_json: bool,
-    writer: Any = None,
+    writer: Callable[..., Any] | None = None,
 ) -> Path:
     if writer is None:
         from siglab.io_utils import write_json as _write_json
@@ -654,7 +680,7 @@ def write_json_and_maybe_print(
     return written if isinstance(written, Path) else path
 
 
-def display_paths(values: Any, *, root_dir: Path | None) -> list[str | None]:
+def display_paths(values: str | Path | list[str | Path] | None, *, root_dir: Path | None) -> list[str | None]:
     from siglab.path_utils import display_path as _dp
     if values is None:
         return []

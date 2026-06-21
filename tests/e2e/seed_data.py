@@ -13,6 +13,8 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from siglab.dashboard.dashboard_state import DashboardState
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -478,7 +480,7 @@ def create_ops_artifacts(runs_dir: str) -> None:
             json.dump(payload, f, indent=2)
 
 
-def seed_dashboard_state(state, db_path: str) -> None:
+def seed_dashboard_state(state: DashboardState, db_path: str) -> None:
     """Patch a DashboardState instance to use a given database path.
 
     This is used by the conftest fixture to swap in the seeded database.

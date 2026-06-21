@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from siglab.llm_metadata import resolve_llm_model
+from siglab.config import SiglabConfig
 
 
 @dataclass
@@ -14,10 +15,12 @@ class ModelHealth:
     recent_errors: dict[str, str] = field(default_factory=dict)
 
 
+
+
 class LLMRoutingPolicy:
     LATENCY_DEMOTE_MS = 10_000.0
 
-    def __init__(self, settings: Any) -> None:
+    def __init__(self, settings: SiglabConfig) -> None:
         self.settings = settings
         self.health = ModelHealth()
 

@@ -13,7 +13,7 @@ import httpx
 from siglab.llm_metadata import (
     resolve_llm_api_key,
     resolve_llm_base_url,
-    resolve_llm_model,  # noqa: F401 — re-exported for test mocking
+    resolve_llm_model as resolve_llm_model,  # re-exported for test mocking
     resolve_llm_provider,
     resolve_llm_thinking_mode,
 )
@@ -22,9 +22,6 @@ from siglab.io_utils import json_clone
 from siglab.config import SiglabConfig
 from siglab.utils import _compact_scalar, _estimate_message_tokens, int_or_zero, safe_float, percentile as _percentile
 
-
-_openrouter_list_models.__dict__["_cache"] = {}
-_openrouter_list_models.__dict__["_cached_at"] = 0.0
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -127,7 +124,7 @@ def _openrouter_refuse_if_over_budget(
         )
 
 
-def _parse_usd_string(value: Any) -> float:
+def _parse_usd_string(value: float | int | str | None) -> float:
     if value is None:
         return 0.0
     coerced = safe_float(value, default=0.0)
@@ -863,7 +860,7 @@ class ClaudeClient:
             "routing_policy": self.routing_policy.snapshot(),
         }
 
-    def _record_usage(self, usage: Any, *, model: str | None = None) -> None:
+    def _record_usage(self, usage: object, *, model: str | None = None) -> None:
         if not isinstance(usage, dict):
             return
         prompt = _int_or_zero(
@@ -1006,7 +1003,7 @@ class ClaudeClient:
         self,
         *,
         message: dict[str, Any],
-        finish_reason: Any,
+        finish_reason: object,
     ) -> None:
         if self.last_exchange is not None:
             turns = list(self.last_exchange.get("assistant_messages") or [])
@@ -1086,7 +1083,7 @@ class ClaudeClient:
             trace_entry["latency_ms"] = round(float(latency_ms), 3)
         return tool_message, trace_entry
 
-    def _compact_tool_payload(self, value: Any, *, depth: int = 0) -> Any:
+    def _compact_tool_payload(self, value: object, *, depth: int = 0) -> object:
         if depth >= 4:
             return _compact_scalar(value)
         if isinstance(value, dict):

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from siglab.cli.rich_utils import print_json, print_success
-from siglab.config import load_settings
+from siglab.config import SiglabConfig, load_settings
 from siglab.evaluation.signal_narrative import build_signal_narrative
 from siglab.io_utils import write_json
 from siglab.path_utils import resolve_path_from_root
@@ -220,7 +220,7 @@ def run_demo_run(args: argparse.Namespace) -> None:
 
 def _demo_run_html(payload: dict[str, Any]) -> str:
     """Minimal HTML page displaying the demo-run summary payload."""
-    def _esc(v: Any) -> str:
+    def _esc(v: object) -> str:
         return html.escape(str(v))
     summary = _esc(payload.get("summary", ""))
 
@@ -270,7 +270,7 @@ def run_demo_manifest(args: argparse.Namespace) -> None:
     print_success(f"demo_manifest_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}")
 
 
-def _build_demo_manifest(settings: Any) -> dict[str, Any]:
+def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
     runs_dir = settings.artifact_dir
     from siglab.cli.telemetry import provider_metric_paths_for_telemetry
 

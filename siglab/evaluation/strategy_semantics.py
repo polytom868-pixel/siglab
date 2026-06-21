@@ -54,7 +54,7 @@ RESIDUAL_KEYWORDS = (
 )
 
 
-def dict_or_empty(value: Any) -> dict[str, Any]:
+def dict_or_empty(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 

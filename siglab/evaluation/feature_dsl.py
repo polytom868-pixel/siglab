@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import numpy as np
 import pandas as pd
@@ -504,7 +504,7 @@ def _expect_kalman_args(
 def _binary(
     left: pd.DataFrame | float,
     right: pd.DataFrame | float,
-    operation: Any,
+    operation: Callable[[Any, Any], pd.DataFrame],
 ) -> pd.DataFrame:
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         left_frame, right_frame = _aligned_pair(left, right)

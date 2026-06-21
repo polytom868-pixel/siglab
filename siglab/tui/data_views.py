@@ -31,7 +31,7 @@ class TickerView:
     _raw: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> TickerView:
+    def from_dict(cls: type[TickerView], d: dict[str, Any]) -> TickerView:
         return cls(_raw=d)
 
     @property
@@ -74,7 +74,7 @@ class SymbolEntry:
     volume: float
 
     @classmethod
-    def from_ticker(cls, tv: TickerView) -> SymbolEntry:
+    def from_ticker(cls: type[SymbolEntry], tv: TickerView) -> SymbolEntry:
         return cls(
             name=tv.symbol,
             symbol=tv.symbol,
@@ -91,7 +91,7 @@ class KlineView:
     _raw: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> KlineView:
+    def from_dict(cls: type[KlineView], d: dict[str, Any]) -> KlineView:
         return cls(_raw=d)
 
     @property
@@ -128,7 +128,7 @@ class OrderBookView:
     symbol: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], symbol: str) -> OrderBookView:
+    def from_dict(cls: type[OrderBookView], data: dict[str, Any], symbol: str) -> OrderBookView:
         return cls(
             bids=tuple(data.get("bids", [])),
             asks=tuple(data.get("asks", [])),
@@ -146,7 +146,7 @@ class PositionView:
     _raw: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> PositionView:
+    def from_dict(cls: type[PositionView], d: dict[str, Any]) -> PositionView:
         return cls(_raw=d)
 
     @property
@@ -177,7 +177,7 @@ class OrderView:
     _raw: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> OrderView:
+    def from_dict(cls: type[OrderView], d: dict[str, Any]) -> OrderView:
         return cls(_raw=d)
 
     @property
@@ -233,7 +233,7 @@ class PnlSnapshot:
     open_count: int
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> PnlSnapshot:
+    def from_dict(cls: type[PnlSnapshot], d: dict[str, Any]) -> PnlSnapshot:
         return cls(
             realized=float(d.get("realized_pnl", 0)),
             unrealized=float(d.get("unrealized_pnl", 0)),
@@ -262,7 +262,7 @@ class RiskSnapshot:
     alerts: tuple[dict[str, Any], ...]
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> RiskSnapshot:
+    def from_dict(cls: type[RiskSnapshot], data: dict[str, Any]) -> RiskSnapshot:
         return cls(
             composite_score=data.get("composite_score"),
             sub_scores=dict(data.get("sub_scores", {})),
@@ -287,7 +287,7 @@ class GraphNode:
     _raw: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> GraphNode:
+    def from_dict(cls: type[GraphNode], d: dict[str, Any]) -> GraphNode:
         return cls(_raw=d)
 
     @property
@@ -318,7 +318,7 @@ class GraphEdge:
     _raw: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> GraphEdge:
+    def from_dict(cls: type[GraphEdge], d: dict[str, Any]) -> GraphEdge:
         return cls(_raw=d)
 
     @property
@@ -358,7 +358,7 @@ class StrategyEntry:
     _raw: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> StrategyEntry:
+    def from_dict(cls: type[StrategyEntry], d: dict[str, Any]) -> StrategyEntry:
         return cls(_raw=d)
 
     @property

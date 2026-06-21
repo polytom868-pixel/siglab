@@ -177,15 +177,15 @@ def _cagr_safe(
         try:
             from decimal import Decimal, getcontext
             getcontext().prec = 28
-            ratio = Decimal(str(end_value)) / Decimal(str(begin_value))
-            if ratio <= 0:
+            ratio_dec = Decimal(str(end_value)) / Decimal(str(begin_value))
+            if ratio_dec <= 0:
                 return None
-            if ratio > 1e10:
-                ratio = Decimal("1e10")
-            elif ratio < 1e-10:
-                ratio = Decimal("1e-10")
+            if ratio_dec > 1e10:
+                ratio_dec = Decimal("1e10")
+            elif ratio_dec < 1e-10:
+                ratio_dec = Decimal("1e-10")
             periods_dec = Decimal(str(periods))
-            cagr = float(ratio ** (Decimal(1) / periods_dec) - Decimal(1))
+            cagr = float(ratio_dec ** (Decimal(1) / periods_dec) - Decimal(1))
         except (ValueError, TypeError, ArithmeticError, ZeroDivisionError):
             return None
     return max(min(cagr, 100.0), -100.0)
@@ -207,7 +207,7 @@ def _stats(equity: pd.Series, returns: pd.Series) -> dict[str, Any]:
     )
     drawdown = equity / equity.cummax() - 1.0
     max_drawdown = float(drawdown.min()) if len(drawdown) else 0.0
-    calmar = cagr / abs(max_drawdown) if max_drawdown < 0 else 0.0
+    calmar = (cagr or 0.0) / abs(max_drawdown) if max_drawdown < 0 else 0.0
     return {
         "total_return": total_return,
         "sharpe": sharpe,

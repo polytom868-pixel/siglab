@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from siglab.cli.rich_utils import get_console, make_table, print_json
-from siglab.config import load_settings
+from siglab.config import SiglabConfig, load_settings
 from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
 
 
@@ -79,7 +79,7 @@ def run_command(args: argparse.Namespace) -> None:
         get_console().print(table)
 
 
-def trace_paths_for_telemetry(*, settings: Any, track: str, run_session_id: str | None) -> list[Path]:
+def trace_paths_for_telemetry(*, settings: SiglabConfig, track: str, run_session_id: str | None) -> list[Path]:
     base = settings.artifact_dir
     if run_session_id:
         pattern = f"*/workspaces/{run_session_id}/iterations/**/*_trace.json"
@@ -90,7 +90,7 @@ def trace_paths_for_telemetry(*, settings: Any, track: str, run_session_id: str 
     return sorted(base.glob(pattern))
 
 
-def provider_metric_paths_for_telemetry(*, settings: Any, run_session_id: str | None) -> list[Path]:
+def provider_metric_paths_for_telemetry(*, settings: SiglabConfig, run_session_id: str | None) -> list[Path]:
     base = settings.artifact_dir / "provider_metrics"
     if run_session_id:
         jsonl_path = base / f"{run_session_id}.jsonl"

@@ -213,7 +213,7 @@ class OperatorPipeline:
             consensus = "SELL"
 
         # Pick the symbol with the highest weighted confidence
-        primary_symbol = max(symbols, key=symbols.get) if symbols else ""
+        primary_symbol = max(symbols, key=lambda k: symbols.get(k, 0.0)) if symbols else ""
 
         # Size scales with confidence (2 % of portfolio per unit confidence)
         position_size = max_conf * 0.02

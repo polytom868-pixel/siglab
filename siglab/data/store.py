@@ -36,7 +36,7 @@ class ParquetLake:
             return None
         return pd.read_parquet(latest)
 
-    def write_json(self, namespace: str, key: str, payload: Any) -> Path:
+    def write_json(self, namespace: str, key: str, payload: object) -> Path:
         target_dir = self._target_dir(namespace, key)
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / f"{self._timestamp()}.json"

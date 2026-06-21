@@ -6,7 +6,7 @@ across list widgets and comparison widgets in screen modules.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 from rich.text import Text
 from textual.reactive import reactive
@@ -15,7 +15,10 @@ from textual.widgets import Static
 from siglab.tui.formatting import TEXT_MUTED
 
 
-class FilterableListWidget(Static):
+T = TypeVar("T")
+
+
+class FilterableListWidget(Static, Generic[T]):
     """Base for list widgets with filtering, selection, and optional multi-select.
 
     Subclasses must implement:
@@ -40,13 +43,13 @@ class FilterableListWidget(Static):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._all_data: tuple[Any, ...] = ()
+        self._all_data: tuple[T, ...] = ()
         self._filter_text: str = ""
         self._selected_hashes: set[str] = set()
 
     # ── Data management ──────────────────────────────────────────────
 
-    def set_data(self, items: list[Any]) -> None:
+    def set_data(self, items: list[T]) -> None:
         """Store a reference to the data list as an immutable tuple."""
         self._all_data = tuple(items)
         self._apply_filters()
@@ -64,7 +67,7 @@ class FilterableListWidget(Static):
         if items and self.selected_index >= len(items):
             self.selected_index = max(0, len(items) - 1)
 
-    def _matches(self, item: Any) -> bool:
+    def _matches(self, item: T) -> bool:
         """Override to add custom filter predicates. Default: text search only."""
         ft = self._filter_text
         if not ft:
@@ -110,7 +113,7 @@ class FilterableListWidget(Static):
         """Return the set of multi-selected item keys."""
         return set(self._selected_hashes)
 
-    def _get_item_key(self, item: Any) -> str | None:
+    def _get_item_key(self, item: T) -> str | None:
         """Override to return a unique key for multi-select."""
         return None
 
@@ -127,7 +130,7 @@ class FilterableListWidget(Static):
             lines.append("\n")
         return lines
 
-    def _render_item(self, item: Any, index: int, is_selected: bool) -> Text:
+    def _render_item(self, item: T, index: int, is_selected: bool) -> Text:
         """Override in subclass to define per-item rendering."""
         return Text("")
 

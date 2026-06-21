@@ -13,13 +13,13 @@ import httpx
 from siglab.llm_metadata import (
     resolve_llm_api_key,
     resolve_llm_base_url,
-    resolve_llm_model,  # noqa: F401 — re-exported for test mocking
+    resolve_llm_model as resolve_llm_model,  # re-exported for test mocking
     resolve_llm_provider,
     resolve_llm_thinking_mode,
 )
 from siglab.llm.policy import LLMRoutingPolicy
 from siglab.config import SiglabConfig
-from siglab.utils import int_or_zero, percentile as _percentile
+from siglab.utils import _compact_scalar, _estimate_message_tokens, int_or_zero, percentile as _percentile
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -749,7 +749,7 @@ class ClaudeClient:
             "routing_policy": self.routing_policy.snapshot(),
         }
 
-    def _record_usage(self, usage: Any, *, model: str | None = None) -> None:
+    def _record_usage(self, usage: object, *, model: str | None = None) -> None:
         if not isinstance(usage, dict):
             return
         prompt = _int_or_zero(
@@ -892,7 +892,7 @@ class ClaudeClient:
         self,
         *,
         message: dict[str, Any],
-        finish_reason: Any,
+        finish_reason: object,
     ) -> None:
         if self.last_exchange is not None:
             turns = list(self.last_exchange.get("assistant_messages") or [])
@@ -972,7 +972,7 @@ class ClaudeClient:
             trace_entry["latency_ms"] = round(float(latency_ms), 3)
         return tool_message, trace_entry
 
-    def _compact_tool_payload(self, value: Any, *, depth: int = 0) -> Any:
+    def _compact_tool_payload(self, value: object, *, depth: int = 0) -> object:
         if depth >= 4:
             return _compact_scalar(value)
         if isinstance(value, dict):
@@ -1001,9 +1001,6 @@ class ClaudeClient:
         return cast(dict[str, Any], json.loads(spec))
 
 
-from siglab.utils import _compact_scalar, _estimate_message_tokens
-
-
 _int_or_zero = int_or_zero
 
 
@@ -1017,7 +1014,7 @@ def _estimate_bai_credits(
     return (max(0, int(input_tokens)) * input_rate) + (max(0, int(output_tokens)) * output_rate)
 
 
-def _json_clone(value: Any) -> Any:
+def _json_clone(value: object) -> object:
     return json.loads(json.dumps(value, ensure_ascii=True, default=str))
 
 

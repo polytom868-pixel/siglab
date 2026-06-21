@@ -29,7 +29,7 @@ def load_json_path(value: str | Path | None, *, root_dir: Path | None = None) ->
     return payload if isinstance(payload, dict) else None
 
 
-def write_json(path: Path, payload: Any, *, indent: int = 2, ensure_ascii: bool = True) -> None:
+def write_json(path: Path, payload: object, *, indent: int = 2, ensure_ascii: bool = True) -> None:
     path.write_text(
         json.dumps(payload, indent=indent, ensure_ascii=ensure_ascii, default=str)
     )
@@ -41,11 +41,11 @@ def write_text_if_changed(path: Path, content: str) -> None:
     path.write_text(content)
 
 
-def json_clone(value: Any) -> Any:
+def json_clone(value: object) -> object:
     return json.loads(json.dumps(value, ensure_ascii=True, default=str))
 
 
-def json_safe(value: Any) -> Any:
+def json_safe(value: object) -> object:
     if isinstance(value, dict):
         return {key: json_safe(item) for key, item in value.items()}
     if isinstance(value, list):

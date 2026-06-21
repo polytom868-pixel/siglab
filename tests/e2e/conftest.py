@@ -22,6 +22,8 @@ import pytest
 import requests
 from playwright.sync_api import sync_playwright
 
+from tests.e2e import seed_data
+
 # Paths relative to the repo root (CWD when pytest runs)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = REPO_ROOT / "siglab.db"
@@ -62,7 +64,6 @@ def server(request: pytest.FixtureRequest) -> None:
     * Yields control to the test session.
     * Tears down the server and restores the original database.
     """
-    from tests.e2e import seed_data as seed_data_mod
 
     # ── 1. Back up existing database ──────────────────────────────────
     db_backup_path: Path | None = None

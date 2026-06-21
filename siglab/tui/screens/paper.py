@@ -587,6 +587,7 @@ class PaperScreen(BaseScreen):
             except (ConnectionError, TimeoutError, ValueError, KeyError) as exc:
                 logger.debug("Session reuse check failed, creating new: %s", exc)
 
+            assert self._api is not None
             data = await self._api.create_paper_session("tui-session")
             self.session_id = data.get("session_id", "")
             self.session_name = data.get("name", "tui-session")
@@ -611,6 +612,7 @@ class PaperScreen(BaseScreen):
         if not self.session_id:
             return
         try:
+            assert self._api is not None
             data = await self._api.get_paper_session(self.session_id)
             mp = data.get("mark_prices")
             if isinstance(mp, dict):

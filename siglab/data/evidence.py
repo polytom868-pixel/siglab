@@ -310,7 +310,7 @@ def _evidence_id(row: dict[str, Any]) -> str:
     # Inline _normalize_value for stable hashing
     value = row.get("value")
     if isinstance(value, bool):
-        normalized_value = value
+        normalized_value: Any = value
     elif isinstance(value, (int, float)):
         normalized_value = repr(float(value))
     elif isinstance(value, str):
@@ -335,7 +335,7 @@ def _evidence_id(row: dict[str, Any]) -> str:
     return "ev_" + hashlib.sha256(encoded).hexdigest()[:24]
 
 
-def _coerce_float(value: Any) -> float | None:
+def _coerce_float(value: object) -> float | None:
     """Coerce int/float/numeric-string to float; None for bool or non-numeric."""
     if isinstance(value, bool):
         return None
@@ -349,7 +349,7 @@ def _coerce_float(value: Any) -> float | None:
     return None
 
 
-def _preferred_multilingual_content(value: Any) -> dict[str, Any]:
+def _preferred_multilingual_content(value: object) -> dict[str, Any]:
     if not isinstance(value, list):
         return {}
     fallback: dict[str, Any] = {}
@@ -363,7 +363,7 @@ def _preferred_multilingual_content(value: Any) -> dict[str, Any]:
     return fallback
 
 
-def _matched_currency_symbol(value: Any, *, preferred: str | None = None) -> str | None:
+def _matched_currency_symbol(value: object, *, preferred: str | None = None) -> str | None:
     if not isinstance(value, list):
         return None
     preferred_value = str(preferred or "").strip().lower()
@@ -390,7 +390,7 @@ def _first_of(row: dict[str, Any], keys: Iterable[str]) -> Any:
     return None
 
 
-def _record_day(value: Any) -> date | None:
+def _record_day(value: object) -> date | None:
     if value is None:
         return None
     # Numeric epoch (int, float, or numeric string) — ms if absurdly large.

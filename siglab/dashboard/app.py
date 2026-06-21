@@ -70,18 +70,18 @@ class WebSocketManager:
         self._subscriptions: dict[str, set[Any]] = {}
         self._update_task: asyncio.Task[None] | None = None
 
-    def register(self, websocket: Any) -> None:
+    def register(self, websocket: object) -> None:
         self._connections.add(websocket)
 
-    def unregister(self, websocket: Any) -> None:
+    def unregister(self, websocket: object) -> None:
         self._connections.discard(websocket)
         for subs in self._subscriptions.values():
             subs.discard(websocket)
 
-    def subscribe(self, symbol: str, websocket: Any) -> None:
+    def subscribe(self, symbol: str, websocket: object) -> None:
         self._subscriptions.setdefault(symbol, set()).add(websocket)
 
-    def unsubscribe(self, symbol: str, websocket: Any) -> None:
+    def unsubscribe(self, symbol: str, websocket: object) -> None:
         subs = self._subscriptions.get(symbol)
         if subs:
             subs.discard(websocket)
@@ -129,8 +129,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Register custom Jinja2 filters
     _env = state.templates.env
 
-    def _jinja2_format_number(value: Any, decimals: int = 2) -> str:
+    def _jinja2_format_number(value: float | int | str | None, decimals: int = 2) -> str:
         try:
+            if value is None:
+                return "n/a"
             v = float(value)
             if not (v != v or v == float('inf') or v == float('-inf')):
                 return f"{v:.{decimals}f}"
@@ -138,8 +140,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             pass
         return "n/a"
 
-    def _jinja2_format_pct(value: Any) -> str:
+    def _jinja2_format_pct(value: float | int | str | None) -> str:
         try:
+            if value is None:
+                return "n/a"
             v = float(value)
             if not (v != v or v == float('inf') or v == float('-inf')):
                 return f"{v * 100:.2f}%"
@@ -147,7 +151,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             pass
         return "n/a"
 
-    def _jinja2_format_dt(value: Any) -> str:
+    def _jinja2_format_dt(value: object) -> str:
         if not value:
             return ""
         try:

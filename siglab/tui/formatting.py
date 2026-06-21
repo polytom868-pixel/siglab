@@ -7,15 +7,19 @@ across screen modules and ensure theme consistency.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from rich.text import Text
-
 from siglab.utils import safe_float
 
 __all__ = ["safe_float"]
 # Single source of truth for all Rich Text colors in TUI widgets.
 # Keep in sync with siglab/tui/styles/theme.tcss variables.
+
+
+class _Queryable(Protocol):
+    """Any Textual DOM node with a query_one method."""
+    def query_one(self, widget_id: str, widget_type: type[Any]) -> Any: ...
 
 
 ACCENT_GREEN = "#4ade80"
@@ -423,7 +427,7 @@ def render_list_item(
         return result
 
 
-def safe_query(screen: Any, widget_id: str, widget_type: type[Any], fn: Callable[[Any], Any] | None = None) -> Any:
+def safe_query(screen: _Queryable, widget_id: str, widget_type: type[Any], fn: Callable[[Any], Any] | None = None) -> Any:
     """Safely query a widget and optionally apply a function to it.
 
     Eliminates the pervasive ``try: self.query_one(id, Type).fn()
@@ -451,7 +455,7 @@ def safe_query(screen: Any, widget_id: str, widget_type: type[Any], fn: Callable
         return None
 
 
-def safe_update_text(screen: Any, widget_id: str, text: str) -> None:
+def safe_update_text(screen: _Queryable, widget_id: str, text: str) -> None:
     """Shorthand for ``safe_query`` on a ``Static`` widget ``update()``."""
     from textual.widgets import Static  # local import to avoid circular
     def _do_update(w: Static) -> None:

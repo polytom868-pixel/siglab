@@ -103,6 +103,7 @@ class SoDEXExecutionAdapter:
         if not has_credentials:
             return self.dependency_report()
 
+        assert account_id_raw is not None
         account_id = validate_account_id(account_id_raw)
         store_path = Path(nonce_store_path) if nonce_store_path else None
         nonce_manager = SoDEXNonceManager(store_path=store_path, environment=environment)
@@ -265,9 +266,9 @@ class SoDEXExecutionAdapter:
         }
 
 
-def _finite_float(value: Any, default: float = 0.0) -> float:
+def _finite_float(value: float | int | str | None, default: float = 0.0) -> float:
     try:
-        numeric = float(value)
+        numeric = float(value) if value is not None else default
     except (TypeError, ValueError):
         return default
     return numeric if math.isfinite(numeric) else default

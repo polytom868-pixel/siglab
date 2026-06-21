@@ -137,7 +137,7 @@ class PaperOrder:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PaperOrder:
+    def from_dict(cls: type[PaperOrder], data: dict[str, Any]) -> PaperOrder:
         data = dict(data)
         data["side"] = PaperOrderSide(data["side"])
         data["order_type"] = PaperOrderType(data["order_type"])
@@ -168,7 +168,7 @@ class PaperPosition:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PaperPosition:
+    def from_dict(cls: type[PaperPosition], data: dict[str, Any]) -> PaperPosition:
         return cls(**data)
 
 
@@ -202,7 +202,7 @@ class PaperSession:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PaperSession:
+    def from_dict(cls: type[PaperSession], data: dict[str, Any]) -> PaperSession:
         session = cls(
             session_id=data["session_id"],
             name=data.get("name", data["session_id"]),
@@ -246,7 +246,7 @@ def _validate_symbol(symbol: str) -> str:
     return symbol
 
 
-def _to_positive_float(value: Any, *, name: str) -> float:
+def _to_positive_float(value: float | int | str, *, name: str) -> float:
     try:
         v = float(value)
     except (TypeError, ValueError):
@@ -1143,7 +1143,7 @@ class SoDEXPaperPerpsClient:
 
         # Fall back to legacy npy
         if npy_path.exists():
-            data: Any = np.load(str(npy_path), allow_pickle=True)  # type: ignore[no-redef]
+            data = np.load(str(npy_path), allow_pickle=True)
             if isinstance(data, np.ndarray) and data.ndim == 0:
                 data = data.item()
             if not isinstance(data, dict):

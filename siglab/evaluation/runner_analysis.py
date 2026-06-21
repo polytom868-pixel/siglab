@@ -547,7 +547,7 @@ def _pair_regime_state(
     return state
 
 
-def _lookup_timestamp(index: pd.Index, timestamp: Any) -> pd.Timestamp | None:
+def _lookup_timestamp(index: pd.Index, timestamp: str | int | float | pd.Timestamp | None) -> pd.Timestamp | None:
     if len(index) == 0 or timestamp is None:
         return None
     ts = pd.Timestamp(timestamp)
@@ -586,7 +586,7 @@ def _regime_binary_label(
 def _pair_regime_snapshot(
     *,
     regime_state: dict[str, Any],
-    timestamp: Any,
+    timestamp: str | int | float | pd.Timestamp | None,
     target_weights: pd.DataFrame | None,
 ) -> dict[str, Any]:
     if not regime_state.get("available"):
@@ -1110,8 +1110,8 @@ def _pre_audit_drawdown_pack(
     def _empty_pack(
         *,
         bars: int,
-        start_timestamp: Any = None,
-        trough_timestamp: Any = None,
+        start_timestamp: object = None,
+        trough_timestamp: object = None,
         equity_peak: float | None = None,
         equity_trough: float | None = None,
         dominant_direction: str | None = "flat",
@@ -1224,8 +1224,6 @@ def _pre_audit_drawdown_pack(
         score_window = score_frame.iloc[peak_idx : trough_idx + 1]
         score_window_arr = score_window.to_numpy(dtype=float, na_value=0.0)
         win_pos_arr = window_positions.to_numpy(dtype=float, na_value=0.0)
-        win_pos_cols = list(window_positions.columns)
-
         aligned_values: list[float] = []
         support_scores: list[float] = []
         trough_support = None
@@ -1429,7 +1427,7 @@ def _pre_audit_time_bin_pack(
 def _entry_feature_contributors(
     *,
     signal_components: dict[str, pd.DataFrame] | None,
-    timestamp: Any,
+    timestamp: str | int | float | pd.Timestamp | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for feature, frame in dict(signal_components or {}).items():
@@ -1526,7 +1524,6 @@ def _pair_gate_diagnostics(
 
     pair_mode = score_frame.shape[1] == 1 and target_frame.shape[1] >= 2
     score_cols = list(score_frame.columns)
-    target_cols = list(target_frame.columns)
 
     # position_signature via vectorised helper
     position_signature = _make_position_signatures(target_frame)
@@ -1598,7 +1595,7 @@ def _pair_gate_diagnostics(
     if aligned_active_fraction is not None and aligned_active_fraction < 0.55:
         bottleneck_tags.append("weak_score_alignment")
 
-    regime_gate_summary = None
+    regime_gate_summary: dict[str, Any] | None = None
     if regime_gate_mask is not None:
         gate_mask = regime_gate_mask.reindex(score_frame.index).ffill().fillna(False).astype(bool)
         regime_gate_summary = {

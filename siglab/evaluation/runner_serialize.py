@@ -7,6 +7,8 @@ from typing import Any, Callable, cast
 import numpy as np
 import pandas as pd
 
+from siglab.evaluation.backtest import BacktestResult
+
 from siglab.utils import safe_float as _safe_float
 
 
@@ -126,7 +128,7 @@ def _serialize_trades(
             else:
                 item[key] = value
         if regime_state and regime_state.get("available"):
-            from siglab.evaluation.runner_regime import _pair_regime_snapshot
+            from siglab.evaluation.runner_analysis import _pair_regime_snapshot
             item["regime_snapshot"] = _pair_regime_snapshot(
                 regime_state=regime_state,
                 timestamp=trade.get("timestamp"),
@@ -138,7 +140,7 @@ def _serialize_trades(
 
 def _serialize_canonical_run(
     *,
-    result: Any,
+    result: BacktestResult,
     target_weights: pd.DataFrame,
     visual_split: dict[str, Any],
     evaluation_windows: list[dict[str, Any]],

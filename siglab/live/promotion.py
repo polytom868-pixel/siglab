@@ -256,11 +256,11 @@ def extract_session_metrics(
     """
     session = client.get_session(session_id)
 
-    filled_orders = [
-        o for o in session.orders.values()
-        if o.status.value == "FILLED" and o.fill_timestamp is not None
-    ]
-    filled_orders.sort(key=lambda o: o.fill_timestamp)  # type: ignore[arg-type, return-value]
+    filled_orders: list[Any] = []
+    for o in session.orders.values():
+        if o.status.value == "FILLED" and o.fill_timestamp is not None:
+            filled_orders.append(o)
+    filled_orders.sort(key=lambda o: o.fill_timestamp)
 
     if not filled_orders:
         return {
@@ -279,7 +279,7 @@ def extract_session_metrics(
 
     for order in filled_orders:
         sym = order.symbol
-        day = _ts_to_day_key(order.fill_timestamp)  # type: ignore[arg-type]
+        day = _ts_to_day_key(order.fill_timestamp)
 
         prior_qty = pos_qty.get(sym, 0.0)
         prior_entry = pos_entry.get(sym, 0.0)
@@ -371,11 +371,11 @@ def extract_daily_metrics(
     """
     session = client.get_session(session_id)
 
-    filled_orders = [
-        o for o in session.orders.values()
-        if o.status.value == "FILLED" and o.fill_timestamp is not None
-    ]
-    filled_orders.sort(key=lambda o: o.fill_timestamp)  # type: ignore[arg-type, return-value]
+    filled_orders: list[Any] = []
+    for o in session.orders.values():
+        if o.status.value == "FILLED" and o.fill_timestamp is not None:
+            filled_orders.append(o)
+    filled_orders.sort(key=lambda o: o.fill_timestamp)
 
     if not filled_orders:
         return []
@@ -385,7 +385,7 @@ def extract_daily_metrics(
 
     day_orders: dict[str, list[Any]] = defaultdict(list)
     for order in filled_orders:
-        day = _ts_to_day_key(order.fill_timestamp)  # type: ignore[arg-type]
+        day = _ts_to_day_key(order.fill_timestamp)
         day_orders[day].append(order)
 
     days_sorted = sorted(day_orders.keys())

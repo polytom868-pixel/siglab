@@ -188,7 +188,7 @@ class SoDEXNonceManager:
             raise
 
 
-def validate_account_id(account_id: Any) -> int:
+def validate_account_id(account_id: str | int) -> int:
     try:
         value = int(account_id)
     except (TypeError, ValueError) as exc:
@@ -414,7 +414,7 @@ def perps_update_margin_body(*, account_id: int, symbol_id: int, amount: str) ->
     ])
 
 
-def _canonical_value(value: Any) -> Any:
+def _canonical_value(value: object) -> object:
     if isinstance(value, OrderedDict):
         return OrderedDict((key, _canonical_value(item)) for key, item in value.items() if item is not None)
     if isinstance(value, dict):

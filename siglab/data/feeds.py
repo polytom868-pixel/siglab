@@ -523,6 +523,8 @@ class MarketDataProvider:
             ]
 
         # SoSoValue evidence: ETF inflow + featured news
+        sosovalue_etf: Any
+        sosovalue_news: Any
         sosovalue_etf, sosovalue_news = await asyncio.gather(
             self.fetch_etf_historical_inflow(etf_type="us-btc-spot"),
             self.fetch_featured_news(page_size=5),
@@ -1284,7 +1286,7 @@ class MarketDataProvider:
                 kind="frame",
             )
 
-    def _persist_bundle_json(self, cache_key: str, payload: Any) -> None:
+    def _persist_bundle_json(self, cache_key: str, payload: object) -> None:
         """Persist a JSON-serialisable payload to the lake and record it as a bundle component."""
         self.lake.write_json("market_bundle_json", cache_key, payload)
         self._record_bundle_component(

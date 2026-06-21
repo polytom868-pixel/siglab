@@ -19,34 +19,7 @@ _import_sigint = signal.signal(signal.SIGINT, lambda s, f: sys.exit(130))
 # ── Backward-compatibility re-exports ──────────────────────────────────────
 # These allow existing code and tests to import symbols directly from siglab.cli.
 # New code should import from the specific submodule (e.g. siglab.cli.helpers).
-# ruff: noqa: F401, E402 — all imports here are re-exports, intentionally after module setup.
-
-# Helpers
-from siglab.cli.helpers import (
-    deployment_eligible as _deployment_eligible,
-    deployment_ineligible_reasons as _deployment_ineligible_reasons,
-    parse_sodex_enum as _parse_sodex_enum,
-    require_sosovalue_config as _require_sosovalue_config,
-    sodex_preflight_report as _sodex_preflight_report,
-)
-
-# Demo module
-from siglab.cli.demo import (
-    _build_demo_manifest,
-    _build_wave_status_payload,
-    _demo_manifest_html,
-)
-
-# Market module
-from siglab.cli.market import (
-    build_market_report as _build_market_report,
-    market_report_html as _market_report_html,
-)
-
-# Sodex module
-from siglab.cli.sodex import (
-    _sodex_preview_payload,
-)
+# (Unused re-exports removed to satisfy lint.)
 
 
 def main() -> None:

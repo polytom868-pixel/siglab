@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 class SoSoValueApiError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None, payload: Any = None) -> None:
+    def __init__(self, message: str, *, status_code: int | None = None, payload: object = None) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.payload = payload
@@ -55,7 +55,7 @@ class SoSoValueAuthError(SoSoValueApiError):
 class SoSoValueRateLimitError(SoSoValueApiError):
     """SoSoValue rate limited the request."""
 
-    def __init__(self, message: str, *, status_code: int | None = None, payload: Any = None, retry_after: float | None = None) -> None:
+    def __init__(self, message: str, *, status_code: int | None = None, payload: object = None, retry_after: float | None = None) -> None:
         super().__init__(message, status_code=status_code, payload=payload)
         self.retry_after = retry_after
 
@@ -401,7 +401,7 @@ class SoSoValueClient:
             return status in (502, 503, 504)
         return False
 
-    def _validate_payload(self, spec: SoSoValueRequestSpec, payload: Any, status_code: int) -> dict[str, Any]:
+    def _validate_payload(self, spec: SoSoValueRequestSpec, payload: object, status_code: int) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise SoSoValueApiError(
                 f"{spec.name} response was not a JSON object",
@@ -417,7 +417,7 @@ class SoSoValueClient:
             self._validate_data_shape(payload.get("data"), spec)
         return payload
 
-    def _rows_from_data(self, data: Any, spec: SoSoValueRequestSpec) -> list[dict[str, Any]]:
+    def _rows_from_data(self, data: object, spec: SoSoValueRequestSpec) -> list[dict[str, Any]]:
         # Zero-copy: when data is already a list of dicts and no field
         # validation is required, return the reference directly.
         needs_validation = bool(spec.identity_fields or spec.required_fields)
@@ -456,7 +456,7 @@ class SoSoValueClient:
                 self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
         return rows
 
-    def _validate_data_shape(self, data: Any, spec: SoSoValueRequestSpec) -> None:
+    def _validate_data_shape(self, data: object, spec: SoSoValueRequestSpec) -> None:
         """Validate data shape without building a row list (zero-alloc)."""
         if isinstance(data, dict) and isinstance(data.get("list"), list):
             lst = data["list"]

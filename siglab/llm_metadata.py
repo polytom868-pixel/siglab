@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from siglab.config import SiglabConfig
 
 
 SUPPORTED_LLM_PROVIDERS = frozenset({"claude", "deepseek", "openrouter", "bai"})
@@ -11,7 +14,7 @@ def normalize_llm_provider(value: str | None) -> str | None:
     return provider if provider in SUPPORTED_LLM_PROVIDERS else None
 
 
-def resolve_llm_provider(settings: Any) -> str:
+def resolve_llm_provider(settings: SiglabConfig) -> str:
     explicit = normalize_llm_provider(getattr(settings, "llm_provider", None))
     if explicit is not None:
         return explicit
@@ -38,7 +41,7 @@ def infer_llm_provider(model: str | None) -> str | None:
 
 
 def resolve_llm_thinking_mode(
-    settings: Any,
+    settings: SiglabConfig,
     *,
     provider: str | None = None,
     override: str | None = None,
@@ -58,7 +61,7 @@ def resolve_llm_thinking_mode(
 
 
 def resolve_llm_model(
-    settings: Any,
+    settings: SiglabConfig,
     *,
     provider: str | None = None,
     thinking_override: str | None = None,
@@ -98,7 +101,7 @@ def resolve_llm_model(
     return str(getattr(settings, "claude_model", "claude-k2.5") or "claude-k2.5")
 
 
-def default_llm_model_display(settings: Any, *, provider: str | None = None) -> str:
+def default_llm_model_display(settings: SiglabConfig, *, provider: str | None = None) -> str:
     resolved_provider = normalize_llm_provider(provider) or resolve_llm_provider(settings)
     if resolved_provider == "deepseek":
         return str(getattr(settings, "deepseek_model", "deepseek-reasoner") or "deepseek-reasoner")
@@ -119,7 +122,7 @@ def default_llm_model_display(settings: Any, *, provider: str | None = None) -> 
     return str(getattr(settings, "claude_model", "claude-k2.5") or "claude-k2.5")
 
 
-def resolve_llm_api_key(settings: Any, *, provider: str | None = None) -> str | None:
+def resolve_llm_api_key(settings: SiglabConfig, *, provider: str | None = None) -> str | None:
     resolved_provider = normalize_llm_provider(provider) or resolve_llm_provider(settings)
     if resolved_provider == "deepseek":
         return getattr(settings, "deepseek_api_key", None)
@@ -130,7 +133,7 @@ def resolve_llm_api_key(settings: Any, *, provider: str | None = None) -> str | 
     return getattr(settings, "claude_api_key", None)
 
 
-def resolve_llm_base_url(settings: Any, *, provider: str | None = None) -> str:
+def resolve_llm_base_url(settings: SiglabConfig, *, provider: str | None = None) -> str:
     resolved_provider = normalize_llm_provider(provider) or resolve_llm_provider(settings)
     if resolved_provider == "deepseek":
         return str(getattr(settings, "deepseek_base_url", "https://api.deepseek.com"))

@@ -12,18 +12,15 @@ from siglab.evaluator.compile import (  # via shim for mock compat
 )
 from siglab.evaluator.gates import evaluate_gates  # via shim for mock compat
 from siglab.evaluator.score import serialize_stats, summarize_window_results
-from siglab.schemas import SignalSpec
+from siglab.schemas import SignalSpec, CompiledChild
 from siglab.config import SiglabConfig
 from siglab.evaluator.backtesting import BacktestConfig  # via shim for mock compat
 
 from siglab.utils import safe_float as _safe_float
 
 # Import from extracted sub-modules
-from siglab.evaluation.runner_regime import (
-    _pair_regime_diagnostics,
-    _pair_regime_state,
-    _pair_trade_episodes_with_regime,
-)
+from siglab.evaluation.backtest import BacktestResult
+
 from siglab.evaluation.runner_serialize import (
     _policy_summary_spec,
     _serialize_canonical_run,
@@ -32,10 +29,11 @@ from siglab.evaluation.runner_serialize import (
     _unique_int_values,
 )
 from siglab.evaluation.runner_analysis import (
+    _pair_regime_diagnostics,
+    _pair_regime_state,
+    _pair_trade_episodes_with_regime,
     _pre_audit_context_pack,
     _pre_audit_drawdown_pack,
-)
-from siglab.evaluation.runner_utils import (
     _pre_audit_end_idx,
     _series_has_finite_values,
     _series_last_value,
@@ -49,7 +47,7 @@ async def _lazy_compile_spec(settings: Any, provider: Any, spec: Any) -> Any:
     return await _fn(settings, provider, spec)
 
 
-def _lazy_run_backtest(prices: Any, target_weights: Any, config: Any) -> Any:
+def _lazy_run_backtest(prices: object, target_weights: object, config: object) -> BacktestResult:
     from siglab.evaluator.core import run_backtest as _fn
     return _fn(prices, target_weights, config)
 
@@ -950,7 +948,7 @@ class ResearchEvaluator:
         self,
         *,
         spec: SignalSpec,
-        compiled: Any,
+        compiled: CompiledChild,
         prices_all: pd.DataFrame,
         funding_all: pd.DataFrame | None,
         evaluation_plan: dict[str, Any],
@@ -958,7 +956,11 @@ class ResearchEvaluator:
         max_trials: int | None = None,
         max_train_windows: int | None = None,
     ) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame]:
-        signal_score = compiled.signal_score.reindex(prices_all.index).ffill().fillna(0.0)
+        signal_score = (
+            compiled.signal_score.reindex(prices_all.index).ffill().fillna(0.0)
+            if compiled.signal_score is not None
+            else pd.DataFrame(0.0, index=prices_all.index, columns=prices_all.columns)
+        )
         regime_gate_mask = (
             compiled.regime_gate_mask.reindex(prices_all.index).ffill().fillna(False).astype(bool)
             if compiled.regime_gate_mask is not None
@@ -1589,7 +1591,7 @@ class ResearchEvaluator:
     def _window_result_row(
         self,
         *,
-        result: Any,
+        result: BacktestResult,
         window_spec: dict[str, Any],
         leverage: float,
         prices: pd.DataFrame,

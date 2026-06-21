@@ -30,14 +30,16 @@ def serialize_stats(stats: dict[str, Any]) -> dict[str, Any]:
 
 
 def _safe_nanmedian(values: np.ndarray, default: float = 0.0) -> float:
-    """Compute nanmedian with a safe fallback."""
-    finite = values[~np.isnan(values)]
+    """Compute nanmedian with a safe fallback.
+
+    Strips both NaN and Inf values before computing the median to avoid
+    RuntimeWarnings from numpy's internal reduce operations on non-finite
+    input.
+    """
+    finite = values[np.isfinite(values)]
     if finite.size == 0:
         return default
-    result = float(np.nanmedian(finite))
-    if np.isnan(result):
-        return default
-    return result
+    return float(np.median(finite))
 
 
 def _safe_nanmin(values: np.ndarray, default: float = 0.0) -> float:
@@ -84,7 +86,9 @@ def summarize_window_results(
         [row["stats"]["max_drawdown"] for row in window_results], dtype=float
     )
     liquidation_count = sum(1 for row in window_results if row["liquidated"])
-    profitable_window_pct = float((total_return > 0.0).mean())
+    profitable_window_pct: float = np.nan
+    if len(total_return) > 0:
+        profitable_window_pct = float((total_return > 0.0).mean())
 
     # Cap each score component to prevent numerical explosion
     score_sharpe = _bounded(_safe_nanmedian(sharpe), lower=-20.0, upper=20.0)

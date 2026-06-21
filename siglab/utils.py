@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import math
 import hashlib
-from typing import Any, Awaitable, Callable, Sequence, cast
+from typing import Any, Awaitable, Callable, Protocol, Sequence, cast
 
+
+
+class _HttpResponse(Protocol):
+    """Minimal HTTP response protocol for decode helpers."""
+    status: int
+    def text(self) -> str: ...
 
 
 def percentile(values: list[float], percentile: int) -> float | None:
@@ -39,7 +45,7 @@ def percentile(values: list[float], percentile: int) -> float | None:
 
 
 def safe_float(
-    value: Any,
+    value: float | int | str | None,
     *,
     digits: int = 8,
     default: float | None = None,
@@ -56,8 +62,10 @@ def safe_float(
     return round(numeric, digits)
 
 
-def int_or_zero(value: Any) -> int:
+def int_or_zero(value: str | int | None) -> int:
     """Convert value to non-negative int. Returns 0 on failure or negative."""
+    if value is None:
+        return 0
     try:
         return max(0, int(value))
     except (TypeError, ValueError):
@@ -117,7 +125,7 @@ async def async_limiter_call(callable: Callable[[], Awaitable[Any]], *, rate_lim
     async with sem:
         return await callable()
 
-def decode_status_error(response: Any) -> str | None:
+def decode_status_error(response: _HttpResponse) -> str | None:
     try:
         status = int(getattr(response, "status", 0) or 0)
     except (TypeError, ValueError):
@@ -143,7 +151,7 @@ def decode_status_error(response: Any) -> str | None:
     return f"HTTP {status}: {body[:200]}"
 
 
-def decode_json_envelope(response: Any) -> Any:
+def decode_json_envelope(response: _HttpResponse) -> Any:
     try:
         body = response.text()
     except Exception as exc:
@@ -163,7 +171,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _compact_scalar(value: Any) -> Any:
+def _compact_scalar(value: object) -> object:
     """Truncate long strings for compact display."""
     if isinstance(value, str) and len(value) > 2200:
         return value[:2199].rstrip() + "…"

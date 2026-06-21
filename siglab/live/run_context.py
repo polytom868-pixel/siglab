@@ -8,11 +8,14 @@ deleted ``LineageStore``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from siglab.data import ParquetLake
 from siglab.llm import ClaudeClient
 from siglab.data.deployment_store import DeploymentStore
+
+if TYPE_CHECKING:
+    from siglab.config import SiglabConfig
 
 
 @dataclass
@@ -24,7 +27,7 @@ class RunContext:
 
 
 def build_run_context(
-    settings: Any,
+    settings: SiglabConfig,
     *,
     require_claude: bool = True,
     require_ancestry: bool = True,

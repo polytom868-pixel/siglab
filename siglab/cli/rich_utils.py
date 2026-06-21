@@ -87,7 +87,7 @@ def init_console(*, force_no_color: bool = False) -> Console:
 # ── JSON output ──────────────────────────────────────────────────────────
 
 
-def print_json(data: Any, *, indent: int = 2, sort_keys: bool = True) -> None:
+def print_json(data: object, *, indent: int = 2, sort_keys: bool = True) -> None:
     """Print JSON with syntax highlighting in terminal, plain JSON when piped/no_color.
 
     Uses plain json.dumps (no ANSI) when:
@@ -233,7 +233,7 @@ def print_muted(message: str) -> None:
 # ── Status style mapper ──────────────────────────────────────────────────
 
 
-def status_style(value: Any) -> str:
+def status_style(value: object) -> str:
     """Return a Rich style name for a boolean-ish status value."""
     if isinstance(value, bool):
         return "success" if value else "error"

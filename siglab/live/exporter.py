@@ -12,7 +12,7 @@ from siglab.path_utils import resolve_path_from_root
 from siglab.data.deployment_store import DeploymentStore as LineageStore
 from siglab.config import SiglabConfig
 from siglab.track_registry import track_label
-from siglab.evaluation.gates import evaluate_gates
+from siglab.evaluation.events import evaluate_gates
 from siglab.cli.helpers import sodex_preflight_report
 
 SUPPORTED_DIRECTIONAL_FAMILIES = {

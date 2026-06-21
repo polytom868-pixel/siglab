@@ -24,7 +24,7 @@ from siglab.schemas import SignalSpec, CompiledChild
 from siglab.config import SiglabConfig
 from siglab.evaluation.backtest import convert_to_spot
 
-from siglab.evaluation.analysis_utils import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
+from siglab.evaluation.runner_analysis import mean_pairwise_rolling_corr as _mean_pairwise_rolling_corr
 from siglab.utils import feature_hash as _feature_hash
 
 
@@ -73,24 +73,24 @@ def _shared_scoring_pipeline(
         aliases=feature_aliases,
         raw_frames=shifted,
     )
-    return feature_frames, score, signal_components, regime_gate_mask, regime_gate_metadata
+    return feature_frames, cast(pd.DataFrame, score), cast(dict[str, pd.DataFrame], signal_components), regime_gate_mask, regime_gate_metadata
 
 
 def _build_shared_metadata(
     spec: SignalSpec,
     *,
-    capabilities: list[str],
-    execution_profile: str,
-    diagnostic_adapter: str,
-    policy_schema: str,
+    capabilities: list[str] | dict[str, Any],
+    execution_profile: str | None,
+    diagnostic_adapter: str | None,
+    policy_schema: str | None,
     features: list[str],
     feature_hash: str,
     source: str,
-    bundle_as_of: Any,
+    bundle_as_of: object,
     asset_breadth: int,
     regime_gate_metadata: dict[str, Any],
     prices: pd.DataFrame,
-    **extra: Any,
+    **extra: object,
 ) -> dict[str, Any]:
     return {
         "track": spec.track,
@@ -113,10 +113,13 @@ def _build_shared_metadata(
 
 
 def _cross_sectional_zscore(frame: pd.DataFrame) -> pd.DataFrame:
-    mean = frame.mean(axis=1)
-    std = frame.std(axis=1).replace(0.0, np.nan)
-    scored = frame.sub(mean, axis=0).div(std, axis=0)
-    return scored.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    # Strip infinities before computation to avoid RuntimeWarning
+    # from pandas nanops when subtracting inf - inf.
+    cleaned = frame.replace([np.inf, -np.inf], np.nan)
+    mean = cleaned.mean(axis=1)
+    std = cleaned.std(axis=1).replace(0.0, np.nan)
+    scored = cleaned.sub(mean, axis=0).div(std, axis=0)
+    return scored.fillna(0.0)
 
 
 def _time_series_zscore(
@@ -1127,7 +1130,7 @@ async def compile_spec(
         )
         feature_frames = _mask_feature_frames(feature_frames, pt_state["eligible"])
         score = _ensure_single_eligible_scores(
-            _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False),
+            cast(pd.DataFrame, _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False)),
             pt_state["eligible"],
         )
         positions = _build_ranked_positions(
@@ -1193,7 +1196,7 @@ async def compile_spec(
         )
         feature_frames = _mask_feature_frames(feature_frames, pt_state["eligible"])
         score = _ensure_single_eligible_scores(
-            _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False),
+            cast(pd.DataFrame, _weighted_scoring(feature_frames, spec.features, feature_weights, return_components=False)),
             pt_state["eligible"],
         )
         pt_positions = _build_ranked_positions(
