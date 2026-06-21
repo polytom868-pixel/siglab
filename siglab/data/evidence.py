@@ -298,7 +298,7 @@ def summarize_evidence(rows: Iterable[dict[str, Any]], links: Iterable[dict[str,
         "record_count": len(materialized_rows),
         "link_count": len(materialized_links),
         **counts,
-        "link_relation_counts": dict(sorted(Counter(str(l.get("relation") or "") for l in materialized_links).items())),
+        "link_relation_counts": dict(sorted(Counter(str(link.get("relation") or "") for link in materialized_links).items())),
         "top_links": [{k: link.get(k) for k in top_link_keys} for link in sorted_links[: max(0, int(top_links))]],
     }
 

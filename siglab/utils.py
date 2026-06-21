@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import hashlib
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, Awaitable, Callable, Sequence, cast
 
 
 
@@ -153,3 +153,25 @@ def decode_json_envelope(response: Any) -> Any:
         return _json.loads(body)
     except Exception as exc:
         raise RuntimeError(f"failed to decode JSON envelope: {exc}; body={body[:200]}") from exc
+
+
+# ── Deduplicated helpers (moved from llm/ and dashboard/ modules) ──────────
+
+def _now_iso() -> str:
+    """Current UTC timestamp as ISO-8601 string (second precision)."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _compact_scalar(value: Any) -> Any:
+    """Truncate long strings for compact display."""
+    if isinstance(value, str) and len(value) > 2200:
+        return value[:2199].rstrip() + "…"
+    return value
+
+
+def _estimate_message_tokens(messages: Sequence[dict[str, Any]]) -> int:
+    """Conservative cheap token estimate from JSON serialization length."""
+    import json as _json
+    chars = len(_json.dumps(list(messages), ensure_ascii=True, default=str))
+    return max(1, (chars + 3) // 4)

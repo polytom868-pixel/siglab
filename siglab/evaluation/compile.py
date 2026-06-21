@@ -99,7 +99,7 @@ def _build_shared_metadata(
         "execution_profile": execution_profile,
         "diagnostic_adapter": diagnostic_adapter,
         "policy_schema": policy_schema,
-        "features": list(features),
+        "features": features,
         "feature_hash": feature_hash,
         "regime_gates": regime_gate_metadata,
         "source": source,
@@ -273,8 +273,7 @@ def _resolve_gate_mask(
 ) -> pd.Series:
     if regime_gate_mask is not None:
         return (
-            pd.Series(regime_gate_mask, index=regime_gate_mask.index)
-            .reindex(score_index)
+            regime_gate_mask.reindex(score_index)
             .ffill()
             .fillna(False)
             .astype(bool)
@@ -574,7 +573,7 @@ def _resolve_regime_gates(
     aliases: dict[str, str],
     raw_frames: dict[str, pd.DataFrame],
 ) -> tuple[pd.Series | None, dict[str, Any]]:
-    payload = dict(regime_gates or {})
+    payload = regime_gates or {}
     entry_specs = list(payload.get("entry") or [])
     exit_on_break = bool(payload.get("exit_on_break", True))
     if not entry_specs:

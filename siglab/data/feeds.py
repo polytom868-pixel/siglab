@@ -1064,7 +1064,7 @@ class MarketDataProvider:
             ``bundle_as_of``, and ``bundle_id``.
         """
         # Lazy import to avoid circular dependency (live.runtime -> siglab.data)
-        from siglab.data.sodex_feeds import SoDEXFeeds  # noqa: PLC0415
+        from siglab.data.sodex_feeds import SoDEXFeeds
 
         if self.sodex_feeds is None:
             self.sodex_feeds = SoDEXFeeds(lake=self.lake)

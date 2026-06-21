@@ -20,7 +20,11 @@ from siglab.llm_metadata import (
 from siglab.llm.policy import LLMRoutingPolicy
 from siglab.io_utils import json_clone
 from siglab.config import SiglabConfig
-from siglab.utils import int_or_zero, safe_float, percentile as _percentile
+from siglab.utils import _compact_scalar, _estimate_message_tokens, int_or_zero, safe_float, percentile as _percentile
+
+
+_openrouter_list_models.__dict__["_cache"] = {}
+_openrouter_list_models.__dict__["_cached_at"] = 0.0
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -1055,7 +1059,8 @@ class ClaudeClient:
                 try:
                     outcome = tool.handler(arguments)
                     result = await outcome if hasattr(outcome, "__await__") else outcome
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
+                    # Catch-all: tool handlers can raise anything; return error result.
                     result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
                 else:
                     latency_ms = (time.perf_counter() - started) * 1000.0
@@ -1110,18 +1115,7 @@ class ClaudeClient:
         return cast(dict[str, Any], json.loads(spec))
 
 
-def _compact_scalar(value: Any) -> Any:
-    if isinstance(value, str) and len(value) > 2200:
-        return value[:2199].rstrip() + "…"
-    return value
-
-
 _int_or_zero = int_or_zero
-
-
-def _estimate_message_tokens(messages: Sequence[dict[str, Any]]) -> int:
-    chars = len(json.dumps(list(messages), ensure_ascii=True, default=str))
-    return max(1, (chars + 3) // 4)
 
 
 _openrouter_list_models.__dict__["_cache"] = {}

@@ -19,7 +19,7 @@ _import_sigint = signal.signal(signal.SIGINT, lambda s, f: sys.exit(130))
 # ── Backward-compatibility re-exports ──────────────────────────────────────
 # These allow existing code and tests to import symbols directly from siglab.cli.
 # New code should import from the specific submodule (e.g. siglab.cli.helpers).
-# ruff: noqa: F401 — all imports here are re-exports, not directly used in this file.
+# ruff: noqa: F401, E402 — all imports here are re-exports, intentionally after module setup.
 
 # Helpers
 from siglab.cli.helpers import (

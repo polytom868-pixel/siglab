@@ -6,11 +6,14 @@ across screen modules and ensure theme consistency.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
-__all__ = ["safe_float"]
 from rich.text import Text
+
 from siglab.utils import safe_float
+
+__all__ = ["safe_float"]
 # Single source of truth for all Rich Text colors in TUI widgets.
 # Keep in sync with siglab/tui/styles/theme.tcss variables.
 
@@ -71,10 +74,6 @@ def friendly_error(exc: Exception) -> str:
     if isinstance(exc, ConnectionError):
         return "Connection lost"
     return "Unexpected error"
-
-
-# Lazy import to avoid circular dependency at module level
-import json  # noqa: E402
 
 
 def format_price(price: float, symbol: str = "") -> str:

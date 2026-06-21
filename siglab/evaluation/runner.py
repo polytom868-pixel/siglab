@@ -88,13 +88,13 @@ class ResearchEvaluator:
 
         min_rows = max(14, min(30, len(prices_all.index) // 2))
         evaluation_plan = self._evaluation_plan(prices_all.index, min_rows=min_rows)
-        selector_windows = list(evaluation_plan["selector_windows"])
+        selector_windows = evaluation_plan["selector_windows"]
         validation_window = evaluation_plan.get("validation_window")
         audit_window = evaluation_plan.get("audit_window")
         leverage_tiers = sorted(
             {1.0, min(2.0, spec.risk.max_leverage), spec.risk.max_leverage}
         )
-        compiled.metadata["evaluation_split"] = dict(evaluation_plan["visual_split"])
+        compiled.metadata["evaluation_split"] = evaluation_plan["visual_split"]
         compiled.metadata["selector_scope"] = str(
             evaluation_plan.get("selector_scope", "in_sample_only")
         )
@@ -296,7 +296,7 @@ class ResearchEvaluator:
         summary["selector_uses_holdout"] = bool(
             evaluation_plan["visual_split"].get("selector_uses_holdout")
         )
-        gate_diagnostics_summary = dict(
+        gate_diagnostics_summary = (
             (canonical_run.get("pre_audit_context_pack") or {}).get("gate_diagnostics") or {}
         )
         summary["active_bar_fraction"] = gate_diagnostics_summary.get("active_bar_fraction")
@@ -306,7 +306,7 @@ class ResearchEvaluator:
         summary["score_alignment_when_active"] = gate_diagnostics_summary.get(
             "score_alignment_when_active"
         )
-        summary["gate_bottleneck_tags"] = list(
+        summary["gate_bottleneck_tags"] = (
             gate_diagnostics_summary.get("bottleneck_tags") or []
         )[:6]
         summary.update(policy_sweep_summary)
@@ -340,7 +340,7 @@ class ResearchEvaluator:
                 frozen_snapshot=frozen_snapshot,
             )
             compiled.metadata["pair_policy_sweep"] = {
-                **dict(compiled.metadata.get("pair_policy_sweep") or {}),
+                **(compiled.metadata.get("pair_policy_sweep") or {}),
                 "declared_evaluation": declared_snapshot,
                 "frozen_evaluation": frozen_snapshot,
                 "comparison": comparison,
@@ -761,7 +761,7 @@ class ResearchEvaluator:
         windows: list[dict[str, Any]] = []
         seen: set[tuple[int, int]] = set()
         selector_scope = str(evaluation_plan.get("selector_scope", "in_sample_only"))
-        for window in list(evaluation_plan.get("selector_windows") or []):
+        for window in evaluation_plan.get("selector_windows") or []:
             if selector_scope == "rolling_validation_chunks":
                 start_idx = int(window.get("train_start_idx", 0))
                 end_idx = int(window.get("train_end_idx", 0))
@@ -965,7 +965,7 @@ class ResearchEvaluator:
             else None
         )
         exit_on_regime_break = bool(
-            dict(compiled.metadata.get("regime_gates") or {}).get("exit_on_break", True)
+            (compiled.metadata.get("regime_gates") or {}).get("exit_on_break", True)
         )
         base_policy = {
             "gross_target": float(compiled.metadata.get("gross_target", 1.0)),
@@ -1010,13 +1010,14 @@ class ResearchEvaluator:
             regime_gate_mask=regime_gate_mask,
             exit_on_regime_break=exit_on_regime_break,
         )
+        regime_gates = compiled.metadata.get("regime_gates") or {}
         intent_locks = {
-            "narrow_sweep": bool(dict(compiled.metadata.get("regime_gates") or {}).get("entry"))
+            "narrow_sweep": bool(regime_gates.get("entry"))
             or int(base_policy["max_holding_bars"]) > 0
             or int(base_policy["cooldown_bars"]) > 0,
             "lock_time_stop": int(base_policy["max_holding_bars"]) > 0,
             "lock_cooldown": int(base_policy["cooldown_bars"]) > 0,
-            "regime_gate_count": len(list(dict(compiled.metadata.get("regime_gates") or {}).get("entry") or [])),
+            "regime_gate_count": len(regime_gates.get("entry") or []),
         }
 
         train_windows = self._selector_train_windows(
@@ -1140,7 +1141,7 @@ class ResearchEvaluator:
                 if best_rank is None or rank > best_rank:
                     best_policy = dict(policy)
                     best_summary = {
-                        **dict(aggregate),
+                        **aggregate,
                         "activity_penalty": activity_penalty,
                         "complexity_penalty": complexity_penalty,
                         "activity_summary": activity_summary,
@@ -1187,8 +1188,8 @@ class ResearchEvaluator:
             "narrowed": bool(intent_locks["narrow_sweep"]),
             "train_window_count": len(train_windows),
             "trial_count": int(trial_count),
-            "best_train_summary": dict(best_summary or {}),
-            "intent_locks": dict(intent_locks),
+            "best_train_summary": best_summary or {},
+            "intent_locks": intent_locks,
             "proposed_policy": _policy_summary_spec(base_policy),
             "frozen_policy": _policy_summary_spec(best_policy),
         }
@@ -1211,7 +1212,7 @@ class ResearchEvaluator:
                 changed = int(best_policy[key]) != int(base_policy[key])
             if changed:
                 changed_keys.append(key)
-        activity_summary = dict((best_summary or {}).get("activity_summary") or {})
+        activity_summary = (best_summary or {}).get("activity_summary") or {}
         policy_sweep_best_train_score = (
             float(best_summary["aggregate_score"])
             if best_summary is not None and best_summary.get("aggregate_score") is not None
@@ -1226,7 +1227,7 @@ class ResearchEvaluator:
             "policy_sweep_best_train_score": policy_sweep_best_train_score,
             "policy_sweep_activity_penalty": float((best_summary or {}).get("activity_penalty") or 0.0),
             "policy_sweep_material_change": bool(changed_keys),
-            "policy_sweep_changed_keys": list(changed_keys),
+            "policy_sweep_changed_keys": changed_keys,
             "policy_sweep_proposed_policy": _policy_summary_spec(base_policy),
             "policy_sweep_frozen_policy": _policy_summary_spec(best_policy),
             "policy_active_bar_fraction": activity_summary.get("active_bar_fraction"),
@@ -1519,7 +1520,7 @@ class ResearchEvaluator:
         max_count: int | None,
     ) -> list[dict[str, Any]]:
         if max_count is None or max_count <= 0 or len(windows) <= max_count:
-            return list(windows)
+            return windows
         if max_count == 1:
             return [windows[0]]
         last_index = len(windows) - 1
@@ -1603,7 +1604,7 @@ class ResearchEvaluator:
             "start_timestamp": prices.index[0].isoformat(),
             "end_timestamp": prices.index[-1].isoformat(),
             "leverage": leverage,
-            "stats": serialize_stats(dict(result.stats)),
+            "stats": serialize_stats(result.stats),
             "liquidated": result.liquidated,
             "train_start_idx": window_spec.get("train_start_idx"),
             "train_end_idx": window_spec.get("train_end_idx"),
@@ -1674,7 +1675,7 @@ class ResearchEvaluator:
         }
 
     def _window_summary(self, prefix: str, row: dict[str, Any]) -> dict[str, Any]:
-        stats = dict(row.get("stats") or {})
+        stats = row.get("stats") or {}
         return {
             f"{prefix}_available": True,
             f"{prefix}_sharpe": stats.get("sharpe"),

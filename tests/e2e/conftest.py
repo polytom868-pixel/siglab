@@ -62,7 +62,7 @@ def server(request: pytest.FixtureRequest) -> None:
     * Yields control to the test session.
     * Tears down the server and restores the original database.
     """
-    import tests.e2e.seed_data as seed_data  # noqa: N811
+    from tests.e2e import seed_data as seed_data_mod
 
     # ── 1. Back up existing database ──────────────────────────────────
     db_backup_path: Path | None = None
