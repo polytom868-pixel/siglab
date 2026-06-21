@@ -161,14 +161,20 @@ class SoSoValueClient:
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
 
-    async def _fetch_featured_news_page(self, *, page_num: int = 1, page_size: int = 10, category_list: list[int] | None = None) -> list[dict[str, Any]]:
+    def _build_news_params(self, *, page_num: int, page_size: int, currency_id: int | None = None, category_list: list[int] | None = None) -> dict[str, Any]:
         self._validate_news_page_size(page_size)
         params: dict[str, Any] = {
             "pageNum": int(page_num),
             "pageSize": int(page_size),
         }
+        if currency_id is not None:
+            params["currencyId"] = int(currency_id)
         if category_list:
             params["categoryList"] = ",".join(str(int(value)) for value in category_list)
+        return params
+
+    async def _fetch_featured_news_page(self, *, page_num: int = 1, page_size: int = 10, category_list: list[int] | None = None) -> list[dict[str, Any]]:
+        params = self._build_news_params(page_num=page_num, page_size=page_size, category_list=category_list)
         spec = SoSoValueRequestSpec(
             name="news.featured",
             method="GET",
@@ -202,15 +208,7 @@ class SoSoValueClient:
         currency_id: int | None = None,
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
-        self._validate_news_page_size(page_size)
-        params: dict[str, Any] = {
-            "pageNum": int(page_num),
-            "pageSize": int(page_size),
-        }
-        if currency_id is not None:
-            params["currencyId"] = int(currency_id)
-        if category_list:
-            params["categoryList"] = ",".join(str(int(value)) for value in category_list)
+        params = self._build_news_params(page_num=page_num, page_size=page_size, currency_id=currency_id, category_list=category_list)
         spec = SoSoValueRequestSpec(
             name="news.featured_by_currency",
             method="GET",
@@ -266,7 +264,8 @@ class SoSoValueClient:
             task = asyncio.create_task(self._request_uncached(spec, key))
             self._inflight[key] = task
         try:
-            return dict(await task)
+            # Zero-copy: the task returns the freshly parsed dict; avoid dict() copy
+            return await task
         finally:
             if self._inflight.get(key) is task:
                 self._inflight.pop(key, None)
@@ -362,15 +361,32 @@ class SoSoValueClient:
             message = str(payload.get("msg") or payload.get("message") or "SoSoValue API returned a non-zero code")
             raise SoSoValueApiError(message, status_code=status_code, payload=payload)
         if "data" in payload:
-            self._rows_from_data(payload.get("data"), spec)
+            # Zero-alloc: validate the data shape without building row lists
+            self._validate_data_shape(payload.get("data"), spec)
         return payload
 
     def _rows_from_data(self, data: Any, spec: SoSoValueRequestSpec) -> list[dict[str, Any]]:
+        # Zero-copy: when data is already a list of dicts and no field
+        # validation is required, return the reference directly.
+        needs_validation = bool(spec.identity_fields or spec.required_fields)
         if isinstance(data, list):
+            if not needs_validation and all(isinstance(r, dict) for r in data):
+                if spec.require_non_empty and not data:
+                    raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
+                return data  # zero-copy: return the list as-is
             rows = [dict(r) for r in data if isinstance(r, dict)]
         elif isinstance(data, dict) and isinstance(data.get("list"), list):
-            rows = [dict(r) for r in data["list"] if isinstance(r, dict)]
+            lst = data["list"]
+            if not needs_validation and all(isinstance(r, dict) for r in lst):
+                if spec.require_non_empty and not lst:
+                    raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
+                return lst  # zero-copy
+            rows = [dict(r) for r in lst if isinstance(r, dict)]
         elif isinstance(data, dict):
+            if not needs_validation:
+                if spec.require_non_empty:
+                    raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
+                return [data]  # zero-copy: single row
             rows = [dict(data)]
         elif data in (None, ""):
             rows = []
@@ -378,7 +394,7 @@ class SoSoValueClient:
             raise SoSoValueApiError(f"{spec.name} data had unsupported shape", payload=data)
         if spec.require_non_empty and not rows:
             raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
-        if spec.identity_fields or spec.required_fields:
+        if needs_validation:
             optional = tuple(f for f in spec.required_fields if f not in spec.identity_fields)
             for idx, row in enumerate(rows):
                 missing_id = [f for f in spec.identity_fields if f not in row]
@@ -387,6 +403,31 @@ class SoSoValueClient:
                         f"{spec.name} row {idx} missing identity fields: {', '.join(missing_id)}", payload=row)
                 self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
         return rows
+
+    def _validate_data_shape(self, data: Any, spec: SoSoValueRequestSpec) -> None:
+        """Validate data shape without building a row list (zero-alloc)."""
+        if isinstance(data, dict) and isinstance(data.get("list"), list):
+            lst = data["list"]
+        elif isinstance(data, list):
+            lst = data
+        elif data is None or data == "":
+            return
+        elif isinstance(data, dict):
+            return
+        else:
+            raise SoSoValueApiError(f"{spec.name} data had unsupported shape", payload=data)
+        if spec.require_non_empty and not lst:
+            raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
+        if spec.identity_fields or spec.required_fields:
+            optional = tuple(f for f in spec.required_fields if f not in spec.identity_fields)
+            for idx, row in enumerate(lst):
+                if not isinstance(row, dict):
+                    continue
+                missing_id = [f for f in spec.identity_fields if f not in row]
+                if missing_id:
+                    raise SoSoValueApiError(
+                        f"{spec.name} row {idx} missing identity fields: {', '.join(missing_id)}", payload=row)
+                self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
 
     def metrics_snapshot(self) -> dict[str, Any]:
         endpoints: dict[str, Any] = {}
