@@ -129,7 +129,6 @@ class CircuitBreakerState:
 
 
 def _normalize_sharpe_score(sharpe: float) -> float:
-    """Normalise Sharpe ratio to [0, 1] risk score contribution."""
     clipped = max(SHARPE_MIN, min(SHARPE_MAX, sharpe))
     if clipped >= SHARPE_TARGET:
         return 1.0
@@ -139,7 +138,6 @@ def _normalize_sharpe_score(sharpe: float) -> float:
 
 
 def _normalize_drawdown_score(drawdown: float) -> float:
-    """Normalise drawdown to [0, 1] risk score contribution."""
     clipped = max(DRAWDOWN_MIN, min(DRAWDOWN_MAX, drawdown))
     if clipped >= 0.0:
         return 1.0
@@ -158,13 +156,11 @@ def _score_below_target(clipped: float, target: float) -> float:
 
 
 def _normalize_concentration_score(deviation: float) -> float:
-    """Normalise concentration deviation to [0, 1] risk score contribution."""
     clipped = max(CONCENTRATION_MIN, min(CONCENTRATION_MAX, deviation))
     return _score_below_target(clipped, CONCENTRATION_TARGET)
 
 
 def _normalize_correlation_score(avg_correlation: float) -> float:
-    """Normalise average pairwise correlation to [0, 1] risk score contribution."""
     clipped = max(CORRELATION_MIN, min(CORRELATION_MAX, avg_correlation))
     return _score_below_target(clipped, CORRELATION_TARGET)
 
@@ -202,7 +198,6 @@ def compute_composite_score(
 
 
 def _drawdown_series(equity_curve: np.ndarray) -> np.ndarray:
-    """Compute the full drawdown series for an equity curve."""
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size == 0:
         return np.array([], dtype=float)
     peak = np.maximum.accumulate(equity_curve)

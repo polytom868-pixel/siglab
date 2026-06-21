@@ -1,152 +1,79 @@
-"""FastAPI REST routes for SigLab Dashboard."""
-
+"""SigLab Dashboard — FastAPI REST + WebSocket + app factory."""
 from __future__ import annotations
-
+import asyncio
 import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-from fastapi import APIRouter, HTTPException, Request
-
-from siglab.config import SiglabConfig
+from typing import Any, AsyncIterator
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
+from siglab.config import SiglabConfig, load_settings
 from siglab.dashboard.dashboard_state import DashboardState
 from siglab.utils import _now_iso
-
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
+SIGLAB_VERSION = '0.1.0'
+_DEFAULT_PORT = int(os.environ.get('PORT', '8080'))
 
-SIGLAB_VERSION = "0.1.0"
-
-_DEFAULT_PORT = int(os.environ.get("PORT", "8080"))
-
-
-# Health
-
-
-@router.get("/health")
+@router.get('/health')
 async def health(request: Request) -> dict[str, Any]:
     """Return service health with status, version, and uptime."""
     state = request.app.state.dashboard
     uptime_s = time.time() - state.start_time
-    return {
-        "status": "ok",
-        "version": SIGLAB_VERSION,
-        "uptime_seconds": round(uptime_s, 3),
-    }
-
-
-# Config
-
+    return {'status': 'ok', 'version': SIGLAB_VERSION, 'uptime_seconds': round(uptime_s, 3)}
 
 def _config_to_dict(config: SiglabConfig) -> dict[str, Any]:
-    """Convert SiglabConfig to a serializable dictionary, grouping by section."""
-    return {
-        "system": {
-            "root_dir": str(config.root_dir),
-            "data_lake_dir": str(config.data_lake_dir),
-            "artifact_dir": str(config.artifact_dir),
-            "live_dir": str(config.live_dir),
-            "ancestry_db_path": str(config.ancestry_db_path),
-            "generated_strategy_dir": str(config.generated_strategy_dir),
-            "population_size": config.population_size,
-            "llm_provider": config.llm_provider,
-            "memory_scope": config.memory_scope,
-            "tracks": list(config.tracks),
-        },
-        "sosovalue": {
-            "config_path": str(config.sosovalue_config_path),
-            "openapi_base_url": config.sosovalue_base_url,
-            "etf_base_url": config.sosovalue_base_url,
-            "news_base_url": config.sosovalue_base_url,
-            "timeout_s": config.sosovalue_timeout_s,
-            "retries": config.sosovalue_retries,
-            "api_key_configured": config.sosovalue_api_key_override is not None,
-        },
-        "claude": {
-            "model": config.claude_model,
-            "base_url": config.claude_base_url,
-            "max_tokens": config.claude_max_tokens,
-            "temperature": config.claude_temperature,
-            "timeout_s": config.claude_timeout_s,
-            "api_key_configured": config.claude_api_key is not None,
-        },
-    }
+    return {'system': {'root_dir': str(config.root_dir), 'data_lake_dir': str(config.data_lake_dir), 'artifact_dir': str(config.artifact_dir), 'live_dir': str(config.live_dir), 'ancestry_db_path': str(config.ancestry_db_path), 'generated_strategy_dir': str(config.generated_strategy_dir), 'population_size': config.population_size, 'llm_provider': config.llm_provider, 'memory_scope': config.memory_scope, 'tracks': list(config.tracks)}, 'sosovalue': {'config_path': str(config.sosovalue_config_path), 'openapi_base_url': config.sosovalue_base_url, 'etf_base_url': config.sosovalue_base_url, 'news_base_url': config.sosovalue_base_url, 'timeout_s': config.sosovalue_timeout_s, 'retries': config.sosovalue_retries, 'api_key_configured': config.sosovalue_api_key_override is not None}, 'claude': {'model': config.claude_model, 'base_url': config.claude_base_url, 'max_tokens': config.claude_max_tokens, 'temperature': config.claude_temperature, 'timeout_s': config.claude_timeout_s, 'api_key_configured': config.claude_api_key is not None}}
 
-
-@router.get("/config")
+@router.get('/config')
 async def get_config(request: Request) -> dict[str, Any]:
     """Return the full SiglabConfig as JSON."""
     state = request.app.state.dashboard
     if state.config is None:
-        raise HTTPException(status_code=503, detail="Config not loaded")
+        raise HTTPException(status_code=503, detail='Config not loaded')
     return _config_to_dict(state.config)
 
-
-# Experiments (legacy server.py compat)
-
-
-@router.get("/api/experiments")
-async def api_experiments(
-    request: Request,
-    track: str | None = None,
-    family: str | None = None,
-) -> dict[str, Any]:
+@router.get('/api/experiments')
+async def api_experiments(request: Request, track: str | None=None, family: str | None=None) -> dict[str, Any]:
     """Return experiments payload matching legacy server.py shape."""
     from siglab.track_registry import canonical_track_name
-
     state = request.app.state.dashboard
-    return state.experiments_payload(
-        track=canonical_track_name(track) if track else None,
-        family=family,
-    )
+    return state.experiments_payload(track=canonical_track_name(track) if track else None, family=family)
 
-
-@router.get("/api/runs")
-async def api_runs(
-    request: Request,
-    track: str | None = None,
-    family: str | None = None,
-) -> dict[str, Any]:
+@router.get('/api/runs')
+async def api_runs(request: Request, track: str | None=None, family: str | None=None) -> dict[str, Any]:
     """Return runs payload matching legacy server.py shape."""
     from siglab.track_registry import canonical_track_name
-
     state = request.app.state.dashboard
-    return state.runs_payload(
-        track=canonical_track_name(track) if track else None,
-        family=family,
-    )
+    return state.runs_payload(track=canonical_track_name(track) if track else None, family=family)
 
-
-@router.get("/api/experiments/{spec_hash}")
+@router.get('/api/experiments/{spec_hash}')
 async def api_experiment_detail(request: Request, spec_hash: str) -> dict[str, Any]:
     """Return a single experiment detail (legacy compat)."""
     state = request.app.state.dashboard
     payload = state.experiment_detail_payload(spec_hash)
     if payload is None:
-        raise HTTPException(status_code=404, detail="Experiment not found")
+        raise HTTPException(status_code=404, detail='Experiment not found')
     return payload
 
-
-@router.get("/api/experiments/{spec_hash}/series")
+@router.get('/api/experiments/{spec_hash}/series')
 async def api_experiment_series(request: Request, spec_hash: str) -> dict[str, Any]:
     """Return experiment series including canonical run (legacy compat)."""
     state = request.app.state.dashboard
     payload = state.experiment_series_payload(spec_hash)
     if payload is None:
-        raise HTTPException(status_code=404, detail="Experiment not found")
+        raise HTTPException(status_code=404, detail='Experiment not found')
     return payload
 
-
-@router.post("/api/experiments/{spec_hash}/deploy")
-async def api_experiment_deploy(
-    request: Request,
-    spec_hash: str,
-) -> dict[str, Any]:
+@router.post('/api/experiments/{spec_hash}/deploy')
+async def api_experiment_deploy(request: Request, spec_hash: str) -> dict[str, Any]:
     """Deploy an experiment by spec hash (legacy compat)."""
     try:
         body = await request.json()
@@ -155,236 +82,118 @@ async def api_experiment_deploy(
     state = request.app.state.dashboard
     return await state.deploy_experiment(spec_hash=spec_hash, payload=body)
 
-
-# Ops Board / API Ops
-
-
 def _load_artifact(root_dir: Path, relative_path: str) -> dict[str, Any]:
-    """Load an ops artifact from a JSON file, returning status metadata."""
     path = (root_dir / relative_path).resolve()
     root = root_dir.resolve()
     if root not in path.parents and path != root:
-        return {
-            "status": "blocked",
-            "path": relative_path,
-            "error": "artifact path escapes repo root",
-        }
+        return {'status': 'blocked', 'path': relative_path, 'error': 'artifact path escapes repo root'}
     if not path.exists():
-        return {
-            "status": "missing",
-            "path": relative_path,
-            "error": "artifact missing",
-        }
+        return {'status': 'missing', 'path': relative_path, 'error': 'artifact missing'}
     try:
         payload = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        return {
-            "status": "malformed",
-            "path": relative_path,
-            "error": str(exc),
-        }
+        return {'status': 'malformed', 'path': relative_path, 'error': str(exc)}
     if not isinstance(payload, dict):
-        return {
-            "status": "malformed",
-            "path": relative_path,
-            "error": "artifact root must be a JSON object",
-        }
+        return {'status': 'malformed', 'path': relative_path, 'error': 'artifact root must be a JSON object'}
     mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
     age_seconds = max(0.0, (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds())
-    return {
-        "status": "present",
-        "path": relative_path,
-        "mtime": mtime.isoformat(),
-        "age_seconds": round(age_seconds, 3),
-        "freshness": (
-            "fresh"
-            if age_seconds <= 15 * 60
-            else "stale"
-            if age_seconds <= 24 * 60 * 60
-            else "expired"
-        ),
-    }
+    return {'status': 'present', 'path': relative_path, 'mtime': mtime.isoformat(), 'age_seconds': round(age_seconds, 3), 'freshness': 'fresh' if age_seconds <= 15 * 60 else 'stale' if age_seconds <= 24 * 60 * 60 else 'expired'}
 
+def _summarize_ops_artifacts(artifacts: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return {'buildathon_demo': {'demo_manifest': artifacts.get('demo_manifest', {}).get('status'), 'telemetry_report': artifacts.get('telemetry', {}).get('status'), 'market_report': artifacts.get('market_report', {}).get('status'), 'sodex_preflight': artifacts.get('sodex_preflight', {}).get('status'), 'wave_status': artifacts.get('wave_status', {}).get('status')}}
 
-def _summarize_ops_artifacts(
-    artifacts: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    """Build the ops summary from loaded artifact payloads."""
-    return {
-        "buildathon_demo": {
-            "demo_manifest": artifacts.get("demo_manifest", {}).get("status"),
-            "telemetry_report": artifacts.get("telemetry", {}).get("status"),
-            "market_report": artifacts.get("market_report", {}).get("status"),
-            "sodex_preflight": artifacts.get("sodex_preflight", {}).get("status"),
-            "wave_status": artifacts.get("wave_status", {}).get("status"),
-        },
-    }
-
-
-@router.get("/ops-board")
+@router.get('/ops-board')
 async def ops_board(request: Request) -> dict[str, Any]:
     """Return consolidated ops-board data with artifact_status, summary, and service_health."""
     state = request.app.state.dashboard
     config = state.config
     if config is None:
-        raise HTTPException(status_code=503, detail="Config not loaded")
-
+        raise HTTPException(status_code=503, detail='Config not loaded')
     runs_dir = config.artifact_dir
-    artifacts = {
-        "demo_manifest": _load_artifact(runs_dir, "demo_manifest_latest.json"),
-        "telemetry": _load_artifact(runs_dir, "latest_telemetry_report.json"),
-        "market_report": _load_artifact(runs_dir, "market_report_latest.json"),
-        "sodex_preflight": _load_artifact(runs_dir, "sodex_preflight_latest.json"),
-        "wave_status": _load_artifact(runs_dir, "wave_status_latest.json"),
-    }
+    artifacts = {'demo_manifest': _load_artifact(runs_dir, 'demo_manifest_latest.json'), 'telemetry': _load_artifact(runs_dir, 'latest_telemetry_report.json'), 'market_report': _load_artifact(runs_dir, 'market_report_latest.json'), 'sodex_preflight': _load_artifact(runs_dir, 'sodex_preflight_latest.json'), 'wave_status': _load_artifact(runs_dir, 'wave_status_latest.json')}
+    service_health = {'dashboard': {'status': 'running', 'port': _DEFAULT_PORT}, 'siglab_db': {'status': 'ok' if Path(str(config.ancestry_db_path)).exists() else 'missing'}, 'sodex_api': {'status': 'external', 'note': 'SoDEX public REST API (no auth)'}, 'sosovalue_api': {'status': 'external', 'note': 'SoSoValue OpenAPI (requires API key)'}}
+    return {'generated_at': _now_iso(), 'artifact_status': {name: {'status': art.get('status'), 'path': art.get('path'), 'mtime': art.get('mtime'), 'age_seconds': art.get('age_seconds'), 'freshness': art.get('freshness'), 'error': art.get('error')} for name, art in artifacts.items()}, 'summary': _summarize_ops_artifacts(artifacts), 'service_health': service_health}
 
-    service_health = {
-        "dashboard": {"status": "running", "port": _DEFAULT_PORT},
-        "siglab_db": {
-            "status": "ok" if Path(str(config.ancestry_db_path)).exists() else "missing",
-        },
-        "sodex_api": {"status": "external", "note": "SoDEX public REST API (no auth)"},
-        "sosovalue_api": {
-            "status": "external",
-            "note": "SoSoValue OpenAPI (requires API key)",
-        },
-    }
-
-    return {
-        "generated_at": _now_iso(),
-        "artifact_status": {
-            name: {
-                "status": art.get("status"),
-                "path": art.get("path"),
-                "mtime": art.get("mtime"),
-                "age_seconds": art.get("age_seconds"),
-                "freshness": art.get("freshness"),
-                "error": art.get("error"),
-            }
-            for name, art in artifacts.items()},
-        "summary": _summarize_ops_artifacts(artifacts),
-        "service_health": service_health,
-    }
-
-
-@router.get("/api/ops")
+@router.get('/api/ops')
 async def api_ops(request: Request) -> dict[str, Any]:
     """Return full ops payload with artifact details (legacy server.py compat)."""
     state = request.app.state.dashboard
     return state.ops_payload()
 
-
-# Evidence Graph
-
-
 def _build_evidence_graph(state: DashboardState) -> dict[str, Any] | None:
-    """Build an evidence graph from the latest evidence store summary."""
     config = state.config
     if config is None:
         return None
-
-    evidence_dir = config.artifact_dir / "evidence"
+    evidence_dir = config.artifact_dir / 'evidence'
     if not evidence_dir.exists():
         return None
-
-    summaries = sorted(
-        evidence_dir.glob("*.summary.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    summaries = sorted(evidence_dir.glob('*.summary.json'), key=lambda p: p.stat().st_mtime, reverse=True)
     if not summaries:
         return None
-
     try:
         summary = json.loads(summaries[0].read_text())
     except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        logger.warning("Failed to load evidence summary: %s", exc)
+        logger.warning('Failed to load evidence summary: %s', exc)
         return None
-
-    source_counts = summary.get("source_counts") or {}
-    entity_counts = summary.get("entity_counts") or {}
-    links = summary.get("top_links") or summary.get("links") or []
-
+    source_counts = summary.get('source_counts') or {}
+    entity_counts = summary.get('entity_counts') or {}
+    links = summary.get('top_links') or summary.get('links') or []
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
     seen_edges: set[tuple[str, str, str]] = set()
 
     def _node(node_id: str, label: str, kind: str, count: int) -> dict[str, Any]:
-        return {
-            "id": node_id,
-            "label": label,
-            "kind": kind,
-            "count": count,
-            "spec_hash": None,
-            "family": None,
-            "score": None,
-        }
-
+        return {'id': node_id, 'label': label, 'kind': kind, 'count': count, 'spec_hash': None, 'family': None, 'score': None}
     for source, count in source_counts.items():
-        nodes[f"source:{source}"] = _node(f"source:{source}", str(source), "source", int(count))
-
+        nodes[f'source:{source}'] = _node(f'source:{source}', str(source), 'source', int(count))
     for entity, count in entity_counts.items():
-        nodes[f"entity:{entity}"] = _node(f"entity:{entity}", str(entity), "entity", int(count))
-
+        nodes[f'entity:{entity}'] = _node(f'entity:{entity}', str(entity), 'entity', int(count))
     for link in links:
         if not isinstance(link, dict):
             continue
-        relation = str(link.get("relation") or "linked")
-        source_name = str(link.get("source") or "cross-module")
-        entities_raw = link.get("entities")
+        relation = str(link.get('relation') or 'linked')
+        source_name = str(link.get('source') or 'cross-module')
+        entities_raw = link.get('entities')
         if isinstance(entities_raw, list) and entities_raw:
             entities = [str(item) for item in entities_raw if item]
         else:
             entities = []
-            for key in ("entity", "feed_entity"):
+            for key in ('entity', 'feed_entity'):
                 val = link.get(key)
                 if val:
                     entities.append(str(val))
         for entity in entities:
-            entity_id = f"entity:{entity}"
-            source_id = f"source:{source_name}"
-            nodes.setdefault(entity_id, _node(entity_id, entity, "entity", 0))
-            nodes.setdefault(source_id, _node(source_id, source_name, "source", 0))
+            entity_id = f'entity:{entity}'
+            source_id = f'source:{source_name}'
+            nodes.setdefault(entity_id, _node(entity_id, entity, 'entity', 0))
+            nodes.setdefault(source_id, _node(source_id, source_name, 'source', 0))
             edge_key = (source_id, entity_id, relation)
             if edge_key in seen_edges:
                 continue
             seen_edges.add(edge_key)
-            edges.append({
-                "source": source_id,
-                "target": entity_id,
-                "label": relation,
-                "confidence": link.get("confidence"),
-                "warning": link.get("warning"),
-                "day_gap": link.get("day_gap"),
-            })
-    return {"nodes": list(nodes.values()), "edges": edges}@router.get("/evidence-graph")
+            edges.append({'source': source_id, 'target': entity_id, 'label': relation, 'confidence': link.get('confidence'), 'warning': link.get('warning'), 'day_gap': link.get('day_gap')})
+    return {'nodes': list(nodes.values()), 'edges': edges} @ router.get('/evidence-graph')
+
 async def evidence_graph(request: Request) -> dict[str, Any]:
     """Return evidence graph nodes and edges with metadata."""
-    logger.debug("Evidence graph requested")
+    logger.debug('Evidence graph requested')
     state = request.app.state.dashboard
     graph = _build_evidence_graph(state)
     if graph is None:
-        return {"nodes": [], "edges": [], "note": "No evidence data available"}
+        return {'nodes': [], 'edges': [], 'note': 'No evidence data available'}
     return graph
 
-
-# Skill Report
-
-
 def _build_skill_report(state: DashboardState) -> list[dict[str, Any]]:
-    """Aggregate per-skill metrics from tool traces."""
     if state.lineage is None:
         return []
     try:
         rows = state.lineage.dashboard_rows()
     except Exception as exc:
-        logger.warning("Failed to load skill report rows: %s", exc)
+        logger.warning('Failed to load skill report rows: %s', exc)
         return []
-
     skill_usage: dict[str, dict[str, Any]] = {}
-
     for row in rows:
-        research_summary = row.get("research_summary") or {}
+        research_summary = row.get('research_summary') or {}
         if isinstance(research_summary, str):
             try:
                 research_summary = json.loads(research_summary)
@@ -392,747 +201,772 @@ def _build_skill_report(state: DashboardState) -> list[dict[str, Any]]:
                 research_summary = {}
         if not isinstance(research_summary, dict):
             continue
-        tool_trace = research_summary.get("llm_tool_trace") or {}
-        trace = tool_trace.get("trace") or {}
-        tool_calls = list(trace.get("tool_calls") or [])
-
-        workspace = research_summary.get("workspace") or {}
-        for stage_key in ("planner_trace_path", "writer_trace_path", "reflector_trace_path"):
+        tool_trace = research_summary.get('llm_tool_trace') or {}
+        trace = tool_trace.get('trace') or {}
+        tool_calls = list(trace.get('tool_calls') or [])
+        workspace = research_summary.get('workspace') or {}
+        for stage_key in ('planner_trace_path', 'writer_trace_path', 'reflector_trace_path'):
             trace_path = workspace.get(stage_key)
             if trace_path:
                 try:
                     stage_payload = json.loads(Path(trace_path).read_text())
                 except (OSError, json.JSONDecodeError, TypeError, ValueError):
                     continue
-                stage_trace = stage_payload.get("claude_trace") or {}
-                for call in stage_trace.get("tool_calls") or []:
+                stage_trace = stage_payload.get('claude_trace') or {}
+                for call in stage_trace.get('tool_calls') or []:
                     tool_calls.append(call)
-
         for call in tool_calls:
             if not isinstance(call, dict):
                 continue
-            name = str(call.get("name") or "").strip()
+            name = str(call.get('name') or '').strip()
             if not name:
                 continue
-            entry = skill_usage.setdefault(
-                name,
-                {
-                    "skill_name": name,
-                    "usage_count": 0,
-                    "total_latency_ms": 0.0,
-                    "total_input_tokens": 0,
-                    "total_output_tokens": 0,
-                    "error_count": 0,
-                    "stages": set(),
-                    "classification": "unknown",
-                },
-            )
-            entry["usage_count"] += 1
-            entry["total_latency_ms"] += float(
-                call.get("latency_ms") or call.get("duration_ms") or 0.0
-            )
-            entry["total_input_tokens"] += int(
-                call.get("input_tokens") or call.get("context_tokens") or 0
-            )
-            entry["total_output_tokens"] += int(call.get("output_tokens") or 0)
-            if call.get("is_error") or call.get("error"):
-                entry["error_count"] += 1
-            stage = str(call.get("stage") or "").strip()
+            entry = skill_usage.setdefault(name, {'skill_name': name, 'usage_count': 0, 'total_latency_ms': 0.0, 'total_input_tokens': 0, 'total_output_tokens': 0, 'error_count': 0, 'stages': set(), 'classification': 'unknown'})
+            entry['usage_count'] += 1
+            entry['total_latency_ms'] += float(call.get('latency_ms') or call.get('duration_ms') or 0.0)
+            entry['total_input_tokens'] += int(call.get('input_tokens') or call.get('context_tokens') or 0)
+            entry['total_output_tokens'] += int(call.get('output_tokens') or 0)
+            if call.get('is_error') or call.get('error'):
+                entry['error_count'] += 1
+            stage = str(call.get('stage') or '').strip()
             if stage:
-                entry["stages"].add(stage)
-
+                entry['stages'].add(stage)
     report = []
     for name, entry in sorted(skill_usage.items()):
-        stages = sorted(entry["stages"])
-        classification = _classify_skill(name, entry["usage_count"])
-        avg_latency = (
-            round(entry["total_latency_ms"] / entry["usage_count"], 2)
-            if entry["usage_count"] > 0
-            else 0.0
-        )
-        report.append({
-            "skill_name": name,
-            "usage_count": entry["usage_count"],
-            "average_latency_ms": avg_latency,
-            "total_input_tokens": entry["total_input_tokens"],
-            "total_output_tokens": entry["total_output_tokens"],
-            "error_count": entry["error_count"],
-            "stages": stages,
-            "classification": classification,
-        })
-
+        stages = sorted(entry['stages'])
+        classification = _classify_skill(name, entry['usage_count'])
+        avg_latency = round(entry['total_latency_ms'] / entry['usage_count'], 2) if entry['usage_count'] > 0 else 0.0
+        report.append({'skill_name': name, 'usage_count': entry['usage_count'], 'average_latency_ms': avg_latency, 'total_input_tokens': entry['total_input_tokens'], 'total_output_tokens': entry['total_output_tokens'], 'error_count': entry['error_count'], 'stages': stages, 'classification': classification})
     return report
 
-
 def _classify_skill(name: str, usage_count: int) -> str:
-    high_value_patterns = {
-        "probe_", "compare_intended_vs_frozen_spec",
-        "search_features", "suggest_feature_set", "inspect_feature",
-    }
-    medium_value_patterns = {
-        "search_workspace", "search_workspace_text", "open_file",
-    }
-    if any(name.startswith(p) or name == p for p in high_value_patterns):
-        return "HIGH_VALUE"
-    if any(name.startswith(p) or name == p for p in medium_value_patterns):
-        return "MEDIUM_VALUE"
-    if name == "think":
-        return "LOW_VALUE"
+    high_value_patterns = {'probe_', 'compare_intended_vs_frozen_spec', 'search_features', 'suggest_feature_set', 'inspect_feature'}
+    medium_value_patterns = {'search_workspace', 'search_workspace_text', 'open_file'}
+    if any((name.startswith(p) or name == p for p in high_value_patterns)):
+        return 'HIGH_VALUE'
+    if any((name.startswith(p) or name == p for p in medium_value_patterns)):
+        return 'MEDIUM_VALUE'
+    if name == 'think':
+        return 'LOW_VALUE'
     if usage_count > 8:
-        return "NOISY"
-    return "MEDIUM_VALUE"
+        return 'NOISY'
+    return 'MEDIUM_VALUE'
 
-
-@router.get("/skill-report")
+@router.get('/skill-report')
 async def skill_report(request: Request) -> dict[str, Any]:
     """Return per-skill metrics."""
-    logger.debug("Skill report requested")
+    logger.debug('Skill report requested')
     state = request.app.state.dashboard
     report = _build_skill_report(state)
-    return {
-        "generated_at": _now_iso(),
-        "skills": report,
-        "total_skills": len(report),
-        "total_invocations": sum(s["usage_count"] for s in report),
-    }
-
-
-# Risk
-
+    return {'generated_at': _now_iso(), 'skills': report, 'total_skills': len(report), 'total_invocations': sum((s['usage_count'] for s in report))}
 
 def _compute_risk_metrics(state: DashboardState) -> dict[str, Any]:
-    """Compute risk metrics from available data in the dashboard state."""
     from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
-
-    logger.debug("Computing risk metrics")
+    logger.debug('Computing risk metrics')
     config = state.config
     if config is None:
         return empty_risk_response()
-
-    sessions_dir = config.root_dir / "sessions"
+    sessions_dir = config.root_dir / 'sessions'
     if not sessions_dir.exists():
         return empty_risk_response()
-
     try:
         return compute_risk_metrics(sessions_dir)
     except ImportError:
-        return {**empty_risk_response(), "note": "numpy not available"}
+        return {**empty_risk_response(), 'note': 'numpy not available'}
     except Exception as exc:
-        logger.warning("Risk computation failed: %s", exc)
-        return {**empty_risk_response(), "note": "Error computing risk metrics"}
+        logger.warning('Risk computation failed: %s', exc)
+        return {**empty_risk_response(), 'note': 'Error computing risk metrics'}
 
-
-@router.get("/risk")
+@router.get('/risk')
 async def risk(request: Request) -> dict[str, Any]:
     """Return portfolio risk metrics: composite score, drawdown, correlation."""
-    logger.debug("Risk metrics requested")
+    logger.debug('Risk metrics requested')
     state = request.app.state.dashboard
     metrics = _compute_risk_metrics(state)
-    return {
-        "generated_at": _now_iso(),
-        **metrics,
-    }
+    return {'generated_at': _now_iso(), **metrics}
 
-
-# Market Data (SoDEX perps)
-
-
-@router.get("/market/symbols")
+@router.get('/market/symbols')
 async def market_symbols(request: Request) -> dict[str, Any]:
     """Return all tradable SoDEX perp symbols."""
-    logger.debug("Market symbols requested")
+    logger.debug('Market symbols requested')
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
-        return {"symbols": [], "note": "SoDEXFeeds not available"}
+        return {'symbols': [], 'note': 'SoDEXFeeds not available'}
     try:
         symbols = await feeds.fetch_symbols()
-        return {"symbols": symbols, "count": len(symbols)}
+        return {'symbols': symbols, 'count': len(symbols)}
     except Exception as exc:
-        logger.warning("Market symbols error: %s", exc)
-        return {"symbols": [], "error": "Internal error"}
+        logger.warning('Market symbols error: %s', exc)
+        return {'symbols': [], 'error': 'Internal error'}
 
-
-@router.get("/market/tickers")
+@router.get('/market/tickers')
 async def market_tickers(request: Request) -> dict[str, Any]:
     """Return 24-hour ticker data for SoDEX perps."""
-    logger.debug("Market tickers requested")
+    logger.debug('Market tickers requested')
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
-        return {"tickers": [], "note": "SoDEXFeeds not available"}
+        return {'tickers': [], 'note': 'SoDEXFeeds not available'}
     try:
         tickers = await feeds.fetch_tickers()
-        return {"tickers": tickers, "count": len(tickers)}
+        return {'tickers': tickers, 'count': len(tickers)}
     except Exception as exc:
-        logger.warning("Market tickers error: %s", exc)
-        return {"tickers": [], "error": "Internal error"}
+        logger.warning('Market tickers error: %s', exc)
+        return {'tickers': [], 'error': 'Internal error'}
 
-
-@router.get("/market/klines/{symbol}")
-async def market_klines(
-    request: Request,
-    symbol: str,
-    interval: str = "1h",
-    limit: int = 60,
-) -> dict[str, Any]:
+@router.get('/market/klines/{symbol}')
+async def market_klines(request: Request, symbol: str, interval: str='1h', limit: int=60) -> dict[str, Any]:
     """Return kline/candlestick data for a perp symbol."""
-    logger.debug("Market klines requested: %s", symbol)
+    logger.debug('Market klines requested: %s', symbol)
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
-        return {"klines": [], "symbol": symbol, "note": "SoDEXFeeds not available"}
+        return {'klines': [], 'symbol': symbol, 'note': 'SoDEXFeeds not available'}
     try:
         frame = await feeds.fetch_klines(symbol, interval, limit=limit)
-        records = frame.reset_index().to_dict(orient="records") if not frame.empty else []
+        records = frame.reset_index().to_dict(orient='records') if not frame.empty else []
         for rec in records:
-            ts = rec.get("timestamp")
-            if ts is not None and hasattr(ts, "isoformat"):
-                rec["timestamp"] = ts.isoformat()
-        return {"klines": records, "symbol": symbol, "interval": interval, "count": len(records)}
+            ts = rec.get('timestamp')
+            if ts is not None and hasattr(ts, 'isoformat'):
+                rec['timestamp'] = ts.isoformat()
+        return {'klines': records, 'symbol': symbol, 'interval': interval, 'count': len(records)}
     except Exception as exc:
-        logger.warning("Market klines error (%s): %s", symbol, exc)
-        return {"klines": [], "symbol": symbol, "error": "Internal error"}
+        logger.warning('Market klines error (%s): %s', symbol, exc)
+        return {'klines': [], 'symbol': symbol, 'error': 'Internal error'}
 
-
-@router.get("/market/orderbook/{symbol}")
-async def market_orderbook(
-    request: Request,
-    symbol: str,
-    limit: int = 20,
-) -> dict[str, Any]:
+@router.get('/market/orderbook/{symbol}')
+async def market_orderbook(request: Request, symbol: str, limit: int=20) -> dict[str, Any]:
     """Return order book depth for a perp symbol."""
-    logger.debug("Market orderbook requested: %s", symbol)
+    logger.debug('Market orderbook requested: %s', symbol)
     state = request.app.state.dashboard
     feeds = state.get_sodex_feeds()
     if feeds is None:
-        return {"bids": [], "asks": [], "symbol": symbol, "note": "SoDEXFeeds not available"}
+        return {'bids': [], 'asks': [], 'symbol': symbol, 'note': 'SoDEXFeeds not available'}
     try:
         data = await feeds.fetch_orderbook(symbol, limit=limit)
-        return {
-            "bids": data.get("bids", []),
-            "asks": data.get("asks", []),
-            "symbol": symbol,
-        }
+        return {'bids': data.get('bids', []), 'asks': data.get('asks', []), 'symbol': symbol}
     except Exception as exc:
-        logger.warning("Market orderbook error (%s): %s", symbol, exc)
-        return {"bids": [], "asks": [], "symbol": symbol, "error": "Internal error"}
+        logger.warning('Market orderbook error (%s): %s', symbol, exc)
+        return {'bids': [], 'asks': [], 'symbol': symbol, 'error': 'Internal error'}
 
-
-# HTMX Partial Endpoints (additive — old JSON API remains intact)
-
-
-@router.get("/partials/dashboard/summary")
+@router.get('/partials/dashboard/summary')
 async def partial_dashboard_summary(request: Request) -> Any:
     """Return dashboard summary cards as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     data = state.runs_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/dashboard/_summary_cards.html",
-        {"request": request, **data},
-    )
+    return state.templates.TemplateResponse(request, 'partials/dashboard/_summary_cards.html', {'request': request, **data})
 
-
-@router.get("/partials/dashboard/runs")
-async def partial_dashboard_runs(
-    request: Request,
-    track: str = "all",
-    family: str = "all",
-) -> Any:
+@router.get('/partials/dashboard/runs')
+async def partial_dashboard_runs(request: Request, track: str='all', family: str='all') -> Any:
     """Return dashboard run cards as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    _track = track if track and track != "all" else None
-    _family = family if family and family != "all" else None
+        return {'error': 'templates not configured'}
+    _track = track if track and track != 'all' else None
+    _family = family if family and family != 'all' else None
     data = state.runs_payload(track=_track, family=_family)
-    return state.templates.TemplateResponse(
-        request,
-        "partials/dashboard/_run_cards.html",
-        {"request": request, **data, "track": track, "family": family, "metric": "aggregate_score"},
-    )
+    return state.templates.TemplateResponse(request, 'partials/dashboard/_run_cards.html', {'request': request, **data, 'track': track, 'family': family, 'metric': 'aggregate_score'})
 
-
-@router.get("/partials/run/summary")
-async def partial_run_summary(
-    request: Request,
-    run_id: str = "",
-    track: str = "all",
-    family: str = "all",
-) -> Any:
+@router.get('/partials/run/summary')
+async def partial_run_summary(request: Request, run_id: str='', track: str='all', family: str='all') -> Any:
     """Return run page summary cards as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    _track = track if track and track != "all" else None
-    _family = family if family and family != "all" else None
+        return {'error': 'templates not configured'}
+    _track = track if track and track != 'all' else None
+    _family = family if family and family != 'all' else None
     payload = state.experiments_payload(track=_track, family=_family)
-    runs = payload.get("runs", [])
-    experiments = payload.get("experiments", [])
+    runs = payload.get('runs', [])
+    experiments = payload.get('experiments', [])
     selected_run = None
     if run_id:
-        selected_run = next((r for r in runs if r.get("run_session_id") == run_id), None)
-    return state.templates.TemplateResponse(
-        request,
-        "partials/run/_run_summary.html",
-        {
-            "request": request,
-            "runs": runs,
-            "experiments": experiments,
-            "selected_run": selected_run,
-            "metric": "aggregate_score",
-        },
-    )
+        selected_run = next((r for r in runs if r.get('run_session_id') == run_id), None)
+    return state.templates.TemplateResponse(request, 'partials/run/_run_summary.html', {'request': request, 'runs': runs, 'experiments': experiments, 'selected_run': selected_run, 'metric': 'aggregate_score'})
 
-
-@router.get("/partials/run/family_pills")
-async def partial_run_family_pills(
-    request: Request,
-    run_id: str = "",
-    family: str = "all",
-) -> Any:
+@router.get('/partials/run/family_pills')
+async def partial_run_family_pills(request: Request, run_id: str='', family: str='all') -> Any:
     """Return family filter pills as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.experiments_payload()
-    families = sorted(payload.get("summary", {}).get("families", []) or [])
-    return state.templates.TemplateResponse(
-        request,
-        "partials/run/_family_pills.html",
-        {"request": request, "families": families, "family": family},
-    )
+    families = sorted(payload.get('summary', {}).get('families', []) or [])
+    return state.templates.TemplateResponse(request, 'partials/run/_family_pills.html', {'request': request, 'families': families, 'family': family})
 
-
-@router.get("/partials/run/improvement_chart")
-async def partial_run_improvement_chart(
-    request: Request,
-    run_id: str = "",
-    metric: str = "aggregate_score",
-    track: str = "all",
-    family: str = "all",
-) -> Any:
+@router.get('/partials/run/improvement_chart')
+async def partial_run_improvement_chart(request: Request, run_id: str='', metric: str='aggregate_score', track: str='all', family: str='all') -> Any:
     """Return improvement curve SVG as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    _track = track if track and track != "all" else None
-    _family = family if family and family != "all" else None
+        return {'error': 'templates not configured'}
+    _track = track if track and track != 'all' else None
+    _family = family if family and family != 'all' else None
     payload = state.experiments_payload(track=_track, family=_family)
-    experiments = payload.get("experiments", [])
+    experiments = payload.get('experiments', [])
     if run_id:
-        experiments = [e for e in experiments if e.get("run_session_id") == run_id]
-    return state.templates.TemplateResponse(
-        request,
-        "partials/run/_improvement_chart.html",
-        {"request": request, "experiments": experiments, "metric": metric},
-    )
+        experiments = [e for e in experiments if e.get('run_session_id') == run_id]
+    return state.templates.TemplateResponse(request, 'partials/run/_improvement_chart.html', {'request': request, 'experiments': experiments, 'metric': metric})
 
-
-@router.get("/partials/run/experiment_table")
-async def partial_run_experiment_table(
-    request: Request,
-    run_id: str = "",
-    track: str = "all",
-    family: str = "all",
-) -> Any:
+@router.get('/partials/run/experiment_table')
+async def partial_run_experiment_table(request: Request, run_id: str='', track: str='all', family: str='all') -> Any:
     """Return experiment table rows as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    _track = track if track and track != "all" else None
-    _family = family if family and family != "all" else None
+        return {'error': 'templates not configured'}
+    _track = track if track and track != 'all' else None
+    _family = family if family and family != 'all' else None
     payload = state.experiments_payload(track=_track, family=_family)
-    experiments = payload.get("experiments", [])
+    experiments = payload.get('experiments', [])
     if run_id:
-        experiments = [e for e in experiments if e.get("run_session_id") == run_id]
+        experiments = [e for e in experiments if e.get('run_session_id') == run_id]
     if _family:
-        experiments = [e for e in experiments if e.get("family") == _family]
-    return state.templates.TemplateResponse(
-        request,
-        "partials/run/_experiment_table.html",
-        {"request": request, "experiments": experiments},
-    )
+        experiments = [e for e in experiments if e.get('family') == _family]
+    return state.templates.TemplateResponse(request, 'partials/run/_experiment_table.html', {'request': request, 'experiments': experiments})
 
-
-@router.get("/partials/run/detail_panel")
-async def partial_run_detail_panel(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/run/detail_panel')
+async def partial_run_detail_panel(request: Request, spec_hash: str='') -> Any:
     """Return experiment detail panel as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     if not spec_hash:
-        return state.templates.TemplateResponse(
-            request,
-            "partials/run/_detail_panel.html",
-            {"request": request, "experiment": {}},
-        )
+        return state.templates.TemplateResponse(request, 'partials/run/_detail_panel.html', {'request': request, 'experiment': {}})
     payload = state.experiment_detail_payload(spec_hash)
-    experiment = (payload or {}).get("experiment", {}) or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/run/_detail_panel.html",
-        {"request": request, "experiment": experiment},
-    )
+    experiment = (payload or {}).get('experiment', {}) or {}
+    return state.templates.TemplateResponse(request, 'partials/run/_detail_panel.html', {'request': request, 'experiment': experiment})
 
-
-@router.get("/partials/experiment/summary")
-async def partial_experiment_summary(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/experiment/summary')
+async def partial_experiment_summary(request: Request, spec_hash: str='') -> Any:
     """Return experiment summary cards as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     experiment: dict[str, Any] = {}
     if spec_hash:
         payload = state.experiment_detail_payload(spec_hash)
-        experiment = (payload or {}).get("experiment", {}) or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_experiment_summary.html",
-        {"request": request, "experiment": experiment},
-    )
+        experiment = (payload or {}).get('experiment', {}) or {}
+    return state.templates.TemplateResponse(request, 'partials/experiment/_experiment_summary.html', {'request': request, 'experiment': experiment})
 
-
-@router.get("/partials/experiment/equity_chart")
-async def partial_experiment_equity_chart(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/experiment/equity_chart')
+async def partial_experiment_equity_chart(request: Request, spec_hash: str='') -> Any:
     """Return equity curve SVG as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     run: dict[str, Any] = {}
     if spec_hash:
         payload = state.experiment_series_payload(spec_hash)
         if payload:
-            run = payload.get("canonical_run") or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_equity_chart.html",
-        {"request": request, "run": run},
-    )
+            run = payload.get('canonical_run') or {}
+    return state.templates.TemplateResponse(request, 'partials/experiment/_equity_chart.html', {'request': request, 'run': run})
 
-
-@router.get("/partials/experiment/metrics_chart")
-async def partial_experiment_metrics_chart(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/experiment/metrics_chart')
+async def partial_experiment_metrics_chart(request: Request, spec_hash: str='') -> Any:
     """Return metrics chart SVG as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     run: dict[str, Any] = {}
     if spec_hash:
         payload = state.experiment_series_payload(spec_hash)
         if payload:
-            run = payload.get("canonical_run") or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_metrics_chart.html",
-        {"request": request, "run": run},
-    )
+            run = payload.get('canonical_run') or {}
+    return state.templates.TemplateResponse(request, 'partials/experiment/_metrics_chart.html', {'request': request, 'run': run})
 
-
-@router.get("/partials/experiment/snapshot")
-async def partial_experiment_snapshot(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/experiment/snapshot')
+async def partial_experiment_snapshot(request: Request, spec_hash: str='') -> Any:
     """Return experiment snapshot as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     experiment: dict[str, Any] = {}
     run: dict[str, Any] = {}
     series_available = False
     compiled_metadata: dict[str, Any] = {}
     if spec_hash:
         detail = state.experiment_detail_payload(spec_hash)
-        experiment = (detail or {}).get("experiment", {}) or {}
+        experiment = (detail or {}).get('experiment', {}) or {}
         series = state.experiment_series_payload(spec_hash)
         if series:
-            run = series.get("canonical_run") or {}
-            series_available = bool(series.get("series_available"))
-            compiled_metadata = series.get("compiled_metadata") or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_snapshot.html",
-        {
-            "request": request,
-            "experiment": experiment,
-            "run": run,
-            "series_available": series_available,
-            "compiled_metadata": compiled_metadata,
-        },
-    )
+            run = series.get('canonical_run') or {}
+            series_available = bool(series.get('series_available'))
+            compiled_metadata = series.get('compiled_metadata') or {}
+    return state.templates.TemplateResponse(request, 'partials/experiment/_snapshot.html', {'request': request, 'experiment': experiment, 'run': run, 'series_available': series_available, 'compiled_metadata': compiled_metadata})
 
-
-@router.get("/partials/experiment/deployment")
-async def partial_experiment_deployment(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/experiment/deployment')
+async def partial_experiment_deployment(request: Request, spec_hash: str='') -> Any:
     """Return deployment form as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     experiment: dict[str, Any] = {}
     if spec_hash:
         payload = state.experiment_detail_payload(spec_hash)
-        experiment = (payload or {}).get("experiment", {}) or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_deployment.html",
-        {"request": request, "experiment": experiment},
-    )
+        experiment = (payload or {}).get('experiment', {}) or {}
+    return state.templates.TemplateResponse(request, 'partials/experiment/_deployment.html', {'request': request, 'experiment': experiment})
 
-
-@router.get("/partials/experiment/heatmap")
-async def partial_experiment_heatmap(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/experiment/heatmap')
+async def partial_experiment_heatmap(request: Request, spec_hash: str='') -> Any:
     """Return position weight heatmap SVG as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     run: dict[str, Any] = {}
     if spec_hash:
         payload = state.experiment_series_payload(spec_hash)
         if payload:
-            run = payload.get("canonical_run") or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_heatmap.html",
-        {"request": request, "run": run},
-    )
+            run = payload.get('canonical_run') or {}
+    return state.templates.TemplateResponse(request, 'partials/experiment/_heatmap.html', {'request': request, 'run': run})
 
-
-@router.get("/partials/experiment/trades")
-async def partial_experiment_trades(
-    request: Request,
-    spec_hash: str = "",
-    page: int = 1,
-    display_capital: int = 100000,
-) -> Any:
+@router.get('/partials/experiment/trades')
+async def partial_experiment_trades(request: Request, spec_hash: str='', page: int=1, display_capital: int=100000) -> Any:
     """Return trade table rows as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     trades: list[dict[str, Any]] = []
     if spec_hash:
         payload = state.experiment_series_payload(spec_hash)
         if payload:
-            run = payload.get("canonical_run") or {}
-            trades = run.get("trades") or []
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_trades.html",
-        {
-            "request": request,
-            "trades": trades,
-            "page": page,
-            "display_capital": display_capital,
-        },
-    )
+            run = payload.get('canonical_run') or {}
+            trades = run.get('trades') or []
+    return state.templates.TemplateResponse(request, 'partials/experiment/_trades.html', {'request': request, 'trades': trades, 'page': page, 'display_capital': display_capital})
 
-
-@router.get("/partials/experiment/actions")
-async def partial_experiment_actions(
-    request: Request,
-    spec_hash: str = "",
-) -> Any:
+@router.get('/partials/experiment/actions')
+async def partial_experiment_actions(request: Request, spec_hash: str='') -> Any:
     """Return asset action chart cards as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     run: dict[str, Any] = {}
     if spec_hash:
         payload = state.experiment_series_payload(spec_hash)
         if payload:
-            run = payload.get("canonical_run") or {}
-    return state.templates.TemplateResponse(
-        request,
-        "partials/experiment/_actions.html",
-        {"request": request, "run": run},
-    )
+            run = payload.get('canonical_run') or {}
+    return state.templates.TemplateResponse(request, 'partials/experiment/_actions.html', {'request': request, 'run': run})
 
-
-@router.get("/partials/ops/summary")
+@router.get('/partials/ops/summary')
 async def partial_ops_summary(request: Request) -> Any:
     """Return ops summary cards as an HTML partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_ops_summary.html",
-        {"request": request, **payload},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_ops_summary.html', {'request': request, **payload})
 
-
-@router.get("/partials/ops/artifact_health")
+@router.get('/partials/ops/artifact_health')
 async def partial_ops_artifact_health(request: Request) -> Any:
     """Return artifact health partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_artifact_health.html",
-        {"request": request, "artifact_status": payload.get("artifact_status", {})},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_artifact_health.html', {'request': request, 'artifact_status': payload.get('artifact_status', {})})
 
-
-@router.get("/partials/ops/wave_state")
+@router.get('/partials/ops/wave_state')
 async def partial_ops_wave_state(request: Request) -> Any:
     """Return wave state partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_wave_state.html",
-        {"request": request, "summary": payload.get("summary", {})},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_wave_state.html', {'request': request, 'summary': payload.get('summary', {})})
 
-
-@router.get("/partials/ops/buildathon_proof")
+@router.get('/partials/ops/buildathon_proof')
 async def partial_ops_buildathon_proof(request: Request) -> Any:
     """Return buildathon proof partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_buildathon_proof.html",
-        {"request": request, "summary": payload.get("summary", {})},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_buildathon_proof.html', {'request': request, 'summary': payload.get('summary', {})})
 
-
-@router.get("/partials/ops/market_state")
+@router.get('/partials/ops/market_state')
 async def partial_ops_market_state(request: Request) -> Any:
     """Return market state partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_market_state.html",
-        {"request": request, "summary": payload.get("summary", {})},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_market_state.html', {'request': request, 'summary': payload.get('summary', {})})
 
-
-@router.get("/partials/ops/sodex_boundary")
+@router.get('/partials/ops/sodex_boundary')
 async def partial_ops_sodex_boundary(request: Request) -> Any:
     """Return SoDEX boundary partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_sodex_boundary.html",
-        {"request": request, "summary": payload.get("summary", {})},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_sodex_boundary.html', {'request': request, 'summary': payload.get('summary', {})})
 
-
-@router.get("/partials/ops/telemetry_state")
+@router.get('/partials/ops/telemetry_state')
 async def partial_ops_telemetry_state(request: Request) -> Any:
     """Return telemetry state partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_telemetry_state.html",
-        {"request": request, "summary": payload.get("summary", {})},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_telemetry_state.html', {'request': request, 'summary': payload.get('summary', {})})
 
-
-@router.get("/partials/ops/blockers")
+@router.get('/partials/ops/blockers')
 async def partial_ops_blockers(request: Request) -> Any:
     """Return blockers partial."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
+        return {'error': 'templates not configured'}
     payload = state.ops_payload()
-    return state.templates.TemplateResponse(
-        request,
-        "partials/ops/_blockers.html",
-        {"request": request, "summary": payload.get("summary", {})},
-    )
+    return state.templates.TemplateResponse(request, 'partials/ops/_blockers.html', {'request': request, 'summary': payload.get('summary', {})})
 
-
-# ---------------------------------------------------------------------------
-# Jinja2 / HTMX page routes (template-served pages alongside static fallback)
-# ---------------------------------------------------------------------------
-
-
-@router.get("/templates/dashboard")
+@router.get('/templates/dashboard')
 async def template_dashboard(request: Request) -> Any:
     """Return the Jinja2 dashboard shell."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    return state.templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {"request": request, "track": "all", "family": "all"},
-    )
+        return {'error': 'templates not configured'}
+    return state.templates.TemplateResponse(request, 'dashboard.html', {'request': request, 'track': 'all', 'family': 'all'})
 
-
-@router.get("/templates/runs/{run_id:path}")
-async def template_run(request: Request, run_id: str = "") -> Any:
+@router.get('/templates/runs/{run_id:path}')
+async def template_run(request: Request, run_id: str='') -> Any:
     """Return the Jinja2 run detail shell."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    return state.templates.TemplateResponse(
-        request,
-        "run.html",
-        {"request": request, "run_id": run_id, "track": "all", "family": "all"},
-    )
+        return {'error': 'templates not configured'}
+    return state.templates.TemplateResponse(request, 'run.html', {'request': request, 'run_id': run_id, 'track': 'all', 'family': 'all'})
 
-
-@router.get("/templates/experiments/{spec_hash:path}")
-async def template_experiment(request: Request, spec_hash: str = "") -> Any:
+@router.get('/templates/experiments/{spec_hash:path}')
+async def template_experiment(request: Request, spec_hash: str='') -> Any:
     """Return the Jinja2 experiment detail shell."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    return state.templates.TemplateResponse(
-        request,
-        "experiment.html",
-        {"request": request, "spec_hash": spec_hash},
-    )
+        return {'error': 'templates not configured'}
+    return state.templates.TemplateResponse(request, 'experiment.html', {'request': request, 'spec_hash': spec_hash})
 
-
-@router.get("/templates/ops")
+@router.get('/templates/ops')
 async def template_ops(request: Request) -> Any:
-    """Return the Jinja2 ops board shell."""
     state = request.app.state.dashboard
     if state.templates is None:
-        return {"error": "templates not configured"}
-    return state.templates.TemplateResponse(
-        request,
-        "ops.html",
-        {"request": request},
-    )
+        return {'error': 'templates not configured'}
+    return state.templates.TemplateResponse(request, 'ops.html', {'request': request})
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+
+    async def dispatch(self, request, call_next):
+        response: Response = await call_next(request)
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests; block-all-mixed-content;"
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+        return response
+
+class WebSocketManager:
+
+    def __init__(self) -> None:
+        self._connections: set[Any] = set()
+        self._subscriptions: dict[str, set[Any]] = {}
+        self._update_task: asyncio.Task[None] | None = None
+
+    def register(self, websocket: object) -> None:
+        self._connections.add(websocket)
+
+    def unregister(self, websocket: object) -> None:
+        self._connections.discard(websocket)
+        for subs in self._subscriptions.values():
+            subs.discard(websocket)
+
+    def subscribe(self, symbol: str, websocket: object) -> None:
+        self._subscriptions.setdefault(symbol, set()).add(websocket)
+
+    def unsubscribe(self, symbol: str, websocket: object) -> None:
+        subs = self._subscriptions.get(symbol)
+        if subs:
+            subs.discard(websocket)
+
+    @property
+    def active_count(self) -> int:
+        return len(self._connections)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    state = DashboardState()
+    try:
+        state.config = load_settings()
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        from pathlib import Path as _Path
+        state.config = SiglabConfig(root_dir=_Path.cwd(), sosovalue_config_path=_Path('config.json'), generated_strategy_dir=_Path('generated'), data_lake_dir=_Path('data/cache'), artifact_dir=_Path('runs'), live_dir=_Path('live'), ancestry_db_path=_Path('siglab.db'), sosovalue_api_key_override=None)
+    try:
+        from siglab.data.deployment_store import DeploymentStore
+        state.deployment_store = DeploymentStore(state.config.ancestry_db_path)
+    except Exception:
+        logger.exception('Failed to create DeploymentStore, running without it')
+        state.deployment_store = None
+    state.static_dir = Path(__file__).resolve().parent / 'static'
+    state.ws_manager = WebSocketManager()
+    state.start_time = time.time()
+    _template_dir = Path(__file__).resolve().parent / 'templates'
+    state.templates = Jinja2Templates(directory=str(_template_dir))
+    _env = state.templates.env
+
+    def _jinja2_format_number(value: float | int | str | None, decimals: int=2) -> str:
+        try:
+            if value is None:
+                return 'n/a'
+            v = float(value)
+            if not (v != v or v == float('inf') or v == float('-inf')):
+                return f'{v:.{decimals}f}'
+        except (TypeError, ValueError):
+            pass
+        return 'n/a'
+
+    def _jinja2_format_pct(value: float | int | str | None) -> str:
+        try:
+            if value is None:
+                return 'n/a'
+            v = float(value)
+            if not (v != v or v == float('inf') or v == float('-inf')):
+                return f'{v * 100:.2f}%'
+        except (TypeError, ValueError):
+            pass
+        return 'n/a'
+
+    def _jinja2_format_dt(value: object) -> str:
+        if not value:
+            return ''
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        except (ValueError, TypeError):
+            return str(value)
+    _env.filters['format_number'] = _jinja2_format_number
+    _env.filters['format_pct'] = _jinja2_format_pct
+    _env.filters['format_dt'] = _jinja2_format_dt
+    app.state.dashboard = state
+    yield
+
+def create_app() -> FastAPI:
+    app = FastAPI(title='SigLab Dashboard', version='0.1.0', lifespan=lifespan)
+    _cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:8080').split(',')
+    _cors_origins_stripped = [o.strip() for o in _cors_origins if o.strip()]
+    app.add_middleware(CORSMiddleware, allow_origins=_cors_origins_stripped, allow_credentials=False, allow_methods=['*'], allow_headers=['*'])
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.include_router(router)
+    _static_dir = Path(__file__).resolve().parent / 'static'
+
+    @app.get('/')
+    async def serve_dashboard(request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, 'dashboard.html', {'request': request})
+
+    @app.get('/ops')
+    async def serve_ops(request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, 'ops.html', {'request': request})
+
+    @app.get('/runs/{run_id:path}')
+    async def serve_run_page(run_id: str, request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, 'run.html', {'request': request, 'run_id': run_id})
+
+    @app.get('/experiments/{spec_hash:path}')
+    async def serve_experiment_page(spec_hash: str, request: Request):
+        state = request.app.state.dashboard
+        return state.templates.TemplateResponse(request, 'experiment.html', {'request': request, 'spec_hash': spec_hash})
+    if _static_dir.is_dir():
+        app.mount('/', StaticFiles(directory=str(_static_dir)), name='static')
+    return app
+app = create_app()
+
+@router.websocket('/ws')
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    await websocket.accept()
+    state = websocket.app.state.dashboard
+    manager = state.ws_manager
+    manager.register(websocket)
+    subscribed_symbols: set[str] = set()
+    subscription_types: set[str] = set()
+    risk_push_tasks: set[asyncio.Task[None]] = set()
+    try:
+        await _send_json(websocket, {'type': 'connected', 'message': 'SigLab WebSocket connected', 'timestamp': _now_iso()})
+        while True:
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            except asyncio.TimeoutError:
+                try:
+                    await _send_json(websocket, {'type': 'ping', 'timestamp': _now_iso()})
+                except (OSError, ValueError):
+                    logger.debug('WebSocket send error in ping keepalive')
+                    break
+                continue
+            if not raw.strip():
+                continue
+            try:
+                message = json.loads(raw)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                await _send_json(websocket, {'type': 'error', 'message': 'Invalid JSON payload'})
+                continue
+            await _handle_message(websocket, message, manager, subscribed_symbols, subscription_types, risk_push_tasks)
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.warning('WS error: %s', exc)
+    finally:
+        for task in risk_push_tasks:
+            task.cancel()
+        risk_push_tasks.clear()
+        manager.unregister(websocket)
+        for symbol in list(subscribed_symbols):
+            manager.unsubscribe(symbol, websocket)
+
+async def _periodic_risk_push(ws: WebSocket) -> None:
+    try:
+        while True:
+            await asyncio.sleep(15)
+            await _stream_risk_scores(ws)
+    except (asyncio.CancelledError, Exception):
+        pass
+
+async def _handle_message(websocket: WebSocket, message: dict[str, Any], manager: Any, subscribed_symbols: set[str], subscription_types: set[str], risk_push_tasks: set[asyncio.Task[None]] | None=None) -> None:
+    action = str(message.get('action') or message.get('type') or '').strip().lower()
+    if action in ('ping', 'pong'):
+        await _send_json(websocket, {'type': 'pong' if action == 'ping' else 'pong', 'timestamp': _now_iso()})
+        return
+    if action == 'subscribe':
+        symbol = str(message.get('symbol') or '').strip().upper()
+        sub_type = str(message.get('subscription_type') or 'klines').strip().lower()
+        if sub_type == 'risk_score':
+            subscribed_symbols.add('_risk')
+            subscription_types.add('risk_score')
+            manager.subscribe('_risk', websocket)
+            await _send_json(websocket, {'type': 'subscribed', 'subscription_type': 'risk_score', 'message': 'Subscribed to risk score updates'})
+            await _stream_risk_scores(websocket)
+            if risk_push_tasks is not None:
+                task = asyncio.create_task(_periodic_risk_push(websocket))
+                risk_push_tasks.add(task)
+                task.add_done_callback(risk_push_tasks.discard)
+            return
+        if not symbol:
+            await _send_json(websocket, {'type': 'error', 'message': "Missing 'symbol' field for subscribe"})
+            return
+        subscribed_symbols.add(symbol)
+        subscription_types.add(sub_type)
+        manager.subscribe(symbol, websocket)
+        await _send_json(websocket, {'type': 'subscribed', 'symbol': symbol, 'subscription_type': sub_type, 'message': f'Subscribed to {sub_type} for {symbol}'})
+        await _stream_initial_data(websocket, symbol, sub_type)
+        return
+    if action == 'unsubscribe':
+        symbol = str(message.get('symbol') or '').strip().upper()
+        if symbol:
+            subscribed_symbols.discard(symbol)
+            manager.unsubscribe(symbol, websocket)
+        else:
+            for sym in list(subscribed_symbols):
+                manager.unsubscribe(sym, websocket)
+            subscribed_symbols.clear()
+        await _send_json(websocket, {'type': 'unsubscribed', 'symbol': symbol if symbol else 'all'})
+        return
+    if action == 'get_positions':
+        await _stream_positions(websocket)
+        return
+    if action == 'get_risk':
+        await _stream_risk_scores(websocket)
+        return
+    await _send_json(websocket, {'type': 'error', 'message': f'Unknown action: {action}. Supported: ping, subscribe, unsubscribe, get_positions, get_risk'})
+
+async def _stream_initial_data(websocket: WebSocket, symbol: str, sub_type: str) -> None:
+    if sub_type == 'klines':
+        await _send_json(websocket, {'type': 'klines', 'symbol': symbol, 'data': await _fetch_cached_klines(websocket, symbol), 'interval': '1h'})
+    elif sub_type in ('ticks', 'ticker'):
+        await _send_json(websocket, {'type': 'ticker', 'symbol': symbol, **await _fetch_cached_ticker(websocket, symbol), 'timestamp': _now_iso()})
+    elif sub_type == 'positions':
+        await _stream_positions(websocket)
+
+async def _fetch_cached_klines(websocket: WebSocket, symbol: str) -> list[dict[str, Any]]:
+    try:
+        state = websocket.app.state.dashboard
+        feeds = state.get_sodex_feeds()
+        if feeds is not None:
+            frame = await feeds.fetch_klines(symbol, '1h', limit=60)
+            if not frame.empty:
+                records = frame.reset_index().to_dict(orient='records')
+                for rec in records:
+                    ts = rec.get('timestamp')
+                    if ts is not None and hasattr(ts, 'isoformat'):
+                        rec['timestamp'] = int(ts.timestamp() * 1000)
+                    for col in ('open', 'high', 'low', 'close', 'volume', 'quote_volume'):
+                        val = rec.get(col)
+                        if val is not None:
+                            rec[col] = float(val)
+                return records
+    except Exception as exc:
+        logger.warning('WS klines fetch error for %s: %s', symbol, exc)
+    now = datetime.now(UTC)
+    timestamp = int(now.timestamp() * 1000)
+    return [{'timestamp': timestamp - 3600000 * i, 'open': 0.0, 'high': 0.0, 'low': 0.0, 'close': 0.0, 'volume': 0.0, 'quote_volume': 0.0} for i in range(5)]
+
+async def _fetch_cached_ticker(websocket: WebSocket, symbol: str) -> dict[str, Any]:
+    try:
+        state = websocket.app.state.dashboard
+        feeds = state.get_sodex_feeds()
+        if feeds is not None:
+            tickers = await feeds.fetch_tickers(symbol=symbol)
+            if tickers:
+                t = tickers[0]
+                return {'bid': float(t.get('bidPrice', t.get('bid', 0.0))), 'ask': float(t.get('askPrice', t.get('ask', 0.0))), 'last_price': float(t.get('lastPrice', t.get('close', 0.0)))}
+    except Exception as exc:
+        logger.warning('WS ticker fetch error for %s: %s', symbol, exc)
+    return {'bid': 0.0, 'ask': 0.0, 'last_price': 0.0}
+
+async def _stream_positions(websocket: WebSocket) -> None:
+    try:
+        state = websocket.app.state.dashboard
+        config = state.config
+        if config is None:
+            await _send_json(websocket, {'type': 'positions', 'positions': [], 'note': 'Config not loaded'})
+            return
+        sessions_dir = config.root_dir / 'sessions'
+        if not sessions_dir.exists():
+            await _send_json(websocket, {'type': 'positions', 'positions': [], 'note': 'No paper sessions found'})
+            return
+        positions_list: list[dict[str, Any]] = []
+        for npy_file in sorted(sessions_dir.glob('*.npy')):
+            try:
+                session_id = npy_file.stem
+                positions_list.append({'session_id': session_id, 'symbol': 'unknown', 'size': 0.0, 'entry_price': 0.0, 'current_price': 0.0, 'unrealized_pnl': 0.0})
+            except (OSError, ValueError, TypeError):
+                logger.debug('Failed to read npy session file %s', npy_file)
+                continue
+        await _send_json(websocket, {'type': 'positions', 'positions': positions_list})
+    except ImportError:
+        await _send_json(websocket, {'type': 'positions', 'positions': [], 'note': 'Paper trading not available'})
+    except Exception as exc:
+        await _send_json(websocket, {'type': 'positions', 'positions': [], 'note': f'Error: {exc}'})
+
+async def _stream_risk_scores(websocket: WebSocket) -> None:
+    from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
+    try:
+        state = websocket.app.state.dashboard
+        config = state.config
+        if config is None:
+            await _send_json(websocket, {'type': 'risk_score', **empty_risk_response(), 'note': 'Config not loaded'})
+            return
+        sessions_dir = config.root_dir / 'sessions'
+        if not sessions_dir.exists():
+            await _send_json(websocket, {'type': 'risk_score', **empty_risk_response(), 'note': 'No paper sessions found'})
+            return
+        metrics = compute_risk_metrics(sessions_dir)
+        await _send_json(websocket, {'type': 'risk_score', **metrics, 'timestamp': _now_iso()})
+    except ImportError:
+        await _send_json(websocket, {'type': 'risk_score', **empty_risk_response(), 'note': 'numpy not available'})
+    except Exception as exc:
+        await _send_json(websocket, {'type': 'risk_score', **empty_risk_response(), 'note': f'Error: {exc}'})
+
+async def _send_json(websocket: WebSocket, data: dict[str, Any]) -> None:
+    try:
+        await websocket.send_json(data)
+    except Exception:
+        logger.debug('WebSocket send_json failed (client likely disconnected)')
+        pass

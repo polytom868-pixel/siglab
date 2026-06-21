@@ -1,40 +1,25 @@
 from __future__ import annotations
-
 import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from siglab.utils import short_hash
-
 import pandas as pd
-
-
 @dataclass
 class AssetUniverse:
     basis_groups: list[str] = field(default_factory=list)
     chains: list[str] = field(default_factory=list)
     max_symbols: int = 6
     lookback_days: int = 90
-    interval: str = "1h"
-    min_liquidity_usd: float = 250_000.0
-    min_volume_usd_24h: float = 25_000.0
+    interval: str = '1h'
+    min_liquidity_usd: float = 250000.0
+    min_volume_usd_24h: float = 25000.0
     min_days_to_expiry: int = 7
     max_days_to_expiry: int = 180
 
     @classmethod
     def from_dict(cls: type[AssetUniverse], payload: dict[str, Any] | None) -> AssetUniverse:
         payload = payload or {}
-        return cls(
-            basis_groups=list(payload.get("basis_groups") or []),
-            chains=list(payload.get("chains") or []),
-            max_symbols=int(payload.get("max_symbols", 6)),
-            lookback_days=int(payload.get("lookback_days", 90)),
-            interval=str(payload.get("interval", "1h")),
-            min_liquidity_usd=float(payload.get("min_liquidity_usd", 250_000.0)),
-            min_volume_usd_24h=float(payload.get("min_volume_usd_24h", 25_000.0)),
-            min_days_to_expiry=int(payload.get("min_days_to_expiry", 7)),
-            max_days_to_expiry=int(payload.get("max_days_to_expiry", 180)),
-        )
-
+        return cls(basis_groups=list(payload.get('basis_groups') or []), chains=list(payload.get('chains') or []), max_symbols=int(payload.get('max_symbols', 6)), lookback_days=int(payload.get('lookback_days', 90)), interval=str(payload.get('interval', '1h')), min_liquidity_usd=float(payload.get('min_liquidity_usd', 250000.0)), min_volume_usd_24h=float(payload.get('min_volume_usd_24h', 25000.0)), min_days_to_expiry=int(payload.get('min_days_to_expiry', 7)), max_days_to_expiry=int(payload.get('max_days_to_expiry', 180)))
 
 @dataclass
 class RiskBounds:
@@ -47,14 +32,7 @@ class RiskBounds:
     @classmethod
     def from_dict(cls: type[RiskBounds], payload: dict[str, Any] | None) -> RiskBounds:
         payload = payload or {}
-        return cls(
-            max_asset_weight=float(payload.get("max_asset_weight", 0.35)),
-            max_chain_weight=float(payload.get("max_chain_weight", 1.0)),
-            rebalance_threshold=float(payload.get("rebalance_threshold", 0.03)),
-            roll_days_before_expiry=int(payload.get("roll_days_before_expiry", 5)),
-            max_leverage=float(payload.get("max_leverage", 1.0)),
-        )
-
+        return cls(max_asset_weight=float(payload.get('max_asset_weight', 0.35)), max_chain_weight=float(payload.get('max_chain_weight', 1.0)), rebalance_threshold=float(payload.get('rebalance_threshold', 0.03)), roll_days_before_expiry=int(payload.get('roll_days_before_expiry', 5)), max_leverage=float(payload.get('max_leverage', 1.0)))
 
 @dataclass
 class SignalSpec:
@@ -70,32 +48,17 @@ class SignalSpec:
 
     @classmethod
     def from_dict(cls: type[SignalSpec], payload: dict[str, Any]) -> SignalSpec:
-        return cls(
-            track=str(payload["track"]),
-            family=str(payload["family"]),
-            hypothesis=str(payload.get("hypothesis", "")).strip(),
-            neutrality_basis=payload.get("neutrality_basis"),
-            features=[str(item) for item in payload.get("features") or []],
-            universe=AssetUniverse.from_dict(payload.get("universe")),
-            risk=RiskBounds.from_dict(payload.get("risk")),
-            regime_gates=dict(payload.get("regime_gates") or {}),
-            params=dict(payload.get("params") or {}),
-        )
+        return cls(track=str(payload['track']), family=str(payload['family']), hypothesis=str(payload.get('hypothesis', '')).strip(), neutrality_basis=payload.get('neutrality_basis'), features=[str(item) for item in payload.get('features') or []], universe=AssetUniverse.from_dict(payload.get('universe')), risk=RiskBounds.from_dict(payload.get('risk')), regime_gates=dict(payload.get('regime_gates') or {}), params=dict(payload.get('params') or {}))
 
     def canonical_dict(self) -> dict[str, Any]:
         payload = asdict(self)
-        payload["features"] = sorted(set(self.features))
-        payload["params"] = dict(sorted(self.params.items()))
+        payload['features'] = sorted(set(self.features))
+        payload['params'] = dict(sorted(self.params.items()))
         return payload
 
     def strategy_hash(self) -> str:
-        canonical = json.dumps(
-            self.canonical_dict(),
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        canonical = json.dumps(self.canonical_dict(), sort_keys=True, separators=(',', ':'))
         return short_hash(canonical)
-
 
 @dataclass
 class CompiledChild:
@@ -106,4 +69,3 @@ class CompiledChild:
     signal_score: pd.DataFrame | None = None
     signal_components: dict[str, pd.DataFrame] | None = None
     regime_gate_mask: pd.Series | None = None
-

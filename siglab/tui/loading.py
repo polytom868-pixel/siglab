@@ -1,36 +1,18 @@
 """Shared loading indicator widget for the SigLab TUI."""
-
 from __future__ import annotations
-
 from typing import Any
-
 from rich.text import Text
 from textual.reactive import reactive
 from textual.timer import Timer
 from textual.widgets import Static
-
 from siglab.tui.formatting import ACCENT_GREEN, TEXT_MUTED
-
-# Spinner frames (braille pattern cycling)
-_SPINNER_FRAMES = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
-
+_SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
 class LoadingIndicator(Static):
     """Animated spinner widget that shows activity during data fetches."""
-
     loading: reactive[bool] = reactive(False)
-    status_text: reactive[str] = reactive("")
-
-    DEFAULT_CSS = """
-    LoadingIndicator {
-        height: 1;
-        width: auto;
-        min-width: 1;
-        padding: 0 1;
-        background: #0d1210;
-        color: #7d9483;
-    }
-    """
+    status_text: reactive[str] = reactive('')
+    DEFAULT_CSS = 'LoadingIndicator { height: 1; width: auto; min-width: 1; padding: 0 1; background: #0d1210; color: #7d9483; }'
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -51,7 +33,6 @@ class LoadingIndicator(Static):
             self._timer.pause()
 
     def _tick_spinner(self) -> None:
-        """Advance the spinner frame when loading."""
         if self.loading:
             self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER_FRAMES)
             self.refresh()
@@ -60,7 +41,7 @@ class LoadingIndicator(Static):
         """Render the spinner or status text."""
         if self.loading:
             frame = _SPINNER_FRAMES[self._spinner_idx]
-            return Text(f" {frame} Loading\u2026", style=ACCENT_GREEN)
+            return Text(f' {frame} Loading…', style=ACCENT_GREEN)
         if self.status_text:
-            return Text(f" {self.status_text}", style=TEXT_MUTED)
-        return Text("", style=TEXT_MUTED)
+            return Text(f' {self.status_text}', style=TEXT_MUTED)
+        return Text('', style=TEXT_MUTED)
