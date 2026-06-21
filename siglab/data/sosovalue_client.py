@@ -14,6 +14,26 @@ from typing import Any, cast
 import httpx
 from siglab.utils import percentile as _percentile
 
+# Optional orjson: ~3-5x faster JSON parsing than stdlib.
+# Falls back to stdlib json when not installed.
+try:
+    import orjson as _orjson
+    _HAS_ORJSON = True
+except ImportError:
+    _HAS_ORJSON = False
+
+
+def _fast_json_loads(data: bytes) -> Any:
+    """Parse JSON bytes with the fastest available decoder.
+
+    Uses ``orjson`` when available (~3-5x faster), falls back to stdlib
+    ``json.loads()`` on bytes directly (avoids httpx text-decoding overhead).
+    """
+    if _HAS_ORJSON:
+        return _orjson.loads(data)
+    return json.loads(data)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -91,6 +111,7 @@ class SoSoValueClient:
         conservative_rate_limit_per_minute: int = 20,
         verify: ssl.SSLContext | str | bool | None = None,
         client: httpx.AsyncClient | None = None,
+        cache_enabled: bool = True,
     ) -> None:
         self.api_key = api_key
         self.endpoints = endpoints or SoSoValueEndpoints()
@@ -108,12 +129,28 @@ class SoSoValueClient:
         self._rate_limit_lock = asyncio.Lock()
         self._inflight: dict[str, asyncio.Task[dict[str, Any]]] = {}
         self._metrics: dict[str, _EndpointMetrics] = {}
+        # TTL-based response cache (key -> (expiry_monotonic, payload))
+        self._response_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._max_cache_size: int = 500
+        self._cache_enabled: bool = bool(cache_enabled)
+        self._cache_hits: int = 0
+        self._cache_misses: int = 0
 
     @property
     def is_configured(self) -> bool:
         return bool(str(self.api_key or "").strip())
 
     async def close(self) -> None:
+        if self._cache_hits + self._cache_misses > 0:
+            hit_rate = self._cache_hits / max(1, self._cache_hits + self._cache_misses)
+            logger.debug(
+                "sosovalue_cache cache_enabled=%s hits=%d misses=%d hit_rate=%.1f%% size=%d",
+                self._cache_enabled,
+                self._cache_hits,
+                self._cache_misses,
+                hit_rate * 100.0,
+                len(self._response_cache),
+            )
         if self._owns_client and self._client is not None:
             await self._client.aclose()
 
@@ -259,6 +296,18 @@ class SoSoValueClient:
         if not self.is_configured:
             raise SoSoValueConfigError("SOSOVALUE_API_KEY is required for SoSoValue API calls")
         key = self._cache_key(spec)
+        # TTL response cache check — return zero-copy reference when fresh
+        if self._cache_enabled and spec.ttl_s > 0:
+            cached = self._response_cache.get(key)
+            if cached is not None:
+                expiry, payload = cached
+                if time.monotonic() < expiry:
+                    self._cache_hits += 1
+                    return payload  # zero-copy
+                # Expired entry: remove lazily
+                self._response_cache.pop(key, None)
+        self._cache_misses += 1
+        # Inflight deduplication: coalesce concurrent requests for the same spec
         task = self._inflight.get(key)
         if task is None:
             task = asyncio.create_task(self._request_uncached(spec, key))
@@ -283,6 +332,9 @@ class SoSoValueClient:
                 elapsed_ms = (time.perf_counter() - started) * 1000.0
                 metrics.latencies_ms.append(elapsed_ms)
                 metrics.successes += 1
+                # Populate TTL cache on success
+                if self._cache_enabled and spec.ttl_s > 0 and cache_key:
+                    self._store_in_cache(cache_key, payload, spec.ttl_s)
                 return payload
             except SoSoValueRateLimitError as exc:
                 metrics.rate_limits += 1
@@ -334,7 +386,7 @@ class SoSoValueClient:
             raise SoSoValueApiError(f"{spec.name} upstream HTTP {status}", status_code=status)
 
         try:
-            payload = response.json()
+            payload = _fast_json_loads(response.content)
         except ValueError as exc:
             raise SoSoValueApiError(f"{spec.name} returned malformed JSON", status_code=status) from exc
         return self._validate_payload(spec, payload, status)
@@ -473,6 +525,13 @@ class SoSoValueClient:
                 "used_in_current_window": len(self._rate_limit_events),
                 "warning": "SigLab enforces this process-local rolling budget; use a shared limiter when multiple processes share one API key.",
             },
+            "cache": {
+                "enabled": self._cache_enabled,
+                "size": len(self._response_cache),
+                "max_size": self._max_cache_size,
+                "hits": self._cache_hits,
+                "misses": self._cache_misses,
+            },
             "endpoints": endpoints,
         }
 
@@ -481,7 +540,11 @@ class SoSoValueClient:
             self._client = httpx.AsyncClient(
                 verify=self._verify_config(),
                 http2=True,
-                limits=httpx.Limits(max_connections=50, max_keepalive_connections=10, keepalive_expiry=30.0),
+                limits=httpx.Limits(
+                    max_connections=100,
+                    max_keepalive_connections=20,
+                    keepalive_expiry=60.0,
+                ),
             )
         return self._client
 
@@ -578,6 +641,32 @@ class SoSoValueClient:
     def _backoff_s(self, attempt: int) -> float:
         base = min(2.0, 0.25 * (2**attempt))
         return cast(float, base + random.uniform(0.0, base * 0.25))
+
+    def _store_in_cache(self, key: str, payload: dict[str, Any], ttl_s: float) -> None:
+        """Store *payload* in the TTL response cache with *ttl_s* seconds lifetime."""
+        expiry = time.monotonic() + ttl_s
+        # Simple LRU-style eviction when at capacity
+        if len(self._response_cache) >= self._max_cache_size:
+            try:
+                self._response_cache.pop(next(iter(self._response_cache)), None)
+            except StopIteration:
+                pass
+        self._response_cache[key] = (expiry, payload)
+
+    def clear_cache(self) -> None:
+        """Clear all cached responses. Cache stats are preserved."""
+        self._response_cache.clear()
+
+    @property
+    def cache_info(self) -> dict[str, Any]:
+        """Return cache stats."""
+        return {
+            "enabled": self._cache_enabled,
+            "size": len(self._response_cache),
+            "max_size": self._max_cache_size,
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+        }
 
     def _verify_config(self) -> ssl.SSLContext | bool:
         if self.verify is not None:

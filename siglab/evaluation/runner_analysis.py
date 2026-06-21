@@ -196,14 +196,31 @@ def _pre_audit_end_idx(
 
 
 def _row_position_signature(row: pd.Series, *, epsilon: float = 1e-9) -> tuple[tuple[str, int], ...]:
-    clean = pd.to_numeric(row, errors="coerce").fillna(0.0)
-    active = [
-        (str(column), int(np.sign(value)))
-        for column, value in clean.items()
-        if abs(float(value)) > epsilon
-    ]
-    active.sort(key=lambda item: item[0])
-    return tuple(active)
+    return tuple(
+        sorted(
+            (str(row.index[j]), int(np.sign(v)))
+            for j, v in enumerate(row.to_numpy(dtype=float, na_value=np.nan))
+            if not np.isnan(v) and abs(v) > epsilon
+        )
+    )
+
+
+def _make_position_signatures(frame: pd.DataFrame, *, epsilon: float = 1e-9) -> pd.Series:
+    """Vectorised version: compute position signatures for all rows at once."""
+    arr = frame.to_numpy(dtype=float, na_value=np.nan)
+    columns = list(frame.columns)
+    result: list[tuple[tuple[str, int], ...]] = []
+    for i in range(len(arr)):
+        row = arr[i]
+        active = [
+            (columns[j], int(np.sign(row[j])))
+            for j in range(len(columns))
+            if not np.isnan(row[j]) and abs(row[j]) > epsilon
+        ]
+        if active:
+            active.sort(key=lambda item: item[0])
+        result.append(tuple(active))
+    return pd.Series(result, index=frame.index, dtype=object)
 
 
 def _episode_asset_lists(row: pd.Series, *, epsilon: float = 1e-9) -> tuple[list[str], list[str], list[str]]:
@@ -237,6 +254,37 @@ def _row_direction_label(row: pd.Series, *, epsilon: float = 1e-9) -> str:
     return "mixed"
 
 
+def _row_direction_label_np(values: np.ndarray, columns: list[str], epsilon: float = 1e-9) -> str:
+    """Numpy-optimised version of _row_direction_label for batch use."""
+    vals = np.where(np.isfinite(values), values, 0.0)
+    abs_mask = np.abs(vals) > epsilon
+    if not abs_mask.any():
+        return "flat"
+    active_idxs = np.where(abs_mask)[0]
+    longs_idxs = active_idxs[vals[active_idxs] > epsilon]
+    shorts_idxs = active_idxs[vals[active_idxs] < -epsilon]
+    active = [columns[j] for j in active_idxs]
+    longs = [columns[j] for j in longs_idxs]
+    shorts = [columns[j] for j in shorts_idxs]
+
+    if len(columns) >= 2 and len(active) == 2 and set(active) == {columns[0], columns[1]}:
+        first = vals[0]
+        second = vals[1]
+        if first > epsilon and second < -epsilon:
+            return "long_asset_1_short_asset_2"
+        if first < -epsilon and second > epsilon:
+            return "short_asset_1_long_asset_2"
+    gross = float(np.abs(vals).sum())
+    net = float(vals.sum())
+    if longs and shorts and gross > 0.0 and abs(net) <= gross * 0.2:
+        return "market_neutral"
+    if net > epsilon or (longs and not shorts):
+        return "net_long"
+    if net < -epsilon or (shorts and not longs):
+        return "net_short"
+    return "mixed"
+
+
 def _pair_position_episodes(
     *,
     target_weights: pd.DataFrame,
@@ -244,11 +292,7 @@ def _pair_position_episodes(
 ) -> list[dict[str, Any]]:
     if target_weights.empty:
         return []
-    signatures = pd.Series(
-        [_row_position_signature(row) for _, row in target_weights.iterrows()],
-        index=target_weights.index,
-        dtype=object,
-    )
+    signatures = _make_position_signatures(target_weights)
     episodes: list[dict[str, Any]] = []
     current_signature: tuple[tuple[str, int], ...] = ()
     start_timestamp: pd.Timestamp | None = None
@@ -376,7 +420,7 @@ def _slice_performance_stats(
     label: str,
 ) -> dict[str, Any]:
     aligned_mask = mask.reindex(returns.index).fillna(False).astype(bool)
-    subset = pd.to_numeric(returns[aligned_mask], errors="coerce").dropna()
+    subset = returns[aligned_mask].dropna()
     exposure_subset = gross_exposure.reindex(returns.index).fillna(0.0)[aligned_mask]
     if subset.empty:
         return {
@@ -442,8 +486,10 @@ def _pair_regime_state(
     concentration = (
         abs_weights.div(abs_weights.sum(axis=1).replace(0.0, np.nan), axis=0).pow(2).sum(axis=1)
     ).fillna(0.0)
+    target_arr = target_aligned.to_numpy(dtype=float, na_value=0.0)
+    target_cols = list(target_aligned.columns)
     position_direction = pd.Series(
-        [_row_direction_label(row) for _, row in target_aligned.iterrows()],
+        [_row_direction_label_np(target_arr[i], target_cols) for i in range(len(target_arr))],
         index=target_aligned.index,
         dtype=object,
     )
@@ -1142,15 +1188,14 @@ def _pre_audit_drawdown_pack(
     window_positions = positions.iloc[peak_idx : trough_idx + 1] if not positions.empty else positions
     direction_counts: dict[str, int] = {}
     if not window_positions.empty:
-        direction_series = pd.Series(
-            [_row_direction_label(row) for _, row in window_positions.iterrows()],
-            index=window_positions.index,
-            dtype=object,
-        )
-        for direction, count in direction_series.value_counts().to_dict().items():
-            if str(direction) == "flat":
-                continue
-            direction_counts[str(direction)] = int(count)
+        wp_arr = window_positions.to_numpy(dtype=float, na_value=0.0)
+        wp_cols = list(window_positions.columns)
+        direction_counts_raw: dict[str, int] = {}
+        for i in range(len(wp_arr)):
+            label = _row_direction_label_np(wp_arr[i], wp_cols)
+            if label != "flat":
+                direction_counts_raw[label] = direction_counts_raw.get(label, 0) + 1
+        direction_counts = direction_counts_raw
     dominant_direction = (
         max(direction_counts.items(), key=lambda item: item[1])[0]
         if direction_counts
@@ -1175,46 +1220,38 @@ def _pre_audit_drawdown_pack(
 
     signal_story: dict[str, Any] = {}
     if signal_score is not None and not signal_score.empty and not window_positions.empty:
-        score_frame = signal_score.iloc[:limit].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+        score_frame = signal_score.iloc[:limit].fillna(0.0)
         score_window = score_frame.iloc[peak_idx : trough_idx + 1]
+        score_window_arr = score_window.to_numpy(dtype=float, na_value=0.0)
+        win_pos_arr = window_positions.to_numpy(dtype=float, na_value=0.0)
+        win_pos_cols = list(window_positions.columns)
+
         aligned_values: list[float] = []
         support_scores: list[float] = []
         trough_support = None
         if score_frame.shape[1] == 1 and window_positions.shape[1] >= 2:
-            primary_sign = np.sign(
-                pd.to_numeric(window_positions.iloc[:, 0], errors="coerce").fillna(0.0)
-            )
-            support_series = score_window.iloc[:, 0].mul(primary_sign.loc[score_window.index], fill_value=0.0)
-            active_series = primary_sign.loc[score_window.index].abs() > 0
-            if bool(active_series.any()):
-                active_support = support_series[active_series]
-                support_scores.extend(float(value) for value in active_support.tolist())
-                aligned_values.extend(float(value > 0.0) for value in active_support.tolist())
-            trough_timestamp = score_frame.index[trough_idx]
-            trough_support = _safe_float(support_series.get(trough_timestamp), default=None)
+            primary_sign = np.sign(win_pos_arr[:, 0])
+            support_arr = score_window_arr[:, 0] * primary_sign
+            active_idx = np.abs(primary_sign) > 0
+            if active_idx.any():
+                active_support = support_arr[active_idx]
+                support_scores = active_support.tolist()
+                aligned_values = (active_support > 0.0).tolist()
+            trough_support = _safe_float(support_arr[trough_idx] if trough_idx < len(support_arr) else None, default=None)
         else:
-            signed = np.sign(window_positions.reindex(columns=score_window.columns).fillna(0.0))
-            position_sign: pd.DataFrame = pd.DataFrame(signed, index=score_window.index, columns=score_window.columns)
-            for timestamp in score_window.index:
-                active_cols = list(score_window.columns[position_sign.loc[timestamp].abs() > 0])
-                if not active_cols:
-                    continue
-                signed_support = (
-                    score_window.loc[timestamp, active_cols] * position_sign.loc[timestamp, active_cols]
-                )
-                support_scores.append(float(signed_support.mean()))
-                aligned_values.append(float((signed_support > 0.0).mean()))
-            trough_timestamp = score_frame.index[trough_idx]
-            active_cols = list(score_frame.columns[position_sign.loc[trough_timestamp].abs() > 0])
-            if active_cols:
-                trough_support = _safe_float(
-                    float(
-                        (
-                            score_frame.loc[trough_timestamp, active_cols]
-                            * position_sign.loc[trough_timestamp, active_cols]
-                        ).mean()
-                    )
-                )
+            position_sign = np.sign(win_pos_arr)
+            signed_support = score_window_arr * position_sign
+            active_mask_arr = position_sign != 0
+            row_counts = np.maximum(active_mask_arr.sum(axis=1), 1)
+            row_support = (signed_support * active_mask_arr).sum(axis=1) / row_counts
+            row_aligned = ((signed_support > 0.0) * active_mask_arr).sum(axis=1) / row_counts
+            active_rows = active_mask_arr.any(axis=1)
+            if active_rows.any():
+                support_scores = row_support[active_rows].tolist()
+                aligned_values = row_aligned[active_rows].tolist()
+            if active_rows[trough_idx] if trough_idx < len(active_rows) else False:
+                trough_support = _safe_float(row_support[trough_idx], default=None)
+
         signal_story = {
             "window_median_score": _safe_float(float(np.median(support_scores)) if support_scores else None),
             "trough_score": trough_support,
@@ -1227,47 +1264,34 @@ def _pre_audit_drawdown_pack(
     for feature, frame in dict(signal_components or {}).items():
         if frame is None or frame.empty or window_positions.empty:
             continue
-        component = frame.iloc[:limit].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+        component = frame.iloc[:limit].fillna(0.0)
         component_window = component.iloc[peak_idx : trough_idx + 1]
+        comp_arr = component_window.to_numpy(dtype=float, na_value=0.0)
         comp_aligned_values: list[float] = []
         comp_support_scores: list[float] = []
         trough_component = None
         if component.shape[1] == 1 and window_positions.shape[1] >= 2:
-            primary_sign = np.sign(
-                pd.to_numeric(window_positions.iloc[:, 0], errors="coerce").fillna(0.0)
-            )
-            support_series = component_window.iloc[:, 0].mul(primary_sign.loc[component_window.index], fill_value=0.0)
-            active_series = primary_sign.loc[component_window.index].abs() > 0
-            if bool(active_series.any()):
-                active_support = support_series[active_series]
-                comp_support_scores.extend(float(value) for value in active_support.tolist())
-                comp_aligned_values.extend(float(value > 0.0) for value in active_support.tolist())
-            trough_timestamp = component.index[trough_idx]
-            trough_component = _safe_float(support_series.get(trough_timestamp), default=None)
+            primary_sign = np.sign(win_pos_arr[:, 0])
+            support_arr = comp_arr[:, 0] * primary_sign
+            active_idx = np.abs(primary_sign) > 0
+            if active_idx.any():
+                active_support = support_arr[active_idx]
+                comp_support_scores = active_support.tolist()
+                comp_aligned_values = (active_support > 0.0).tolist()
+            trough_component = _safe_float(support_arr[trough_idx] if trough_idx < len(support_arr) else None, default=None)
         else:
-            signed = np.sign(window_positions.reindex(columns=component_window.columns).fillna(0.0))
-            position_sign = pd.DataFrame(signed, index=component_window.index, columns=component_window.columns)
-            for timestamp in component_window.index:
-                active_cols = list(component_window.columns[position_sign.loc[timestamp].abs() > 0])
-                if not active_cols:
-                    continue
-                signed_support = (
-                    component_window.loc[timestamp, active_cols]
-                    * position_sign.loc[timestamp, active_cols]
-                )
-                comp_support_scores.append(float(signed_support.mean()))
-                comp_aligned_values.append(float((signed_support > 0.0).mean()))
-            trough_timestamp = component.index[trough_idx]
-            active_cols = list(component.columns[position_sign.loc[trough_timestamp].abs() > 0])
-            if active_cols:
-                trough_component = _safe_float(
-                    float(
-                        (
-                            component.loc[trough_timestamp, active_cols]
-                            * position_sign.loc[trough_timestamp, active_cols]
-                        ).mean()
-                    )
-                )
+            position_sign = np.sign(win_pos_arr)
+            signed_support = comp_arr * position_sign
+            active_mask_arr = position_sign != 0
+            row_counts = np.maximum(active_mask_arr.sum(axis=1), 1)
+            row_support = (signed_support * active_mask_arr).sum(axis=1) / row_counts
+            row_aligned = ((signed_support > 0.0) * active_mask_arr).sum(axis=1) / row_counts
+            active_rows = active_mask_arr.any(axis=1)
+            if active_rows.any():
+                comp_support_scores = row_support[active_rows].tolist()
+                comp_aligned_values = row_aligned[active_rows].tolist()
+            if active_rows[trough_idx] if trough_idx < len(active_rows) else False:
+                trough_component = _safe_float(row_support[trough_idx], default=None)
         feature_story.append(
             {
                 "feature": str(feature),
@@ -1482,85 +1506,88 @@ def _pair_gate_diagnostics(
     limit = len(signal_score.index) if end_idx is None else max(0, min(len(signal_score.index), int(end_idx)))
     if limit <= 1:
         return {}
-    score_frame = signal_score.iloc[:limit].apply(pd.to_numeric, errors="coerce").fillna(0.0)
-    target_frame = target_weights.iloc[:limit].apply(pd.to_numeric, errors="coerce").fillna(0.0)
-    score_sign = np.sign(score_frame)
-    position_sign = np.sign(target_frame)
-    active_mask = target_frame.abs().sum(axis=1) > 1e-9
-    flat_mask = ~active_mask
+    score_frame = signal_score.iloc[:limit].fillna(0.0)
+    target_frame = target_weights.iloc[:limit].fillna(0.0)
+    score_arr = score_frame.to_numpy(dtype=float, na_value=0.0)
+    target_arr = target_frame.to_numpy(dtype=float, na_value=0.0)
+    score_sign = np.sign(score_arr)
+    position_sign = np.sign(target_arr)
+    target_abs = np.abs(target_arr)
+    active_mask_1d = target_abs.sum(axis=1) > 1e-9
+    flat_mask_1d = ~active_mask_1d
 
     entry_abs_score = float(compiled_metadata.get("entry_abs_score", compiled_metadata.get("min_abs_score", 0.0)))
     exit_abs_score = float(compiled_metadata.get("exit_abs_score", max(0.0, entry_abs_score * 0.5)))
     flip_abs_score = float(compiled_metadata.get("flip_abs_score", entry_abs_score))
-    score_entry_mask = score_frame.abs().ge(entry_abs_score)
-    score_flip_mask = score_frame.abs().ge(flip_abs_score)
-    score_exit_band = score_frame.abs().lt(exit_abs_score)
+    score_abs = np.abs(score_arr)
+    score_entry_mask_2d = score_abs >= entry_abs_score
+    score_flip_mask_2d = score_abs >= flip_abs_score
+    score_exit_band_2d = score_abs < exit_abs_score
 
     pair_mode = score_frame.shape[1] == 1 and target_frame.shape[1] >= 2
-    position_signature = pd.Series(
-        [_row_position_signature(row) for _, row in target_frame.iterrows()],
-        index=target_frame.index,
-        dtype=object,
-    )
+    score_cols = list(score_frame.columns)
+    target_cols = list(target_frame.columns)
+
+    # position_signature via vectorised helper
+    position_signature = _make_position_signatures(target_frame)
+
+    # active_score_signature — numpy based
     if pair_mode:
-        active_score_signature = pd.Series(
-            [
-                ("long_asset_1_short_asset_2",)
-                if float(row.iloc[0]) >= entry_abs_score
-                else ("short_asset_1_long_asset_2",)
-                if float(row.iloc[0]) <= -entry_abs_score
-                else tuple()
-                for _, row in score_frame.iterrows()
-            ],
-            index=score_frame.index,
-            dtype=object,
-        )
+        score_vals = score_arr[:, 0]
+        active_sig: list[tuple[tuple[str, int], ...]] = []
+        for v in score_vals:
+            if v >= entry_abs_score:
+                active_sig.append((("long_asset_1_short_asset_2", 1),))
+            elif v <= -entry_abs_score:
+                active_sig.append((("short_asset_1_long_asset_2", 1),))
+            else:
+                active_sig.append(())
+        active_score_signature = pd.Series(active_sig, index=score_frame.index, dtype=object)
     else:
-        active_score_signature = pd.Series(
-            [
-                tuple(
-                    sorted(
-                        (str(column), int(np.sign(value)))
-                        for column, value in row.items()
-                        if abs(float(value)) >= entry_abs_score
-                    )
-                )
-                for _, row in score_frame.iterrows()
-            ],
-            index=score_frame.index,
-            dtype=object,
-        )
+        active_sig_nonpair: list[tuple[tuple[str, int], ...]] = []
+        for i in range(len(score_arr)):
+            row = score_arr[i]
+            active = [
+                (score_cols[j], int(np.sign(row[j])))
+                for j in range(len(score_cols))
+                if abs(row[j]) >= entry_abs_score
+            ]
+            if active:
+                active.sort(key=lambda x: x[0])
+            active_sig_nonpair.append(tuple(active))
+        active_score_signature = pd.Series(active_sig_nonpair, index=score_frame.index, dtype=object)
+
+    sig_shifted = active_score_signature.shift(1)
+    pos_sig_shifted = position_signature.shift(1)
     score_flips = (
-        active_score_signature != active_score_signature.shift(1)
-    ) & active_score_signature.astype(bool) & active_score_signature.shift(1).astype(bool)
+        active_score_signature != sig_shifted
+    ) & active_score_signature.astype(bool) & sig_shifted.astype(bool)
     position_flips = (
-        position_signature != position_signature.shift(1)
-    ) & position_signature.astype(bool) & position_signature.shift(1).astype(bool)
+        position_signature != pos_sig_shifted
+    ) & position_signature.astype(bool) & pos_sig_shifted.astype(bool)
 
     aligned_active_fraction = None
-    active_alignment: list[float] = []
-    if pair_mode:
-        primary_sign = np.sign(
-            pd.to_numeric(target_frame.iloc[:, 0], errors="coerce").fillna(0.0)
-        )
-        aligned = score_sign.iloc[:, 0].mul(primary_sign, fill_value=0.0)
-        active_alignment = [float(value > 0.0) for value in aligned[active_mask].tolist()]
-    else:
-        for timestamp in score_frame.index[active_mask]:
-            active_cols = target_frame.columns[target_frame.loc[timestamp].abs() > 1e-9]
-            if len(active_cols) == 0:
-                continue
-            aligned = (
-                score_sign.loc[timestamp, active_cols]
-                == position_sign.loc[timestamp, active_cols]
-            )
-            active_alignment.append(float(aligned.mean()))
-    if active_alignment:
-        aligned_active_fraction = _safe_float(float(np.mean(active_alignment)))
+    if active_mask_1d.any():
+        if pair_mode:
+            primary_sign = np.sign(target_arr[:, 0])
+            aligned_1d = (score_arr[:, 0] * primary_sign) > 0.0
+            active_alignment = aligned_1d[active_mask_1d].tolist()
+        else:
+            # Fully vectorised alignment: element-wise sign equality masked by active columns
+            sign_eq = (score_sign == position_sign).astype(float)
+            # Zero out inactive columns per row
+            active_col_mask = target_abs > 1e-9
+            sign_eq_masked = sign_eq * active_col_mask
+            row_counts = active_col_mask.sum(axis=1, where=~np.isnan(active_col_mask))
+            row_counts = np.maximum(row_counts, 1)
+            row_alignment = sign_eq_masked.sum(axis=1) / row_counts
+            active_alignment = row_alignment[active_mask_1d].tolist()
+        if active_alignment:
+            aligned_active_fraction = _safe_float(float(np.mean(active_alignment)))
 
     bottleneck_tags: list[str] = []
-    entry_fraction = float(score_entry_mask.any(axis=1).mean())
-    active_fraction = float(active_mask.mean())
+    entry_fraction = float(score_entry_mask_2d.any(axis=1).mean())
+    active_fraction = float(active_mask_1d.mean())
     position_flip_rate = float(position_flips.mean()) if len(position_flips.index) > 1 else 0.0
     if entry_fraction < 0.05:
         bottleneck_tags.append("sparse_entry_signal")
@@ -1578,10 +1605,10 @@ def _pair_gate_diagnostics(
             "configured": True,
             "active_fraction": _safe_float(float(gate_mask.mean())),
             "blocked_while_flat_fraction": _safe_float(
-                float((~gate_mask)[flat_mask].mean()) if bool(flat_mask.any()) else None
+                float((~gate_mask)[flat_mask_1d].mean()) if bool(flat_mask_1d.any()) else None
             ),
             "broken_while_active_fraction": _safe_float(
-                float((~gate_mask)[active_mask].mean()) if bool(active_mask.any()) else None
+                float((~gate_mask)[active_mask_1d].mean()) if bool(active_mask_1d.any()) else None
             ),
             "exit_on_break": bool(
                 dict(compiled_metadata.get("regime_gates") or {}).get("exit_on_break", True)
@@ -1591,6 +1618,14 @@ def _pair_gate_diagnostics(
         active_frac_gate = _safe_float(regime_gate_summary.get("active_fraction"))
         if active_frac_gate is not None and active_frac_gate < 0.30:
             bottleneck_tags.append("restrictive_regime_gate")
+
+    if bool(active_mask_1d.any()):
+        if pair_mode:
+            median_active_count_val = 2.0
+        else:
+            median_active_count_val = float(np.median((target_abs > 1e-9).sum(axis=1).astype(float)[active_mask_1d]))
+    else:
+        median_active_count_val = None
 
     return {
         "policy": {
@@ -1602,23 +1637,17 @@ def _pair_gate_diagnostics(
             "signal_leverage_scale": _safe_float(compiled_metadata.get("signal_leverage_scale")),
         },
         "active_bar_fraction": _safe_float(active_fraction),
-        "flat_bar_fraction": _safe_float(float(flat_mask.mean())),
+        "flat_bar_fraction": _safe_float(float(flat_mask_1d.mean())),
         "entry_signal_bar_fraction": _safe_float(entry_fraction),
-        "flip_signal_bar_fraction": _safe_float(float(score_flip_mask.any(axis=1).mean())),
-        "inside_exit_band_fraction": _safe_float(float(score_exit_band.all(axis=1).mean())),
+        "flip_signal_bar_fraction": _safe_float(float(score_flip_mask_2d.any(axis=1).mean())),
+        "inside_exit_band_fraction": _safe_float(float(score_exit_band_2d.all(axis=1).mean())),
         "score_sign_flip_rate": _safe_float(float(score_flips.mean()) if len(score_flips.index) > 1 else 0.0),
         "position_flip_rate": _safe_float(position_flip_rate),
         "entry_signal_while_flat_fraction": _safe_float(
-            float(score_entry_mask.any(axis=1)[flat_mask].mean()) if bool(flat_mask.any()) else None
+            float(score_entry_mask_2d.any(axis=1)[flat_mask_1d].mean()) if bool(flat_mask_1d.any()) else None
         ),
         "score_alignment_when_active": aligned_active_fraction,
-        "median_active_asset_count": _safe_float(
-            float(
-                (pd.Series(2.0, index=target_frame.index) if pair_mode
-                 else target_frame.abs().gt(1e-9).sum(axis=1).astype(float)
-                )[active_mask].median()
-            ) if bool(active_mask.any()) else None
-        ),
+        "median_active_asset_count": _safe_float(median_active_count_val),
         "regime_gates": regime_gate_summary,
         "bottleneck_tags": bottleneck_tags,
     }

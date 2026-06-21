@@ -294,41 +294,50 @@ def _build_ranked_positions(
     require_both_sides: bool = False,
     regime_gate_mask: pd.Series | None = None,
 ) -> pd.DataFrame:
-    target = pd.DataFrame(0.0, index=score.index, columns=score.columns)
+    n, m = score.shape
+    arr = score.to_numpy(dtype=float, na_value=np.nan)
+    result = np.zeros((n, m), dtype=float)
+    columns = list(score.columns)
     gate_mask = _resolve_gate_mask(score.index, regime_gate_mask)
 
-    for ts, row in score.iterrows():
-        ts_key = cast(pd.Timestamp, ts)
-        if not bool(gate_mask.loc[ts_key]):
+    for i in range(n):
+        if not bool(gate_mask.iloc[i]):
             continue
-        clean = row.dropna()
-        if clean.empty:
+        row = arr[i]
+        nan_mask = np.isnan(row)
+        if nan_mask.all():
             continue
-        longs = pd.Series(dtype=float)
-        shorts = pd.Series(dtype=float)
+        clean_idx = np.where(~nan_mask)[0]
+        clean_values = row[clean_idx]
+
+        long_indices: list[int] = []
+        short_indices: list[int] = []
 
         if long_count > 0:
-            longs = clean.nlargest(min(long_count, len(clean)))
+            sorted_idx = clean_idx[np.argsort(-clean_values)]
+            candidates = list(sorted_idx[:min(long_count, len(sorted_idx))])
             if require_positive_longs:
-                longs = longs[longs > 0.0]
+                candidates = [idx for idx in candidates if row[idx] > 0.0]
             if min_abs_score > 0.0:
-                longs = longs[longs >= min_abs_score]
+                candidates = [idx for idx in candidates if row[idx] >= min_abs_score]
+            long_indices = candidates
 
         if short_count > 0:
-            shorts = clean.nsmallest(min(short_count, len(clean)))
+            sorted_idx = clean_idx[np.argsort(clean_values)]
+            candidates = list(sorted_idx[:min(short_count, len(sorted_idx))])
             if min_abs_score > 0.0:
-                shorts = shorts[shorts <= -min_abs_score]
+                candidates = [idx for idx in candidates if row[idx] <= -min_abs_score]
+            short_indices = candidates
 
-        overlap = set(longs.index) & set(shorts.index)
-        for label in overlap:
-            value = float(clean.get(label, 0.0))
-            if value >= 0.0:
-                shorts = shorts.drop(label, errors="ignore")
+        overlap = set(long_indices) & set(short_indices)
+        for idx in overlap:
+            if row[idx] >= 0.0:
+                short_indices.remove(idx)
             else:
-                longs = longs.drop(label, errors="ignore")
+                long_indices.remove(idx)
 
-        has_longs = not longs.empty
-        has_shorts = not shorts.empty
+        has_longs = len(long_indices) > 0
+        has_shorts = len(short_indices) > 0
         if require_both_sides and not (has_longs and has_shorts):
             continue
         if not has_longs and not has_shorts:
@@ -345,14 +354,14 @@ def _build_ranked_positions(
             short_budget = gross_target
 
         if has_longs:
-            long_weight = min(max_asset_weight, long_budget / len(longs))
-            target.loc[ts, longs.index] = long_weight
+            long_weight = min(max_asset_weight, long_budget / len(long_indices))
+            result[i, long_indices] = long_weight
 
         if has_shorts:
-            short_weight = min(max_asset_weight, short_budget / len(shorts))
-            target.loc[ts, shorts.index] = -short_weight
+            short_weight = min(max_asset_weight, short_budget / len(short_indices))
+            result[i, short_indices] = -short_weight
 
-    return target.ffill().fillna(0.0)
+    return pd.DataFrame(result, index=score.index, columns=columns).ffill().fillna(0.0)
 
 
 def _build_pair_positions(
