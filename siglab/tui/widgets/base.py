@@ -1,4 +1,5 @@
 """Base widget classes for the SigLab TUI."""
+
 from __future__ import annotations
 
 from typing import Any, ClassVar, Generic, TypeVar
@@ -9,19 +10,21 @@ from textual.widgets import Static
 
 from siglab.tui.formatting import TEXT_MUTED
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 class FilterableListWidget(Static, Generic[T]):
     """Base for list widgets with filtering, selection, and optional multi-select."""
+
     selected_index: reactive[int] = reactive(0)
-    _items_reactive: ClassVar[str] = 'items'
+    _items_reactive: ClassVar[str] = "items"
     _multi_select: ClassVar[bool] = False
     _max_select: ClassVar[int] = 4
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._all_data: tuple[T, ...] = ()
-        self._filter_text: str = ''
+        self._filter_text: str = ""
         self._selected_hashes: set[str] = set()
 
     def set_data(self, items: list[T]) -> None:
@@ -83,25 +86,28 @@ class FilterableListWidget(Static, Generic[T]):
 
     def _get_item_key(self, item: T) -> str | None:
         return None
+
     def render(self) -> Text:
         items = getattr(self, self._items_reactive)
         if not items:
-            return Text('  No items found', style=TEXT_MUTED)
+            return Text("  No items found", style=TEXT_MUTED)
         lines = Text()
         for i, item in enumerate(items):
             is_selected = i == self.selected_index
             lines.append_text(self._render_item(item, i, is_selected))
-            lines.append('\n')
+            lines.append("\n")
         return lines
 
     def _render_item(self, item: T, index: int, is_selected: bool) -> Text:
-        return Text('')
+        return Text("")
+
 
 class ComparisonWidget(Static):
     """Base for side-by-side comparison of 2+ items."""
-    _COLORS: ClassVar[list[str]] = ['#4ade80', '#60a5fa', '#f0b456', '#a78bfa']
+
+    _COLORS: ClassVar[list[str]] = ["#4ade80", "#60a5fa", "#f0b456", "#a78bfa"]
     _metrics: ClassVar[list[tuple[str, str, str]]] = []
-    _empty_message: ClassVar[str] = 'Select 2+ items with Space, then press c'
+    _empty_message: ClassVar[str] = "Select 2+ items with Space, then press c"
     _col_width_base: ClassVar[int] = 60
     items: reactive[list[dict[str, Any]]] = reactive(list, layout=True)
 
@@ -116,26 +122,27 @@ class ComparisonWidget(Static):
             WARNING_YELLOW,
             truncate,
         )
+
         result = Text()
-        result.append(' COMPARISON\n', style=f'bold {TEXT_PRIMARY}')
+        result.append(" COMPARISON\n", style=f"bold {TEXT_PRIMARY}")
         if len(self.items) < 2:
-            result.append(f'  {self._empty_message}\n', style=TEXT_MUTED)
+            result.append(f"  {self._empty_message}\n", style=TEXT_MUTED)
             return result
         n = len(self.items)
         col_w = max(12, self._col_width_base // (n + 1))
         header = Text()
-        header.append('  ')
+        header.append("  ")
         for i, item in enumerate(self.items):
             name = self._get_item_name(item, i)[:col_w]
             color = self._COLORS[i % len(self._COLORS)]
-            header.append(f'{name:<{col_w}}', style=f'bold {color}')
-        header.append('DELTA', style=f'bold {WARNING_YELLOW}')
+            header.append(f"{name:<{col_w}}", style=f"bold {color}")
+        header.append("DELTA", style=f"bold {WARNING_YELLOW}")
         result.append_text(header)
-        result.append('\n')
-        result.append('  ' + '─' * (col_w * (n + 1) + 4) + '\n', style=BORDER_DIM)
+        result.append("\n")
+        result.append("  " + "─" * (col_w * (n + 1) + 4) + "\n", style=BORDER_DIM)
         for label, key, fmt in self._metrics:
             row = Text()
-            row.append(f'  {label:<12}', style=TEXT_PRIMARY)
+            row.append(f"  {label:<12}", style=TEXT_PRIMARY)
             values: list[float] = []
             for item in self.items:
                 val = item.get(key)
@@ -145,30 +152,33 @@ class ComparisonWidget(Static):
                 val = item.get(key)
                 color = self._COLORS[i % len(self._COLORS)]
                 if val is None:
-                    row.append(f'{'─':<{col_w}}', style=TEXT_MUTED)
+                    row.append(f"{'─':<{col_w}}", style=TEXT_MUTED)
                 elif isinstance(val, bool):
-                    status = 'passed' if val else 'failed'
-                    row.append(f'{status:<{col_w}}', style=color)
+                    status = "passed" if val else "failed"
+                    row.append(f"{status:<{col_w}}", style=color)
                 elif isinstance(val, str):
-                    row.append(f'{truncate(val, col_w - 1):<{col_w}}', style=color)
+                    row.append(f"{truncate(val, col_w - 1):<{col_w}}", style=color)
                 else:
                     formatted = fmt.format(val)
-                    row.append(f'{formatted:<{col_w}}', style=color)
-            if values and len(values) >= 2 and (key not in ('family', 'track')):
+                    row.append(f"{formatted:<{col_w}}", style=color)
+            if values and len(values) >= 2 and (key not in ("family", "track")):
                 delta = max(values) - min(values)
-                row.append(f'±{delta:.3f}', style=WARNING_YELLOW)
-            elif key in ('family', 'track'):
-                unique_vals = len(set((str(item.get(key, '')) for item in self.items)))
-                row.append('diff' if unique_vals > 1 else 'same', style=WARNING_YELLOW if unique_vals > 1 else TEXT_MUTED)
+                row.append(f"±{delta:.3f}", style=WARNING_YELLOW)
+            elif key in ("family", "track"):
+                unique_vals = len(set((str(item.get(key, "")) for item in self.items)))
+                row.append(
+                    "diff" if unique_vals > 1 else "same",
+                    style=WARNING_YELLOW if unique_vals > 1 else TEXT_MUTED,
+                )
             result.append_text(row)
-            result.append('\n')
+            result.append("\n")
         extra = self._render_extra()
         if extra:
             result.append_text(extra)
         return result
 
     def _get_item_name(self, item: dict[str, Any], index: int) -> str:
-        return str(item.get('spec_hash', f'Item{index + 1}'))
+        return str(item.get("spec_hash", f"Item{index + 1}"))
 
     def _render_extra(self) -> Text | None:
         return None

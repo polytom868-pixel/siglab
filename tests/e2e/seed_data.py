@@ -19,6 +19,7 @@ from siglab.dashboard.dashboard_state import DashboardState
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _now(offset_minutes: int = 0) -> str:
     """Return ISO-8601 UTC string with optional offset."""
     dt = datetime.now(timezone.utc) + timedelta(minutes=offset_minutes)
@@ -112,7 +113,9 @@ def _make_summary_json(
     if holdout_available:
         summary["holdout_available"] = True
         summary["holdout_sharpe"] = median_sharpe * 0.9
-        summary["holdout_total_return"] = validation_total_return or (median_total_return * 0.8)
+        summary["holdout_total_return"] = validation_total_return or (
+            median_total_return * 0.8
+        )
         summary["holdout_cagr"] = median_cagr * 0.85
         summary["holdout_calmar"] = median_calmar * 0.85
         summary["holdout_max_drawdown"] = -0.05
@@ -122,16 +125,18 @@ def _make_summary_json(
 
 def _make_spec_json(track: str, features: list[str] | None = None) -> str:
     """Build a realistic spec_json blob."""
-    return json.dumps({
-        "track": track,
-        "params": {
-            "long_enabled": True,
-            "short_enabled": False,
-            "hedge_mode": "none",
-            "hedge_ratio": 0.0,
-        },
-        "features": features or ["rsi_14", "ma_cross_50_200", "volume_spike"],
-    })
+    return json.dumps(
+        {
+            "track": track,
+            "params": {
+                "long_enabled": True,
+                "short_enabled": False,
+                "hedge_mode": "none",
+                "hedge_ratio": 0.0,
+            },
+            "features": features or ["rsi_14", "ma_cross_50_200", "volume_spike"],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +206,12 @@ RUN_1_EXPERIMENTS: list[dict[str, Any]] = [
         "parent_hash": "spec-e2e-001-003",
         "iteration": 2,
         "created_offset_minutes": -60,
-        "features": ["zscore_bb", "correlation_30d", "half_life_mean_reversion", "spread_volatility"],
+        "features": [
+            "zscore_bb",
+            "correlation_30d",
+            "half_life_mean_reversion",
+            "spread_volatility",
+        ],
     },
 ]
 
@@ -232,7 +242,12 @@ RUN_2_EXPERIMENTS: list[dict[str, Any]] = [
         "parent_hash": "spec-e2e-002-001",
         "iteration": 2,
         "created_offset_minutes": -120,
-        "features": ["funding_rate_8h", "basis_annualized", "open_interest_ratio", "premium_discount"],
+        "features": [
+            "funding_rate_8h",
+            "basis_annualized",
+            "open_interest_ratio",
+            "premium_discount",
+        ],
     },
     {
         "spec_hash": "spec-e2e-002-003",
@@ -299,14 +314,32 @@ def _make_experiment(
     artifact_path = None
 
     columns = [
-        "spec_hash", "created_at", "track", "family", "parent_hash",
-        "spec_json", "research_summary", "aggregate_score", "passed",
-        "deployd", "summary_json", "artifact_path",
+        "spec_hash",
+        "created_at",
+        "track",
+        "family",
+        "parent_hash",
+        "spec_json",
+        "research_summary",
+        "aggregate_score",
+        "passed",
+        "deployd",
+        "summary_json",
+        "artifact_path",
     ]
     values = [
-        spec_hash, created_at, track, family, parent_hash,
-        spec_json, research_summary, aggregate_score, passed,
-        deployd, summary_json, artifact_path,
+        spec_hash,
+        created_at,
+        track,
+        family,
+        parent_hash,
+        spec_json,
+        research_summary,
+        aggregate_score,
+        passed,
+        deployd,
+        summary_json,
+        artifact_path,
     ]
     return columns, values
 
@@ -314,6 +347,7 @@ def _make_experiment(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def create_seeded_db() -> str:
     """Create a temporary SQLite database with seeded test data.
@@ -411,8 +445,16 @@ def create_ops_artifacts(runs_dir: str) -> None:
             "market_report_status": "generated",
             "red_flags": [],
             "artifacts": [
-                {"name": "Market Report", "path": "runs/market_report_latest.json", "status": "present"},
-                {"name": "Telemetry", "path": "runs/latest_telemetry_report.json", "status": "present"},
+                {
+                    "name": "Market Report",
+                    "path": "runs/market_report_latest.json",
+                    "status": "present",
+                },
+                {
+                    "name": "Telemetry",
+                    "path": "runs/latest_telemetry_report.json",
+                    "status": "present",
+                },
             ],
             "market_report_headline": "BTC showing momentum, ETH neutral",
         },
@@ -485,5 +527,6 @@ def seed_dashboard_state(state: DashboardState, db_path: str) -> None:
     This is used by the conftest fixture to swap in the seeded database.
     """
     from pathlib import Path
+
     if state.config is not None:
         state.config.ancestry_db_path = Path(db_path)

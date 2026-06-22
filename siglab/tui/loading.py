@@ -1,4 +1,5 @@
 """Shared loading indicator widget for the SigLab TUI."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,13 +11,15 @@ from textual.widgets import Static
 
 from siglab.tui.formatting import ACCENT_GREEN, TEXT_MUTED
 
-_SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 
 class LoadingIndicator(Static):
     """Animated spinner widget that shows activity during data fetches."""
+
     loading: reactive[bool] = reactive(False)
-    status_text: reactive[str] = reactive('')
-    DEFAULT_CSS = 'LoadingIndicator { height: 1; width: auto; min-width: 1; padding: 0 1; background: #0d1210; color: #7d9483; }'
+    status_text: reactive[str] = reactive("")
+    DEFAULT_CSS = "LoadingIndicator { height: 1; width: auto; min-width: 1; padding: 0 1; background: #0d1210; color: #7d9483; }"
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -45,7 +48,7 @@ class LoadingIndicator(Static):
         """Render the spinner or status text."""
         if self.loading:
             frame = _SPINNER_FRAMES[self._spinner_idx]
-            return Text(f' {frame} Loading…', style=ACCENT_GREEN)
+            return Text(f" {frame} Loading…", style=ACCENT_GREEN)
         if self.status_text:
-            return Text(f' {self.status_text}', style=TEXT_MUTED)
-        return Text('', style=TEXT_MUTED)
+            return Text(f" {self.status_text}", style=TEXT_MUTED)
+        return Text("", style=TEXT_MUTED)

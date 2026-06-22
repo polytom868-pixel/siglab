@@ -1,4 +1,5 @@
 """Shared risk computation utilities for dashboard routes and WebSocket streams."""
+
 from __future__ import annotations
 
 import logging
@@ -26,34 +27,55 @@ from siglab.risk.guardian import (
 logger = logging.getLogger(__name__)
 STALE_THRESHOLD_SECONDS = 7 * 24 * 3600
 
+
 def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
     """Load all .npy session files and extract equity curves."""
-    npy_files = sorted(sessions_dir.glob('*.npy'))
+    npy_files = sorted(sessions_dir.glob("*.npy"))
     curves: list[tuple[str, np.ndarray]] = []
     for npy_file in npy_files:
         mtime = npy_file.stat().st_mtime
         if time.time() - mtime > STALE_THRESHOLD_SECONDS:
-            logger.warning('Session %s is stale (last modified %ds ago), skipping', npy_file.stem, int(time.time() - mtime))
+            logger.warning(
+                "Session %s is stale (last modified %ds ago), skipping",
+                npy_file.stem,
+                int(time.time() - mtime),
+            )
             continue
         try:
             data = np.load(npy_file, allow_pickle=True)
             if isinstance(data, np.ndarray) and data.size > 0:
-                if data.dtype.names is not None and 'equity' in data.dtype.names:
-                    eq = data['equity']
+                if data.dtype.names is not None and "equity" in data.dtype.names:
+                    eq = data["equity"]
                     if isinstance(eq, np.ndarray) and eq.size > 0:
                         curves.append((npy_file.stem, eq.astype(float)))
                 elif data.dtype in (np.float64, np.float32):
                     curves.append((npy_file.stem, data))
         except (OSError, ValueError, TypeError, pickle.UnpicklingError):
-            logger.debug('Failed to load npy equity curve %s', npy_file)
+            logger.debug("Failed to load npy equity curve %s", npy_file)
             continue
     return curves
 
+
 def empty_risk_response() -> dict[str, Any]:
     """Return an empty risk response with all fields set to None/empty."""
-    return {'composite_score': None, 'max_drawdown': None, 'correlation_matrix': None, 'strategy_count': 0, 'strategy_names': [], 'sub_scores': {}, 'current_drawdown': None, 'recovery_periods': None, 'drawdown_history': [], 'alerts': [], 'sharpe_ratio': 0.0}
+    return {
+        "composite_score": None,
+        "max_drawdown": None,
+        "correlation_matrix": None,
+        "strategy_count": 0,
+        "strategy_names": [],
+        "sub_scores": {},
+        "current_drawdown": None,
+        "recovery_periods": None,
+        "drawdown_history": [],
+        "alerts": [],
+        "sharpe_ratio": 0.0,
+    }
 
-def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int=365) -> dict[str, Any]:
+
+def compute_risk_metrics(
+    sessions_dir: Path, *, periods_per_year: int = 365
+) -> dict[str, Any]:
     """Compute full risk metrics from session data."""
     curves = load_equity_curves(sessions_dir)
     if not curves:
@@ -77,7 +99,9 @@ def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int=365) -> di
         n = len(dd_series)
         if n > 60:
             step = n / 60
-            dd_history: list[float] = [float(dd_series[int(i * step)]) for i in range(60)]
+            dd_history: list[float] = [
+                float(dd_series[int(i * step)]) for i in range(60)
+            ]
         else:
             dd_history = dd_series.tolist()
     else:
@@ -111,13 +135,50 @@ def compute_risk_metrics(sessions_dir: Path, *, periods_per_year: int=365) -> di
     n = len(returns_list)
     hhi = 1.0 / n if n > 0 else 1.0
     concentration = 1.0 - hhi
-    sub_scores = {'sharpe': _normalize_sharpe_score(sharpe), 'drawdown': _normalize_drawdown_score(max_dd), 'concentration': _normalize_concentration_score(concentration), 'correlation_risk': _normalize_correlation_score(avg_corr)}
+    sub_scores = {
+        "sharpe": _normalize_sharpe_score(sharpe),
+        "drawdown": _normalize_drawdown_score(max_dd),
+        "concentration": _normalize_concentration_score(concentration),
+        "correlation_risk": _normalize_correlation_score(avg_corr),
+    }
     composite: float | None = None
-    composite = float(compute_composite_score(sharpe=sharpe, drawdown=max_dd, concentration=concentration, correlation_risk=avg_corr))
+    composite = float(
+        compute_composite_score(
+            sharpe=sharpe,
+            drawdown=max_dd,
+            concentration=concentration,
+            correlation_risk=avg_corr,
+        )
+    )
     alerts: list[dict[str, Any]] = []
-    worst_eq = equity_arrays[worst_idx] if equity_arrays and worst_idx < len(equity_arrays) else np.array([])
+    worst_eq = (
+        equity_arrays[worst_idx]
+        if equity_arrays and worst_idx < len(equity_arrays)
+        else np.array([])
+    )
     events = track_drawdown_events(worst_eq) if worst_eq.size > 0 else []
     for event in events[-20:]:
-        sev = 'warning' if abs(event.max_drawdown_pct) < 0.15 else 'critical'
-        alerts.append({'timestamp': event.trough_date, 'metric': 'drawdown', 'severity': sev, 'value': event.max_drawdown_pct, 'threshold': 0.0, 'message': f'Drawdown {event.max_drawdown_pct * 100:.1f}% ({event.peak_date} → {event.trough_date})'})
-    return {'composite_score': composite, 'max_drawdown': max_dd, 'correlation_matrix': corr_matrix, 'strategy_count': len(equity_arrays), 'strategy_names': session_names, 'sub_scores': sub_scores, 'current_drawdown': cur_dd, 'recovery_periods': rec_time, 'drawdown_history': dd_history, 'alerts': alerts, 'sharpe_ratio': sharpe}
+        sev = "warning" if abs(event.max_drawdown_pct) < 0.15 else "critical"
+        alerts.append(
+            {
+                "timestamp": event.trough_date,
+                "metric": "drawdown",
+                "severity": sev,
+                "value": event.max_drawdown_pct,
+                "threshold": 0.0,
+                "message": f"Drawdown {event.max_drawdown_pct * 100:.1f}% ({event.peak_date} → {event.trough_date})",
+            }
+        )
+    return {
+        "composite_score": composite,
+        "max_drawdown": max_dd,
+        "correlation_matrix": corr_matrix,
+        "strategy_count": len(equity_arrays),
+        "strategy_names": session_names,
+        "sub_scores": sub_scores,
+        "current_drawdown": cur_dd,
+        "recovery_periods": rec_time,
+        "drawdown_history": dd_history,
+        "alerts": alerts,
+        "sharpe_ratio": sharpe,
+    }

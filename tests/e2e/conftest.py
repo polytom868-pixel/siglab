@@ -34,7 +34,10 @@ RUNS_DIR = REPO_ROOT / "runs"
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _wait_for_server(url: str = "http://127.0.0.1:8080/health", timeout: int = 45) -> bool:
+
+def _wait_for_server(
+    url: str = "http://127.0.0.1:8080/health", timeout: int = 45
+) -> bool:
     """Poll the health endpoint until the server responds 200."""
     for _ in range(timeout):
         try:
@@ -50,6 +53,7 @@ def _wait_for_server(url: str = "http://127.0.0.1:8080/health", timeout: int = 4
 # ---------------------------------------------------------------------------
 # Server lifecycle
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def server(request: pytest.FixtureRequest) -> None:
@@ -94,11 +98,16 @@ def server(request: pytest.FixtureRequest) -> None:
     # ── 4. Start uvicorn ─────────────────────────────────────────────
     proc = subprocess.Popen(
         [
-            sys.executable, "-m", "uvicorn",
+            sys.executable,
+            "-m",
+            "uvicorn",
             "siglab.dashboard.app:app",
-            "--host", "127.0.0.1",
-            "--port", "8080",
-            "--log-level", "error",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8080",
+            "--log-level",
+            "error",
         ],
         cwd=str(REPO_ROOT),
         stdout=subprocess.DEVNULL,

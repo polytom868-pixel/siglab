@@ -101,7 +101,9 @@ class TestDemoFlows:
         page.select_option("#trackFilter", "trend_signals")
 
         # The scope summary should now include "Directional Perps" (or the resolved track label)
-        expect(page.locator("#scopeSummary")).to_contain_text("Directional Perps", timeout=15000)
+        expect(page.locator("#scopeSummary")).to_contain_text(
+            "Directional Perps", timeout=15000
+        )
 
     # ------------------------------------------------------------------
     # Flow 5 – Click "Open Run" navigates to run detail page
@@ -276,7 +278,9 @@ class TestDemoFlows:
         # Clicking a row should populate detail panel
         rows.nth(1).click()
         page.wait_for_selector("#detailContent", timeout=10000)
-        expect(page.locator("#detailContent")).not_to_contain_text("Select an experiment")
+        expect(page.locator("#detailContent")).not_to_contain_text(
+            "Select an experiment"
+        )
 
     # ------------------------------------------------------------------
     # Flow 14 – Family pill filter on run detail

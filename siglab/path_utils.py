@@ -10,10 +10,11 @@ def resolve_path_from_root(value: str | Path, *, root_dir: Path) -> Path:
         return path.resolve()
     return (root_dir / path).resolve()
 
+
 def display_path(value: str | Path | None, *, root_dir: Path | None) -> str | None:
-    if value in {None, ''}:
+    if value in {None, ""}:
         return None
-    path = Path(cast('str | Path', value))
+    path = Path(cast("str | Path", value))
     if not path.is_absolute():
         return path.as_posix()
     resolved = path.resolve()
@@ -21,5 +22,5 @@ def display_path(value: str | Path | None, *, root_dir: Path | None) -> str | No
         try:
             return resolved.relative_to(root_dir.resolve()).as_posix()
         except ValueError:
-            return f'{resolved.name} (external)'
+            return f"{resolved.name} (external)"
     return resolved.as_posix()

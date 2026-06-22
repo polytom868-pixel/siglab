@@ -21,7 +21,10 @@ def percentile(values: list[float], percentile: int) -> float | None:
     frac = rank - lower_idx
     return float(ordered[lower_idx] + frac * (ordered[upper_idx] - ordered[lower_idx]))
 
-def safe_float(value: float | int | str | None, *, digits: int=8, default: float | None=None) -> float | None:
+
+def safe_float(
+    value: float | int | str | None, *, digits: int = 8, default: float | None = None
+) -> float | None:
     """Convert value to float safely. Returns default on failure, None, or NaN."""
     if value is None:
         return default
@@ -33,6 +36,7 @@ def safe_float(value: float | int | str | None, *, digits: int=8, default: float
         return default
     return round(numeric, digits)
 
+
 def int_or_zero(value: str | int | None) -> int:
     """Convert value to non-negative int. Returns 0 on failure or negative."""
     if value is None:
@@ -41,31 +45,46 @@ def int_or_zero(value: str | int | None) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
+
+
 h = hashlib.sha256
 
-def feature_hash(features: list[str], length: int=16) -> str:
-    """Deterministic hash of a feature list. Order-independent."""
-    payload = '|'.join(sorted((str(f) for f in features)))
-    return h(payload.encode('utf-8')).hexdigest()[:length]
 
-def short_hash(payload: str, length: int=16) -> str:
+def feature_hash(features: list[str], length: int = 16) -> str:
+    """Deterministic hash of a feature list. Order-independent."""
+    payload = "|".join(sorted((str(f) for f in features)))
+    return h(payload.encode("utf-8")).hexdigest()[:length]
+
+
+def short_hash(payload: str, length: int = 16) -> str:
     """Truncated SHA-256 hex digest."""
-    return h(payload.encode('utf-8')).hexdigest()[:length]
+    return h(payload.encode("utf-8")).hexdigest()[:length]
+
 
 async def _get_url(url: str, **kw: Any) -> dict[str, Any]:
     import aiohttp
+
     async with aiohttp.ClientSession() as session:
         async with session.get(url, **kw) as resp:
             return cast(dict[str, Any], await resp.json())
 
+
 async def _post_url(url: str, payload: dict[str, Any], **kw: Any) -> dict[str, Any]:
     import aiohttp
+
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload, **kw) as resp:
             return cast(dict[str, Any], await resp.json())
 
-async def run_with_backoff(coro_factory: Callable[[], Awaitable[Any]], *, max_retries: int=3, backoff_s: float=1.0) -> Any:
+
+async def run_with_backoff(
+    coro_factory: Callable[[], Awaitable[Any]],
+    *,
+    max_retries: int = 3,
+    backoff_s: float = 1.0,
+) -> Any:
     import asyncio
+
     attempt = 0
     while True:
         try:
@@ -75,27 +94,39 @@ async def run_with_backoff(coro_factory: Callable[[], Awaitable[Any]], *, max_re
             if attempt >= max_retries:
                 raise
             import logging
-            logging.getLogger(__name__).exception('run_with_backoff attempt %d/%d failed, retrying', attempt, max_retries)
+
+            logging.getLogger(__name__).exception(
+                "run_with_backoff attempt %d/%d failed, retrying", attempt, max_retries
+            )
             await asyncio.sleep(backoff_s * 2 ** (attempt - 1))
 
-async def async_limiter_call(callable: Callable[[], Awaitable[Any]], *, rate_limit: int=20) -> Any:
+
+async def async_limiter_call(
+    callable: Callable[[], Awaitable[Any]], *, rate_limit: int = 20
+) -> Any:
     import asyncio
+
     sem = asyncio.Semaphore(rate_limit)
     async with sem:
         return await callable()
 
+
 def _now_iso() -> str:
     """Current UTC timestamp as ISO-8601 string (microsecond precision)."""
     from datetime import UTC, datetime
+
     return datetime.now(UTC).isoformat()
+
 
 def _compact_scalar(value: object) -> object:
     if isinstance(value, str) and len(value) > 2200:
-        return value[:2199].rstrip() + '…'
+        return value[:2199].rstrip() + "…"
     return value
+
 
 def _estimate_message_tokens(messages: Sequence[dict[str, Any]]) -> int:
     """Conservative cheap token estimate from JSON serialization length."""
     import json as _json
+
     chars = len(_json.dumps(list(messages), ensure_ascii=True, default=str))
     return max(1, (chars + 3) // 4)
