@@ -1,15 +1,25 @@
 """Market report subcommand: build a deterministic evidence-linked market report."""
 from __future__ import annotations
+
 import argparse
 import html
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from siglab.cli.helpers import (
+    add_json_flag,
+    float_or_none,
+    latest_path,
+    latest_record,
+    read_jsonl_with_stats,
+    sodex_preflight_report,
+)
 from siglab.cli.rich_utils import print_json
 from siglab.config import load_settings
 from siglab.path_utils import resolve_path_from_root
-from siglab.cli.helpers import add_json_flag, latest_path, read_jsonl_with_stats, latest_record, float_or_none, sodex_preflight_report
+
 
 def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser('market-report', help='Build a deterministic SoSoValue + SoDEX evidence-linked market report.')

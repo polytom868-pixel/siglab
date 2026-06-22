@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
-from siglab.llm_metadata import resolve_llm_model
+
 from siglab.config import SiglabConfig
+from siglab.llm_metadata import resolve_llm_model
+
 
 @dataclass
 class ModelHealth:

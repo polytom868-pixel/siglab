@@ -1,12 +1,23 @@
 """SoDEX public REST perp market data source with ParquetLake caching."""
 from __future__ import annotations
+
 import logging
 from typing import Any, cast
-import pandas as pd
+
 import httpx
-from siglab.data.store import ParquetLake
-from siglab.data.sodex_client import SoDEXError, SoDEXFormatError, SoDEXPublicPerpsClient, SoDEXRateLimitError, SoDEXTransportError, SoDEXUpstreamError
+import pandas as pd
+
+from siglab.data.sodex_client import (
+    SoDEXError,
+    SoDEXFormatError,
+    SoDEXPublicPerpsClient,
+    SoDEXRateLimitError,
+    SoDEXTransportError,
+    SoDEXUpstreamError,
+)
 from siglab.data.sodex_rate_limit import SoDEXWeightScheduler
+from siglab.data.store import ParquetLake
+
 logger = logging.getLogger(__name__)
 __all__ = ['SoDEXError', 'SoDEXTransportError', 'SoDEXRateLimitError', 'SoDEXUpstreamError', 'SoDEXFormatError', 'SoDEXFeeds']
 KLINE_INTERVALS = frozenset({'1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'})

@@ -1,12 +1,34 @@
 from __future__ import annotations
-import json, re, time, uuid, asyncio
+
+import asyncio
+import json
+import re
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Sequence, cast
+
 import httpx
-from siglab.llm_metadata import resolve_llm_api_key, resolve_llm_base_url, resolve_llm_model, resolve_llm_provider, resolve_llm_thinking_mode; __all__ = ["resolve_llm_model"]
-from siglab.llm.policy import LLMRoutingPolicy
+
 from siglab.config import SiglabConfig
-from siglab.utils import _compact_scalar, _estimate_message_tokens, int_or_zero, percentile as _percentile, safe_float
+from siglab.llm.policy import LLMRoutingPolicy
+from siglab.llm_metadata import (
+    resolve_llm_api_key,
+    resolve_llm_base_url,
+    resolve_llm_model,
+    resolve_llm_provider,
+    resolve_llm_thinking_mode,
+)
+from siglab.utils import (
+    _compact_scalar,
+    _estimate_message_tokens,
+    int_or_zero,
+    safe_float,
+)
+from siglab.utils import percentile as _percentile
+
+__all__ = ["resolve_llm_model"]
+
 _JSON_BLOCK_RE = re.compile('```(?:json)?\\s*(\\{.*\\})\\s*```', re.DOTALL)
 ToolHandler = Callable[[dict[str, Any]], Awaitable[Any] | Any]
 BAI_CREDITS_PER_TOKEN: dict[str, tuple[float, float, float, float]] = {'minimax-m2.7': (0.3, 1.2, 0.375, 0.06), 'minimax-m2.5': (0.3, 1.2, 0.3, 0.03), 'kimi-k2.6': (0.95, 4.0, 0.95, 0.16), 'kimi-k2.5': (0.59, 3.0, 0.59, 0.177), 'glm-5.1': (1.4, 4.4, 1.4, 0.26), 'glm-5': (1.0, 3.2, 1.0, 0.2), 'deepseek-v3.2': (0.29, 0.44, 0.29, 0.145), 'deepseek-v4-flash': (0.14, 0.28, 0.14, 0.003), 'deepseek-v4-pro': (0.435, 0.87, 0.435, 0.004), 'gpt-5.5': (5.0, 30.0, 5.0, 0.5), 'gpt-5.5-instant': (5.0, 30.0, 5.0, 0.5), 'gpt-5.4': (2.5, 15.0, 2.5, 0.25), 'gpt-5.4-pro': (30.0, 180.0, 30.0, 3.0), 'gpt-5.2': (1.75, 14.0, 1.75, 0.175), 'gpt-5.4-mini': (0.75, 4.5, 0.75, 0.075), 'gpt-5-mini': (0.25, 2.0, 0.25, 0.025), 'gpt-5.4-nano': (0.2, 1.25, 0.2, 0.02), 'gpt-5-nano': (0.05, 0.4, 0.05, 0.005), 'claude-opus-4-7': (5.0, 25.0, 6.25, 0.5), 'claude-opus-4.7': (5.0, 25.0, 6.25, 0.5), 'claude-opus-4-6': (5.0, 25.0, 6.25, 0.5), 'claude-opus-4.6': (5.0, 25.0, 6.25, 0.5), 'claude-opus-4-5': (5.0, 25.0, 6.25, 0.5), 'claude-opus-4.5': (5.0, 25.0, 6.25, 0.5), 'claude-sonnet-4-6': (3.0, 15.0, 3.75, 0.3), 'claude-sonnet-4.6': (3.0, 15.0, 3.75, 0.3), 'claude-sonnet-4-5': (3.0, 15.0, 3.75, 0.3), 'claude-sonnet-4.5': (3.0, 15.0, 3.75, 0.3), 'claude-haiku-4-5': (1.0, 5.0, 1.25, 0.1), 'claude-haiku-4.5': (1.0, 5.0, 1.25, 0.1), 'gemini-3.1-pro': (2.0, 12.0, 2.0, 0.2), 'gemini-3-flash': (0.5, 3.0, 0.5, 0.05)}

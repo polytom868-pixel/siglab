@@ -1,11 +1,14 @@
 from __future__ import annotations
+
 import json
 import logging
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
 import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 class ParquetLake:

@@ -1,15 +1,18 @@
 """Operator subcommand: run the OperatorPipeline from the CLI."""
 from __future__ import annotations
+
 import argparse
 import json
 from pathlib import Path
 from typing import Any
+
 from siglab.cli.rich_utils import print_error, print_json
 from siglab.config import load_settings
+from siglab.data.sodex_feeds import SoDEXFeeds
+from siglab.data.store import ParquetLake
 from siglab.live.paper_client import SoDEXPaperPerpsClient
 from siglab.operator import OperatorPipeline
-from siglab.data.store import ParquetLake
-from siglab.data.sodex_feeds import SoDEXFeeds
+
 
 def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser('operator', help='Run the OperatorPipeline — evidence-to-decision cycle.')

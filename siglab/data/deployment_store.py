@@ -1,12 +1,15 @@
 """DeploymentStore — minimal SQLite store for deployment records."""
 from __future__ import annotations
+
 import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
 from siglab.track_registry import resolve_track
 from siglab.utils import feature_hash
+
 
 def _deployment_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
     return {'spec_hash': row[0], 'created_at': row[1], 'strategy_name': row[2], 'strategy_dir': row[3], 'spec_path': row[4], 'manifest_path': row[5], 'readme_path': row[6], 'job_name': row[7], 'interval_seconds': row[8], 'wallet_label': row[9], 'config_path': row[10], 'scheduled': bool(row[11]), 'dry_run': bool(row[12]), 'llm_finalized': bool(row[13]), 'support_status': row[14], 'support_reason': row[15], 'metadata': json.loads(row[16]) if row[16] else {}}

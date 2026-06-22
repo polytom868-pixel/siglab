@@ -1,11 +1,18 @@
 """OperatorPipeline — research-to-decision production pipeline."""
 from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+
 from siglab.live.paper_client import SoDEXPaperPerpsClient
-from siglab.risk.guardian import CircuitBreakerState, check_concentration, compute_position_size
+from siglab.risk.guardian import (
+    CircuitBreakerState,
+    check_concentration,
+    compute_position_size,
+)
+
 logger = logging.getLogger(__name__)
 
 @dataclass

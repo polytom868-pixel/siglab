@@ -1,11 +1,15 @@
 from __future__ import annotations
+
 import re
 from pathlib import Path
 from typing import Any, Callable, cast
+
 import numpy as np
 import pandas as pd
 import yaml
+
 from siglab.track_registry import storage_track_name
+
 _OPS = ('pct_change', 'diff', 'ema', 'rolling_mean', 'rolling_sum', 'rolling_std', 'rolling_zscore', 'rolling_min', 'rolling_max', 'rolling_skew', 'rolling_kurt', 'rolling_corr', 'rolling_autocorr', 'rolling_beta', 'rolling_hurst', 'mean_reversion_halflife', 'kalman_beta', 'kalman_residual', 'rsi', 'sub', 'mul', 'div', 'abs', 'log', 'clip', 'sign_flip_prob')
 _NUM_RE = re.compile(r'^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$')
 _ID_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')

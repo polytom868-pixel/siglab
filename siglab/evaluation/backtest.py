@@ -1,10 +1,13 @@
 """Backtesting engine for research evaluation."""
 from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 from typing import Any, cast
+
 import numpy as np
 import pandas as pd
+
 
 @dataclass(frozen=True)
 class BacktestConfig:

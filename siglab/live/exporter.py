@@ -1,17 +1,20 @@
 from __future__ import annotations
+
 import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from siglab.cli.helpers import sodex_preflight_report
+from siglab.config import SiglabConfig
+from siglab.data.deployment_store import DeploymentStore as LineageStore
+from siglab.evaluation.events import evaluate_gates
 from siglab.llm import ClaudeClient, LLMProviderError
 from siglab.path_utils import resolve_path_from_root
-from siglab.data.deployment_store import DeploymentStore as LineageStore
-from siglab.config import SiglabConfig
 from siglab.track_registry import track_label
-from siglab.evaluation.events import evaluate_gates
-from siglab.cli.helpers import sodex_preflight_report
+
 SUPPORTED_DIRECTIONAL_FAMILIES = {'perp_multi_asset_decision', 'perp_pair_trade_unlevered', 'perp_pair_trade_levered'}
 
 @dataclass

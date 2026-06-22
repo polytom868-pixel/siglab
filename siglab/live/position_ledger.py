@@ -1,6 +1,8 @@
 """Shared position math for paper trading and promotion scoring."""
 from __future__ import annotations
+
 from typing import cast
+
 
 def compute_funding_cost(quantity: float, mark_price: float, funding_rate: float) -> float:
     """Compute funding cost for a position."""

@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Any
+
 PAIR_TRADE_FAMILIES = frozenset({'perp_pair_trade_unlevered', 'perp_pair_trade_levered'})
 REGIME_KEYWORDS = ('trend_strength', 'trend_efficiency', 'market_volatility', 'volatility', 'co_movement', 'breadth', 'corr', 'correlation', 'dispersion', 'funding_dispersion', 'funding_level')
 NON_REGIME_ROLES = ('carry_term_structure', 'cross_sectional_core', 'trend_or_momentum', 'spread_or_residual')

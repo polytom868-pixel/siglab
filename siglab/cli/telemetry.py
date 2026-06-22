@@ -1,11 +1,17 @@
 """Telemetry report subcommand: aggregate LLM/tool telemetry."""
 from __future__ import annotations
+
 import argparse
 from pathlib import Path
 from typing import Any
+
 from siglab.cli.rich_utils import get_console, make_table, print_json
 from siglab.config import SiglabConfig, load_settings
-from siglab.telemetry import aggregate_provider_metrics_artifacts, aggregate_trace_telemetry
+from siglab.telemetry import (
+    aggregate_provider_metrics_artifacts,
+    aggregate_trace_telemetry,
+)
+
 
 def build_telemetry_payload(*, trace_paths: list[Path], provider_metric_paths: list[Path]) -> dict[str, Any]:
     """Aggregate trace + provider-metrics into one telemetry payload."""

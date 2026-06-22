@@ -1,10 +1,13 @@
 """FastAPI HTTP client for the SigLab TUI."""
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Awaitable, cast
+from typing import Any, Awaitable, Callable, cast
+
 import httpx
+
 logger = logging.getLogger(__name__)
 WsCallback = Callable[[dict[str, Any]], Awaitable[None]]
 

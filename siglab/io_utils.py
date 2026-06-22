@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import json
 import math
 from pathlib import Path
 from typing import Any
+
+
 def load_json_path(value: str | Path | None, *, root_dir: Path | None=None) -> dict[str, Any] | None:
     if not value:
         return None

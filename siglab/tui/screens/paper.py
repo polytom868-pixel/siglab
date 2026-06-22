@@ -1,7 +1,11 @@
 from __future__ import annotations
-import asyncio, logging, time
+
+import asyncio
+import logging
+import time
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
+
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -9,11 +13,35 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Input, Static
-from siglab.tui.formatting import ACCENT_GREEN, BORDER_DIM, COMPACT_CSS, ERROR_RED, EXPANDABLE_CSS, INFO_BLUE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, WARNING_YELLOW, bar_gauge, compact_qty, format_pnl, format_price, gauge_color, order_status_style, safe_query, sanitize_status_text, severity_color, side_style, truncate
+
+from siglab.tui.api_client import TuiApiClient
+from siglab.tui.formatting import (
+    ACCENT_GREEN,
+    BORDER_DIM,
+    COMPACT_CSS,
+    ERROR_RED,
+    EXPANDABLE_CSS,
+    INFO_BLUE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING_YELLOW,
+    bar_gauge,
+    compact_qty,
+    format_pnl,
+    format_price,
+    gauge_color,
+    order_status_style,
+    safe_query,
+    sanitize_status_text,
+    severity_color,
+    side_style,
+    truncate,
+)
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen, render_header
-from siglab.tui.api_client import TuiApiClient
 from siglab.tui.widgets.sparkline import sparkline_text
+
 logger = logging.getLogger(__name__)
 PNL_HISTORY_MAX = 120
 

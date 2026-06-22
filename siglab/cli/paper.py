@@ -1,12 +1,15 @@
 """Paper trading subcommands: paper-start, paper-status, paper-promote."""
 from __future__ import annotations
+
 import argparse
 import asyncio
+
 from siglab.cli.rich_utils import print_error, print_json
 from siglab.config import load_settings
-from siglab.data.store import ParquetLake
 from siglab.data.sodex_feeds import SoDEXFeeds
+from siglab.data.store import ParquetLake
 from siglab.live.paper_client import PaperClientError, SoDEXPaperPerpsClient
+
 
 def _make_paper_client(args: argparse.Namespace) -> SoDEXPaperPerpsClient:
     """Shared construction of a SoDEXPaperPerpsClient from CLI args."""
@@ -74,7 +77,16 @@ async def run_paper_status(args: argparse.Namespace) -> None:
 
 async def run_paper_promote(args: argparse.Namespace) -> None:
     """Check paper session promotion eligibility and promote if eligible."""
-    from siglab.live.promotion import compute_composite_score, compute_sub_scores, extract_session_metrics, extract_daily_metrics, promotion_eligible, DEFAULT_PROMOTION_THRESHOLD, DEFAULT_CONSECUTIVE_DAYS, DEFAULT_MIN_TRADING_DAYS
+    from siglab.live.promotion import (
+        DEFAULT_CONSECUTIVE_DAYS,
+        DEFAULT_MIN_TRADING_DAYS,
+        DEFAULT_PROMOTION_THRESHOLD,
+        compute_composite_score,
+        compute_sub_scores,
+        extract_daily_metrics,
+        extract_session_metrics,
+        promotion_eligible,
+    )
     client = _make_paper_client(args)
     try:
         metrics = extract_session_metrics(client, args.session)

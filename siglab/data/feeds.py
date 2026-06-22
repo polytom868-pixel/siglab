@@ -1,6 +1,7 @@
 from __future__ import annotations
-import atexit
+
 import asyncio
+import atexit
 import copy
 import json
 import logging
@@ -13,15 +14,18 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+
 import httpx
 import pandas as pd
+
 from siglab.config import SiglabConfig
 from siglab.data.store import ParquetLake
-from siglab.schemas import SignalSpec, AssetUniverse
+from siglab.schemas import AssetUniverse, SignalSpec
 from siglab.track_registry import resolve_track
-from siglab.utils import short_hash
 from siglab.utils import percentile as _percentile
 from siglab.utils import safe_float as _safe_float
+from siglab.utils import short_hash
+
 if TYPE_CHECKING:
     from siglab.data.sodex_feeds import SoDEXFeeds
 logger = logging.getLogger(__name__)

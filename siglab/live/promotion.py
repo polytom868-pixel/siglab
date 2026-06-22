@@ -1,10 +1,14 @@
 """Promotion engine for paper-to-live trading."""
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 import numpy as np
+
 from siglab.live.paper_client import SoDEXPaperPerpsClient
 from siglab.live.position_ledger import compute_trade_pnl, update_position
+
 logger = logging.getLogger(__name__)
 DEFAULT_WEIGHTS: dict[str, float] = {'pnl': 0.25, 'sharpe': 0.25, 'win_rate': 0.25, 'drawdown': 0.25}
 DEFAULT_PROMOTION_THRESHOLD: float = 0.65

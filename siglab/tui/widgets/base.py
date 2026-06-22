@@ -1,10 +1,14 @@
 """Base widget classes for the SigLab TUI."""
 from __future__ import annotations
+
 from typing import Any, ClassVar, Generic, TypeVar
+
 from rich.text import Text
 from textual.reactive import reactive
 from textual.widgets import Static
+
 from siglab.tui.formatting import TEXT_MUTED
+
 T = TypeVar('T')
 
 class FilterableListWidget(Static, Generic[T]):
@@ -106,7 +110,12 @@ class ComparisonWidget(Static):
         self.items = items
 
     def render(self) -> Text:
-        from siglab.tui.formatting import BORDER_DIM, TEXT_PRIMARY, WARNING_YELLOW, truncate
+        from siglab.tui.formatting import (
+            BORDER_DIM,
+            TEXT_PRIMARY,
+            WARNING_YELLOW,
+            truncate,
+        )
         result = Text()
         result.append(' COMPARISON\n', style=f'bold {TEXT_PRIMARY}')
         if len(self.items) < 2:

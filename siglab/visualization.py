@@ -1,8 +1,10 @@
 """Visualization helpers for SigLab evidence graphs."""
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any
+
 
 def write_evidence_graph_html(summary_path: Path, output_path: Path) -> Path:
     """Render an evidence summary JSON file as a standalone HTML graph."""

@@ -1,9 +1,13 @@
 from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol, Sequence, cast
+
 from rich.text import Text
+
 from siglab.utils import safe_float  # noqa: F401 — re-exported for tests
+
 
 class _Queryable(Protocol):
     def query_one(self, widget_id: str, widget_type: type[Any]) -> Any: ...

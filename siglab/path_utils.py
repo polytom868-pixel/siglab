@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import cast
+
+
 def resolve_path_from_root(value: str | Path, *, root_dir: Path) -> Path:
     path = Path(value).expanduser()
     if path.is_absolute():

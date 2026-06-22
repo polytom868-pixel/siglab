@@ -1,18 +1,32 @@
 from __future__ import annotations
+
 from datetime import UTC, datetime
 from typing import Any, cast
+
 import numpy as np
 import pandas as pd
-from siglab.data.feeds import MarketDataProvider
-from siglab.evaluation.events import classify_pt_market_state, detect_pt_roll_events, summarize_pt_universe
-from siglab.evaluation.feature_dsl import load_feature_spec, resolve_feature_frames
-from siglab.families import family_capabilities, family_diagnostic_adapter, family_execution_profile, family_policy_schema, load_family_spec
-from siglab.schemas import SignalSpec, CompiledChild
+
 from siglab.config import SiglabConfig
+from siglab.data.feeds import MarketDataProvider
 from siglab.evaluation.backtest import convert_to_spot
+from siglab.evaluation.events import (
+    classify_pt_market_state,
+    detect_pt_roll_events,
+    summarize_pt_universe,
+)
+from siglab.evaluation.feature_dsl import load_feature_spec, resolve_feature_frames
 from siglab.evaluation.runner_analysis import mean_pairwise_rolling_corr
-from siglab.utils import feature_hash as _fh
 from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
+from siglab.families import (
+    family_capabilities,
+    family_diagnostic_adapter,
+    family_execution_profile,
+    family_policy_schema,
+    load_family_spec,
+)
+from siglab.schemas import CompiledChild, SignalSpec
+from siglab.utils import feature_hash as _fh
+
 _PERF_PROFILES = {'ranked_directional', 'basket_neutral_spread', 'ranked_carry'}
 
 def _ssp(raw_frames: dict[str, pd.DataFrame], spec: SignalSpec, aliases: dict[str, str], fw: dict[str, float]) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict[str, pd.DataFrame], pd.Series | None, dict[str, Any]]:

@@ -1,7 +1,10 @@
 """Scoring utilities for research evaluation."""
 from __future__ import annotations
+
 from typing import Any
+
 import numpy as np
+
 
 def serialize_stats(stats: dict[str, Any]) -> dict[str, Any]:
     """Convert a stats dict to a JSON-safe representation."""

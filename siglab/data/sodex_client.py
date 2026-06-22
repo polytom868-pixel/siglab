@@ -1,12 +1,16 @@
 from __future__ import annotations
+
 import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
 import httpx
+
 from siglab.data.sodex_rate_limit import SoDEXError, SoDEXWeightScheduler
 from siglab.utils import percentile as _percentile
+
 _logger = logging.getLogger(__name__)
 
 class SoDEXRateLimitError(SoDEXError):

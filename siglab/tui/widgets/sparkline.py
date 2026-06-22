@@ -1,10 +1,14 @@
 """Sparkline widget for rendering ASCII price charts in the terminal."""
 from __future__ import annotations
+
 from typing import Any, Sequence
+
 from rich.text import Text
 from textual.reactive import reactive
 from textual.widgets import Static
+
 from siglab.tui.formatting import ACCENT_GREEN, ERROR_RED, TEXT_MUTED
+
 _SPARK_CHARS = '▁▂▃▄▅▆▇█'
 
 def sparkline_text(values: Sequence[float], *, width: int=50, bullish_color: str=ACCENT_GREEN, bearish_color: str=ERROR_RED, neutral_color: str=TEXT_MUTED) -> Text:

@@ -1,9 +1,11 @@
 """SigLab CLI package — modular subcommand modules."""
 from __future__ import annotations
+
 import argparse
 import asyncio
 import signal
 import sys
+
 _import_sigint = signal.signal(signal.SIGINT, lambda s, f: sys.exit(130))
 
 def main() -> None:
@@ -12,7 +14,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog='siglab')
     parser.add_argument('--no-color', action='store_true', default=False, help='Disable ANSI color output. Also respects NO_COLOR env var.')
     subparsers = parser.add_subparsers(dest='command', required=True)
-    from siglab.cli import demo as _demo_mod, market as _market_mod, dashboard as _dashboard_mod, sodex as _sodex_mod, paper as _paper_mod, operator as _operator_mod
+    from siglab.cli import dashboard as _dashboard_mod
+    from siglab.cli import demo as _demo_mod
+    from siglab.cli import market as _market_mod
+    from siglab.cli import operator as _operator_mod
+    from siglab.cli import paper as _paper_mod
+    from siglab.cli import sodex as _sodex_mod
     _demo_mod.add_subparser(subparsers)
     _market_mod.add_subparser(subparsers)
     _dashboard_mod.add_subparser(subparsers)

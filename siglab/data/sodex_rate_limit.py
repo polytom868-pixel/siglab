@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import asyncio
 import inspect
 import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Awaitable, Callable
+
 SODEX_WEIGHT_BUDGET_PER_MINUTE = 1200
 SODEX_DEFAULT_ENDPOINT_WEIGHT = 20
 SODEX_ENDPOINT_WEIGHTS: dict[str, int] = {'perps.symbols': 2, 'perps.coins': 2, 'perps.tickers': 2, 'perps.mini_tickers': 2, 'perps.mark_prices': 2, 'perps.book_tickers': 2, 'perps.orderbook': 20, 'perps.klines': 20, 'perps.trades': 20, 'perps.account_balances': 20, 'perps.account_orders': 20, 'perps.account_positions': 20, 'perps.account_state': 20, 'perps.new_order': 1, 'perps.cancel_order': 1, 'perps.schedule_cancel': 1, 'perps.update_leverage': 1, 'perps.update_margin': 1}

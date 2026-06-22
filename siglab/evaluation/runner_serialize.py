@@ -1,10 +1,14 @@
 """Serialization helpers extracted from runner.py."""
 from __future__ import annotations
+
 from typing import Any, Callable, cast
+
 import numpy as np
 import pandas as pd
+
 from siglab.evaluation.backtest import BacktestResult
 from siglab.utils import safe_float as _safe_float
+
 
 def _policy_summary_spec(policy: dict[str, Any]) -> dict[str, Any]:
     return {'entry_abs_score': float(policy['entry_abs_score']), 'exit_abs_score': float(policy['exit_abs_score']), 'flip_abs_score': float(policy['flip_abs_score']), 'max_holding_bars': int(policy['max_holding_bars']), 'cooldown_bars': int(policy['cooldown_bars'])}

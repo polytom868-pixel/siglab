@@ -1,7 +1,13 @@
 from __future__ import annotations
-import asyncio, json, random, re, time
+
+import asyncio
+import json
+import random
+import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol, cast
+
 
 class SoDEXWebSocketError(RuntimeError): pass
 class SoDEXWebSocketConfigError(SoDEXWebSocketError): pass

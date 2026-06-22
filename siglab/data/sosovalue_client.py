@@ -1,2 +1,6 @@
 """SoSoValue client — re-exported from siglab.data.feeds."""
-from siglab.data.feeds import SoSoValueApiError, SoSoValueClient, SoSoValueEndpoints  # noqa: F401
+from siglab.data.feeds import (  # noqa: F401
+    SoSoValueApiError,
+    SoSoValueClient,
+    SoSoValueEndpoints,
+)

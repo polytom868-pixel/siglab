@@ -1,10 +1,14 @@
 """PT (perpetual futures) market event analysis and gate evaluation."""
 from __future__ import annotations
+
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+
 import pandas as pd
+
 from siglab.track_registry import resolve_track
+
 __all__ = ['classify_pt_market_state', 'summarize_pt_universe', 'detect_pt_roll_events', 'evaluate_gates']
 
 def classify_pt_market_state(*, prices: pd.DataFrame, days_to_expiry: pd.DataFrame, required_frames: list[pd.DataFrame], roll_days_before_expiry: int, min_days_to_expiry: int, max_days_to_expiry: int) -> dict[str, pd.DataFrame]:

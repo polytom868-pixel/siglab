@@ -1,7 +1,10 @@
 """Read-only signal narrative layer."""
 from __future__ import annotations
+
 from typing import Any
+
 from siglab.evaluation.backtest import _cagr_safe
+
 
 def _fmt(value: float, precision: int=4) -> str:
     if value is None:

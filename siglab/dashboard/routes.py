@@ -1,25 +1,47 @@
 from __future__ import annotations
-import asyncio, json, logging, os, time, math, sqlite3
+
+import asyncio
+import json
+import logging
+import math
+import os
+import sqlite3
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, AsyncIterator, Protocol, cast
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+
+from fastapi import (
+    APIRouter,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
+
 from siglab.config import SiglabConfig, load_settings
+from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
 from siglab.data.deployment_store import DeploymentStore
 from siglab.io_utils import load_json_path
 from siglab.live import LiveDeploymentManager, deployment_readiness
 from siglab.llm import ClaudeClient
-from siglab.llm_metadata import default_llm_model_display, infer_llm_provider, resolve_llm_provider
+from siglab.llm_metadata import (
+    default_llm_model_display,
+    infer_llm_provider,
+    resolve_llm_provider,
+)
 from siglab.path_utils import display_path, resolve_path_from_root
 from siglab.track_registry import canonical_track_name, resolve_track, track_label
 from siglab.utils import _now_iso
-from fastapi.templating import Jinja2Templates
-from siglab.dashboard.risk_utils import compute_risk_metrics, empty_risk_response
+
 logger = logging.getLogger(__name__)
 class _LS(Protocol):
     def dashboard_rows(self) -> list[dict[str, Any]]: ...

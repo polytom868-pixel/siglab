@@ -1,18 +1,30 @@
 """Demo subcommands: demo run, demo manifest."""
 from __future__ import annotations
+
 import argparse
 import html
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from siglab.cli.helpers import (
+    display_paths,
+    latest_path,
+    load_json_if_exists,
+    sodex_preflight_report,
+)
+from siglab.cli.market import build_market_report
 from siglab.cli.rich_utils import print_json, print_success
+from siglab.cli.telemetry import (
+    build_telemetry_payload,
+    provider_metric_paths_for_telemetry,
+    trace_paths_for_telemetry,
+)
 from siglab.config import SiglabConfig, load_settings
 from siglab.evaluation.signal_narrative import build_signal_narrative
 from siglab.io_utils import write_json
 from siglab.path_utils import resolve_path_from_root
-from siglab.cli.helpers import display_paths, latest_path, load_json_if_exists, sodex_preflight_report
-from siglab.cli.market import build_market_report
-from siglab.cli.telemetry import build_telemetry_payload, provider_metric_paths_for_telemetry, trace_paths_for_telemetry
+
 
 def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register nested demo subcommands: run, manifest."""

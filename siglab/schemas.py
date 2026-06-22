@@ -1,9 +1,14 @@
 from __future__ import annotations
+
 import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
-from siglab.utils import short_hash
+
 import pandas as pd
+
+from siglab.utils import short_hash
+
+
 @dataclass
 class AssetUniverse:
     basis_groups: list[str] = field(default_factory=list)

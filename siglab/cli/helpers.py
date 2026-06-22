@@ -1,5 +1,6 @@
 """Shared utility functions for CLI subcommand modules."""
 from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -7,9 +8,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Protocol, cast
+
 from siglab.config import SiglabConfig
 from siglab.path_utils import resolve_path_from_root
 from siglab.schemas import SignalSpec
+
 
 class _ResearchProvider(Protocol):
     is_configured: bool
@@ -146,8 +149,14 @@ def deployment_ineligible_reasons(*, summary: dict[str, Any], trial_context: dic
 
 def sodex_preflight_report(env: dict[str, str] | None=None) -> dict[str, Any]:
     """Check SoDEX signed-path prerequisites and return a readiness report."""
-    from siglab.data.sodex_rate_limit import SODEX_ENDPOINT_WEIGHTS, SODEX_WEIGHT_BUDGET_PER_MINUTE
-    from siglab.live.sodex_signing import SUPPORTED_SODEX_SIGNED_ACTIONS, UNSUPPORTED_SODEX_SIGNED_ACTIONS
+    from siglab.data.sodex_rate_limit import (
+        SODEX_ENDPOINT_WEIGHTS,
+        SODEX_WEIGHT_BUDGET_PER_MINUTE,
+    )
+    from siglab.live.sodex_signing import (
+        SUPPORTED_SODEX_SIGNED_ACTIONS,
+        UNSUPPORTED_SODEX_SIGNED_ACTIONS,
+    )
     source = env if env is not None else os.environ
     api_key_name = str(source.get('SODEX_API_KEY_NAME') or '').strip()
     account_id = str(source.get('SODEX_ACCOUNT_ID') or '').strip()
@@ -281,7 +290,10 @@ def incumbent_detail(*, ancestry: _AncestryStore, track: str, run_session_id: st
     return cast(dict[str, Any] | None, ancestry.experiment_detail(spec_hash))
 
 def base_spec_payload_for_family(*, track: str, family: str, parent: SignalSpec, ancestry: _AncestryStore, mutator: _Mutator, run_session_id: str | None=None, custom_symbols: list[str] | None=None, use_historical_seeds: bool=False) -> dict[str, Any]:
-    from siglab.run_config import load_seed_specs_for_run as _load_seed_specs_for_run, override_seed_spec_symbols as _override_seed_spec_symbols
+    from siglab.run_config import load_seed_specs_for_run as _load_seed_specs_for_run
+    from siglab.run_config import (
+        override_seed_spec_symbols as _override_seed_spec_symbols,
+    )
     family_rows = ancestry.dashboard_rows(track=track, family=family, run_session_id=run_session_id)
     if family_rows:
         family_rows.sort(key=lambda row: (int(bool(row.get('passed'))), int(bool(row.get('deployd'))), float(dict(row.get('summary') or {}).get('aggregate_score') or -1e+18), str(row.get('created_at') or '')), reverse=True)

@@ -1,13 +1,16 @@
 """Rich formatting utilities for the SigLab CLI."""
 from __future__ import annotations
+
 import json
 import os
 import sys
+
 from rich.console import Console
 from rich.json import JSON
 from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
+
 SIGLAB_THEME = Theme({'success': 'bold green', 'error': 'bold red', 'warning': 'bold yellow', 'info': 'bold blue', 'muted': 'dim', 'accent': 'bold cyan', 'label': 'bold', 'value': ''})
 
 def make_console(*, force_no_color: bool=False) -> Console:

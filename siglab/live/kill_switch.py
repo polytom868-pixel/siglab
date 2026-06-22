@@ -1,9 +1,11 @@
 """Kill switch — emergency stop mechanisms for live trading."""
 from __future__ import annotations
+
 import logging
 import signal
 from pathlib import Path
 from typing import Any
+
 logger = logging.getLogger(__name__)
 KILL_FILE = Path('/tmp/siglab.KILL')
 'Path consulted at runtime; halt when present.'

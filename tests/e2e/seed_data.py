@@ -15,7 +15,6 @@ from typing import Any
 
 from siglab.dashboard.dashboard_state import DashboardState
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

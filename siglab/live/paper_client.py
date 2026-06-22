@@ -1,18 +1,44 @@
 from __future__ import annotations
-import json, logging, math, os, tempfile, time, uuid
+
+import json
+import logging
+import math
+import os
+import tempfile
+import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
-import numpy as np, pandas as pd
-from siglab.live.position_ledger import calculate_fill_price, compute_avg_entry, compute_funding_cost, compute_trade_pnl
+
+import numpy as np
+import pandas as pd
+
+from siglab.config import load_settings
 from siglab.data import MarketDataProvider, ParquetLake
+from siglab.live.position_ledger import (
+    calculate_fill_price,
+    compute_avg_entry,
+    compute_funding_cost,
+    compute_trade_pnl,
+)
 from siglab.live.signal_compile import compile_spec
-from siglab.live.sodex_client import SoDEXSignedPerpsClient, SoDEXTransportError, SoDEXUpstreamError
-from siglab.live.sodex_signing import SoDEXNonceManager, SoDEXPrivateKeySigner, SoDEXSigner, perps_order_item, validate_account_id
+from siglab.live.sodex_client import (
+    SoDEXSignedPerpsClient,
+    SoDEXTransportError,
+    SoDEXUpstreamError,
+)
+from siglab.live.sodex_signing import (
+    SoDEXNonceManager,
+    SoDEXPrivateKeySigner,
+    SoDEXSigner,
+    perps_order_item,
+    validate_account_id,
+)
 from siglab.risk.guardian import CircuitBreakerState, compute_position_size
 from siglab.schemas import SignalSpec
-from siglab.config import load_settings
+
 if TYPE_CHECKING:
     from siglab.data.sodex_feeds import SoDEXFeeds
 logger = logging.getLogger(__name__)

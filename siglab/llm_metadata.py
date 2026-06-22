@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from siglab.config import SiglabConfig
 SUPPORTED_LLM_PROVIDERS = frozenset({'claude', 'deepseek', 'openrouter', 'bai'})

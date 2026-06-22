@@ -1,19 +1,35 @@
 """SoDEX subcommands: sodex-preflight, sodex-ws-probe, sodex-preview, valuechain-preflight."""
 from __future__ import annotations
+
 import argparse
 import sys
 from datetime import UTC, datetime
 from typing import Any
+
 import httpx
 from rich.text import Text
-from siglab.cli.rich_utils import get_console, make_table, print_json, print_status_line, status_style
+
+from siglab.cli.helpers import parse_sodex_enum, sodex_preflight_report
+from siglab.cli.rich_utils import (
+    get_console,
+    make_table,
+    print_json,
+    print_status_line,
+    status_style,
+)
 from siglab.config import load_settings
 from siglab.data import EvidenceStore, sodex_ws_evidence
-from siglab.live.sodex_signing import build_signature_input, canonical_json, http_body_from_action_payload, perps_cancel_item, perps_order_item
 from siglab.live.sodex_client import SoDEXSignedPerpsClient
+from siglab.live.sodex_signing import (
+    build_signature_input,
+    canonical_json,
+    http_body_from_action_payload,
+    perps_cancel_item,
+    perps_order_item,
+)
 from siglab.live.sodex_ws import SoDEXWebSocketClient, SoDEXWebSocketError
 from siglab.path_utils import resolve_path_from_root
-from siglab.cli.helpers import parse_sodex_enum, sodex_preflight_report
+
 SODEX_SIDE_ALIASES = {'BUY': 1, 'SELL': 2}
 SODEX_ORDER_TYPE_ALIASES = {'LIMIT': 1, 'MARKET': 2}
 SODEX_TIME_IN_FORCE_ALIASES = {'GTC': 1, 'FOK': 2, 'IOC': 3, 'GTX': 4}

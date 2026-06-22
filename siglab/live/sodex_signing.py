@@ -1,12 +1,18 @@
 from __future__ import annotations
-import json, os, tempfile, time
+
+import json
+import os
+import tempfile
+import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
-from eth_utils import keccak
+
 from eth_account import Account
 from eth_account.messages import encode_typed_data
+from eth_utils import keccak
+
 __all__ = ['keccak']
 SUPPORTED_SODEX_SIGNED_ACTIONS = frozenset({'newOrder', 'cancelOrder', 'scheduleCancel', 'updateLeverage', 'updateMargin'})
 UNSUPPORTED_SODEX_SIGNED_ACTIONS = {'replaceOrder': 'blocked until official SDK/source pins the perps wrapper type and struct order', 'modifyOrder': 'blocked until official SDK/source pins the perps wrapper type and struct order', 'transferAsset': 'blocked until full transfer schema and live operator policy are pinned'}

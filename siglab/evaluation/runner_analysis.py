@@ -1,9 +1,13 @@
 from __future__ import annotations
+
 import math
 from typing import Any, cast
+
 import numpy as np
 import pandas as pd
+
 from siglab.utils import safe_float as _sf
+
 
 def mean_pairwise_rolling_corr(returns: pd.DataFrame, *, window: int) -> pd.Series:
     cols = list(returns.columns)

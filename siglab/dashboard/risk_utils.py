@@ -1,12 +1,28 @@
 """Shared risk computation utilities for dashboard routes and WebSocket streams."""
 from __future__ import annotations
+
 import logging
 import pickle
 import time
 from pathlib import Path
 from typing import Any
+
 import numpy as np
-from siglab.risk.guardian import _drawdown_series, compute_composite_score, correlation_matrix, current_drawdown, max_drawdown, recovery_time, track_drawdown_events, _normalize_sharpe_score, _normalize_drawdown_score, _normalize_concentration_score, _normalize_correlation_score
+
+from siglab.risk.guardian import (
+    _drawdown_series,
+    _normalize_concentration_score,
+    _normalize_correlation_score,
+    _normalize_drawdown_score,
+    _normalize_sharpe_score,
+    compute_composite_score,
+    correlation_matrix,
+    current_drawdown,
+    max_drawdown,
+    recovery_time,
+    track_drawdown_events,
+)
+
 logger = logging.getLogger(__name__)
 STALE_THRESHOLD_SECONDS = 7 * 24 * 3600
 

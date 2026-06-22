@@ -1,14 +1,27 @@
 """Deploy subcommands: deploy, deployments."""
 from __future__ import annotations
+
 import argparse
 import sys
 from typing import Any
+
+from siglab.cli.helpers import (
+    deployment_eligible,
+    display_deployment_record,
+    require_sosovalue_config,
+)
+from siglab.cli.rich_utils import (
+    print_error,
+    print_info,
+    print_json,
+    print_success,
+    print_warning,
+)
 from siglab.config import load_settings
-from siglab.llm import ClaudeClient
-from siglab.live import LiveDeploymentManager
 from siglab.data.deployment_store import DeploymentStore as LineageStore
-from siglab.cli.helpers import require_sosovalue_config, display_deployment_record, deployment_eligible
-from siglab.cli.rich_utils import print_error, print_info, print_json, print_success, print_warning
+from siglab.live import LiveDeploymentManager
+from siglab.llm import ClaudeClient
+
 
 def add_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser('deploy')

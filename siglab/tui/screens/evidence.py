@@ -1,18 +1,44 @@
 from __future__ import annotations
-import json, logging, sys
+
+import json
+import logging
+import sys
 from typing import Any, ClassVar, Sequence
+
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import Input, Static
+
 from siglab.tui.api_client import TuiApiClient
-from siglab.tui.formatting import ACCENT_GREEN, BORDER_DIM, ERROR_RED, INFO_BLUE, SCROLLABLE_CSS, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, WARNING_YELLOW, SymbolEntry, TickerView, closes_from_klines, format_change, format_confidence, format_price, format_volume, friendly_error, safe_float, safe_query
+from siglab.tui.formatting import (
+    ACCENT_GREEN,
+    BORDER_DIM,
+    ERROR_RED,
+    INFO_BLUE,
+    SCROLLABLE_CSS,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING_YELLOW,
+    SymbolEntry,
+    TickerView,
+    closes_from_klines,
+    format_change,
+    format_confidence,
+    format_price,
+    format_volume,
+    friendly_error,
+    safe_float,
+    safe_query,
+)
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
 from siglab.tui.widgets.base import FilterableListWidget
 from siglab.tui.widgets.sparkline import ohlc_summary, sparkline_text
+
 logger = logging.getLogger(__name__)
 DEMO_STEPS: list[dict[str, Any]] = [{'step': 1, 'title': 'Build SoSoValue Evidence', 'command': 'evidence-build --currency BTC --etf-type us-btc-spot --news-page-size 20 --news-pages 2 --output runs/evidence/live_sosovalue_probe_btc_pages.jsonl --summary-output runs/evidence/live_sosovalue_probe_btc_pages.summary.json --json', 'description': 'Ingest ETF inflow data and news from SoSoValue API', 'expected': 'record_count > 0, ETF + Feed records present'}, {'step': 2, 'title': 'Probe SoDEX WebSocket', 'command': 'sodex-ws-probe --channel allBookTicker --timeout-seconds 12 --evidence-output runs/evidence/sodex_ws_evidence.jsonl --json', 'description': 'Capture public SoDEX quote evidence via WebSocket', 'expected': 'ready: true, signed: false, evidence_records_appended > 0'}, {'step': 3, 'title': 'Render Evidence Graph', 'command': 'evidence-map --evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl --output runs/evidence/evidence_graph.html --json', 'description': 'Generate HTML evidence graph visualization', 'expected': 'HTML file exists, links are not causal claims'}, {'step': 4, 'title': 'Generate Market Report', 'command': 'market-report --entity BTC --sosovalue-evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl --sodex-evidence runs/evidence/sodex_ws_evidence.jsonl --output runs/market_report_latest.json --html-output runs/market_report_latest.html --json', 'description': 'Operator-facing decision support from evidence', 'expected': 'status: READY_FOR_OPERATOR_REVIEW, stance, confirmations'}, {'step': 5, 'title': 'Capture Provider Telemetry', 'command': 'telemetry-report --track trend_signals --json', 'description': 'Aggregate provider metrics and credit usage', 'expected': 'provider_metrics_status: present, latency, tokens'}, {'step': 6, 'title': 'Verify Live Boundary', 'command': 'sodex-preflight --json', 'description': 'Check SoDEX signed-write readiness', 'expected': 'Missing credentials -> live write refused'}, {'step': 7, 'title': 'Build Demo Manifest', 'command': 'demo-manifest --json', 'description': 'Index all demo artifacts', 'expected': 'artifact_count > 0, manifest JSON valid'}]
 

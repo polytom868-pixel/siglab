@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Final
+
 CANONICAL_TRACKS: Final[tuple[str, ...]] = ('trend_signals', 'yield_flows')
 TRACK_ALIASES: Final[dict[str, str]] = {'trend_signals': 'trend_signals', 'yield_flows': 'yield_flows'}
 TRACK_STORAGE_NAMES: Final[dict[str, str]] = {'trend_signals': 'trend_signals', 'yield_flows': 'yield_flows'}

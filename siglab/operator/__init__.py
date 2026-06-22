@@ -1,3 +1,4 @@
 """SigLab Operator Module."""
-from siglab.operator.pipeline import OperatorPipeline, TradeSignal, Position, RiskReport
+from siglab.operator.pipeline import OperatorPipeline, Position, RiskReport, TradeSignal
+
 __all__ = ['OperatorPipeline', 'TradeSignal', 'Position', 'RiskReport']

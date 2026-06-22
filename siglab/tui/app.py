@@ -1,6 +1,8 @@
 """SigLab TUI — Main application with navigation shell."""
 from __future__ import annotations
+
 from typing import Any, Callable, ClassVar, cast
+
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -9,11 +11,13 @@ from textual.css.query import NoMatches
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import ListItem, ListView, Static
+
 from siglab.tui.api_client import TuiApiClient
 from siglab.tui.formatting import INFO_BLUE, TEXT_MUTED
-from siglab.tui.widgets import SigLabStatusBar
 from siglab.tui.screens.evidence import EvidenceScreen, MarketScreen
 from siglab.tui.screens.paper import PaperScreen, RiskScreen
+from siglab.tui.widgets import SigLabStatusBar
+
 NAV_ITEMS: list[tuple[str, str, str]] = [('1', '[ MARKET ]', 'market'), ('2', '[ PAPER  ]', 'paper'), ('3', '[ RISK   ]', 'risk'), ('4', '[ EVIDENCE ]', 'evidence')]
 SCREEN_NAMES = {screen_id: label for _, label, screen_id in NAV_ITEMS}
 SCREEN_IDS = {screen_id for _, _, screen_id in NAV_ITEMS}

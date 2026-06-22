@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+
 import numpy as np
+
 DEFAULT_RISK_WEIGHTS: dict[str, float] = {"sharpe": 0.25, "drawdown": 0.30, "concentration": 0.25, "correlation_risk": 0.20}
 SHARPE_MIN: float = -20.0
 SHARPE_MAX: float = 20.0

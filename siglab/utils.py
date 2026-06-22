@@ -1,7 +1,9 @@
 from __future__ import annotations
-import math
+
 import hashlib
+import math
 from typing import Any, Awaitable, Callable, Sequence, cast
+
 
 def percentile(values: list[float], percentile: int) -> float | None:
     """Calculate percentile using R-7 linear interpolation."""

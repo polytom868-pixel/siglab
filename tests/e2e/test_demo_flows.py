@@ -148,7 +148,7 @@ class TestDemoFlows:
 
         # Default is dark (no data-theme attribute)
         theme = page.evaluate(
-            "document.documentElement.getAttribute('data-theme')"
+            "document.documentElement.getAttribute('data-theme')",
         )
         assert theme is None or theme == "dark", (
             f"Expected default dark theme, got {theme!r}"
@@ -159,14 +159,14 @@ class TestDemoFlows:
 
         # Should now be light
         theme = page.evaluate(
-            "document.documentElement.getAttribute('data-theme')"
+            "document.documentElement.getAttribute('data-theme')",
         )
         assert theme == "light", f"Expected light theme, got {theme!r}"
 
         # Toggle again — back to dark
         page.click("#themeToggle")
         theme = page.evaluate(
-            "document.documentElement.getAttribute('data-theme')"
+            "document.documentElement.getAttribute('data-theme')",
         )
         assert theme != "light", "Expected dark theme after second toggle"
 

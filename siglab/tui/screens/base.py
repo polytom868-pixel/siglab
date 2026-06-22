@@ -1,14 +1,18 @@
 """Base screen class for the SigLab TUI."""
 from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar, Coroutine
+
+from rich.text import Text
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Input, Static
+
 from siglab.tui.formatting import BORDER_DIM, TEXT_PRIMARY, friendly_error, safe_query
 from siglab.tui.loading import LoadingIndicator
-from rich.text import Text
+
 
 def render_header(result: Text, text: str, width: int=50) -> None:
     """Append a styled "TITLE" + horizontal-rule header to ``result``."""

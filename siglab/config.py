@@ -1,10 +1,14 @@
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import overload
+
 from siglab.llm_metadata import normalize_llm_provider
 from siglab.track_registry import CANONICAL_TRACKS
+
+
 def _read_env_file(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}

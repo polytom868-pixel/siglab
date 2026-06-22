@@ -1,10 +1,13 @@
 """Run context — lightweight dependency bag for live operations."""
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
 from siglab.data import ParquetLake
-from siglab.llm import ClaudeClient
 from siglab.data.deployment_store import DeploymentStore
+from siglab.llm import ClaudeClient
+
 if TYPE_CHECKING:
     from siglab.config import SiglabConfig
 

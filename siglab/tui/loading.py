@@ -1,11 +1,15 @@
 """Shared loading indicator widget for the SigLab TUI."""
 from __future__ import annotations
+
 from typing import Any
+
 from rich.text import Text
 from textual.reactive import reactive
 from textual.timer import Timer
 from textual.widgets import Static
+
 from siglab.tui.formatting import ACCENT_GREEN, TEXT_MUTED
+
 _SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
 class LoadingIndicator(Static):
