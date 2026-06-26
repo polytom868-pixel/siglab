@@ -12,9 +12,9 @@ from siglab.track_registry import resolve_track
 
 __all__ = [
     "classify_pt_market_state",
-    "summarize_pt_universe",
     "detect_pt_roll_events",
     "evaluate_gates",
+    "summarize_pt_universe",
 ]
 
 
@@ -38,7 +38,7 @@ def classify_pt_market_state(
     )
     expired_or_untradable = availability & days_to_expiry.le(0.0)
     within_maturity_range = days_to_expiry.ge(
-        float(min_days_to_expiry)
+        float(min_days_to_expiry),
     ) & days_to_expiry.le(float(max_days_to_expiry))
     eligible = (
         availability
@@ -110,13 +110,13 @@ def detect_pt_roll_events(
         if not exited:
             continue
         exited_due_to_expiry = any(
-            (
+
                 bool(expired_or_untradable.iloc[index].get(label, False))
                 for label in exited
-            )
+
         )
         exited_due_to_roll = any(
-            (bool(inside_roll_window.iloc[index].get(label, False)) for label in exited)
+            bool(inside_roll_window.iloc[index].get(label, False)) for label in exited
         )
         if not exited_due_to_expiry and (not exited_due_to_roll):
             continue
@@ -141,7 +141,7 @@ def detect_pt_roll_events(
                     for label in entered
                     if pd.notna(days_to_expiry.iloc[index].get(label))
                 },
-            }
+            },
         )
     return events
 

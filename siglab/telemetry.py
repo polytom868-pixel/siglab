@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from siglab.utils import percentile as _percentile
 from siglab.utils import safe_float
@@ -90,7 +91,7 @@ def aggregate_trace_telemetry(trace_paths: Iterable[Path]) -> dict[str, Any]:
                 "tool_rounds_used": int(trace.get("tool_rounds_used") or 0),
                 "tool_count_available": int(trace.get("tool_count_available") or 0),
                 "had_error": bool(trace.get("error") or payload.get("error")),
-            }
+            },
         )
         for call in list(trace.get("tool_calls") or []):
             if not isinstance(call, dict):
@@ -103,31 +104,31 @@ def aggregate_trace_telemetry(trace_paths: Iterable[Path]) -> dict[str, Any]:
                     "had_error": bool((call.get("result") or {}).get("error"))
                     if isinstance(call.get("result"), dict)
                     else False,
-                }
+                },
             )
     return {
         "trace_count": len(rows),
-        "stage_counts": dict(sorted(_count((row["stage"] for row in rows)).items())),
+        "stage_counts": dict(sorted(_count(row["stage"] for row in rows).items())),
         "provider_counts": dict(
             sorted(
-                _count((row["provider"] for row in rows if row.get("provider"))).items()
-            )
+                _count(row["provider"] for row in rows if row.get("provider")).items(),
+            ),
         ),
         "model_counts": dict(
-            sorted(_count((row["model"] for row in rows if row.get("model"))).items())
+            sorted(_count(row["model"] for row in rows if row.get("model")).items()),
         ),
         "tool_invocation_count": len(tool_rows),
         "tool_counts": dict(
             sorted(
-                _count((row["name"] for row in tool_rows if row.get("name"))).items()
-            )
+                _count(row["name"] for row in tool_rows if row.get("name")).items(),
+            ),
         ),
         "tool_latency_ms": {
             "p50": _percentile([float(row["latency_ms"]) for row in tool_rows], 50),
             "p95": _percentile([float(row["latency_ms"]) for row in tool_rows], 95),
         },
-        "error_count": sum((1 for row in rows if row["had_error"])),
-        "tool_error_count": sum((1 for row in tool_rows if row["had_error"])),
+        "error_count": sum(1 for row in rows if row["had_error"]),
+        "tool_error_count": sum(1 for row in tool_rows if row["had_error"]),
         "confidence": _confidence(len(rows)),
         "calibration_error_known": False,
     }
@@ -183,24 +184,24 @@ def aggregate_provider_metrics_artifacts(
         "providers": dict(
             sorted(
                 _count(
-                    (
+
                         snapshot.get("provider")
                         for snapshot in snapshots
                         if snapshot.get("provider")
-                    )
-                ).items()
-            )
+
+                ).items(),
+            ),
         ),
         "models": dict(
             sorted(
                 _count(
-                    (
+
                         snapshot.get("model")
                         for snapshot in snapshots
                         if snapshot.get("model")
-                    )
-                ).items()
-            )
+
+                ).items(),
+            ),
         ),
         "latest": rows[-1] if rows else None,
         "usage": {

@@ -121,13 +121,13 @@ def _score_below_target(clipped: float, target: float) -> float:
 
 def _norm_conc(deviation: float) -> float:
     return _score_below_target(
-        max(CONCENTRATION_MIN, min(CONCENTRATION_MAX, deviation)), CONCENTRATION_TARGET
+        max(CONCENTRATION_MIN, min(CONCENTRATION_MAX, deviation)), CONCENTRATION_TARGET,
     )
 
 
 def _norm_corr(avg_correlation: float) -> float:
     return _score_below_target(
-        max(CORRELATION_MIN, min(CORRELATION_MAX, avg_correlation)), CORRELATION_TARGET
+        max(CORRELATION_MIN, min(CORRELATION_MAX, avg_correlation)), CORRELATION_TARGET,
     )
 
 
@@ -229,7 +229,7 @@ def correlation_matrix(strategy_returns: list[np.ndarray]) -> np.ndarray:
 
 
 def check_concentration(
-    allocation: dict[str, float], limits: dict[str, float]
+    allocation: dict[str, float], limits: dict[str, float],
 ) -> BreachReport:
     breaches: list[dict[str, Any]] = []
     default_limit = limits.get("default")
@@ -244,7 +244,7 @@ def check_concentration(
                     "allocation": alloc,
                     "limit": limit,
                     "excess": alloc - limit,
-                }
+                },
             )
     return BreachReport(
         breached=len(breaches) > 0,
@@ -255,7 +255,7 @@ def check_concentration(
 
 
 def check_risk_thresholds(
-    metrics: dict[str, float], thresholds: dict[str, dict[str, Any]]
+    metrics: dict[str, float], thresholds: dict[str, dict[str, Any]],
 ) -> list[AlertEvent]:
     now = datetime.now(UTC).isoformat()
     events: list[AlertEvent] = []
@@ -287,16 +287,15 @@ def check_risk_thresholds(
                     value=float(value),
                     threshold=float(tier_threshold),
                     message=f"{metric_name} = {value} {verb} {severity_key} threshold {tier_threshold} (direction: {direction})",
-                )
+                ),
             )
     return events
 
 
 def compute_position_size(
-    risk_budget: float, volatility: float, max_size: float
+    risk_budget: float, volatility: float, max_size: float,
 ) -> float:
-    if risk_budget < 0.0:
-        risk_budget = 0.0
+    risk_budget = max(risk_budget, 0.0)
     if volatility <= 0.0:
         return 0.0
     if max_size < 0.0:
@@ -310,7 +309,7 @@ def track_drawdown_events(equity_curve: np.ndarray) -> list[DrawdownEvent]:
 
     def _build_event(recovery: int | None) -> DrawdownEvent:
         dd_pct = float(
-            (equity_curve[trough_idx] - equity_curve[peak_idx]) / equity_curve[peak_idx]
+            (equity_curve[trough_idx] - equity_curve[peak_idx]) / equity_curve[peak_idx],
         )
         return DrawdownEvent(
             start_date=f"period_{peak_idx}",

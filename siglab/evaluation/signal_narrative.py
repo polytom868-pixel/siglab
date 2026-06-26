@@ -18,7 +18,7 @@ def _fmt(value: float, precision: int = 4) -> str:
         return "N/A"
     if abs(value) < 1e-12:
         return "0.0"
-    magnitude = int(math.floor(math.log10(abs(value)))) if abs(value) > 0 else 0
+    magnitude = math.floor(math.log10(abs(value))) if abs(value) > 0 else 0
     if magnitude <= precision + 4:
         return f"{value:.{precision}f}" if abs(value) < 1 else f"{value:.{precision}f}"
     return f"{value:.{precision}e}"
@@ -144,7 +144,7 @@ def _narrative_drawdown_analysis(drawdown: dict) -> str:
     ]
     if long_frac is not None and short_frac is not None:
         lines.append(
-            f"Position composition: {_fmt(long_frac * 100.0)}% long / {_fmt(short_frac * 100.0)}% short / {_fmt((flat_frac or 0.0) * 100.0)}% flat"
+            f"Position composition: {_fmt(long_frac * 100.0)}% long / {_fmt(short_frac * 100.0)}% short / {_fmt((flat_frac or 0.0) * 100.0)}% flat",
         )
     peak_equity = equity_shift.get("peak_equity")
     if peak_equity is not None:
@@ -152,9 +152,9 @@ def _narrative_drawdown_analysis(drawdown: dict) -> str:
     pre_peak = dict(equity_shift.get("pre_peak") or {})
     if pre_peak.get("trade_count", 0) > 0:
         lines.append(
-            f"Pre-drawdown: {pre_peak['trade_count']} trades, win rate {_fmt(pre_peak.get('win_rate', 0.0) * 100.0)}%, avg return {_fmt(pre_peak.get('avg_return', 0.0))}"
+            f"Pre-drawdown: {pre_peak['trade_count']} trades, win rate {_fmt(pre_peak.get('win_rate', 0.0) * 100.0)}%, avg return {_fmt(pre_peak.get('avg_return', 0.0))}",
         )
-    return "\n".join((line for line in lines if line))
+    return "\n".join(line for line in lines if line)
 
 
 def _narrative_exemplar_trades(trades: dict) -> str:
@@ -237,7 +237,7 @@ def _narrative_regime_context(regime: dict) -> str:
         worst = str(entry.get("worst_label", "?"))
         best_row: dict[str, Any] = next((r for r in rows if r.get("label") == best), {})
         worst_row: dict[str, Any] = next(
-            (r for r in rows if r.get("label") == worst), {}
+            (r for r in rows if r.get("label") == worst), {},
         )
         total_trades_best = best_row.get("trade_count", 0)
         win_rate_best = best_row.get("win_rate")
@@ -290,7 +290,7 @@ def _narrative_gate_diagnostics(gates: dict) -> str:
         lines.append(
             f"Regime gates active: {_fmt(gate_active * 100.0)}%"
             if gate_active is not None
-            else "Regime gates: configured"
+            else "Regime gates: configured",
         )
         for entry in gate_entries[:3]:
             expr = str(entry.get("expression", str(entry.get("feature", "?"))))

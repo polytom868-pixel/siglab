@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, cast
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -43,7 +44,7 @@ _ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def load_feature_spec(
-    root_dir: Path, *, track: str, family: str | None = None
+    root_dir: Path, *, track: str, family: str | None = None,
 ) -> dict[str, Any]:
     pld = yaml.safe_load((root_dir / "mutable" / "feature_lab.yaml").read_text())
     ts = pld.get("tracks", {}).get(storage_track_name(track) or track, {})
@@ -68,7 +69,7 @@ def load_feature_spec(
 
 
 def valid_expr(
-    expression: str, *, aliases: dict[str, str], raw_series: set[str]
+    expression: str, *, aliases: dict[str, str], raw_series: set[str],
 ) -> bool:
     try:
         _eval(
@@ -84,13 +85,13 @@ def valid_expr(
 
 
 def resolve_feature_frames(
-    features: list[str], *, aliases: dict[str, str], raw_frames: dict[str, pd.DataFrame]
+    features: list[str], *, aliases: dict[str, str], raw_frames: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     cache: dict[str, pd.DataFrame] = {}
     resolved: dict[str, pd.DataFrame] = {}
     for ft in features:
         resolved[ft] = _eval(
-            ft, raw_frames=raw_frames, aliases=aliases, cache=cache, validate_only=False
+            ft, raw_frames=raw_frames, aliases=aliases, cache=cache, validate_only=False,
         )
     return resolved
 
@@ -209,7 +210,7 @@ def _make_frame_periods_op(func: str):
 
 
 def _apply(
-    fn: str, args: list[pd.DataFrame | float], *, validate_only: bool
+    fn: str, args: list[pd.DataFrame | float], *, validate_only: bool,
 ) -> pd.DataFrame:
     h = _OP_REG.get(fn)
     if h is None:
@@ -273,7 +274,7 @@ def _eka(
     ):
         return (args[0], args[1], float(args[2]), float(args[3]))
     raise ValueError(
-        "kalman_beta and kalman_residual expect frame, frame, and optional process/observation noise"
+        "kalman_beta and kalman_residual expect frame, frame, and optional process/observation noise",
     )
 
 
@@ -287,8 +288,8 @@ def _op_rolling_zscore(args, *, validate_only):
 
 
 def _op_rolling_corr(args, *, validate_only):
-    l, r, w = _e2fi(args)
-    return pd.DataFrame() if validate_only else l.rolling(w).corr(r)
+    left, r, w = _e2fi(args)
+    return pd.DataFrame() if validate_only else left.rolling(w).corr(r)
 
 
 def _op_rolling_autocorr(args, *, validate_only):
@@ -299,11 +300,11 @@ def _op_rolling_autocorr(args, *, validate_only):
 
 
 def _op_rolling_beta(args, *, validate_only):
-    l, r, w = _e2fi(args)
+    left, r, w = _e2fi(args)
     if validate_only:
         return pd.DataFrame()
     return (
-        l.rolling(w)
+        left.rolling(w)
         .cov(r)
         .div(r.rolling(w).var().replace(0.0, np.nan))
         .replace([np.inf, -np.inf], np.nan)
@@ -332,25 +333,25 @@ def _op_mean_reversion_halflife(args, *, validate_only):
     phi = 1.0 + beta
     vphi = phi.where((phi > 0.0) & (phi < 1.0))
     return cast(
-        pd.DataFrame, (-np.log(2.0) / np.log(vphi)).replace([np.inf, -np.inf], np.nan)
+        pd.DataFrame, (-np.log(2.0) / np.log(vphi)).replace([np.inf, -np.inf], np.nan),
     )
 
 
 def _op_kalman_beta(args, *, validate_only):
-    l, r, pn, on = _eka(args)
+    left, r, pn, on = _eka(args)
     return (
         pd.DataFrame()
         if validate_only
-        else _kbf(l, r, process_noise=pn, observation_noise=on)
+        else _kbf(left, r, process_noise=pn, observation_noise=on)
     )
 
 
 def _op_kalman_residual(args, *, validate_only):
-    l, r, pn, on = _eka(args)
+    left, r, pn, on = _eka(args)
     if validate_only:
         return pd.DataFrame()
-    beta = _kbf(l, r, process_noise=pn, observation_noise=on)
-    al, ar = l.align(r, join="outer")
+    beta = _kbf(left, r, process_noise=pn, observation_noise=on)
+    al, ar = left.align(r, join="outer")
     return al.sub(beta.mul(ar))
 
 
@@ -455,7 +456,7 @@ _OP_REG = dict[str, Any](
         ("sub", _op_sub),
         ("mul", _op_mul),
         ("div", _op_div),
-    ]
+    ],
 )
 
 
@@ -497,7 +498,7 @@ def _bin(
 
 
 def _ap(
-    left: pd.DataFrame | float, right: pd.DataFrame | float
+    left: pd.DataFrame | float, right: pd.DataFrame | float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         return _afp(left, right)
@@ -531,7 +532,7 @@ def _bcast(frame: pd.DataFrame, *, target_columns: list[str]) -> pd.DataFrame:
     if len(frame.columns) != 1:
         raise ValueError("broadcast_single_column_frame requires exactly one column")
     return pd.DataFrame(
-        {c: frame.iloc[:, 0] for c in target_columns}, index=frame.index
+        {c: frame.iloc[:, 0] for c in target_columns}, index=frame.index,
     ).reindex(columns=target_columns)
 
 
@@ -542,7 +543,7 @@ def _sdiv(left: pd.DataFrame | float, right: pd.DataFrame | float) -> pd.DataFra
         out = left / cast(float, right)
     elif isinstance(right, pd.DataFrame):
         out = pd.DataFrame(float(left), index=right.index, columns=right.columns).div(
-            right.replace(0.0, np.nan)
+            right.replace(0.0, np.nan),
         )
     else:
         raise ValueError("safe_div requires a dataframe operand")
@@ -554,7 +555,7 @@ def _hurst(values: np.ndarray) -> float:
     if arr.size < 32:
         return float("nan")
     ml = min(20, arr.size // 2)
-    lags = [l for l in (2, 4, 8, 16, 20) if l < ml]
+    lags = [lag for lag in (2, 4, 8, 16, 20) if lag < ml]
     if len(lags) < 2:
         lags = list(range(2, ml))
     tau: list[float] = []

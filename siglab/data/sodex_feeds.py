@@ -22,11 +22,11 @@ from siglab.data.store import ParquetLake
 logger = logging.getLogger(__name__)
 __all__ = [
     "SoDEXError",
-    "SoDEXTransportError",
-    "SoDEXRateLimitError",
-    "SoDEXUpstreamError",
-    "SoDEXFormatError",
     "SoDEXFeeds",
+    "SoDEXFormatError",
+    "SoDEXRateLimitError",
+    "SoDEXTransportError",
+    "SoDEXUpstreamError",
 ]
 KLINE_INTERVALS = frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1M"})
 _KLINE_FIELDS = {
@@ -79,7 +79,7 @@ class SoDEXFeeds:
     ) -> None:
         self.lake = lake
         self._http_client = httpx.AsyncClient(
-            limits=httpx.Limits(max_connections=8, max_keepalive_connections=4)
+            limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
         )
         self._client = SoDEXPublicPerpsClient(
             base_url=base_url,
@@ -114,14 +114,14 @@ class SoDEXFeeds:
         interval = str(interval).lower()
         if interval not in KLINE_INTERVALS:
             raise ValueError(
-                f"Unsupported kline interval {interval!r}; expected one of {sorted(KLINE_INTERVALS)}"
+                f"Unsupported kline interval {interval!r}; expected one of {sorted(KLINE_INTERVALS)}",
             )
         if not symbol or not symbol.strip():
             return self._empty_klines_frame()
         cache_key = self._kline_cache_key(symbol, interval, limit, start_time, end_time)
         if not skip_cache:
             cached = self.lake.latest_frame(
-                "sodex_klines", cache_key, max_age_hours=self._klines_cache_ttl_hours
+                "sodex_klines", cache_key, max_age_hours=self._klines_cache_ttl_hours,
             )
             if cached is not None and (not cached.empty):
                 return cached
@@ -167,14 +167,14 @@ class SoDEXFeeds:
                 "close": pd.Series(dtype=float),
                 "volume": pd.Series(dtype=float),
                 "quote_volume": pd.Series(dtype=float),
-            }
+            },
         )
         frame.index = pd.DatetimeIndex([], name="timestamp")
         return frame
 
     @staticmethod
     def _klines_to_frame(
-        rows: list[dict[str, Any]], *, interval: str | None = None
+        rows: list[dict[str, Any]], *, interval: str | None = None,
     ) -> pd.DataFrame:
         if not rows:
             return SoDEXFeeds._empty_klines_frame()
@@ -215,7 +215,7 @@ class SoDEXFeeds:
         namespace, cache_key = cache_path
         if not skip_cache:
             cached = self.lake.latest_json(
-                namespace, cache_key, max_age_hours=ttl_hours
+                namespace, cache_key, max_age_hours=ttl_hours,
             )
             if cached is not None:
                 return list(cached)
@@ -237,7 +237,7 @@ class SoDEXFeeds:
         )
 
     async def fetch_tickers(
-        self, *, symbol: str | None = None, skip_cache: bool = False
+        self, *, symbol: str | None = None, skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch 24-hour ticker statistics."""
         cache_key = f"tickers_{symbol}" if symbol else "tickers_all"
@@ -250,7 +250,7 @@ class SoDEXFeeds:
         )
 
     async def fetch_mark_prices(
-        self, *, symbol: str | None = None, skip_cache: bool = False
+        self, *, symbol: str | None = None, skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch current mark prices, index prices, and funding rates."""
         cache_key = f"mark_prices_{symbol}" if symbol else "mark_prices_all"
@@ -263,7 +263,7 @@ class SoDEXFeeds:
         )
 
     async def fetch_book_tickers(
-        self, *, symbol: str | None = None, skip_cache: bool = False
+        self, *, symbol: str | None = None, skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch best bid/ask for perp symbols."""
         cache_key = f"book_tickers_{symbol}" if symbol else "book_tickers_all"
@@ -276,7 +276,7 @@ class SoDEXFeeds:
         )
 
     async def fetch_orderbook(
-        self, symbol: str, limit: int = 100, *, skip_cache: bool = False
+        self, symbol: str, limit: int = 100, *, skip_cache: bool = False,
     ) -> dict[str, Any]:
         """Fetch order book depth for a perp symbol."""
         if not symbol or not symbol.strip():
@@ -302,7 +302,7 @@ class SoDEXFeeds:
         return result
 
     async def fetch_trades(
-        self, symbol: str, limit: int = 100, *, skip_cache: bool = False
+        self, symbol: str, limit: int = 100, *, skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch recent trades for a perp symbol."""
         if not symbol or not symbol.strip():

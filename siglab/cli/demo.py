@@ -77,7 +77,7 @@ def run_demo_run(args: argparse.Namespace) -> None:
         sosovalue_path = latest_path(evidence_dir, "*sosovalue*.jsonl")
         sodex_path = evidence_dir / "sodex_ws_evidence.jsonl"
         market = build_market_report(
-            entity="BTC", sosovalue_evidence=sosovalue_path, sodex_evidence=sodex_path
+            entity="BTC", sosovalue_evidence=sosovalue_path, sodex_evidence=sodex_path,
         )
         market_summary = {
             "entity": market.get("entity"),
@@ -86,13 +86,13 @@ def run_demo_run(args: argparse.Namespace) -> None:
             "as_of": market.get("as_of"),
         }
         trace_paths = trace_paths_for_telemetry(
-            settings=settings, track="all", run_session_id=None
+            settings=settings, track="all", run_session_id=None,
         )
         provider_metric_paths = provider_metric_paths_for_telemetry(
-            settings=settings, run_session_id=None
+            settings=settings, run_session_id=None,
         )
         telemetry = build_telemetry_payload(
-            trace_paths=trace_paths, provider_metric_paths=provider_metric_paths
+            trace_paths=trace_paths, provider_metric_paths=provider_metric_paths,
         )
         telemetry_summary = {
             "trace_count": telemetry.get("trace_count"),
@@ -105,7 +105,7 @@ def run_demo_run(args: argparse.Namespace) -> None:
         market_line = f"market: entity={market_summary['entity']} status={market_summary['status']} warnings={len(market_summary['warnings'] or [])}"
         telemetry_line = f"telemetry: traces={telemetry_summary['trace_count']} tools={telemetry_summary['tool_invocation_count']} providers={telemetry_summary['provider_metrics_status']}"
         one_page_summary = " | ".join(
-            [preflight_line, manifest_line, market_line, telemetry_line]
+            [preflight_line, manifest_line, market_line, telemetry_line],
         )
         payload: dict[str, Any] = {
             "summary": one_page_summary,
@@ -142,16 +142,16 @@ def run_demo_run(args: argparse.Namespace) -> None:
             print_json(payload)
             return
         print_success(
-            f"demo_run: {display_paths([output_path], root_dir=settings.root_dir)[0]}"
+            f"demo_run: {display_paths([output_path], root_dir=settings.root_dir)[0]}",
         )
         if html_output is not None:
             print_success(
-                f"demo_run_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}"
+                f"demo_run_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}",
             )
         print(one_page_summary)
     except KeyboardInterrupt:
         print(
-            "\n[yellow]demo-run interrupted by user — partial output may remain.[/yellow]"
+            "\n[yellow]demo-run interrupted by user — partial output may remain.[/yellow]",
         )
         if output_path is not None and output_path.exists():
             output_path.unlink()
@@ -171,7 +171,7 @@ def _demo_run_html(payload: dict[str, Any]) -> str:
             (
                 f"<tr><th>{_esc(k)}</th><td>{_esc(v)}</td></tr>"
                 for k, v in sorted(d.items())
-            )
+            ),
         )
 
     from siglab.cli.helpers import _render_html_template
@@ -207,10 +207,10 @@ def run_demo_manifest(args: argparse.Namespace) -> None:
         print_json(manifest)
         return
     print_success(
-        f"demo_manifest: {display_paths([output], root_dir=settings.root_dir)[0]}"
+        f"demo_manifest: {display_paths([output], root_dir=settings.root_dir)[0]}",
     )
     print_success(
-        f"demo_manifest_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}"
+        f"demo_manifest_html: {display_paths([html_output], root_dir=settings.root_dir)[0]}",
     )
 
 
@@ -219,7 +219,7 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
     from siglab.cli.telemetry import provider_metric_paths_for_telemetry
 
     provider_metric_paths = provider_metric_paths_for_telemetry(
-        settings=settings, run_session_id=None
+        settings=settings, run_session_id=None,
     )
     telemetry_path = runs_dir / "latest_telemetry_report.json"
     market_report_path = runs_dir / "market_report_latest.json"
@@ -229,7 +229,7 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
     preflight = sodex_preflight_report()
     artifacts = {
         "sosovalue_evidence": str(
-            latest_path(runs_dir / "evidence", "*sosovalue*.jsonl") or ""
+            latest_path(runs_dir / "evidence", "*sosovalue*.jsonl") or "",
         ),
         "sodex_ws_evidence": str(runs_dir / "evidence" / "sodex_ws_evidence.jsonl"),
         "evidence_graph": str(latest_path(runs_dir / "evidence", "*graph*.html") or ""),
@@ -242,11 +242,11 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
         "telemetry_report_json": str(telemetry_path) if telemetry_path.exists() else "",
         "provider_metrics": [str(path) for path in provider_metric_paths],
         "sosovalue_surface": str(
-            settings.root_dir / "docs" / "sosovalue-api-surface.yaml"
+            settings.root_dir / "docs" / "sosovalue-api-surface.yaml",
         ),
         "sodex_surface": str(settings.root_dir / "docs" / "sodex-api-surface.yaml"),
         "buildathon_audit": str(
-            settings.root_dir / "docs" / "buildathon-readiness-audit.md"
+            settings.root_dir / "docs" / "buildathon-readiness-audit.md",
         ),
         "demo_script": str(settings.root_dir / "docs" / "demo-script.md"),
     }
@@ -276,7 +276,7 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
         "readiness": readiness,
         "market_report_status": market_report.get("status"),
         "market_report_headline": dict(market_report.get("signal_summary") or {}).get(
-            "headline"
+            "headline",
         ),
         "sodex_preflight": preflight,
         "red_flags": [
@@ -300,15 +300,15 @@ def _demo_manifest_html(manifest: dict[str, Any]) -> str:
         (
             f"<li><strong>{esc(key)}</strong>: {esc(value)}</li>"
             for key, value in sorted(readiness.items())
-        )
+        ),
     )
     artifact_rows = "\n".join(
         (
             f"<tr><th>{esc(key)}</th><td>{esc(artifact_status.get(key))}</td><td><code>{esc(value)}</code></td></tr>"
             for key, value in sorted(artifacts.items())
-        )
+        ),
     )
-    red_flag_items = "\n".join((f"<li>{esc(item)}</li>" for item in red_flags))
+    red_flag_items = "\n".join(f"<li>{esc(item)}</li>" for item in red_flags)
     live_class = "bad" if not readiness.get("sodex_live_write_allowed") else "ok"
     from siglab.cli.helpers import _render_html_template
 

@@ -19,7 +19,7 @@ def add_subparser(
         help="Start the FastAPI dashboard (default port from $PORT or 8080).",
     )
     start_parser.add_argument(
-        "--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)"
+        "--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)",
     )
     start_parser.add_argument(
         "--port",
@@ -28,10 +28,10 @@ def add_subparser(
         help=f"Port (default: {_DEFAULT_PORT} from $PORT)",
     )
     start_parser.add_argument(
-        "--reload", action="store_true", help="Enable auto-reload for development"
+        "--reload", action="store_true", help="Enable auto-reload for development",
     )
     stop_parser = subparsers.add_parser(
-        "dashboard-stop", help="Stop the running FastAPI dashboard."
+        "dashboard-stop", help="Stop the running FastAPI dashboard.",
     )
     stop_parser.add_argument(
         "--port",
@@ -40,10 +40,10 @@ def add_subparser(
         help=f"Port (default: {_DEFAULT_PORT})",
     )
     compat_parser = subparsers.add_parser(
-        "dashboard", help="[Legacy] Start dashboard (same as dashboard-start)."
+        "dashboard", help="[Legacy] Start dashboard (same as dashboard-start).",
     )
     compat_parser.add_argument(
-        "--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)"
+        "--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)",
     )
     compat_parser.add_argument(
         "--port",
@@ -52,7 +52,7 @@ def add_subparser(
         help=f"Port (default: {_DEFAULT_PORT})",
     )
     compat_parser.add_argument(
-        "--reload", action="store_true", help="Enable auto-reload for development"
+        "--reload", action="store_true", help="Enable auto-reload for development",
     )
 
 
@@ -86,7 +86,7 @@ def run_dashboard_stop(args: argparse.Namespace) -> None:
     port = int(args.port)
     try:
         result = subprocess.run(
-            f"lsof -ti :{port}", shell=True, capture_output=True, text=True, timeout=5
+            f"lsof -ti :{port}", shell=True, capture_output=True, text=True, timeout=5,
         )
         pids = [int(p) for p in result.stdout.strip().split() if p.strip()]
         if not pids:
@@ -95,7 +95,7 @@ def run_dashboard_stop(args: argparse.Namespace) -> None:
         for pid in pids:
             _os.kill(pid, _signal.SIGTERM)
         print_success(
-            f"Stopped dashboard on port {port} (PID{' '.join((str(p) for p in pids))})"
+            f"Stopped dashboard on port {port} (PID{' '.join(str(p) for p in pids)})",
         )
     except subprocess.TimeoutExpired:
         print_error(f"Timeout checking port {port}")

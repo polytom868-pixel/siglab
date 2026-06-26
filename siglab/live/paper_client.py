@@ -206,7 +206,7 @@ def _val_sym(symbol: str) -> str:
     return s
 
 
-def _to_pf(value: float | int | str, *, name: str) -> float:
+def _to_pf(value: float | str, *, name: str) -> float:
     try:
         v = float(value)
     except (TypeError, ValueError):
@@ -247,7 +247,7 @@ def _val_ot(ot: str) -> PaperOrderType:
 
 def _val_tif(tif: str) -> PaperTimeInForce:
     return _coerce(
-        tif, PaperTimeInForce, "time_in_force; expected GTC, IOC, FOK, or GTX"
+        tif, PaperTimeInForce, "time_in_force; expected GTC, IOC, FOK, or GTX",
     )
 
 
@@ -315,7 +315,7 @@ class SoDEXPaperPerpsClient:
                 "order_count": len(data.get("orders", {})),
                 "position_count": len(data.get("positions", {})),
                 "pnl": data.get("pnl", 0.0),
-            }
+            },
         )
         return True
 
@@ -382,11 +382,11 @@ class SoDEXPaperPerpsClient:
         o = s.orders.get(order_id)
         if o is None:
             raise PaperClientError(
-                f"order {order_id} not found in session {session_id}"
+                f"order {order_id} not found in session {session_id}",
             )
         if o.status != PaperOrderStatus.OPEN:
             raise PaperClientError(
-                f"cannot cancel order {order_id} with status {o.status.value}"
+                f"cannot cancel order {order_id} with status {o.status.value}",
             )
         o.status = PaperOrderStatus.CANCELLED
         o.cancelled_at = _ts()
@@ -395,7 +395,7 @@ class SoDEXPaperPerpsClient:
         return o.to_dict()
 
     def get_orders(
-        self, session_id: str, *, symbol: str | None = None, status: str | None = None
+        self, session_id: str, *, symbol: str | None = None, status: str | None = None,
     ) -> list[dict[str, Any]]:
         s = self.get_session(session_id)
         orders = list(s.orders.values())
@@ -417,12 +417,12 @@ class SoDEXPaperPerpsClient:
         o = s.orders.get(order_id)
         if o is None:
             raise PaperClientError(
-                f"order {order_id} not found in session {session_id}"
+                f"order {order_id} not found in session {session_id}",
             )
         return o.to_dict()
 
     def get_positions(
-        self, session_id: str, *, symbol: str | None = None
+        self, session_id: str, *, symbol: str | None = None,
     ) -> list[dict[str, Any]]:
         s = self.get_session(session_id)
         ps = list(s.positions.values())
@@ -483,14 +483,14 @@ class SoDEXPaperPerpsClient:
         if isinstance(klines, pd.DataFrame):
             if klines.empty:
                 logger.warning(
-                    "Empty klines for session %s — no orders processed", session_id
+                    "Empty klines for session %s — no orders processed", session_id,
                 )
                 return fills
             kd = self._df_to_kd(klines, symbol=symbol)
         elif isinstance(klines, list):
             if not klines:
                 logger.warning(
-                    "Empty klines list for session %s — no orders processed", session_id
+                    "Empty klines list for session %s — no orders processed", session_id,
                 )
                 return fills
             kd = list(klines)
@@ -499,7 +499,7 @@ class SoDEXPaperPerpsClient:
                     k.setdefault("s", symbol)
         else:
             raise PaperClientError(
-                f"klines must be DataFrame or list, got {type(klines).__name__}"
+                f"klines must be DataFrame or list, got {type(klines).__name__}",
             )
         for k in kd:
             fills.extend(self._match(s, k))
@@ -525,7 +525,7 @@ class SoDEXPaperPerpsClient:
         return fills
 
     def _df_to_kd(
-        self, df: pd.DataFrame, *, symbol: str | None = None
+        self, df: pd.DataFrame, *, symbol: str | None = None,
     ) -> list[dict[str, Any]]:
         return [
             {
@@ -624,14 +624,14 @@ class SoDEXPaperPerpsClient:
         else:
             lp = pos.quantity > 0
             rd = (
-                lp
-                and o.side == PaperOrderSide.SELL
+                (lp
+                and o.side == PaperOrderSide.SELL)
                 or (not lp and o.side == PaperOrderSide.BUY)
             )
             if rd:
                 cq = min(o.quantity, abs(pos.quantity))
                 pnl = compute_trade_pnl(
-                    fp, cq, pos.quantity, pos.entry_price, o.side.value
+                    fp, cq, pos.quantity, pos.entry_price, o.side.value,
                 )
                 s.pnl += pnl
                 pos.realized_pnl += pnl
@@ -650,7 +650,7 @@ class SoDEXPaperPerpsClient:
                 aq = o.quantity if o.side == PaperOrderSide.BUY else -o.quantity
                 nq = pos.quantity + aq
                 pos.entry_price = compute_avg_entry(
-                    pos.quantity, pos.entry_price, aq, fp
+                    pos.quantity, pos.entry_price, aq, fp,
                 )
                 pos.quantity = nq
         if pos.quantity == 0:
@@ -693,7 +693,7 @@ class SoDEXPaperPerpsClient:
                         "entry_price": pos.entry_price,
                         "close_price": cp,
                         "pnl": pnl,
-                    }
+                    },
                 )
                 del s.positions[pos.symbol]
         return ev
@@ -717,7 +717,7 @@ class SoDEXPaperPerpsClient:
         return any_
 
     async def process_funding(
-        self, session_id: str, *, force: bool = False
+        self, session_id: str, *, force: bool = False,
     ) -> list[dict[str, Any]]:
         s = self.get_session(session_id)
         if not s.positions:
@@ -739,7 +739,7 @@ class SoDEXPaperPerpsClient:
             mp = await self.feeds.fetch_mark_prices()
         except Exception as exc:
             logger.warning(
-                "Failed to fetch funding rates for session %s: %s", session_id, exc
+                "Failed to fetch funding rates for session %s: %s", session_id, exc,
             )
             return []
         fm: dict[str, float] = {}
@@ -771,7 +771,7 @@ class SoDEXPaperPerpsClient:
                     "mark_price": mk,
                     "cost": c,
                     "timestamp": now,
-                }
+                },
             )
         s.last_funding_time = now
         if ev:
@@ -799,13 +799,13 @@ class SoDEXPaperPerpsClient:
         np_ = path.with_suffix(".npy")
         if not path.exists() and not np_.exists():
             raise PaperSessionNotFoundError(
-                f"session {session_id} not found (file {path} does not exist)"
+                f"session {session_id} not found (file {path} does not exist)",
             )
         try:
             data = self._read_sf(path)
         except Exception as exc:
             raise PaperSessionNotFoundError(
-                f"failed to load session {session_id}: {exc}"
+                f"failed to load session {session_id}: {exc}",
             ) from exc
         return PaperSession.from_dict(data)
 
@@ -818,7 +818,7 @@ class SoDEXPaperPerpsClient:
                 d: Any = json.load(f)
             if not isinstance(d, dict):
                 raise PaperClientError(
-                    f"expected dict in JSON file {jp}, got {type(d).__name__}"
+                    f"expected dict in JSON file {jp}, got {type(d).__name__}",
                 )
             return d
         if np_.exists():
@@ -827,7 +827,7 @@ class SoDEXPaperPerpsClient:
                 d = d.item()
             if not isinstance(d, dict):
                 raise PaperClientError(
-                    f"expected dict in .npy file {np_}, got {type(d).__name__}"
+                    f"expected dict in .npy file {np_}, got {type(d).__name__}",
                 )
             return dict(d)
         raise PaperClientError(f"session file not found: {path}")
@@ -866,7 +866,7 @@ class SoDEXExecutionAdapter:
         self.coin_to_asset = dict(
             self.config.get("coin_to_asset")
             or getattr(self.client, "coin_to_asset", {})
-            or {}
+            or {},
         )
 
     def setup(self) -> dict[str, Any]:
@@ -908,8 +908,8 @@ class SoDEXExecutionAdapter:
     async def update_leverage(self, **kwargs: Any) -> None:
         await _await_if(
             self._resolve_meth("update_leverage", fallback="update_leverage_request")(
-                **kwargs
-            )
+                **kwargs,
+            ),
         )
 
     async def place_market_order(self, **kwargs: Any) -> tuple[bool, str]:
@@ -943,7 +943,7 @@ class SoDEXExecutionAdapter:
 
     async def get_user_state(self, *args: Any, **kwargs: Any) -> tuple[bool, Any]:
         r = await _await_if(
-            self._resolve_meth("get_user_state", fallback="get_state")(*args, **kwargs)
+            self._resolve_meth("get_user_state", fallback="get_state")(*args, **kwargs),
         )
         return (bool(r[0]), r[1]) if isinstance(r, tuple) and len(r) == 2 else (True, r)
 
@@ -951,7 +951,7 @@ class SoDEXExecutionAdapter:
         return {
             str(s).upper(): float(p)
             for s, p in dict(
-                await _await_if(self._resolve_meth("all_mids")()) or {}
+                await _await_if(self._resolve_meth("all_mids")()) or {},
             ).items()
         }
 
@@ -966,7 +966,7 @@ class SoDEXExecutionAdapter:
     def _req_client(self) -> Any:
         if self.client is None:
             raise RuntimeError(
-                "A real SoDEX client must be provided in runtime config before live execution"
+                "A real SoDEX client must be provided in runtime config before live execution",
             )
         return self.client
 
@@ -998,20 +998,20 @@ class SoDEXExecutionAdapter:
             "get_user_state": bool(
                 getattr(c, "get_user_state", None)
                 or getattr(c, "get_state", None)
-                or getattr(c, "account_state", None)
+                or getattr(c, "account_state", None),
             ),
             "update_leverage": bool(
                 getattr(c, "update_leverage", None)
-                or getattr(c, "update_leverage_request", None)
+                or getattr(c, "update_leverage_request", None),
             ),
             "place_market_order": bool(
                 getattr(c, "new_order_request", None)
-                and getattr(c, "send_signed_request", None)
+                and getattr(c, "send_signed_request", None),
             ),
             "all_mids": bool(
                 getattr(c, "all_mids", None)
                 or getattr(c, "mark_prices", None)
-                or getattr(c, "tickers", None)
+                or getattr(c, "tickers", None),
             ),
         }
         sr = all(
@@ -1022,7 +1022,7 @@ class SoDEXExecutionAdapter:
                 aid is not None,
                 bool(ns),
                 not [n for n, p in req.items() if not p],
-            ]
+            ],
         )
         ms: list[str] = []
         if signer is None:
@@ -1061,7 +1061,7 @@ class SoDEXExecutionAdapter:
         }
 
 
-def _ff(value: float | int | str | None, default: float = 0.0) -> float:
+def _ff(value: float | str | None, default: float = 0.0) -> float:
     try:
         n = float(value) if value is not None else default
     except (TypeError, ValueError):
@@ -1107,7 +1107,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         self.live_spec = self._load_spec()
         self.spec = SignalSpec.from_dict(dict(self.live_spec["spec"]))
         self.name = str(
-            self.live_spec.get("strategy_name") or self.spec.strategy_hash()
+            self.live_spec.get("strategy_name") or self.spec.strategy_hash(),
         )
         self.sodex_adapter = SoDEXExecutionAdapter(
             self.config if isinstance(self.config, dict) else {},
@@ -1164,7 +1164,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         ad = self._req_adapter()
         addr = self._wallet_addr()
         rt = dict(self.live_spec.get("runtime") or {})
-        lv = max(1, int(math.ceil(_ff(rt.get("live_leverage"), 1.0))))
+        lv = max(1, math.ceil(_ff(rt.get("live_leverage"), 1.0)))
         ex = 0
         for o in plan:
             sym = str(o["symbol"])
@@ -1175,7 +1175,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
             if ai is None:
                 raise ValueError(f"SoDEX asset id not found for {sym}")
             await ad.update_leverage(
-                asset_id=ai, leverage=lv, is_cross=True, address=addr
+                asset_id=ai, leverage=lv, is_cross=True, address=addr,
             )
             ok_, r_ = await ad.place_market_order(
                 asset_id=ai,
@@ -1291,11 +1291,9 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         settings = load_settings()
         settings.ensure_runtime_directories()
         spec = self._req_spec()
-        rt = dict(self.live_spec.get("runtime") or {})
         p = MarketDataProvider(
             settings,
             ParquetLake(settings.data_lake_dir),
-            config_path=rt.get("sosovalue_config_path"),
         )
         try:
             c = await compile_spec(settings, p, spec)
@@ -1410,7 +1408,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
                     "size": abs(dq),
                     "is_buy": dq > 0.0,
                     "reduce_only": False,
-                }
+                },
             )
         return plan
 

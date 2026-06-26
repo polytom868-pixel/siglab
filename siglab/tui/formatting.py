@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol, Sequence, cast
+from typing import Any, cast
+from collections.abc import Callable, Sequence
 
 from rich.text import Text
 
 from siglab.utils import safe_float  # noqa: F401 — re-exported for tests
 
 
-class _Queryable(Protocol):
-    def query_one(self, widget_id: str, widget_type: type[Any]) -> Any: ...
+# _Queryable protocol removed — Screen.query_one has overloaded signatures
+# that resist clean protocol matching. safe_query catches all exceptions anyway.
+
 
 
 ACCENT_GREEN = "#4ade80"
@@ -138,13 +140,13 @@ def format_date(date_str: str | None) -> str:
         from datetime import datetime
 
         return datetime.fromisoformat(date_str.replace("Z", "+00:00")).strftime(
-            "%m-%d %H:%M"
+            "%m-%d %H:%M",
         )
     except (ValueError, TypeError):
         return date_str[:10] if len(date_str) >= 10 else date_str
 
 
-def format_count(value: int | float | None) -> str:
+def format_count(value: float | None) -> str:
     if value is None:
         return "─"
     v = float(value)
@@ -159,11 +161,11 @@ def format_count(value: int | float | None) -> str:
 
 def severity_color(severity: str) -> str:
     return {"critical": ERROR_RED, "warning": WARNING_YELLOW, "info": INFO_BLUE}.get(
-        severity.lower().strip(), TEXT_MUTED
+        severity.lower().strip(), TEXT_MUTED,
     )
 
 
-def format_confidence(conf: float | None) -> "Text":
+def format_confidence(conf: float | None) -> Text:
     if conf is None:
         return Text("─", style=TEXT_MUTED)
     lb = f"{conf:.0%}"
@@ -213,9 +215,8 @@ def gauge_color(score: float) -> str:
         else ACCENT_GREEN
     )
 
-
 def safe_query(
-    screen: _Queryable,
+    screen: Any,
     widget_id: str,
     widget_type: type[Any],
     fn: Callable[[Any], Any] | None = None,
@@ -247,7 +248,7 @@ def sanitize_status_text(text: str, max_len: int = 120) -> str:
 
 
 def bar_gauge(
-    value: float, width: int = 10, *, filled_char: str = "█", empty_char: str = "░"
+    value: float, width: int = 10, *, filled_char: str = "█", empty_char: str = "░",
 ) -> str:
     return filled_char * max(0, min(width, int(value * width))) + empty_char * (
         width - max(0, min(width, int(value * width)))
@@ -264,10 +265,10 @@ def compact_qty(qty: float) -> str:
     )
 
 
-PANEL_CSS = "padding: 0 1; background: {bg};".format(bg=SURFACE)
-SCROLLABLE_CSS = "overflow-y: auto; {panel}".format(panel=PANEL_CSS)
-COMPACT_CSS = "height: auto; min-height: 5; {panel}".format(panel=PANEL_CSS)
-EXPANDABLE_CSS = "height: 1fr; min-height: 6; {scroll}".format(scroll=SCROLLABLE_CSS)
+PANEL_CSS = f"padding: 0 1; background: {SURFACE};"
+SCROLLABLE_CSS = f"overflow-y: auto; {PANEL_CSS}"
+COMPACT_CSS = f"height: auto; min-height: 5; {PANEL_CSS}"
+EXPANDABLE_CSS = f"height: 1fr; min-height: 6; {SCROLLABLE_CSS}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,7 +291,7 @@ class TickerView:
     def price_change_pct(self) -> float:
         return float(
             self._raw.get("priceChangePercent", self._raw.get("price_change_pct", 0))
-            or 0
+            or 0,
         )
 
     @property
@@ -362,7 +363,7 @@ class OrderBookView:
 
     @classmethod
     def from_dict(
-        cls: type[OrderBookView], data: dict[str, Any], symbol: str
+        cls: type[OrderBookView], data: dict[str, Any], symbol: str,
     ) -> OrderBookView:
         return cls(
             bids=tuple(data.get("bids", [])),
@@ -624,4 +625,4 @@ class StrategyEntry:
 
 
 def closes_from_klines(klines: Sequence[dict[str, Any]]) -> tuple[float, ...]:
-    return tuple((float(k.get("close", 0)) for k in klines))
+    return tuple(float(k.get("close", 0)) for k in klines)

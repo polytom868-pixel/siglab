@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 PAIR_TRADE_FAMILIES = frozenset(
-    {"perp_pair_trade_unlevered", "perp_pair_trade_levered"}
+    {"perp_pair_trade_unlevered", "perp_pair_trade_levered"},
 )
 REGIME_KEYWORDS = (
     "trend_strength",
@@ -50,16 +50,16 @@ def supports_explicit_trade_style(family: str | None) -> bool:
 def feature_roles_for_formula(feature: str) -> set[str]:
     text = str(feature or "").lower()
     roles: set[str] = set()
-    if any((keyword in text for keyword in ("funding", "carry"))):
+    if any(keyword in text for keyword in ("funding", "carry")):
         roles.add("core_carry")
         roles.add("funding")
-    if any((keyword in text for keyword in ("term_structure", "decay"))):
+    if any(keyword in text for keyword in ("term_structure", "decay")):
         roles.add("carry_term_structure")
-    if any((keyword in text for keyword in REGIME_KEYWORDS)):
+    if any(keyword in text for keyword in REGIME_KEYWORDS):
         roles.add("orthogonal_regime")
-    if any((keyword in text for keyword in MOMENTUM_KEYWORDS)):
+    if any(keyword in text for keyword in MOMENTUM_KEYWORDS):
         roles.add("trend_or_momentum")
-    if any((keyword in text for keyword in RESIDUAL_KEYWORDS)):
+    if any(keyword in text for keyword in RESIDUAL_KEYWORDS):
         roles.add("spread_or_residual")
     if text.startswith("pair_") or "asset_1_" in text or "asset_2_" in text:
         roles.add("pair_state")
@@ -152,28 +152,28 @@ def inferred_trade_style(spec: dict[str, Any]) -> str:
     joined = " ".join(
         [
             str(spec.get("hypothesis") or ""),
-            " ".join((str(feature) for feature in spec.get("features") or [])),
-        ]
+            " ".join(str(feature) for feature in spec.get("features") or []),
+        ],
     ).lower()
-    if "carry" in family or any((token in joined for token in {"carry", "funding"})):
+    if "carry" in family or any(token in joined for token in ("carry", "funding")):
         return "carry"
     if "basket" in family:
         return "basket_neutral"
     if "decision" in family:
         return "directional"
-    if any((token in joined for token in {"breakout", "donchian"})):
+    if any(token in joined for token in ("breakout", "donchian")):
         return "breakout"
-    if any((token in joined for token in {"pullback", "rsi"})):
+    if any(token in joined for token in ("pullback", "rsi")):
         return "pullback"
     if any(
-        (
+
             token in joined
-            for token in {"reversion", "mean reversion", "residual", "bollinger", "z_"}
-        )
+            for token in ("reversion", "mean reversion", "residual", "bollinger", "z_")
+
     ):
         return "reversion"
     if any(
-        (token in joined for token in {"momentum", "trend", "continuation", "macd"})
+        token in joined for token in ("momentum", "trend", "continuation", "macd")
     ):
         return "continuation"
     return "hybrid"

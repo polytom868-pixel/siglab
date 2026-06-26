@@ -62,11 +62,11 @@ async def run_deploy(args: argparse.Namespace) -> None:
         print_json(detail)
         evaluation = dict(record.get("summary") or {})
         trial_context = dict(
-            dict(record.get("research_summary") or {}).get("trial") or {}
+            dict(record.get("research_summary") or {}).get("trial") or {},
         )
         if not deployment_eligible(summary=evaluation, trial_context=trial_context):
             reasons = _deployment_ineligible_reasons_fn(
-                summary=evaluation, trial_context=trial_context
+                summary=evaluation, trial_context=trial_context,
             )
             print(
                 f"Spec {spec_hash} is not deployment-eligible: {', '.join(reasons)}",
@@ -89,20 +89,20 @@ async def run_deploy(args: argparse.Namespace) -> None:
     print_info(f"Found existing deployment for {spec_hash}:")
     print_json(existing)
     print_warning(
-        "Deployment already exists. Use 'deployments --spec <hash>' to inspect it."
+        "Deployment already exists. Use 'deployments --spec <hash>' to inspect it.",
     )
 
 
 def _deployment_ineligible_reasons_fn(
-    *, summary: dict[str, Any], trial_context: dict[str, Any] | None
+    *, summary: dict[str, Any], trial_context: dict[str, Any] | None,
 ) -> list[str]:
     return deployment_ineligible_reasons_fn(
-        summary=summary, trial_context=trial_context
+        summary=summary, trial_context=trial_context,
     )
 
 
 def deployment_ineligible_reasons_fn(
-    *, summary: dict[str, Any], trial_context: dict[str, Any] | None
+    *, summary: dict[str, Any], trial_context: dict[str, Any] | None,
 ) -> list[str]:
     from siglab.cli.helpers import deployment_ineligible_reasons
 

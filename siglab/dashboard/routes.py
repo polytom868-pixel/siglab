@@ -11,7 +11,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, AsyncIterator, Protocol, cast
+from typing import Any, Protocol, cast
+from collections.abc import AsyncIterator
 
 from fastapi import (
     APIRouter,
@@ -125,7 +126,7 @@ _config_to_dict = _ctd
 
 
 def _dr(
-    db_path: str | Path, track: str | None = None, family: str | None = None
+    db_path: str | Path, track: str | None = None, family: str | None = None,
 ) -> list[dict[str, Any]]:
     path = Path(db_path)
     if not path.exists():
@@ -168,7 +169,7 @@ def _dr(
                     if row["summary_json"]
                     else {},
                     "artifact_path": row["artifact_path"],
-                }
+                },
             )
         conn.close()
     except (sqlite3.Error, OSError):
@@ -177,7 +178,7 @@ def _dr(
 
 
 def _rs(
-    db_path: str | Path, track: str | None = None, family: str | None = None
+    db_path: str | Path, track: str | None = None, family: str | None = None,
 ) -> list[dict[str, Any]]:
     rows = _dr(db_path, track=track, family=family)
     runs_map: dict[str, dict[str, Any]] = {}
@@ -185,7 +186,7 @@ def _rs(
         rs = row.get("research_summary") or {}
         rc = rs.get("run_context") or {}
         run_session_id = str(
-            rc.get("run_session_id") or f"legacy::{row.get('spec_hash')}"
+            rc.get("run_session_id") or f"legacy::{row.get('spec_hash')}",
         )
         if run_session_id not in runs_map:
             runs_map[run_session_id] = {
@@ -240,15 +241,13 @@ def _rs(
             entry["best_spec_hash"] = row["spec_hash"]
             entry["best_family"] = fv
             entry["best_validation_total_return"] = row.get("summary", {}).get(
-                "validation_total_return"
+                "validation_total_return",
             )
             entry["best_pre_audit_canonical_total_return"] = row.get("summary", {}).get(
-                "pre_audit_canonical_total_return"
+                "pre_audit_canonical_total_return",
             )
-        if row["created_at"] < entry["first_created_at"]:
-            entry["first_created_at"] = row["created_at"]
-        if row["created_at"] > entry["last_created_at"]:
-            entry["last_created_at"] = row["created_at"]
+        entry["first_created_at"] = min(entry["first_created_at"], row["created_at"])
+        entry["last_created_at"] = max(entry["last_created_at"], row["created_at"])
         if not row["passed"]:
             entry["status"] = "fail"
     for entry in runs_map.values():
@@ -405,7 +404,7 @@ class DashboardState:
                     "parent_family": tool_trace.get("parent_family"),
                     "parent_hash": tool_trace.get("parent_hash"),
                     "spec_count": tool_trace.get("spec_count"),
-                }
+                },
             ]
         return []
 
@@ -435,13 +434,13 @@ class DashboardState:
             row["invocation_count"] += 1
             row["cost_contribution"] += 1
             row["latency_cost_ms"] += float(
-                call.get("latency_ms") or call.get("duration_ms") or 0.0
+                call.get("latency_ms") or call.get("duration_ms") or 0.0,
             )
             row["token_context_cost"] += int(
                 call.get("context_tokens")
                 or call.get("input_tokens")
                 or call.get("token_count")
-                or 0
+                or 0,
             )
             stage = str(call.get("stage") or "").strip()
             if stage:
@@ -476,7 +475,7 @@ class DashboardState:
             normalized = {**row}
             normalized["stages"] = sorted(row["stages"])
             normalized["latency_cost_ms"] = round(
-                float(normalized["latency_cost_ms"]), 3
+                float(normalized["latency_cost_ms"]), 3,
             )
             report.append(normalized)
         return report
@@ -495,14 +494,14 @@ class DashboardState:
         if not runs_root.exists():
             return placeholders
         for state_path in sorted(
-            runs_root.glob("*/workspaces/*/current/SESSION_STATE.json")
+            runs_root.glob("*/workspaces/*/current/SESSION_STATE.json"),
         ):
             try:
                 payload = json.loads(state_path.read_text())
             except (OSError, json.JSONDecodeError, TypeError, ValueError):
                 continue
             run_session_id = str(
-                payload.get("run_session_id") or state_path.parents[1].name
+                payload.get("run_session_id") or state_path.parents[1].name,
             )
             if not run_session_id or run_session_id in existing_run_ids:
                 continue
@@ -517,7 +516,7 @@ class DashboardState:
                         payload.get("best_family"),
                     ]
                     if str(value or "").strip()
-                }
+                },
             )
             if family and family not in families:
                 continue
@@ -555,10 +554,10 @@ class DashboardState:
                     "llm_model": self._lm(),
                     "status": "running",
                     "series_points": [],
-                }
+                },
             )
         placeholders.sort(
-            key=lambda row: str(row.get("last_created_at") or ""), reverse=True
+            key=lambda row: str(row.get("last_created_at") or ""), reverse=True,
         )
         return placeholders
 
@@ -573,19 +572,19 @@ class DashboardState:
         )
 
     def _aes(
-        self, *, track: str | None = None, family: str | None = None
+        self, *, track: str | None = None, family: str | None = None,
     ) -> list[dict[str, Any]]:
         if (db_path := self._dbp()) is None:
             return []
         return self._ap(
-            [self._ae(row) for row in _dr(str(db_path), track=track, family=family)]
+            [self._ae(row) for row in _dr(str(db_path), track=track, family=family)],
         )
 
     def _ni(self) -> str:
         return _now_iso()
 
     def _ae(
-        self, experiment: dict[str, Any], *, include_artifact: bool = False
+        self, experiment: dict[str, Any], *, include_artifact: bool = False,
     ) -> dict[str, Any]:
         spec = {**experiment.get("spec", {})}
         summary = {**experiment.get("summary", {})}
@@ -594,7 +593,7 @@ class DashboardState:
         artifact = {**experiment.get("artifact", {})} if include_artifact else {}
         if not artifact and raw_artifact_path and (self.config is not None):
             artifact_path = resolve_path_from_root(
-                raw_artifact_path, root_dir=self.config.root_dir
+                raw_artifact_path, root_dir=self.config.root_dir,
             )
             if artifact_path.exists():
                 try:
@@ -604,9 +603,10 @@ class DashboardState:
         compiled_metadata = (
             artifact.get("compiled_metadata") or artifact.get("compiledMetadata") or {}
         )
+        median_cagr = summary.get("median_cagr")
         if "median_cagr" not in summary or not (
-            isinstance(summary.get("median_cagr"), (int, float))
-            and math.isfinite(float(summary.get("median_cagr")))
+            isinstance(median_cagr, (int, float))
+            and math.isfinite(float(median_cagr))
         ):
             windows = artifact.get("windows") or []
             cagr_values = [
@@ -673,7 +673,7 @@ class DashboardState:
         run_context = {**research_summary.get("run_context", {})}
         experiment["run_session_id"] = str(
             run_context.get("run_session_id")
-            or f"legacy::{experiment.get('spec_hash')}"
+            or f"legacy::{experiment.get('spec_hash')}",
         )
         experiment["runner_label"] = str(
             run_context.get("runner_label")
@@ -681,10 +681,10 @@ class DashboardState:
                 "external_agent"
                 if run_context.get("benchmark_mode")
                 else "siglab_harness"
-            )
+            ),
         )
         experiment["run_label"] = str(
-            run_context.get("run_label") or experiment["run_session_id"]
+            run_context.get("run_label") or experiment["run_session_id"],
         )
         experiment["run_kind"] = (
             "benchmark" if run_context.get("benchmark_mode") else "harness"
@@ -717,21 +717,21 @@ class DashboardState:
             "model": (primary_tool_trace or {}).get("model"),
             "thinking_mode": (primary_tool_trace or {}).get("thinking_mode"),
             "tool_rounds_used": sum(
-                (int(stage.get("tool_rounds_used") or 0) for stage in tool_trace_stages)
+                int(stage.get("tool_rounds_used") or 0) for stage in tool_trace_stages
             ),
             "tool_count_available": max(
                 [
                     int(stage.get("tool_count_available") or 0)
                     for stage in tool_trace_stages
                 ]
-                or [0]
+                or [0],
             ),
             "tool_calls": aggregated_tool_calls,
             "final_content_preview": (primary_tool_trace or {}).get(
-                "final_content_preview"
+                "final_content_preview",
             ),
             "response_finish_reason": (primary_tool_trace or {}).get(
-                "response_finish_reason"
+                "response_finish_reason",
             ),
             "stage_count": len(tool_trace_stages),
         }
@@ -744,33 +744,33 @@ class DashboardState:
             "roll_events": list(compiled_metadata.get("roll_events") or []),
             "badges": list(compiled_metadata.get("pt_strategy_badges") or []),
             "eligible_market_count_min": compiled_metadata.get(
-                "eligible_market_count_min"
+                "eligible_market_count_min",
             ),
             "eligible_market_count_max": compiled_metadata.get(
-                "eligible_market_count_max"
+                "eligible_market_count_max",
             ),
             "eligible_market_count_median": compiled_metadata.get(
-                "eligible_market_count_median"
+                "eligible_market_count_median",
             ),
             "eligible_market_count_latest": compiled_metadata.get(
-                "eligible_market_count_latest"
+                "eligible_market_count_latest",
             ),
             "markets_entered_during_backtest": list(
-                compiled_metadata.get("markets_entered_during_backtest") or []
+                compiled_metadata.get("markets_entered_during_backtest") or [],
             ),
         }
         experiment["mode_flags"] = {
             "long_enabled": params.get("long_enabled"),
             "short_enabled": params.get("short_enabled"),
             "hedge_mode": params.get(
-                "hedge_mode", compiled_metadata.get("hedge_mode", "none")
+                "hedge_mode", compiled_metadata.get("hedge_mode", "none"),
             ),
             "hedge_ratio": params.get(
-                "hedge_ratio", compiled_metadata.get("hedge_ratio")
+                "hedge_ratio", compiled_metadata.get("hedge_ratio"),
             ),
         }
         experiment["feature_hash"] = experiment.get(
-            "feature_hash"
+            "feature_hash",
         ) or compiled_metadata.get("feature_hash")
         experiment["timing"] = {
             "signal_timing": compiled_metadata.get("signal_timing", "unknown"),
@@ -789,7 +789,7 @@ class DashboardState:
                 "spec": spec,
                 "summary": summary,
                 "artifact": artifact,
-            }
+            },
         )
         experiment["deployment_readiness"] = readiness
         experiment["artifact_path"] = self._dp(raw_artifact_path)
@@ -819,7 +819,7 @@ class DashboardState:
             experiment["run_position"] = run_position_by_session[run_session_id]
             score = float(experiment["summary"].get("aggregate_score", 0.0))
             best_by_track_metric[track_name] = max(
-                score, best_by_track_metric.get(track_name, float("-inf"))
+                score, best_by_track_metric.get(track_name, float("-inf")),
             )
             experiment["best_so_far_aggregate_score"] = best_by_track_metric[track_name]
         return experiments
@@ -860,8 +860,9 @@ class DashboardState:
                 },
             ],
         }
+        return canonical_run
     def experiments_payload(
-        self, track: str | None = None, family: str | None = None
+        self, track: str | None = None, family: str | None = None,
     ) -> dict[str, Any]:
         import time
         cache_key = f"{track}:{family}"
@@ -880,18 +881,18 @@ class DashboardState:
             "experiment_count": len(experiments),
             "run_count": len(runs),
             "benchmark_run_count": sum(
-                (1 for row in runs if row.get("benchmark_mode"))
+                1 for row in runs if row.get("benchmark_mode")
             ),
             "harness_run_count": sum(
-                (1 for row in runs if not row.get("benchmark_mode"))
+                1 for row in runs if not row.get("benchmark_mode")
             ),
-            "deployd_count": sum((1 for row in experiments if row["deployd"])),
+            "deployd_count": sum(1 for row in experiments if row["deployd"]),
             "tool_traced_count": sum(
-                (
+
                     1
                     for row in experiments
                     if row.get("tool_trace", {}).get("tool_calls")
-                )
+
             ),
             "tracks": cast(dict[str, dict[str, Any]], {}),
             "families": sorted({row["family"] for row in scoped_rows}),
@@ -901,7 +902,7 @@ class DashboardState:
             if not rows:
                 continue
             best = max(
-                rows, key=lambda row: float(row["summary"].get("aggregate_score", 0.0))
+                rows, key=lambda row: float(row["summary"].get("aggregate_score", 0.0)),
             )
             summary["tracks"][track_name] = {
                 "label": track_label(track_name),
@@ -929,7 +930,7 @@ class DashboardState:
         return result
 
     def runs_payload(
-        self, track: str | None = None, family: str | None = None
+        self, track: str | None = None, family: str | None = None,
     ) -> dict[str, Any]:
         experiments = self._aes(track=track, family=family)
         if (db_path := self._dbp()) is None:
@@ -942,7 +943,7 @@ class DashboardState:
         runs = _rs(str(db_path), track=track, family=family)
         series_by_run: dict[str, list[dict[str, Any]]] = {}
         families = sorted(
-            {str(row.get("family") or "") for row in experiments if row.get("family")}
+            {str(row.get("family") or "") for row in experiments if row.get("family")},
         )
         for experiment in experiments:
             run_session_id = str(experiment.get("run_session_id") or "")
@@ -958,24 +959,24 @@ class DashboardState:
                     "passed": bool(experiment.get("passed")),
                     "deployd": bool(experiment.get("deployd")),
                     "aggregate_score": experiment.get("summary", {}).get(
-                        "aggregate_score"
+                        "aggregate_score",
                     ),
                     "median_sharpe": experiment.get("summary", {}).get("median_sharpe"),
                     "median_cagr": experiment.get("summary", {}).get("median_cagr"),
                     "median_total_return": experiment.get("summary", {}).get(
-                        "median_total_return"
+                        "median_total_return",
                     ),
                     "median_calmar": experiment.get("summary", {}).get("median_calmar"),
                     "pre_audit_canonical_total_return": experiment.get(
-                        "summary", {}
+                        "summary", {},
                     ).get("pre_audit_canonical_total_return"),
                     "validation_total_return": experiment.get("summary", {}).get(
-                        "validation_total_return"
+                        "validation_total_return",
                     ),
                     "audit_total_return": experiment.get("summary", {}).get(
-                        "audit_total_return"
+                        "audit_total_return",
                     ),
-                }
+                },
             )
         annotated_runs = []
         for row in runs:
@@ -990,7 +991,7 @@ class DashboardState:
             ]
             annotated["series_points"] = list(series_by_run.get(run_session_id, []))
             annotated["tool_call_count"] = sum(
-                (int(exp.get("tool_call_count") or 0) for exp in run_experiments)
+                int(exp.get("tool_call_count") or 0) for exp in run_experiments
             )
             primary_trace = next(
                 (
@@ -1007,7 +1008,7 @@ class DashboardState:
             str(row.get("run_session_id") or "") for row in annotated_runs
         }
         annotated_runs.extend(
-            self._wsp(track=track, family=family, existing_run_ids=existing_run_ids)
+            self._wsp(track=track, family=family, existing_run_ids=existing_run_ids),
         )
         best_run = max(
             annotated_runs,
@@ -1020,13 +1021,13 @@ class DashboardState:
             "summary": {
                 "run_count": len(annotated_runs),
                 "benchmark_run_count": sum(
-                    (1 for row in annotated_runs if row.get("benchmark_mode"))
+                    1 for row in annotated_runs if row.get("benchmark_mode")
                 ),
                 "harness_run_count": sum(
-                    (1 for row in annotated_runs if not row.get("benchmark_mode"))
+                    1 for row in annotated_runs if not row.get("benchmark_mode")
                 ),
                 "experiment_count": len(experiments),
-                "deployd_count": sum((1 for row in experiments if row.get("deployd"))),
+                "deployd_count": sum(1 for row in experiments if row.get("deployd")),
                 "families": families,
                 "best_run_session_id": best_run.get("run_session_id")
                 if best_run
@@ -1081,7 +1082,7 @@ class DashboardState:
             }
         mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
         age_seconds = max(
-            0.0, (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds()
+            0.0, (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds(),
         )
         return {
             "status": "present",
@@ -1136,7 +1137,7 @@ class DashboardState:
                 "live_write_refusal_reason": preflight.get("live_write_refusal_reason"),
                 "signed_path_ready": signed_path.get("ready"),
                 "request_weight_budget_per_minute": preflight.get(
-                    "request_weight_budget_per_minute"
+                    "request_weight_budget_per_minute",
                 ),
                 "next_actions": list(preflight.get("next_actions") or []),
             },
@@ -1150,13 +1151,13 @@ class DashboardState:
                 "estimated_credits": provider_metrics.get("estimated_credits"),
                 "returned_input_tokens": provider_metrics.get("returned_input_tokens"),
                 "returned_output_tokens": provider_metrics.get(
-                    "returned_output_tokens"
+                    "returned_output_tokens",
                 ),
                 "context_pressure_events": provider_metrics.get(
-                    "context_pressure_events"
+                    "context_pressure_events",
                 ),
                 "credit_pressure_events": provider_metrics.get(
-                    "credit_pressure_events"
+                    "credit_pressure_events",
                 ),
                 "model_counts": telemetry.get("model_counts"),
             },
@@ -1193,7 +1194,7 @@ class DashboardState:
         track = resolve_track(detail.get("track"))
         if (db_path := self._dbp()) is not None:
             track_rows = self._ap(
-                [self._ae(row) for row in _dr(str(db_path), track=track)]
+                [self._ae(row) for row in _dr(str(db_path), track=track)],
             )
         else:
             track_rows = []
@@ -1255,7 +1256,7 @@ class DashboardState:
         }
 
     async def deploy_experiment(
-        self, *, spec_hash: str, payload: dict[str, Any]
+        self, *, spec_hash: str, payload: dict[str, Any],
     ) -> dict[str, Any]:
         if self.config is None:
             return {
@@ -1265,13 +1266,13 @@ class DashboardState:
             }
         store = self.deployment_store or DeploymentStore(self.config.ancestry_db_path)
         manager = LiveDeploymentManager(
-            self.config, store, claude=ClaudeClient(self.config)
+            self.config, store, claude=ClaudeClient(self.config),
         )
         record = await manager.deploy(
             spec_hash=spec_hash,
             wallet_label=payload.get("wallet_label"),
             config_path=str(
-                payload.get("config_path") or self.config.sosovalue_config_path
+                payload.get("config_path") or self.config.sosovalue_config_path,
             ),
             interval_seconds=int(payload["interval_seconds"])
             if payload.get("interval_seconds") is not None
@@ -1329,7 +1330,7 @@ def _soa_standalone(artifacts: dict[str, dict[str, Any]]) -> dict[str, Any]:
             "market_report": artifacts.get("market_report", {}).get("status"),
             "sodex_preflight": artifacts.get("sodex_preflight", {}).get("status"),
             "wave_status": artifacts.get("wave_status", {}).get("status"),
-        }
+        },
     }
 
 
@@ -1345,7 +1346,7 @@ async def health(request: Request) -> dict[str, Any]:
         "status": "ok",
         "version": SIGLAB_VERSION,
         "uptime_seconds": round(
-            time.time() - request.app.state.dashboard.start_time, 3
+            time.time() - request.app.state.dashboard.start_time, 3,
         ),
     }
 
@@ -1389,19 +1390,19 @@ async def get_config(request: Request) -> dict[str, Any]:
 
 @router.get("/api/experiments")
 async def api_experiments(
-    request: Request, track: str | None = None, family: str | None = None
+    request: Request, track: str | None = None, family: str | None = None,
 ) -> dict[str, Any]:
     return request.app.state.dashboard.experiments_payload(
-        track=canonical_track_name(track) if track else None, family=family
+        track=canonical_track_name(track) if track else None, family=family,
     )
 
 
 @router.get("/api/runs")
 async def api_runs(
-    request: Request, track: str | None = None, family: str | None = None
+    request: Request, track: str | None = None, family: str | None = None,
 ) -> dict[str, Any]:
     return request.app.state.dashboard.runs_payload(
-        track=canonical_track_name(track) if track else None, family=family
+        track=canonical_track_name(track) if track else None, family=family,
     )
 
 
@@ -1428,13 +1429,13 @@ async def api_experiment_deploy(request: Request, spec_hash: str) -> dict[str, A
     except (json.JSONDecodeError, TypeError, ValueError):
         body = {}
     return await request.app.state.dashboard.deploy_experiment(
-        spec_hash=spec_hash, payload=body
+        spec_hash=spec_hash, payload=body,
     )
 
 
 @router.get("/api/search")
 async def api_search(
-    request: Request, q: str = "", limit: int = 20
+    request: Request, q: str = "", limit: int = 20,
 ) -> dict[str, Any]:
     """Search across runs, experiments, and actions."""
     query = q.strip().lower()
@@ -1508,12 +1509,12 @@ async def api_search(
 
 @router.get("/api/export/runs")
 async def api_export_runs(
-    request: Request, format: str = "json", track: str | None = None, family: str | None = None
+    request: Request, format: str = "json", track: str | None = None, family: str | None = None,
 ) -> Response:
     """Export runs as CSV or JSON."""
     dashboard = request.app.state.dashboard
     data = dashboard.runs_payload(
-        track=canonical_track_name(track) if track else None, family=family
+        track=canonical_track_name(track) if track else None, family=family,
     )
     runs = data.get("runs", [])
 
@@ -1539,12 +1540,12 @@ async def api_export_runs(
 
 @router.get("/api/export/experiments")
 async def api_export_experiments(
-    request: Request, format: str = "json", track: str | None = None, family: str | None = None
+    request: Request, format: str = "json", track: str | None = None, family: str | None = None,
 ) -> Response:
     """Export experiments as CSV or JSON."""
     dashboard = request.app.state.dashboard
     data = dashboard.experiments_payload(
-        track=canonical_track_name(track) if track else None, family=family
+        track=canonical_track_name(track) if track else None, family=family,
     )
     experiments = data.get("experiments", [])
 
@@ -1582,16 +1583,16 @@ async def ops_board(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Config not loaded")
     artifacts = {
         "demo_manifest": request.app.state.dashboard._loa(
-            "runs/demo_manifest_latest.json"
+            "runs/demo_manifest_latest.json",
         ),
         "telemetry": request.app.state.dashboard._loa(
-            "runs/latest_telemetry_report.json"
+            "runs/latest_telemetry_report.json",
         ),
         "market_report": request.app.state.dashboard._loa(
-            "runs/market_report_latest.json"
+            "runs/market_report_latest.json",
         ),
         "sodex_preflight": request.app.state.dashboard._loa(
-            "runs/sodex_preflight_latest.json"
+            "runs/sodex_preflight_latest.json",
         ),
         "wave_status": request.app.state.dashboard._loa("runs/wave_status_latest.json"),
     }
@@ -1618,14 +1619,14 @@ async def ops_board(request: Request) -> dict[str, Any]:
                     "sodex_preflight",
                     "wave_status",
                 )
-            }
+            },
         },
         "service_health": {
             "dashboard": {"status": "running", "port": _DEFAULT_PORT},
             "siglab_db": {
                 "status": "ok"
                 if Path(str(config.ancestry_db_path)).exists()
-                else "missing"
+                else "missing",
             },
             "sodex_api": {
                 "status": "external",
@@ -1682,11 +1683,11 @@ def _beg(state: DashboardState) -> dict[str, Any] | None:
 
     for source, count in source_counts.items():
         nodes[f"source:{source}"] = _n(
-            f"source:{source}", str(source), "source", int(count)
+            f"source:{source}", str(source), "source", int(count),
         )
     for entity, count in entity_counts.items():
         nodes[f"entity:{entity}"] = _n(
-            f"entity:{entity}", str(entity), "entity", int(count)
+            f"entity:{entity}", str(entity), "entity", int(count),
         )
     for link in links:
         if not isinstance(link, dict):
@@ -1719,7 +1720,7 @@ def _beg(state: DashboardState) -> dict[str, Any] | None:
                     "confidence": link.get("confidence"),
                     "warning": link.get("warning"),
                     "day_gap": link.get("day_gap"),
-                }
+                },
             )
     return {"nodes": list(nodes.values()), "edges": edges}
 
@@ -1792,10 +1793,10 @@ def _bsr(state: DashboardState) -> list[dict[str, Any]]:
             )
             entry["usage_count"] += 1
             entry["total_latency_ms"] += float(
-                call.get("latency_ms") or call.get("duration_ms") or 0.0
+                call.get("latency_ms") or call.get("duration_ms") or 0.0,
             )
             entry["total_input_tokens"] += int(
-                call.get("input_tokens") or call.get("context_tokens") or 0
+                call.get("input_tokens") or call.get("context_tokens") or 0,
             )
             entry["total_output_tokens"] += int(call.get("output_tokens") or 0)
             if call.get("is_error") or call.get("error"):
@@ -1824,7 +1825,7 @@ def _bsr(state: DashboardState) -> list[dict[str, Any]]:
                 "error_count": entry["error_count"],
                 "stages": stages,
                 "classification": classification,
-            }
+            },
         )
     return report
 
@@ -1837,7 +1838,7 @@ async def skill_report(request: Request) -> dict[str, Any]:
         "generated_at": _now_iso(),
         "skills": report,
         "total_skills": len(report),
-        "total_invocations": sum((s["usage_count"] for s in report)),
+        "total_invocations": sum(s["usage_count"] for s in report),
     }
 
 
@@ -1891,7 +1892,7 @@ async def market_tickers(request: Request) -> dict[str, Any]:
 
 @router.get("/market/klines/{symbol}")
 async def market_klines(
-    request: Request, symbol: str, interval: str = "1h", limit: int = 60
+    request: Request, symbol: str, interval: str = "1h", limit: int = 60,
 ) -> dict[str, Any]:
     logger.debug("Market klines requested: %s", symbol)
     if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
@@ -1918,7 +1919,7 @@ async def market_klines(
 
 @router.get("/market/orderbook/{symbol}")
 async def market_orderbook(
-    request: Request, symbol: str, limit: int = 20
+    request: Request, symbol: str, limit: int = 20,
 ) -> dict[str, Any]:
     logger.debug("Market orderbook requested: %s", symbol)
     if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
@@ -1953,7 +1954,7 @@ async def partial_dashboard_summary(request: Request) -> Any:
 
 @router.get("/partials/dashboard/runs")
 async def partial_dashboard_runs(
-    request: Request, track: str = "all", family: str = "all"
+    request: Request, track: str = "all", family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
@@ -1977,7 +1978,7 @@ _PARTIAL_OPS = {
     "summary": (
         "partials/ops/_ops_summary.html",
         lambda s, r, tmpl: tmpl.TemplateResponse(
-            r, "partials/ops/_ops_summary.html", {"request": r, **s.ops_payload()}
+            r, "partials/ops/_ops_summary.html", {"request": r, **s.ops_payload()},
         ),
     ),
     "artifact_health": (
@@ -2054,14 +2055,14 @@ async def partial_ops_router(request: Request, name: str) -> Any:
 
 @router.get("/partials/run/summary")
 async def partial_run_summary(
-    request: Request, run_id: str = "", track: str = "all", family: str = "all"
+    request: Request, run_id: str = "", track: str = "all", family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
     payload = request.app.state.dashboard.experiments_payload(
-        track=_track, family=_family
+        track=_track, family=_family,
     )
     runs = payload.get("runs", [])
     experiments = payload.get("experiments", [])
@@ -2085,7 +2086,7 @@ async def partial_run_summary(
 
 @router.get("/partials/run/family_pills")
 async def partial_run_family_pills(
-    request: Request, run_id: str = "", family: str = "all"
+    request: Request, run_id: str = "", family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
@@ -2093,7 +2094,7 @@ async def partial_run_family_pills(
         request.app.state.dashboard.experiments_payload()
         .get("summary", {})
         .get("families", [])
-        or []
+        or [],
     )
     return tmpl.TemplateResponse(
         request,
@@ -2115,7 +2116,7 @@ async def partial_run_improvement_chart(
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
     experiments = request.app.state.dashboard.experiments_payload(
-        track=_track, family=_family
+        track=_track, family=_family,
     ).get("experiments", [])
     if run_id:
         experiments = [e for e in experiments if e.get("run_session_id") == run_id]
@@ -2128,14 +2129,14 @@ async def partial_run_improvement_chart(
 
 @router.get("/partials/run/experiment_table")
 async def partial_run_experiment_table(
-    request: Request, run_id: str = "", track: str = "all", family: str = "all"
+    request: Request, run_id: str = "", track: str = "all", family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
     experiments = request.app.state.dashboard.experiments_payload(
-        track=_track, family=_family
+        track=_track, family=_family,
     ).get("experiments", [])
     if run_id:
         experiments = [e for e in experiments if e.get("run_session_id") == run_id]
@@ -2178,7 +2179,7 @@ _PARTIAL_EXP = {
         {
             "request": r,
             "experiment": (s.experiment_detail_payload(spec_hash) or {}).get(
-                "experiment", {}
+                "experiment", {},
             )
             or {}
             if spec_hash
@@ -2238,7 +2239,7 @@ _PARTIAL_EXP = {
         {
             "request": r,
             "experiment": (s.experiment_detail_payload(spec_hash) or {}).get(
-                "experiment", {}
+                "experiment", {},
             )
             or {}
             if spec_hash
@@ -2264,11 +2265,11 @@ _PARTIAL_EXP = {
             **(
                 {
                     "trades": (s.experiment_series_payload(spec_hash) or {}).get(
-                        "canonical_run"
+                        "canonical_run",
                     )
                     or {}
                     if spec_hash
-                    else []
+                    else [],
                 }
                 if spec_hash
                 else {"trades": []}
@@ -2293,7 +2294,7 @@ _PARTIAL_EXP = {
 
 @router.get("/partials/experiment/{name}")
 async def partial_experiment_router(
-    request: Request, name: str, spec_hash: str = ""
+    request: Request, name: str, spec_hash: str = "",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
@@ -2308,7 +2309,7 @@ async def template_dashboard(request: Request) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     return tmpl.TemplateResponse(
-        request, "dashboard.html", {"request": request, "track": "all", "family": "all"}
+        request, "dashboard.html", {"request": request, "track": "all", "family": "all"},
     )
 
 
@@ -2328,7 +2329,7 @@ async def template_experiment(request: Request, spec_hash: str = "") -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     return tmpl.TemplateResponse(
-        request, "experiment.html", {"request": request, "spec_hash": spec_hash}
+        request, "experiment.html", {"request": request, "spec_hash": spec_hash},
     )
 
 
@@ -2408,7 +2409,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.templates = Jinja2Templates(directory=str(_template_dir))
     _env = state.templates.env
 
-    def _fmt_num(value: float | int | str | None, decimals: int = 2) -> str:
+    def _fmt_num(value: float | str | None, decimals: int = 2) -> str:
         try:
             if value is None:
                 return "n/a"
@@ -2419,7 +2420,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             pass
         return "n/a"
 
-    def _fmt_pct(value: float | int | str | None) -> str:
+    def _fmt_pct(value: float | str | None) -> str:
         try:
             if value is None:
                 return "n/a"
@@ -2437,7 +2438,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from datetime import datetime
 
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).strftime(
-                "%Y-%m-%d %H:%M:%S"
+                "%Y-%m-%d %H:%M:%S",
             )
         except (ValueError, TypeError):
             return str(value)
@@ -2467,25 +2468,25 @@ def create_app() -> FastAPI:
     @app.get("/")
     async def serve_dashboard(request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "dashboard.html", {"request": request}
+            request, "dashboard.html", {"request": request},
         )
 
     @app.get("/ops")
     async def serve_ops(request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "ops.html", {"request": request}
+            request, "ops.html", {"request": request},
         )
 
     @app.get("/runs/{run_id:path}")
     async def serve_run_page(run_id: str, request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "run.html", {"request": request, "run_id": run_id}
+            request, "run.html", {"request": request, "run_id": run_id},
         )
 
     @app.get("/experiments/{spec_hash:path}")
     async def serve_experiment_page(spec_hash: str, request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "experiment.html", {"request": request, "spec_hash": spec_hash}
+            request, "experiment.html", {"request": request, "spec_hash": spec_hash},
         )
 
     if _static_dir.is_dir():
@@ -2521,7 +2522,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             except asyncio.TimeoutError:
                 try:
                     await _send_json(
-                        websocket, {"type": "ping", "timestamp": _now_iso()}
+                        websocket, {"type": "ping", "timestamp": _now_iso()},
                     )
                 except (OSError, ValueError):
                     logger.debug("WebSocket send error in ping keepalive")
@@ -2533,7 +2534,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 message = json.loads(raw)
             except (json.JSONDecodeError, TypeError, ValueError):
                 await _send_json(
-                    websocket, {"type": "error", "message": "Invalid JSON payload"}
+                    websocket, {"type": "error", "message": "Invalid JSON payload"},
                 )
                 continue
             await _handle_message(
@@ -2567,7 +2568,7 @@ async def _periodic_risk_push(ws: WebSocket) -> None:
 
 
 async def _handle_subscribe(
-    websocket, message, manager, subscribed_symbols, subscription_types, risk_push_tasks
+    websocket, message, manager, subscribed_symbols, subscription_types, risk_push_tasks,
 ):
     symbol = str(message.get("symbol") or "").strip().upper()
     sub_type = str(message.get("subscription_type") or "klines").strip().lower()
@@ -2611,7 +2612,7 @@ async def _handle_subscribe(
 
 
 async def _handle_unsubscribe(
-    websocket, message, manager, subscribed_symbols, subscription_types, risk_push_tasks
+    websocket, message, manager, subscribed_symbols, subscription_types, risk_push_tasks,
 ):
     symbol = str(message.get("symbol") or "").strip().upper()
     if symbol:
@@ -2622,7 +2623,7 @@ async def _handle_unsubscribe(
             manager.unsubscribe(sym, websocket)
         subscribed_symbols.clear()
     await _send_json(
-        websocket, {"type": "unsubscribed", "symbol": symbol if symbol else "all"}
+        websocket, {"type": "unsubscribed", "symbol": symbol or "all"},
     )
 
 
@@ -2639,10 +2640,10 @@ async def _handle_message(
     _WS_HANDLERS.update(
         {
             "ping": lambda: _send_json(
-                websocket, {"type": "pong", "timestamp": _now_iso()}
+                websocket, {"type": "pong", "timestamp": _now_iso()},
             ),
             "pong": lambda: _send_json(
-                websocket, {"type": "pong", "timestamp": _now_iso()}
+                websocket, {"type": "pong", "timestamp": _now_iso()},
             ),
             "subscribe": lambda: _handle_subscribe(
                 websocket,
@@ -2662,7 +2663,7 @@ async def _handle_message(
             ),
             "get_positions": lambda: _stream_positions(websocket),
             "get_risk": lambda: _stream_risk_scores(websocket),
-        }
+        },
     )
     handler = _WS_HANDLERS.get(action)
     if handler:
@@ -2678,7 +2679,7 @@ async def _handle_message(
 
 
 async def _stream_initial_data(
-    websocket: WebSocket, symbol: str, sub_type: str
+    websocket: WebSocket, symbol: str, sub_type: str,
 ) -> None:
     if sub_type == "klines":
         await _send_json(
@@ -2705,7 +2706,7 @@ async def _stream_initial_data(
 
 
 async def _fetch_cached_klines(
-    websocket: WebSocket, symbol: str
+    websocket: WebSocket, symbol: str,
 ) -> list[dict[str, Any]]:
     try:
         if (feeds := websocket.app.state.dashboard.get_sodex_feeds()) is not None:
@@ -2792,7 +2793,7 @@ async def _stream_positions(websocket: WebSocket) -> None:
                         "entry_price": 0.0,
                         "current_price": 0.0,
                         "unrealized_pnl": 0.0,
-                    }
+                    },
                 )
             except (OSError, ValueError, TypeError):
                 logger.debug("Failed to read npy session file %s", npy_file)
@@ -2809,7 +2810,7 @@ async def _stream_positions(websocket: WebSocket) -> None:
         )
     except Exception as exc:
         await _send_json(
-            websocket, {"type": "positions", "positions": [], "note": f"Error: {exc}"}
+            websocket, {"type": "positions", "positions": [], "note": f"Error: {exc}"},
         )
 
 

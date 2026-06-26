@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, cast
+from collections.abc import Awaitable, Callable
 
 import httpx
 
@@ -17,7 +18,7 @@ class TuiApiClient:
     """Async HTTP client for the SigLab FastAPI dashboard."""
 
     def __init__(
-        self, base_url: str = "http://localhost:8080", timeout: float = 10.0
+        self, base_url: str = "http://localhost:8080", timeout: float = 10.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._client: httpx.AsyncClient | None = None
@@ -26,18 +27,18 @@ class TuiApiClient:
     async def __aenter__(self) -> TuiApiClient:
         return self
 
-    async def __aexit__(self, *exc: Any) -> None:
+    async def __aexit__(self, *exc: object) -> None:
         await self.close()
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
-                base_url=self._base_url, timeout=self._timeout
+                base_url=self._base_url, timeout=self._timeout,
             )
         return self._client
 
     async def _request_with_retry(
-        self, method: str, path: str, **kwargs: Any
+        self, method: str, path: str, **kwargs: Any,
     ) -> dict[str, Any]:
         """Single retry with 0.5s backoff on transient errors."""
         client = await self._ensure_client()
@@ -54,7 +55,7 @@ class TuiApiClient:
             ):
                 raise
             logger.warning(
-                "Request %s %s failed (%s), retrying in 0.5s", method, path, exc
+                "Request %s %s failed (%s), retrying in 0.5s", method, path, exc,
             )
             await asyncio.sleep(0.5)
             client = await self._ensure_client()
@@ -62,7 +63,7 @@ class TuiApiClient:
 
     @staticmethod
     async def _do_request(
-        client: httpx.AsyncClient, method: str, path: str, **kwargs: Any
+        client: httpx.AsyncClient, method: str, path: str, **kwargs: Any,
     ) -> dict[str, Any]:
         response = await getattr(client, method)(path, **kwargs)
         response.raise_for_status()
@@ -111,7 +112,7 @@ class TuiApiClient:
         return await self._get("/risk")
 
     async def get_strategies(
-        self, track: str | None = None, family: str | None = None
+        self, track: str | None = None, family: str | None = None,
     ) -> dict[str, Any]:
         """Fetch strategy list from the ancestry/experiment database."""
         params: dict[str, str] = {}
@@ -126,13 +127,13 @@ class TuiApiClient:
         return await self._get(f"/strategies/{spec_hash}")
 
     async def get_benchmark_status(
-        self, deck: str = "trend_signals_external"
+        self, deck: str = "trend_signals_external",
     ) -> dict[str, Any]:
         """Fetch benchmark deck status."""
         return await self._get("/benchmark/status", params={"deck": deck})
 
     async def get_benchmark_results(
-        self, deck: str = "trend_signals_external"
+        self, deck: str = "trend_signals_external",
     ) -> dict[str, Any]:
         """Fetch benchmark evaluation results."""
         return await self._get("/benchmark/results", params={"deck": deck})
@@ -146,15 +147,15 @@ class TuiApiClient:
         return await self._get("/market/tickers")
 
     async def get_market_klines(
-        self, symbol: str, interval: str = "1h", limit: int = 60
+        self, symbol: str, interval: str = "1h", limit: int = 60,
     ) -> dict[str, Any]:
         """Fetch kline/candlestick data for a perp symbol."""
         return await self._get(
-            f"/market/klines/{symbol}", params={"interval": interval, "limit": limit}
+            f"/market/klines/{symbol}", params={"interval": interval, "limit": limit},
         )
 
     async def get_market_orderbook(
-        self, symbol: str, limit: int = 20
+        self, symbol: str, limit: int = 20,
     ) -> dict[str, Any]:
         """Fetch order book depth for a perp symbol."""
         return await self._get(f"/market/orderbook/{symbol}", params={"limit": limit})
@@ -208,11 +209,11 @@ class TuiApiClient:
         return await self._post(f"/paper/sessions/{session_id}/orders", json=body)
 
     async def cancel_paper_order(
-        self, session_id: str, order_id: str
+        self, session_id: str, order_id: str,
     ) -> dict[str, Any]:
         """Cancel a paper order."""
         return await self._request_with_retry(
-            "delete", f"/paper/sessions/{session_id}/orders/{order_id}"
+            "delete", f"/paper/sessions/{session_id}/orders/{order_id}",
         )
 
     async def ws_connect(self) -> Any:
@@ -220,7 +221,7 @@ class TuiApiClient:
         import websockets
 
         ws_url = self._base_url.replace("http://", "ws://").replace(
-            "https://", "wss://"
+            "https://", "wss://",
         )
         ws = await websockets.connect(f"{ws_url}/ws")
         return ws
@@ -232,8 +233,8 @@ class TuiApiClient:
             try:
                 await ws.send(
                     json.dumps(
-                        {"action": "subscribe", "subscription_type": "risk_score"}
-                    )
+                        {"action": "subscribe", "subscription_type": "risk_score"},
+                    ),
                 )
                 async for raw in ws:
                     try:

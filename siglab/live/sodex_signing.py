@@ -11,11 +11,11 @@ from typing import Any, Protocol, cast
 
 from eth_account import Account
 from eth_account.messages import encode_typed_data
-from eth_utils import keccak
+from eth_utils.crypto import keccak
 
 __all__ = ["keccak"]
 SUPPORTED_SODEX_SIGNED_ACTIONS = frozenset(
-    {"newOrder", "cancelOrder", "scheduleCancel", "updateLeverage", "updateMargin"}
+    {"newOrder", "cancelOrder", "scheduleCancel", "updateLeverage", "updateMargin"},
 )
 UNSUPPORTED_SODEX_SIGNED_ACTIONS = {
     "replaceOrder": "blocked until official SDK/source pins the perps wrapper type and struct order",
@@ -44,10 +44,10 @@ class SoDEXDryRunSigner:
     signer_type = "dry-run"
 
     def sign_typed_payload(
-        self, *, domain: str, account_id: int, payload_hash: str, nonce: int
+        self, *, domain: str, account_id: int, payload_hash: str, nonce: int,
     ) -> str:
         raise SoDEXNotReadyError(
-            "SoDEX dry-run signer refuses to sign — configure a real signer with SODEX_PRIVATE_KEY or SODEX_AWS_KMS_KEY_ARN environment variables."
+            "SoDEX dry-run signer refuses to sign — configure a real signer with SODEX_PRIVATE_KEY or SODEX_AWS_KMS_KEY_ARN environment variables.",
         )
 
 
@@ -55,7 +55,7 @@ class SoDEXSigner(Protocol):
     signer_type: str
 
     def sign_typed_payload(
-        self, *, domain: str, account_id: int, payload_hash: str, nonce: int
+        self, *, domain: str, account_id: int, payload_hash: str, nonce: int,
     ) -> str: ...
 
 
@@ -79,7 +79,7 @@ class SoDEXPrivateKeySigner:
     signer_type = "evm-private-key"
 
     def __init__(
-        self, *, private_key: str | None, environment: str = "mainnet"
+        self, *, private_key: str | None, environment: str = "mainnet",
     ) -> None:
         if not private_key:
             raise SoDEXConfigError("SoDEX private key is required for live signing")
@@ -87,7 +87,7 @@ class SoDEXPrivateKeySigner:
         self.environment = environment
 
     def sign_typed_payload(
-        self, *, domain: str, account_id: int, payload_hash: str, nonce: int
+        self, *, domain: str, account_id: int, payload_hash: str, nonce: int,
     ) -> str:
         _validate_domain(domain=domain, environment=self.environment)
         typed_data = build_exchange_action_typed_data(
@@ -99,8 +99,8 @@ class SoDEXPrivateKeySigner:
         return prefixed_eip712_signature(
             "0x"
             + Account.sign_message(
-                encode_typed_data(full_message=typed_data), private_key=self.private_key
-            ).signature.hex()
+                encode_typed_data(full_message=typed_data), private_key=self.private_key,
+            ).signature.hex(),
         )
 
 
@@ -119,7 +119,7 @@ class SoDEXNonceManager:
         if store_path is not None and store_path.exists():
             for key, values in dict(json.loads(store_path.read_text()) or {}).items():
                 self._seen[str(key)] = deque(
-                    [int(v) for v in values], maxlen=self.high_water_size
+                    [int(v) for v in values], maxlen=self.high_water_size,
                 )
 
     def next_nonce(self, api_key_name: str) -> int:
@@ -144,7 +144,7 @@ class SoDEXNonceManager:
             raise SoDEXNonceError("nonce was already used for this API key")
         if seen and value <= min(seen):
             raise SoDEXNonceError(
-                "nonce is not larger than the stored high-water minimum"
+                "nonce is not larger than the stored high-water minimum",
             )
 
     def _sf(self, api_key_name: str) -> deque[int]:
@@ -163,7 +163,7 @@ class SoDEXNonceManager:
             ensure_ascii=True,
         )
         fd, tmp_path = tempfile.mkstemp(
-            prefix=".nonce-", suffix=".tmp", dir=str(self.store_path.parent)
+            prefix=".nonce-", suffix=".tmp", dir=str(self.store_path.parent),
         )
         try:
             with os.fdopen(fd, "w") as fh:
@@ -190,7 +190,7 @@ def validate_account_id(account_id: str | int) -> int:
 def canonical_json(payload: OrderedDict[str, Any]) -> str:
     if not isinstance(payload, OrderedDict):
         raise SoDEXConfigError(
-            "SoDEX signing payload must be an OrderedDict to preserve Go struct field order"
+            "SoDEX signing payload must be an OrderedDict to preserve Go struct field order",
         )
     return json.dumps(_cv(payload), separators=(",", ":"), ensure_ascii=True)
 
@@ -200,7 +200,7 @@ def payload_hash(payload: OrderedDict[str, Any]) -> str:
 
 
 def build_signed_headers(
-    *, api_key_name: str, signature: str, nonce: int
+    *, api_key_name: str, signature: str, nonce: int,
 ) -> dict[str, str]:
     if not api_key_name:
         raise SoDEXConfigError("X-API-Key name is required")
@@ -216,7 +216,7 @@ def build_signed_headers(
 
 
 def build_signature_input(
-    *, domain: str, account_id: int, body: OrderedDict[str, Any], nonce: int
+    *, domain: str, account_id: int, body: OrderedDict[str, Any], nonce: int,
 ) -> dict[str, Any]:
     validate_action_payload(body)
     return {
@@ -261,7 +261,7 @@ def build_eip712_domain(*, domain: str, environment: str = "mainnet") -> dict[st
 
 
 def build_exchange_action_typed_data(
-    *, domain: str, environment: str, payload_hash_value: str, nonce: int
+    *, domain: str, environment: str, payload_hash_value: str, nonce: int,
 ) -> dict[str, Any]:
     if not str(payload_hash_value).startswith("0x"):
         raise SoDEXConfigError("payloadHash must be a 0x-prefixed bytes32 hex string")
@@ -322,7 +322,7 @@ def perps_order_item(
             ("triggerType", trigger_type),
             ("reduceOnly", bool(reduce_only)),
             ("positionSide", int(position_side)),
-        ]
+        ],
     )
 
 
@@ -331,15 +331,15 @@ def _pab(action: str, params: list[tuple[str, Any]]) -> OrderedDict[str, Any]:
 
 
 def perps_new_order_body(
-    *, account_id: int, symbol_id: int, orders: list[OrderedDict[str, Any]]
+    *, account_id: int, symbol_id: int, orders: list[OrderedDict[str, Any]],
 ) -> OrderedDict[str, Any]:
     if not orders:
         raise SoDEXConfigError("Perps order batch cannot be empty")
     if len(orders) > 100:
         raise SoDEXConfigError("Perps order batch cannot exceed 100 orders")
-    if any((not isinstance(order, OrderedDict) for order in orders)):
+    if any(not isinstance(order, OrderedDict) for order in orders):
         raise SoDEXConfigError(
-            "Perps orders must be OrderedDict instances to preserve signing field order"
+            "Perps orders must be OrderedDict instances to preserve signing field order",
         )
     return _pab(
         "newOrder",
@@ -352,7 +352,7 @@ def perps_new_order_body(
 
 
 def perps_update_leverage_body(
-    *, account_id: int, symbol_id: int, leverage: int, margin_mode: int
+    *, account_id: int, symbol_id: int, leverage: int, margin_mode: int,
 ) -> OrderedDict[str, Any]:
     return _pab(
         "updateLeverage",
@@ -366,31 +366,31 @@ def perps_update_leverage_body(
 
 
 def perps_cancel_item(
-    *, symbol_id: int, order_id: int | None = None, cl_ord_id: str | None = None
+    *, symbol_id: int, order_id: int | None = None, cl_ord_id: str | None = None,
 ) -> OrderedDict[str, Any]:
-    if order_id is None and (not cl_ord_id) or (order_id is not None and cl_ord_id):
+    if (order_id is None and (not cl_ord_id)) or (order_id is not None and cl_ord_id):
         raise SoDEXConfigError(
-            "Perps cancel item must provide exactly one of orderID or clOrdID"
+            "Perps cancel item must provide exactly one of orderID or clOrdID",
         )
     return OrderedDict(
         [
             ("symbolID", int(symbol_id)),
             ("orderID", int(order_id) if order_id is not None else None),
             ("clOrdID", cl_ord_id),
-        ]
+        ],
     )
 
 
 def perps_cancel_order_body(
-    *, account_id: int, cancels: list[OrderedDict[str, Any]]
+    *, account_id: int, cancels: list[OrderedDict[str, Any]],
 ) -> OrderedDict[str, Any]:
     if not cancels:
         raise SoDEXConfigError("Perps cancel batch cannot be empty")
     if len(cancels) > 100:
         raise SoDEXConfigError("Perps cancel batch cannot exceed 100 cancels")
-    if any((not isinstance(cancel, OrderedDict) for cancel in cancels)):
+    if any(not isinstance(cancel, OrderedDict) for cancel in cancels):
         raise SoDEXConfigError(
-            "Perps cancels must be OrderedDict instances to preserve signing field order"
+            "Perps cancels must be OrderedDict instances to preserve signing field order",
         )
     return _pab(
         "cancelOrder",
@@ -399,7 +399,7 @@ def perps_cancel_order_body(
 
 
 def perps_schedule_cancel_body(
-    *, account_id: int, scheduled_timestamp: int | None = None
+    *, account_id: int, scheduled_timestamp: int | None = None,
 ) -> OrderedDict[str, Any]:
     return _pab(
         "scheduleCancel",
@@ -414,7 +414,7 @@ def perps_schedule_cancel_body(
 
 
 def perps_update_margin_body(
-    *, account_id: int, symbol_id: int, amount: str
+    *, account_id: int, symbol_id: int, amount: str,
 ) -> OrderedDict[str, Any]:
     if not isinstance(amount, str) or not amount.strip():
         raise SoDEXConfigError("UpdateMargin amount must be a non-empty DecimalString")
@@ -431,16 +431,16 @@ def perps_update_margin_body(
 def _cv(value: object) -> object:
     if isinstance(value, OrderedDict):
         return OrderedDict(
-            ((key, _cv(item)) for key, item in value.items() if item is not None)
+            ((key, _cv(item)) for key, item in value.items() if item is not None),
         )
     if isinstance(value, dict):
         raise SoDEXConfigError(
-            "Nested SoDEX signing payload objects must be OrderedDict"
+            "Nested SoDEX signing payload objects must be OrderedDict",
         )
     if isinstance(value, list):
         return [_cv(item) for item in value]
     if isinstance(value, float):
         raise SoDEXConfigError(
-            "DecimalString fields must remain quoted strings; floats are forbidden in signing payloads"
+            "DecimalString fields must remain quoted strings; floats are forbidden in signing payloads",
         )
     return value

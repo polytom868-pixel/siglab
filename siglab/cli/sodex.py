@@ -50,7 +50,7 @@ def add_subparser(
     vc_parser.add_argument("--json", action="store_true")
     ws_parser = subparsers.add_parser("sodex-ws-probe")
     ws_parser.add_argument(
-        "--environment", choices=["mainnet", "testnet"], default="mainnet"
+        "--environment", choices=["mainnet", "testnet"], default="mainnet",
     )
     ws_parser.add_argument("--market", choices=["spot", "perps"], default="perps")
     ws_parser.add_argument("--channel", default="allBookTicker")
@@ -231,7 +231,7 @@ async def run_sodex_ws_probe(args: argparse.Namespace) -> None:
             if args.evidence_output:
                 settings = load_settings()
                 evidence_output = resolve_path_from_root(
-                    args.evidence_output, root_dir=settings.root_dir
+                    args.evidence_output, root_dir=settings.root_dir,
                 )
                 records = sodex_ws_evidence(
                     update,
@@ -276,25 +276,25 @@ def _sodex_preview_payload(args: argparse.Namespace) -> dict[str, Any]:
         order = perps_order_item(
             cl_ord_id=str(args.cl_ord_id),
             modifier=parse_sodex_enum(
-                args.modifier, SODEX_MODIFIER_ALIASES, "modifier"
+                args.modifier, SODEX_MODIFIER_ALIASES, "modifier",
             ),
             side=parse_sodex_enum(args.side, SODEX_SIDE_ALIASES, "side"),
             order_type=parse_sodex_enum(
-                args.order_type, SODEX_ORDER_TYPE_ALIASES, "order_type"
+                args.order_type, SODEX_ORDER_TYPE_ALIASES, "order_type",
             ),
             time_in_force=parse_sodex_enum(
-                args.time_in_force, SODEX_TIME_IN_FORCE_ALIASES, "time_in_force"
+                args.time_in_force, SODEX_TIME_IN_FORCE_ALIASES, "time_in_force",
             ),
             price=args.price,
             quantity=args.quantity,
             funds=args.funds,
             reduce_only=bool(args.reduce_only),
             position_side=parse_sodex_enum(
-                args.position_side, SODEX_POSITION_SIDE_ALIASES, "position_side"
+                args.position_side, SODEX_POSITION_SIDE_ALIASES, "position_side",
             ),
         )
         request = client.new_order_request(
-            symbol_id=int(args.symbol_id), orders=[order]
+            symbol_id=int(args.symbol_id), orders=[order],
         )
     elif args.kind == "cancel-order":
         cancel = perps_cancel_item(
@@ -305,21 +305,21 @@ def _sodex_preview_payload(args: argparse.Namespace) -> dict[str, Any]:
         request = client.cancel_order_request(cancels=[cancel])
     elif args.kind == "schedule-cancel":
         request = client.schedule_cancel_request(
-            scheduled_timestamp=args.scheduled_timestamp
+            scheduled_timestamp=args.scheduled_timestamp,
         )
     elif args.kind == "update-margin":
         if args.amount is None:
             print("--amount is required for --kind update-margin", file=sys.stderr)
             raise SystemExit(1)
         request = client.update_margin_request(
-            symbol_id=int(args.symbol_id), amount=str(args.amount)
+            symbol_id=int(args.symbol_id), amount=str(args.amount),
         )
     else:
         request = client.update_leverage_request(
             symbol_id=int(args.symbol_id),
             leverage=int(args.leverage),
             margin_mode=parse_sodex_enum(
-                args.margin_mode, SODEX_MARGIN_MODE_ALIASES, "margin_mode"
+                args.margin_mode, SODEX_MARGIN_MODE_ALIASES, "margin_mode",
             ),
         )
     signature_input = build_signature_input(

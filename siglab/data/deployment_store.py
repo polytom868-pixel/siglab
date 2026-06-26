@@ -53,10 +53,10 @@ class DeploymentStore:
     def _init_db(self) -> None:
         with self._connect() as connection:
             connection.execute(
-                "CREATE TABLE IF NOT EXISTS experiments ( spec_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, track TEXT NOT NULL, family TEXT NOT NULL, parent_hash TEXT, spec_json TEXT NOT NULL, research_summary TEXT, aggregate_score REAL NOT NULL, passed INTEGER NOT NULL, deployd INTEGER NOT NULL DEFAULT 0, summary_json TEXT NOT NULL, artifact_path TEXT )"
+                "CREATE TABLE IF NOT EXISTS experiments ( spec_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, track TEXT NOT NULL, family TEXT NOT NULL, parent_hash TEXT, spec_json TEXT NOT NULL, research_summary TEXT, aggregate_score REAL NOT NULL, passed INTEGER NOT NULL, deployd INTEGER NOT NULL DEFAULT 0, summary_json TEXT NOT NULL, artifact_path TEXT )",
             )
             connection.execute(
-                "CREATE TABLE IF NOT EXISTS deployments ( spec_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, strategy_name TEXT NOT NULL, strategy_dir TEXT NOT NULL, spec_path TEXT NOT NULL, manifest_path TEXT NOT NULL, readme_path TEXT NOT NULL, job_name TEXT, interval_seconds INTEGER, wallet_label TEXT, config_path TEXT NOT NULL, scheduled INTEGER NOT NULL DEFAULT 0, dry_run INTEGER NOT NULL DEFAULT 1, llm_finalized INTEGER NOT NULL DEFAULT 0, support_status TEXT NOT NULL, support_reason TEXT, metadata_json TEXT, FOREIGN KEY(spec_hash) REFERENCES experiments(spec_hash) )"
+                "CREATE TABLE IF NOT EXISTS deployments ( spec_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, strategy_name TEXT NOT NULL, strategy_dir TEXT NOT NULL, spec_path TEXT NOT NULL, manifest_path TEXT NOT NULL, readme_path TEXT NOT NULL, job_name TEXT, interval_seconds INTEGER, wallet_label TEXT, config_path TEXT NOT NULL, scheduled INTEGER NOT NULL DEFAULT 0, dry_run INTEGER NOT NULL DEFAULT 1, llm_finalized INTEGER NOT NULL DEFAULT 0, support_status TEXT NOT NULL, support_reason TEXT, metadata_json TEXT, FOREIGN KEY(spec_hash) REFERENCES experiments(spec_hash) )",
             )
             connection.commit()
 
@@ -73,7 +73,7 @@ class DeploymentStore:
     def list_deployments(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT spec_hash, created_at, strategy_name, strategy_dir, spec_path, manifest_path, readme_path, job_name, interval_seconds, wallet_label, config_path, scheduled, dry_run, llm_finalized, support_status, support_reason, metadata_json FROM deployments ORDER BY created_at DESC"
+                "SELECT spec_hash, created_at, strategy_name, strategy_dir, spec_path, manifest_path, readme_path, job_name, interval_seconds, wallet_label, config_path, scheduled, dry_run, llm_finalized, support_status, support_reason, metadata_json FROM deployments ORDER BY created_at DESC",
             ).fetchall()
         return [_deployment_from_row(row) for row in rows]
 

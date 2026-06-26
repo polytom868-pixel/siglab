@@ -46,7 +46,7 @@ MAX_FFILL_BARS = 5
 
 
 def _frame_column_or_default(
-    frame: pd.DataFrame, column: str, *, default: float = 0.0
+    frame: pd.DataFrame, column: str, *, default: float = 0.0,
 ) -> pd.Series:
     if column in frame.columns:
         series = pd.to_numeric(frame[column], errors="coerce")
@@ -81,7 +81,7 @@ def _dedupe_time_index(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def _percentile_map(
-    series: pd.Series, percentiles: list[float]
+    series: pd.Series, percentiles: list[float],
 ) -> dict[str, float | None]:
     clean = (
         pd.to_numeric(series, errors="coerce")
@@ -97,7 +97,7 @@ def _percentile_map(
 
 
 def _aligned_funding_series(
-    prices: pd.DataFrame, funding: pd.DataFrame, symbol: str
+    prices: pd.DataFrame, funding: pd.DataFrame, symbol: str,
 ) -> pd.Series:
     raw = (
         funding[symbol]
@@ -108,7 +108,7 @@ def _aligned_funding_series(
 
 
 def _pair_calibration_snapshot(
-    *, prices: pd.DataFrame, funding: pd.DataFrame, symbols: list[str]
+    *, prices: pd.DataFrame, funding: pd.DataFrame, symbols: list[str],
 ) -> dict[str, Any]:
     if len(symbols) < 2:
         return {}
@@ -127,49 +127,49 @@ def _pair_calibration_snapshot(
     )
     return_spread_24h = asset_1_price.pct_change(24).sub(asset_2_price.pct_change(24))
     residual_z_60 = pair_ratio.sub(pair_ratio.rolling(60).mean()).div(
-        pair_ratio.rolling(60).std().replace(0.0, pd.NA)
+        pair_ratio.rolling(60).std().replace(0.0, pd.NA),
     )
     return {
         "pair": [asset_1_symbol, asset_2_symbol],
         "sample_bars": int(prices.index.shape[0]),
         "funding_spread_percentiles": _percentile_map(
-            funding_spread, [5, 25, 50, 75, 95]
+            funding_spread, [5, 25, 50, 75, 95],
         ),
         "pair_volatility_72h_percentiles": _percentile_map(
-            pair_volatility_72h, [25, 50, 75, 95]
+            pair_volatility_72h, [25, 50, 75, 95],
         ),
         "pair_correlation_72h_percentiles": _percentile_map(
-            pair_correlation_72h, [10, 25, 50, 75, 90]
+            pair_correlation_72h, [10, 25, 50, 75, 90],
         ),
         "return_spread_24h_percentiles": _percentile_map(
-            return_spread_24h, [5, 25, 50, 75, 95]
+            return_spread_24h, [5, 25, 50, 75, 95],
         ),
         "residual_z_60_percentiles": _percentile_map(
-            residual_z_60, [10, 25, 50, 75, 90]
+            residual_z_60, [10, 25, 50, 75, 90],
         ),
         "observed_fractions": {
             "funding_spread_positive_fraction": _safe_float(
-                (funding_spread > 0.0).mean()
+                (funding_spread > 0.0).mean(),
             ),
             "funding_spread_negative_fraction": _safe_float(
-                (funding_spread < 0.0).mean()
+                (funding_spread < 0.0).mean(),
             ),
             "pair_correlation_non_negative_fraction": _safe_float(
-                (pair_correlation_72h >= 0.0).mean()
+                (pair_correlation_72h >= 0.0).mean(),
             ),
         },
     }
 
 
 def _align_perp_bundle_frames(
-    prices: pd.DataFrame, funding: pd.DataFrame
+    prices: pd.DataFrame, funding: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     prices = _dedupe_time_index(prices)
     funding = _dedupe_time_index(funding)
     prices = prices.dropna(how="any")
     if prices.empty:
         raise ValueError(
-            "Perp bundle has no common non-null price coverage across requested symbols"
+            "Perp bundle has no common non-null price coverage across requested symbols",
         )
     funding = (
         funding.reindex(prices.index)
@@ -218,6 +218,7 @@ class MarketDataProvider:
         self._warm_cache: dict[str, Any] = {}
         self._bundle_components: list[dict[str, Any]] = []
         self._bundle_manifest: dict[str, Any] = {}
+        self.delta_lab: Any = None
         atexit.register(self._close_sync)
 
     def _close_sync(self) -> None:
@@ -240,19 +241,19 @@ class MarketDataProvider:
     async def close(self) -> None:
         atexit.unregister(self._close_sync)
         logger.info(
-            "data_pipeline_metrics %s", json.dumps(self.metrics_snapshot(), default=str)
+            "data_pipeline_metrics %s", json.dumps(self.metrics_snapshot(), default=str),
         )
         await self.sosovalue.close()
         if self.sodex_feeds is not None:
             await self.sodex_feeds.close()
 
     def begin_iteration_bundle(
-        self, *, track: str, parent: SignalSpec
+        self, *, track: str, parent: SignalSpec,
     ) -> dict[str, Any]:
         as_of = datetime.now(UTC).replace(microsecond=0)
         resolved_track = cast(str, resolve_track(track))
         payload = jsonable_iteration_payload(
-            track=resolved_track, parent_hash=parent.strategy_hash(), as_of=as_of
+            track=resolved_track, parent_hash=parent.strategy_hash(), as_of=as_of,
         )
         bundle_id = short_hash(payload)
         self._active_bundle_id = bundle_id
@@ -286,7 +287,7 @@ class MarketDataProvider:
         self._bundle_manifest = {}
 
     async def build_research_summary(
-        self, track: str, parent: SignalSpec
+        self, track: str, parent: SignalSpec,
     ) -> dict[str, Any]:
         track = cast(str, resolve_track(track) if track is not None else "default")
         summary: dict[str, Any] = {
@@ -300,10 +301,10 @@ class MarketDataProvider:
         if track == "yield_flows" and (not pps):
             pps = ["BTC", "ETH", "SOL", "HYPE", "DOGE"]
         symbols = await self.discover_perp_symbols(
-            pps, limit=min(max(parent.universe.max_symbols, 5), 5)
+            pps, limit=min(max(parent.universe.max_symbols, 5), 5),
         )
         perp_bundle = await self.fetch_perp_bundle(
-            symbols=symbols, lookback_days=21, interval="1h"
+            symbols=symbols, lookback_days=21, interval="1h",
         )
         if not perp_bundle["prices"].empty:
             prices = perp_bundle["prices"]
@@ -321,14 +322,14 @@ class MarketDataProvider:
                 {
                     "symbol": symbol,
                     "return_7d": _safe_float(
-                        prices[symbol].pct_change(24 * 7).iloc[-1]
+                        prices[symbol].pct_change(24 * 7).iloc[-1],
                     ),
                     "funding_72h_mean": _safe_float(funding[symbol].tail(72).mean()),
                 }
                 for symbol in prices.columns[:5]
             ]
             if pc := _pair_calibration_snapshot(
-                prices=prices, funding=funding, symbols=symbols
+                prices=prices, funding=funding, symbols=symbols,
             ):
                 summary["pair_calibration"] = pc
         if track == "yield_flows":
@@ -377,7 +378,7 @@ class MarketDataProvider:
                 self.discover_stable_pt_markets(su, limit=min(su.max_symbols, 5)),
                 self.discover_pt_markets(ru, limit=min(ru.max_symbols, 5)),
                 self.discover_lending_markets(
-                    lu, limit=min(parent.universe.max_symbols, 5)
+                    lu, limit=min(parent.universe.max_symbols, 5),
                 ),
             )
             summary["stable_pt_markets"] = [
@@ -441,20 +442,20 @@ class MarketDataProvider:
         return summary
 
     async def discover_perp_symbols(
-        self, symbols: list[str], *, limit: int
+        self, symbols: list[str], *, limit: int,
     ) -> list[str]:
         symbols = _sanitize_perp_symbols(symbols)
         wk = self._warm_cache_key(
-            "perp_symbols", preferred_symbols=symbols, limit=limit
+            "perp_symbols", preferred_symbols=symbols, limit=limit,
         )
         if wk in self._warm_cache:
             return list(self._warm_cache[wk])[: max(1, int(limit))]
         if hasattr(self, "delta_lab") and hasattr(self.delta_lab, "get_basis_symbols"):
             rows = list(
-                ((await self.delta_lab.get_basis_symbols()) or {}).get("symbols") or []
+                ((await self.delta_lab.get_basis_symbols()) or {}).get("symbols") or [],
             )
             discovered = _sanitize_perp_symbols(
-                [str(r.get("symbol") or "") for r in rows]
+                [str(r.get("symbol") or "") for r in rows],
             )
             if discovered:
                 resolved = (symbols or discovered)[: max(1, int(limit))]
@@ -465,12 +466,12 @@ class MarketDataProvider:
         return resolved
 
     async def fetch_perp_bundle(
-        self, *, symbols: list[str], lookback_days: int, interval: str
+        self, *, symbols: list[str], lookback_days: int, interval: str,
     ) -> dict[str, Any]:
         symbols = _sanitize_perp_symbols(symbols)
         if not symbols:
             raise ValueError(
-                "No supported perp symbols after filtering synthetic stable labels"
+                "No supported perp symbols after filtering synthetic stable labels",
             )
         ck = self._bundle_cache_key(
             "perp_bundle",
@@ -490,33 +491,34 @@ class MarketDataProvider:
             bundle = self._bind_bundle_to_active_context(self._warm_cache[wk])
             self._bundle_cache[ck] = copy.deepcopy(bundle)
             self._persist_bundle_frames(
-                ck, prices=bundle["prices"], funding=bundle["funding"]
+                ck, prices=bundle["prices"], funding=bundle["funding"],
             )
             return bundle
+        delta_lab_fn = getattr(self, "_fetch_perp_bundle_delta_lab", None)
         bundle = await (
-            self._fetch_perp_bundle_delta_lab(
-                symbols=symbols, lookback_days=lookback_days, interval=interval
+            delta_lab_fn(
+                symbols=symbols, lookback_days=lookback_days, interval=interval,
             )
-            if hasattr(self, "_fetch_perp_bundle_delta_lab")
+            if delta_lab_fn is not None
             else self._fetch_perp_bundle_sodex(
-                symbols=symbols, lookback_days=lookback_days, interval=interval
+                symbols=symbols, lookback_days=lookback_days, interval=interval,
             )
         )
         self._warm_cache[wk] = copy.deepcopy(bundle)
         bundle = self._bind_bundle_to_active_context(bundle)
         self._bundle_cache[ck] = copy.deepcopy(bundle)
         self._persist_bundle_frames(
-            ck, prices=bundle["prices"], funding=bundle["funding"]
+            ck, prices=bundle["prices"], funding=bundle["funding"],
         )
         return bundle
 
     async def discover_stable_pt_markets(
-        self, universe: AssetUniverse, *, limit: int
+        self, universe: AssetUniverse, *, limit: int,
     ) -> list[dict[str, Any]]:
         return await self.discover_pt_markets(universe, limit=limit, stable_only=True)
 
     async def discover_pt_markets(
-        self, universe: AssetUniverse, *, limit: int, stable_only: bool = False
+        self, universe: AssetUniverse, *, limit: int, stable_only: bool = False,
     ) -> list[dict[str, Any]]:
         bundle_cache_key = self._bundle_cache_key(
             "pt_markets",
@@ -538,7 +540,7 @@ class MarketDataProvider:
         return []
 
     async def fetch_pt_histories(
-        self, markets: list[dict[str, Any]], *, lookback_days: int
+        self, markets: list[dict[str, Any]], *, lookback_days: int,
     ) -> dict[str, pd.DataFrame]:
         if not markets:
             return {}
@@ -556,7 +558,7 @@ class MarketDataProvider:
             cached = None
             if self._active_bundle_id is None:
                 cached = self.lake.latest_frame(
-                    "pendle_history", label, max_age_hours=24
+                    "pendle_history", label, max_age_hours=24,
                 )
             if cached is not None:
                 return (label, cached)
@@ -572,7 +574,7 @@ class MarketDataProvider:
         return histories
 
     async def discover_lending_markets(
-        self, universe: AssetUniverse, *, limit: int
+        self, universe: AssetUniverse, *, limit: int,
     ) -> list[dict[str, Any]]:
         bundle_cache_key = self._bundle_cache_key(
             "lending_markets",
@@ -608,7 +610,7 @@ class MarketDataProvider:
                 )
             except Exception:
                 logger.exception(
-                    "delta_lab.screen_lending failed for basis=%s, skipping", basis
+                    "delta_lab.screen_lending failed for basis=%s, skipping", basis,
                 )
                 continue
             for row in payload.get("data") or []:
@@ -627,7 +629,7 @@ class MarketDataProvider:
                 )
                 key = enriched["marketLabel"]
                 if key not in discovered or float(
-                    enriched.get("combined_net_supply_apr_now") or 0.0
+                    enriched.get("combined_net_supply_apr_now") or 0.0,
                 ) > float(discovered[key].get("combined_net_supply_apr_now") or 0.0):
                     discovered[key] = enriched
         ordered = sorted(
@@ -641,7 +643,7 @@ class MarketDataProvider:
         return ordered[:limit]
 
     async def fetch_lending_bundle(
-        self, markets: list[dict[str, Any]], *, lookback_days: int
+        self, markets: list[dict[str, Any]], *, lookback_days: int,
     ) -> dict[str, Any]:
         bundle_cache_key = self._bundle_cache_key(
             "lending_bundle",
@@ -710,7 +712,7 @@ class MarketDataProvider:
             lending_df = lending_df.copy()
             price_df.index = pd.to_datetime(price_df.index, utc=True).tz_convert(None)
             lending_df.index = pd.to_datetime(lending_df.index, utc=True).tz_convert(
-                None
+                None,
             )
             root_price = price_df["price_usd"].astype(float)
             for market in basis_markets:
@@ -724,13 +726,13 @@ class MarketDataProvider:
                     continue
                 market_df = market_df.groupby(level=0).last().sort_index()
                 supply_apr = _frame_column_or_default(market_df, "supply_apr").rename(
-                    label
+                    label,
                 )
                 reward_apr = _frame_column_or_default(
-                    market_df, "supply_reward_apr"
+                    market_df, "supply_reward_apr",
                 ).rename(label)
                 base_yield = _frame_column_or_default(
-                    market_df, "base_yield_apy"
+                    market_df, "base_yield_apy",
                 ).rename(label)
                 combined_supply = (
                     _frame_column_or_default(market_df, "combined_supply_apy")
@@ -740,8 +742,8 @@ class MarketDataProvider:
                 )
                 combined_supply = combined_supply.fillna(
                     supply_apr.add(reward_apr, fill_value=0.0).add(
-                        base_yield, fill_value=0.0
-                    )
+                        base_yield, fill_value=0.0,
+                    ),
                 )
                 price_series.append(root_price.rename(label))
                 combined_supply_series.append(combined_supply)
@@ -749,16 +751,16 @@ class MarketDataProvider:
                 reward_series.append(reward_apr)
                 base_yield_series.append(base_yield)
                 util_series.append(
-                    _frame_column_or_default(market_df, "utilization").rename(label)
+                    _frame_column_or_default(market_df, "utilization").rename(label),
                 )
                 supply_tvl_series.append(
-                    _frame_column_or_default(market_df, "supply_tvl_usd").rename(label)
+                    _frame_column_or_default(market_df, "supply_tvl_usd").rename(label),
                 )
                 borrow_apr_series.append(
-                    _frame_column_or_default(market_df, "borrow_apr").rename(label)
+                    _frame_column_or_default(market_df, "borrow_apr").rename(label),
                 )
                 borrow_tvl_series.append(
-                    _frame_column_or_default(market_df, "borrow_tvl_usd").rename(label)
+                    _frame_column_or_default(market_df, "borrow_tvl_usd").rename(label),
                 )
                 hedge_symbols[label] = str(market.get("hedgeSymbol") or "")
         if not price_series:
@@ -813,7 +815,7 @@ class MarketDataProvider:
         }
         self._bundle_cache[bundle_cache_key] = copy.deepcopy(bundle)
         self._persist_bundle_frames(
-            f"{bundle_cache_key}__prices", prices=cast(pd.DataFrame, bundle["prices"])
+            f"{bundle_cache_key}__prices", prices=cast(pd.DataFrame, bundle["prices"]),
         )
         return bundle
 
@@ -824,17 +826,17 @@ class MarketDataProvider:
 
     def lending_market_label(self, row: dict[str, Any]) -> str:
         venue = re.sub(
-            "[^A-Za-z0-9]+", "_", str(row.get("venue_name") or "lending")
+            "[^A-Za-z0-9]+", "_", str(row.get("venue_name") or "lending"),
         ).strip("_")
         symbol = re.sub("[^A-Za-z0-9]+", "_", str(row.get("symbol") or "asset")).strip(
-            "_"
+            "_",
         )
         market_id = str(row.get("market_id") or "0")
         basis = str(row.get("basisSymbol") or "basis")
         return f"{basis}_{symbol}_{venue}_{market_id}"
 
     def market_hedge_symbol(
-        self, row: dict[str, Any], *, preferred_symbols: list[str] | None = None
+        self, row: dict[str, Any], *, preferred_symbols: list[str] | None = None,
     ) -> str | None:
         market_name = str(row.get("marketName") or "").upper()
         symbol_pool = preferred_symbols or MAJOR_PERP_SYMBOLS
@@ -850,7 +852,7 @@ class MarketDataProvider:
         return group.upper() in market_name.upper()
 
     async def _fetch_perp_bundle_sodex(
-        self, *, symbols: list[str], lookback_days: int, interval: str
+        self, *, symbols: list[str], lookback_days: int, interval: str,
     ) -> dict[str, Any]:
         from siglab.data.sodex_feeds import SoDEXFeeds
 
@@ -859,7 +861,7 @@ class MarketDataProvider:
         as_of = self._active_as_of or datetime.now(UTC)
         interval_hours = _interval_to_hours(interval)
         num_bars = max(
-            100, min(1000, int(lookback_days * 24.0 / max(interval_hours, 1.0)))
+            100, min(1000, int(lookback_days * 24.0 / max(interval_hours, 1.0))),
         )
         price_series_list: list[pd.Series] = []
         valid_symbols: list[str] = []
@@ -867,11 +869,11 @@ class MarketDataProvider:
             sodex_symbol = f"{base_symbol}-USD"
             try:
                 klines = await self.sodex_feeds.fetch_klines(
-                    symbol=sodex_symbol, interval=interval, limit=num_bars
+                    symbol=sodex_symbol, interval=interval, limit=num_bars,
                 )
             except Exception:
                 logger.exception(
-                    "SoDEX klines fetch failed for %s, skipping", sodex_symbol
+                    "SoDEX klines fetch failed for %s, skipping", sodex_symbol,
                 )
                 continue
             if klines is not None and (not klines.empty):
@@ -880,13 +882,13 @@ class MarketDataProvider:
                 valid_symbols.append(base_symbol)
         if not price_series_list:
             raise ValueError(
-                "SoDEX returned no kline data for any requested symbol; cannot build perp bundle"
+                "SoDEX returned no kline data for any requested symbol; cannot build perp bundle",
             )
         prices = pd.concat(price_series_list, axis=1).sort_index()
         prices = prices.ffill(limit=MAX_FFILL_BARS).dropna(how="any")
         if prices.empty:
             raise ValueError(
-                "No common non-null price coverage after aligning SoDEX klines"
+                "No common non-null price coverage after aligning SoDEX klines",
             )
         funding_rate_map: dict[str, float] = {}
         try:
@@ -899,7 +901,7 @@ class MarketDataProvider:
                         funding_rate_map[base] = float(mp.get("fundingRate") or 0.0)
         except Exception:
             logger.exception(
-                "SoDEX mark_prices fetch failed; funding snapshots unavailable"
+                "SoDEX mark_prices fetch failed; funding snapshots unavailable",
             )
         funding_series_list: list[pd.Series] = []
         start_ms = int(prices.index.min().timestamp() * 1000)
@@ -908,7 +910,7 @@ class MarketDataProvider:
             sodex_symbol = f"{base_symbol}-USD"
             try:
                 history = await self.sodex_feeds._client.funding_history(
-                    sodex_symbol, start_time=start_ms, end_time=end_ms
+                    sodex_symbol, start_time=start_ms, end_time=end_ms,
                 )
                 if history:
                     hist_df = pd.DataFrame(history)
@@ -918,7 +920,7 @@ class MarketDataProvider:
                         else "timestamp"
                     )
                     hist_df["timestamp"] = pd.to_datetime(
-                        hist_df[time_col], unit="ms", utc=True
+                        hist_df[time_col], unit="ms", utc=True,
                     )
                     hist_df = hist_df.set_index("timestamp").sort_index()
                     fs = hist_df["fundingRate"].astype(float).rename(base_symbol)
@@ -931,7 +933,7 @@ class MarketDataProvider:
                     )
             except Exception:
                 logger.exception(
-                    "funding_history failed for %s, using latest snapshot", sodex_symbol
+                    "funding_history failed for %s, using latest snapshot", sodex_symbol,
                 )
                 fs = pd.Series(
                     funding_rate_map.get(base_symbol, 0.0),
@@ -947,7 +949,7 @@ class MarketDataProvider:
         source = "sodex_perp_klines"
         self.lake.write_frame("sodex_perp", f"prices_{short_hash(str(as_of))}", prices)
         self.lake.write_frame(
-            "sodex_perp", f"funding_{short_hash(str(as_of))}", funding
+            "sodex_perp", f"funding_{short_hash(str(as_of))}", funding,
         )
         return {
             "prices": prices,
@@ -958,7 +960,7 @@ class MarketDataProvider:
         }
 
     async def fetch_etf_historical_inflow(
-        self, *, etf_type: str = "us-btc-spot"
+        self, *, etf_type: str = "us-btc-spot",
     ) -> list[dict[str, Any]]:
         cache_key = f"historical_inflow_{etf_type}"
         cached = None
@@ -987,7 +989,7 @@ class MarketDataProvider:
         )
         normalized = [self._normalize_news_item(row) for row in rows]
         self.lake.write_json(
-            "sosovalue_news", f"featured_{page_num}_{page_size}", normalized
+            "sosovalue_news", f"featured_{page_num}_{page_size}", normalized,
         )
         return normalized
 
@@ -1031,22 +1033,22 @@ class MarketDataProvider:
     ) -> None:
         self.lake.write_frame("market_bundle_prices", cache_key, prices)
         self._record_bundle_component(
-            namespace="market_bundle_prices", cache_key=cache_key, kind="frame"
+            namespace="market_bundle_prices", cache_key=cache_key, kind="frame",
         )
         if funding is not None:
             self.lake.write_frame("market_bundle_funding", cache_key, funding)
             self._record_bundle_component(
-                namespace="market_bundle_funding", cache_key=cache_key, kind="frame"
+                namespace="market_bundle_funding", cache_key=cache_key, kind="frame",
             )
 
     def _persist_bundle_json(self, cache_key: str, payload: object) -> None:
         self.lake.write_json("market_bundle_json", cache_key, payload)
         self._record_bundle_component(
-            namespace="market_bundle_json", cache_key=cache_key, kind="json"
+            namespace="market_bundle_json", cache_key=cache_key, kind="json",
         )
 
     def _record_bundle_component(
-        self, *, namespace: str, cache_key: str, kind: str
+        self, *, namespace: str, cache_key: str, kind: str,
     ) -> None:
         if self._active_bundle_id is None:
             return
@@ -1081,24 +1083,22 @@ def jsonable_dict(payload: dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True, default=str)
 
 
-# ── SoSoValue client (merged from sosovalue_client.py) ──────────────────
-try:
-    import orjson as _orjson
 
-    _HAS_ORJSON = True
-except ImportError:
-    _HAS_ORJSON = False
+
 
 
 def _fast_json_loads(data: bytes) -> Any:
-    if _HAS_ORJSON:
-        return _orjson.loads(data)
-    return json.loads(data)
+    try:
+        import orjson
+
+        return orjson.loads(data)
+    except ImportError:
+        return json.loads(data)
 
 
 class SoSoValueApiError(RuntimeError):
     def __init__(
-        self, message: str, *, status_code: int | None = None, payload: object = None
+        self, message: str, *, status_code: int | None = None, payload: object = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -1190,7 +1190,7 @@ class SoSoValueClient:
         self._owns_client = client is None
         self._semaphore = asyncio.Semaphore(max(1, int(max_concurrency)))
         self.conservative_rate_limit_per_minute = int(
-            conservative_rate_limit_per_minute
+            conservative_rate_limit_per_minute,
         )
         self._rate_limit_events: deque[float] = deque()
         self._rate_limit_lock = asyncio.Lock()
@@ -1221,7 +1221,7 @@ class SoSoValueClient:
             await self._client.aclose()
 
     async def etf_historical_inflow(
-        self, *, etf_type: str = "us-btc-spot"
+        self, *, etf_type: str = "us-btc-spot",
     ) -> list[dict[str, Any]]:
         spec = SoSoValueRequestSpec(
             name="etf.historical_inflow",
@@ -1244,7 +1244,7 @@ class SoSoValueClient:
         return self._rows_from_data(payload.get("data"), spec)
 
     async def etf_current_metrics(
-        self, *, etf_type: str = "us-btc-spot"
+        self, *, etf_type: str = "us-btc-spot",
     ) -> dict[str, Any]:
         spec = SoSoValueRequestSpec(
             name="etf.current_metrics",
@@ -1258,7 +1258,7 @@ class SoSoValueClient:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise SoSoValueApiError(
-                "etf.current_metrics data was not an object", payload=data
+                "etf.current_metrics data was not an object", payload=data,
             )
         self._validate_etf_current_metrics(data)
         return dict(data)
@@ -1290,7 +1290,7 @@ class SoSoValueClient:
             params["currencyId"] = int(currency_id)
         if category_list:
             params["categoryList"] = ",".join(
-                (str(int(value)) for value in category_list)
+                str(int(value)) for value in category_list
             )
         return params
 
@@ -1302,7 +1302,7 @@ class SoSoValueClient:
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
         params = self._build_news_params(
-            page_num=page_num, page_size=page_size, category_list=category_list
+            page_num=page_num, page_size=page_size, category_list=category_list,
         )
         spec = SoSoValueRequestSpec(
             name="news.featured",
@@ -1371,13 +1371,13 @@ class SoSoValueClient:
         )
 
     async def _paginate(
-        self, fetch_page: Any, max_pages: int, **page_kwargs: Any
+        self, fetch_page: Any, max_pages: int, **page_kwargs: Any,
     ) -> list[dict[str, Any]]:
         pages = await asyncio.gather(
             *(
                 fetch_page(page_num=page_num, **page_kwargs)
                 for page_num in range(1, max(1, int(max_pages)) + 1)
-            )
+            ),
         )
         rows: list[dict[str, Any]] = []
         for page_rows in pages:
@@ -1389,7 +1389,7 @@ class SoSoValueClient:
     async def request(self, spec: SoSoValueRequestSpec) -> dict[str, Any]:
         if not self.is_configured:
             raise SoSoValueConfigError(
-                "SOSOVALUE_API_KEY is required for SoSoValue API calls"
+                "SOSOVALUE_API_KEY is required for SoSoValue API calls",
             )
         key = self._cache_key(spec)
         if self._cache_enabled and spec.ttl_s > 0:
@@ -1412,7 +1412,7 @@ class SoSoValueClient:
                 self._inflight.pop(key, None)
 
     async def _request_uncached(
-        self, spec: SoSoValueRequestSpec, cache_key: str
+        self, spec: SoSoValueRequestSpec, cache_key: str,
     ) -> dict[str, Any]:
         metrics = self._endpoint_metrics(spec.name)
         last_error: SoSoValueApiError | None = None
@@ -1451,7 +1451,7 @@ class SoSoValueClient:
             else:
                 await asyncio.sleep(self._backoff_s(attempt))
         raise last_error or SoSoValueTransportError(
-            f"{spec.name} request failed without a captured error"
+            f"{spec.name} request failed without a captured error",
         )
 
     async def _single_http_attempt(self, spec: SoSoValueRequestSpec) -> dict[str, Any]:
@@ -1479,16 +1479,16 @@ class SoSoValueClient:
             TimeoutError,
         ) as exc:
             raise SoSoValueTransportError(
-                f"{spec.name} transport failure: {exc}"
+                f"{spec.name} transport failure: {exc}",
             ) from exc
         except httpx.HTTPError as exc:
             raise SoSoValueTransportError(
-                f"{spec.name} HTTP transport failure: {exc}"
+                f"{spec.name} HTTP transport failure: {exc}",
             ) from exc
         status = int(response.status_code)
         if status in (401, 403):
             raise SoSoValueAuthError(
-                f"{spec.name} auth failed with HTTP {status}", status_code=status
+                f"{spec.name} auth failed with HTTP {status}", status_code=status,
             )
         if status == 429:
             retry_after: float | None = None
@@ -1503,13 +1503,13 @@ class SoSoValueClient:
             )
         if status >= 400:
             raise SoSoValueApiError(
-                f"{spec.name} upstream HTTP {status}", status_code=status
+                f"{spec.name} upstream HTTP {status}", status_code=status,
             )
         try:
             payload = _fast_json_loads(response.content)
         except ValueError as exc:
             raise SoSoValueApiError(
-                f"{spec.name} returned malformed JSON", status_code=status
+                f"{spec.name} returned malformed JSON", status_code=status,
             ) from exc
         return self._validate_payload(spec, payload, status)
 
@@ -1523,7 +1523,7 @@ class SoSoValueClient:
         return False
 
     def _validate_payload(
-        self, spec: SoSoValueRequestSpec, payload: object, status_code: int
+        self, spec: SoSoValueRequestSpec, payload: object, status_code: int,
     ) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise SoSoValueApiError(
@@ -1536,7 +1536,7 @@ class SoSoValueClient:
             message = str(
                 payload.get("msg")
                 or payload.get("message")
-                or "SoSoValue API returned a non-zero code"
+                or "SoSoValue API returned a non-zero code",
             )
             raise SoSoValueApiError(message, status_code=status_code, payload=payload)
         if "data" in payload:
@@ -1544,23 +1544,23 @@ class SoSoValueClient:
         return payload
 
     def _rows_from_data(
-        self, data: object, spec: SoSoValueRequestSpec
+        self, data: object, spec: SoSoValueRequestSpec,
     ) -> list[dict[str, Any]]:
         needs_validation = bool(spec.identity_fields or spec.required_fields)
         if isinstance(data, list):
-            if not needs_validation and all((isinstance(r, dict) for r in data)):
+            if not needs_validation and all(isinstance(r, dict) for r in data):
                 if spec.require_non_empty and (not data):
                     raise SoSoValueApiError(
-                        f"{spec.name} returned empty data", payload=data
+                        f"{spec.name} returned empty data", payload=data,
                     )
                 return data
             rows = [dict(r) for r in data if isinstance(r, dict)]
         elif isinstance(data, dict) and isinstance(data.get("list"), list):
             lst = data["list"]
-            if not needs_validation and all((isinstance(r, dict) for r in lst)):
+            if not needs_validation and all(isinstance(r, dict) for r in lst):
                 if spec.require_non_empty and (not lst):
                     raise SoSoValueApiError(
-                        f"{spec.name} returned empty data", payload=data
+                        f"{spec.name} returned empty data", payload=data,
                     )
                 return lst
             rows = [dict(r) for r in lst if isinstance(r, dict)]
@@ -1568,7 +1568,7 @@ class SoSoValueClient:
             if not needs_validation:
                 if spec.require_non_empty:
                     raise SoSoValueApiError(
-                        f"{spec.name} returned empty data", payload=data
+                        f"{spec.name} returned empty data", payload=data,
                     )
                 return [data]
             rows = [dict(data)]
@@ -1576,13 +1576,13 @@ class SoSoValueClient:
             rows = []
         else:
             raise SoSoValueApiError(
-                f"{spec.name} data had unsupported shape", payload=data
+                f"{spec.name} data had unsupported shape", payload=data,
             )
         if spec.require_non_empty and (not rows):
             raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
         if needs_validation:
             optional = tuple(
-                (f for f in spec.required_fields if f not in spec.identity_fields)
+                f for f in spec.required_fields if f not in spec.identity_fields
             )
             for idx, row in enumerate(rows):
                 missing_id = [f for f in spec.identity_fields if f not in row]
@@ -1599,19 +1599,17 @@ class SoSoValueClient:
             lst = data["list"]
         elif isinstance(data, list):
             lst = data
-        elif data is None or data == "":
-            return
-        elif isinstance(data, dict):
+        elif data is None or data == "" or isinstance(data, dict):
             return
         else:
             raise SoSoValueApiError(
-                f"{spec.name} data had unsupported shape", payload=data
+                f"{spec.name} data had unsupported shape", payload=data,
             )
         if spec.require_non_empty and (not lst):
             raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
         if spec.identity_fields or spec.required_fields:
             optional = tuple(
-                (f for f in spec.required_fields if f not in spec.identity_fields)
+                f for f in spec.required_fields if f not in spec.identity_fields
             )
             for idx, row in enumerate(lst):
                 if not isinstance(row, dict):
@@ -1718,11 +1716,11 @@ class SoSoValueClient:
     def _validate_news_page_size(self, page_size: int) -> None:
         if int(page_size) < 1 or int(page_size) > 100:
             raise SoSoValueConfigError(
-                "SoSoValue news pageSize must be between 1 and 100"
+                "SoSoValue news pageSize must be between 1 and 100",
             )
 
     def _fill_optional_fields(
-        self, row: dict[str, Any], fields: tuple[str, ...], label: str
+        self, row: dict[str, Any], fields: tuple[str, ...], label: str,
     ) -> None:
         missing = [f for f in fields if f not in row]
         if missing:
@@ -1760,7 +1758,7 @@ class SoSoValueClient:
         rows = data.get("list")
         if not isinstance(rows, list) or not rows:
             raise SoSoValueApiError(
-                "etf.current_metrics returned no ETF rows", payload=data
+                "etf.current_metrics returned no ETF rows", payload=data,
             )
         row_optional = (
             "id",
@@ -1776,7 +1774,7 @@ class SoSoValueClient:
         for idx, row in enumerate(rows):
             if not isinstance(row, dict):
                 raise SoSoValueApiError(
-                    f"etf.current_metrics row {idx} was not an object", payload=row
+                    f"etf.current_metrics row {idx} was not an object", payload=row,
                 )
             if "ticker" not in row:
                 raise SoSoValueApiError(
@@ -1784,7 +1782,7 @@ class SoSoValueClient:
                     payload=row,
                 )
             self._fill_optional_fields(
-                row, row_optional, f"etf.current_metrics row {idx}"
+                row, row_optional, f"etf.current_metrics row {idx}",
             )
 
     def _endpoint_metrics(self, name: str) -> _EndpointMetrics:
@@ -1841,7 +1839,6 @@ class SoSoValueClient:
                 return ssl.create_default_context(cafile=str(path))
         except (ssl.SSLError, OSError, ImportError, FileNotFoundError):
             logger.debug(
-                "certifi SSL context creation also failed, disabling verification"
+                "certifi SSL context creation also failed, disabling verification",
             )
-            pass
         return True

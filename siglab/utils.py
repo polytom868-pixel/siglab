@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import Any, Awaitable, Callable, Sequence, cast
+from typing import Any, cast
+from collections.abc import Awaitable, Callable, Sequence
 
 
 def percentile(values: list[float], percentile: int) -> float | None:
@@ -14,8 +15,8 @@ def percentile(values: list[float], percentile: int) -> float | None:
     if n == 1:
         return float(ordered[0])
     rank = percentile / 100.0 * (n - 1)
-    lower_idx = min(max(int(math.floor(rank)), 0), n - 1)
-    upper_idx = min(max(int(math.ceil(rank)), 0), n - 1)
+    lower_idx = min(max(math.floor(rank), 0), n - 1)
+    upper_idx = min(max(math.ceil(rank), 0), n - 1)
     if lower_idx == upper_idx:
         return float(ordered[lower_idx])
     frac = rank - lower_idx
@@ -23,7 +24,7 @@ def percentile(values: list[float], percentile: int) -> float | None:
 
 
 def safe_float(
-    value: float | int | str | None, *, digits: int = 8, default: float | None = None
+    value: float | str | None, *, digits: int = 8, default: float | None = None,
 ) -> float | None:
     """Convert value to float safely. Returns default on failure, None, or NaN."""
     if value is None:
@@ -52,7 +53,7 @@ h = hashlib.sha256
 
 def feature_hash(features: list[str], length: int = 16) -> str:
     """Deterministic hash of a feature list. Order-independent."""
-    payload = "|".join(sorted((str(f) for f in features)))
+    payload = "|".join(sorted(str(f) for f in features))
     return h(payload.encode("utf-8")).hexdigest()[:length]
 
 
@@ -96,13 +97,13 @@ async def run_with_backoff(
             import logging
 
             logging.getLogger(__name__).exception(
-                "run_with_backoff attempt %d/%d failed, retrying", attempt, max_retries
+                "run_with_backoff attempt %d/%d failed, retrying", attempt, max_retries,
             )
             await asyncio.sleep(backoff_s * 2 ** (attempt - 1))
 
 
 async def async_limiter_call(
-    callable: Callable[[], Awaitable[Any]], *, rate_limit: int = 20
+    callable: Callable[[], Awaitable[Any]], *, rate_limit: int = 20,
 ) -> Any:
     import asyncio
 

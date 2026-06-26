@@ -131,10 +131,10 @@ class LiveDeploymentManager:
         gates_passed, gate_reasons = evaluate_gates(track, summary)
         if not gates_passed:
             raise ValueError(
-                f"Deployment refused — {len(gate_reasons)} gate(s) failed: {'; '.join(gate_reasons)}"
+                f"Deployment refused — {len(gate_reasons)} gate(s) failed: {'; '.join(gate_reasons)}",
             )
         resolved_config_path = resolve_path_from_root(
-            config_path, root_dir=self.settings.root_dir
+            config_path, root_dir=self.settings.root_dir,
         )
         self._preflight_deploy_boundary(
             resolved_config_path=resolved_config_path,
@@ -146,7 +146,7 @@ class LiveDeploymentManager:
         readiness = deployment_readiness(detail)
         if not readiness["supported"]:
             raise ValueError(
-                "; ".join(readiness["reasons"]) or "Experiment is not live-exportable"
+                "; ".join(readiness["reasons"]) or "Experiment is not live-exportable",
             )
         strategy_name = _strategy_name(detail)
         package_dir = self.settings.generated_strategy_dir / strategy_name
@@ -208,23 +208,23 @@ class LiveDeploymentManager:
             signed_path = report.get("signed_path", {})
             if not signed_path.get("ready", False):
                 raise ValueError(
-                    f"Live SoDEX deployment requires signing credentials. Missing: {', '.join(signed_path.get('missing_prerequisites', []))}"
+                    f"Live SoDEX deployment requires signing credentials. Missing: {', '.join(signed_path.get('missing_prerequisites', []))}",
                 )
         if schedule:
             if not wallet_label:
                 raise ValueError(
-                    "wallet_label is required when scheduling a runner job"
+                    "wallet_label is required when scheduling a runner job",
                 )
             if interval_seconds is None or interval_seconds <= 0:
                 raise ValueError(
-                    "interval_seconds must be positive when scheduling a runner job"
+                    "interval_seconds must be positive when scheduling a runner job",
                 )
             raise ValueError(
-                "Scheduled SoDEX runner jobs require a configured runner client; refusing before writing artifacts"
+                "Scheduled SoDEX runner jobs require a configured runner client; refusing before writing artifacts",
             )
 
     async def _finalizer_notes(
-        self, detail: dict[str, Any], *, llm_finalize: bool
+        self, detail: dict[str, Any], *, llm_finalize: bool,
     ) -> dict[str, Any]:
         spec = dict(detail.get("spec") or {})
         summary = dict(detail.get("summary") or {})
@@ -259,16 +259,16 @@ class LiveDeploymentManager:
         return {
             "source": "claude",
             "strategy_doc": str(
-                payload.get("strategy_doc") or base_notes["strategy_doc"]
+                payload.get("strategy_doc") or base_notes["strategy_doc"],
             ).strip(),
             "readme_summary": str(
-                payload.get("readme_summary") or base_notes["readme_summary"]
+                payload.get("readme_summary") or base_notes["readme_summary"],
             ).strip(),
             "operator_notes": str(
-                payload.get("operator_notes") or base_notes["operator_notes"]
+                payload.get("operator_notes") or base_notes["operator_notes"],
             ).strip(),
             "risk_notes": str(
-                payload.get("risk_notes") or base_notes["risk_notes"]
+                payload.get("risk_notes") or base_notes["risk_notes"],
             ).strip(),
         }
 
@@ -287,7 +287,7 @@ class LiveDeploymentManager:
         spec = dict(detail.get("spec") or {})
         summary = dict(detail.get("summary") or {})
         sosovalue_config_path = str(
-            resolve_path_from_root(config_path, root_dir=self.settings.root_dir)
+            resolve_path_from_root(config_path, root_dir=self.settings.root_dir),
         )
         return {
             "schema_version": "0.1",
@@ -332,10 +332,10 @@ class LiveDeploymentManager:
         _ensure_package_tree(package_dir=package_dir, root_dir=self.settings.root_dir)
         class_name = _strategy_class_name(strategy_name)
         module_path = _module_path_from_root(
-            package_dir=package_dir, root_dir=self.settings.root_dir
+            package_dir=package_dir, root_dir=self.settings.root_dir,
         )
         strategy_py = f'from __future__ import annotations\nfrom pathlib import Path\nfrom siglab.live.runtime import DirectionalPerpsSigLabStrategy\n\nclass {class_name}(DirectionalPerpsSigLabStrategy):\n """{_escape_docstring(llm_notes.get("strategy_doc") or "Generated SigLab live strategy")}"""\n SPEC_PATH = Path(__file__).with_name("live_spec.json")'
-        manifest = f'''schema_version: "0.1" entrypoint: "{module_path}.strategy.{class_name}" permissions: policy: | (wallet.id == 'FORMAT_WALLET_ID') AND ( (action.type == 'sodex_perps_order') OR (action.type == 'sodex_perps_cancel') ) adapters: - name: "LEDGER" capabilities: ["ledger.read", "ledger.write", "strategy.transactions"] - name: "SODEX_PERPS" capabilities: ["market.read", "perps.symbols", "perps.klines", "perps.state", "order.execute", "order.cancel", "position.manage"]'''
+        manifest = f"""schema_version: "0.1" entrypoint: "{module_path}.strategy.{class_name}" permissions: policy: | (wallet.id == 'FORMAT_WALLET_ID') AND ( (action.type == 'sodex_perps_order') OR (action.type == 'sodex_perps_cancel') ) adapters: - name: "LEDGER" capabilities: ["ledger.read", "ledger.write", "strategy.transactions"] - name: "SODEX_PERPS" capabilities: ["market.read", "perps.symbols", "perps.klines", "perps.state", "order.execute", "order.cancel", "position.manage"]"""
         readme = f"# {strategy_name} {llm_notes.get('readme_summary') or 'Generated from a deployd SigLab experiment.'} - Spec hash: `{live_spec['spec_hash']}` - Track / family: `{live_spec['track']}` / `{live_spec['family']}` - Holdout return: `{live_spec['summary'].get('holdout_total_return')}` - Holdout Sharpe: `{live_spec['summary'].get('holdout_sharpe')}` - Dry run default: `{live_spec['runtime']['dry_run']}` {llm_notes.get('operator_notes') or ''} {llm_notes.get('risk_notes') or ''} This package is generated in dry-run mode unless explicitly configured otherwise. Real SoDEX execution requires an operator-provided client that can fetch account state, update leverage, place market orders, and satisfy SoDEX signed REST requirements externally. The generated runtime exposes `dependency_report()` for preflight inspection before any live action."
         (package_dir / "__init__.py").write_text("")
         (package_dir / "strategy.py").write_text(strategy_py)
@@ -346,7 +346,7 @@ class LiveDeploymentManager:
 
 def _strategy_name(detail: dict[str, Any]) -> str:
     family = re.sub(
-        "[^a-z0-9]+", "_", str(detail.get("family") or "strategy").lower()
+        "[^a-z0-9]+", "_", str(detail.get("family") or "strategy").lower(),
     ).strip("_")
     return f"siglab_{family}_{detail['spec_hash']}"
 

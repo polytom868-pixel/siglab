@@ -10,7 +10,7 @@ from typing import Any
 def write_evidence_graph_html(summary_path: Path, output_path: Path) -> Path:
     """Render an evidence summary JSON file as a standalone HTML graph."""
     try:
-        with open(summary_path, "r") as f:
+        with open(summary_path) as f:
             records: list[dict[str, Any]] = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         records = []
@@ -34,7 +34,7 @@ def write_evidence_graph_html(summary_path: Path, output_path: Path) -> Path:
                     "target": symbol,
                     "direction": direction,
                     "confidence": confidence,
-                }
+                },
             )
     html_parts: list[str] = [
         "<!DOCTYPE html>",
@@ -48,7 +48,7 @@ def write_evidence_graph_html(summary_path: Path, output_path: Path) -> Path:
     html_parts.append("</div><h2>Edges</h2><ul>")
     for e in edges:
         html_parts.append(
-            f"<li>{e['source']} → {e['target']} ({e['direction']}, confidence={e['confidence']})</li>"
+            f"<li>{e['source']} → {e['target']} ({e['direction']}, confidence={e['confidence']})</li>",
         )
     html_parts.append("</ul></body></html>")
     output_path = Path(output_path)

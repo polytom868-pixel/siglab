@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -17,7 +17,7 @@ from siglab.tui.formatting import ACCENT_GREEN, ERROR_RED, TEXT_MUTED
 class SigLabStatusBar(Widget):
     """A status bar showing connection state, version, and current time."""
 
-    last_error: reactive[Optional[str]] = reactive(None)
+    last_error: reactive[str | None] = reactive(None)
     DEFAULT_CSS = "SigLabStatusBar { layout: horizontal; height: 1; background: #0d1210; color: #7d9483; } SigLabStatusBar > .status-item { padding: 0 1; height: 1; } SigLabStatusBar > .status-left { width: 1fr; content-align: left top; } SigLabStatusBar > .status-right { width: 1fr; content-align: right top; } SigLabStatusBar > .status-center { width: 1fr; content-align: center top; }"
     BINDINGS = [("?", "help", "Show help")]
 

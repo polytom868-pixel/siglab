@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 
 from rich.text import Text
 from textual.reactive import reactive
@@ -30,10 +31,8 @@ def sparkline_text(
         lo = hi = values[0]
         for i in range(width):
             v = values[int(i * step)]
-            if v < lo:
-                lo = v
-            if v > hi:
-                hi = v
+            lo = min(lo, v)
+            hi = max(hi, v)
         span = hi - lo if hi != lo else 1.0
         if hi == lo:
             colour = neutral_color

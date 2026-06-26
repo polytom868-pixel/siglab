@@ -165,7 +165,7 @@ class ComparisonWidget(Static):
                 delta = max(values) - min(values)
                 row.append(f"±{delta:.3f}", style=WARNING_YELLOW)
             elif key in ("family", "track"):
-                unique_vals = len(set((str(item.get(key, "")) for item in self.items)))
+                unique_vals = len(set(str(item.get(key, "")) for item in self.items))
                 row.append(
                     "diff" if unique_vals > 1 else "same",
                     style=WARNING_YELLOW if unique_vals > 1 else TEXT_MUTED,

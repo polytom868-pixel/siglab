@@ -53,7 +53,7 @@ class OperatorPipeline:
     """Orchestrates the full research-to-decision pipeline."""
 
     def __init__(
-        self, dry_run: bool, paper_client: SoDEXPaperPerpsClient | None = None
+        self, dry_run: bool, paper_client: SoDEXPaperPerpsClient | None = None,
     ) -> None:
         if not isinstance(dry_run, bool):
             raise TypeError("dry_run must be a bool")
@@ -62,7 +62,7 @@ class OperatorPipeline:
         self._circuit_breaker = CircuitBreakerState()
 
     def evidence_to_decision(
-        self, evidence_records: list[dict[str, Any]]
+        self, evidence_records: list[dict[str, Any]],
     ) -> TradeSignal:
         """Aggregate raw evidence records into a consensus trade signal."""
         if not evidence_records:
@@ -150,7 +150,7 @@ class OperatorPipeline:
         breach = check_concentration(dict(allocation or {}), limits)
         for b in breach.breaches:
             reasons.append(
-                f"Concentration breach: {b['strategy']} alloc={b['allocation']:.1%} limit={b['limit']:.1%}"
+                f"Concentration breach: {b['strategy']} alloc={b['allocation']:.1%} limit={b['limit']:.1%}",
             )
         max_pos_frac = compute_position_size(
             risk_budget=cb.max_risk_per_trade_pct,
@@ -160,7 +160,7 @@ class OperatorPipeline:
         max_size_usd = max_pos_frac * portfolio_value
         if signal.size > max_size_usd:
             reasons.append(
-                f"Signal size ${signal.size:.2f} exceeds risk-budgeted cap ${max_size_usd:.2f}"
+                f"Signal size ${signal.size:.2f} exceeds risk-budgeted cap ${max_size_usd:.2f}",
             )
         hard_breach = bool(breach.breaches)
         if not reasons:
@@ -176,7 +176,7 @@ class OperatorPipeline:
         )
 
     def position_to_paper(
-        self, signal: TradeSignal, session_id: str, *, mark_price: float | None = None
+        self, signal: TradeSignal, session_id: str, *, mark_price: float | None = None,
     ) -> dict[str, Any]:
         """Convert a trade signal into a paper order."""
         if signal.direction == "HOLD":
@@ -200,7 +200,7 @@ class OperatorPipeline:
             return {"status": "dry_run", "dry_run": True, **order_payload}
         if self.paper_client is None:
             raise RuntimeError(
-                "paper_client is required to place paper orders. Set paper_client in OperatorPipeline constructor or run with dry_run=True."
+                "paper_client is required to place paper orders. Set paper_client in OperatorPipeline constructor or run with dry_run=True.",
             )
         result = self.paper_client.place_order(**order_payload)
         logger.info(
@@ -214,17 +214,17 @@ class OperatorPipeline:
         return result
 
     async def run_once(
-        self, spec: dict[str, Any], market_data: dict[str, Any]
+        self, spec: dict[str, Any], market_data: dict[str, Any],
     ) -> tuple[TradeSignal, Position | None, RiskReport]:
         """Full single-pass pipeline: evidence → signal → risk → position."""
         evidence_records: list[dict[str, Any]] = list(
-            spec.get("evidence", spec.get("evidence_records", []))
+            spec.get("evidence", spec.get("evidence_records", [])),
         )
         runtime_cfg: dict[str, Any] = dict(spec.get("runtime", {}))
         signal = self.evidence_to_decision(evidence_records)
         portfolio_value = float(
             market_data.get("portfolio_value")
-            or runtime_cfg.get("portfolio_value", 100000.0)
+            or runtime_cfg.get("portfolio_value", 100000.0),
         )
         allocation: dict[str, float] = dict(market_data.get("allocation", {}))
         risk_report = self.risk_check(signal, portfolio_value, allocation)
@@ -245,6 +245,6 @@ class OperatorPipeline:
                 )
             else:
                 logger.warning(
-                    "No valid price for %s — cannot build position", signal.symbol
+                    "No valid price for %s — cannot build position", signal.symbol,
                 )
         return (signal, position, risk_report)

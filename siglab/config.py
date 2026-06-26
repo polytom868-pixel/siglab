@@ -87,7 +87,7 @@ def load_settings() -> SiglabConfig:
     root_dir = Path(__file__).resolve().parents[1]
     env_values = _read_env_file(root_dir / ".env")
     provider_config_value = os.getenv("SIGLAB_PROVIDER_CONFIG_PATH") or env_values.get(
-        "SIGLAB_PROVIDER_CONFIG_PATH"
+        "SIGLAB_PROVIDER_CONFIG_PATH",
     )
     provider_config_path = (
         Path(provider_config_value).expanduser()
@@ -177,13 +177,13 @@ def load_settings() -> SiglabConfig:
         bai_base_url=_get("ANTHROPIC_BASE_URL", "https://api.b.ai"),
         bai_model=_get("ANTHROPIC_MODEL", "deepseek-v4-flash"),
         bai_planner_model=str(
-            _get("BAI_PLANNER_MODEL", _get("ANTHROPIC_MODEL", "deepseek-v4-flash"))
+            _get("BAI_PLANNER_MODEL", _get("ANTHROPIC_MODEL", "deepseek-v4-flash")),
         ),
         bai_writer_model=_get("BAI_WRITER_MODEL", "deepseek-v4-flash"),
         bai_reflector_model=_get("BAI_REFLECTOR_MODEL", "deepseek-v4-flash"),
         bai_fallback_fast_model=_get("BAI_FALLBACK_FAST_MODEL", "kimi-k2.5"),
         bai_fallback_reasoning_model=_get(
-            "BAI_FALLBACK_REASONING_MODEL", "deepseek-v4-pro"
+            "BAI_FALLBACK_REASONING_MODEL", "deepseek-v4-pro",
         ),
         bai_context_tokens=int(_get("BAI_CONTEXT_TOKENS", "70000")),
         bai_max_call_credits=float(bai_max_call_credits_raw)

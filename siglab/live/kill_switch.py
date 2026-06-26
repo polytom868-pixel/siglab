@@ -47,7 +47,7 @@ def check_daily_loss(equity: float, start_equity: float) -> bool:
 
 
 def check_kill_switch(
-    equity: float | None = None, start_equity: float | None = None
+    equity: float | None = None, start_equity: float | None = None,
 ) -> tuple[bool, str]:
     """Combined kill-switch check: file-trigger + signal + daily loss."""
     global _kill_triggered

@@ -74,7 +74,7 @@ def empty_risk_response() -> dict[str, Any]:
 
 
 def compute_risk_metrics(
-    sessions_dir: Path, *, periods_per_year: int = 365
+    sessions_dir: Path, *, periods_per_year: int = 365,
 ) -> dict[str, Any]:
     """Compute full risk metrics from session data."""
     curves = load_equity_curves(sessions_dir)
@@ -148,7 +148,7 @@ def compute_risk_metrics(
             drawdown=max_dd,
             concentration=concentration,
             correlation_risk=avg_corr,
-        )
+        ),
     )
     alerts: list[dict[str, Any]] = []
     worst_eq = (
@@ -167,7 +167,7 @@ def compute_risk_metrics(
                 "value": event.max_drawdown_pct,
                 "threshold": 0.0,
                 "message": f"Drawdown {event.max_drawdown_pct * 100:.1f}% ({event.peak_date} → {event.trough_date})",
-            }
+            },
         )
     return {
         "composite_score": composite,

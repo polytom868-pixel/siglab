@@ -7,7 +7,8 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class EvidenceRecord:
     def __post_init__(self) -> None:
         if not 0.0 <= self.confidence <= 1.0:
             object.__setattr__(
-                self, "confidence", max(0.0, min(1.0, float(self.confidence)))
+                self, "confidence", max(0.0, min(1.0, float(self.confidence))),
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -89,7 +90,7 @@ class EvidenceStore:
                 for row in unique_rows:
                     handle.write(
                         json.dumps(row, ensure_ascii=True, sort_keys=True, default=str)
-                        + "\n"
+                        + "\n",
                     )
         self.last_append_stats = {
             "records_seen": len(rows),
@@ -130,17 +131,17 @@ class EvidenceStore:
     def summary(self, *, max_day_gap: int = 1, top_links: int = 10) -> dict[str, Any]:
         rows = self.load()
         return summarize_evidence(
-            rows, self.linked_relations(max_day_gap=max_day_gap), top_links=top_links
+            rows, self.linked_relations(max_day_gap=max_day_gap), top_links=top_links,
         )
 
     def write_summary(
-        self, path: Path, *, max_day_gap: int = 1, top_links: int = 10
+        self, path: Path, *, max_day_gap: int = 1, top_links: int = 10,
     ) -> dict[str, Any]:
         summary = self.summary(max_day_gap=max_day_gap, top_links=top_links)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
-                summary, ensure_ascii=True, indent=2, sort_keys=True, default=str
+                summary, ensure_ascii=True, indent=2, sort_keys=True, default=str,
             )
             + "\n",
             encoding="utf-8",
@@ -176,7 +177,7 @@ def etf_inflow_evidence(
                     confidence=0.95,
                     evidence_path=evidence_path,
                     attributes={attr_key: row.get(attr_key)},
-                )
+                ),
             )
     return records
 
@@ -197,7 +198,7 @@ def news_evidence(
             _first_of(row, ("title", "headline"))
             or content.get("title")
             or content.get("content")
-            or ""
+            or "",
         ).strip()
         if not title:
             continue
@@ -205,7 +206,7 @@ def news_evidence(
         entity = str(
             _first_of(row, ("currencyName", "symbol", "currencySymbol"))
             or _matched_currency_symbol(matched, preferred=default_entity)
-            or default_entity
+            or default_entity,
         )
         timestamp = _first_of(
             row,
@@ -231,13 +232,13 @@ def news_evidence(
                     "category": row.get("category"),
                     "matchedCurrencies": matched if isinstance(matched, list) else [],
                 },
-            )
+            ),
         )
     return records
 
 
 def sodex_ws_evidence(
-    update: dict[str, Any], *, observed_at: str, evidence_path: str
+    update: dict[str, Any], *, observed_at: str, evidence_path: str,
 ) -> list[EvidenceRecord]:
     channel = str(update.get("channel") or "")
     update_type = str(update.get("type") or "")
@@ -273,13 +274,13 @@ def sodex_ws_evidence(
                     "ask": ask,
                     "raw_keys": sorted(row.keys()),
                 },
-            )
+            ),
         )
     return records
 
 
 def link_feed_events_to_etf_flows(
-    rows: Iterable[dict[str, Any]], *, max_day_gap: int = 1
+    rows: Iterable[dict[str, Any]], *, max_day_gap: int = 1,
 ) -> list[dict[str, Any]]:
     materialized = list(rows)
     flows = [
@@ -325,7 +326,7 @@ def link_feed_events_to_etf_flows(
                     "flow_value": flow.get("value"),
                     "flow_date": flow.get("timestamp"),
                     "feed_timestamp": news.get("timestamp"),
-                }
+                },
             )
     return links
 
@@ -349,7 +350,7 @@ def summarize_evidence(
     count_fields = ("module", "relation", "source", "entity")
     counts = {
         f"{f}_counts": dict(
-            sorted(Counter((str(r.get(f) or "") for r in materialized_rows)).items())
+            sorted(Counter(str(r.get(f) or "") for r in materialized_rows).items()),
         )
         for f in count_fields
     }
@@ -372,9 +373,9 @@ def summarize_evidence(
         "link_relation_counts": dict(
             sorted(
                 Counter(
-                    (str(link.get("relation") or "") for link in materialized_links)
-                ).items()
-            )
+                    str(link.get("relation") or "") for link in materialized_links
+                ).items(),
+            ),
         ),
         "top_links": [
             {k: link.get(k) for k in top_link_keys}
@@ -446,7 +447,7 @@ def _preferred_multilingual_content(value: object) -> dict[str, Any]:
 
 
 def _matched_currency_symbol(
-    value: object, *, preferred: str | None = None
+    value: object, *, preferred: str | None = None,
 ) -> str | None:
     if not isinstance(value, list):
         return None

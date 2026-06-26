@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar, cast
+from typing import Any, ClassVar, cast
+from collections.abc import Callable
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -46,7 +47,7 @@ class PlaceholderScreen(Screen[Any]):
 
     def on_mount(self) -> None:
         self.query_one("#placeholder-text", Static).update(
-            f"{self._screen_name} — Coming soon"
+            f"{self._screen_name} — Coming soon",
         )
 
 
@@ -151,7 +152,7 @@ class NavSidebar(Static):
         items: list[ListItem] = []
         for idx, label, _screen_id in NAV_ITEMS:
             item = ListItem(
-                Static(f"  {idx}  {label}", classes="nav-item"), id=f"nav-{_screen_id}"
+                Static(f"  {idx}  {label}", classes="nav-item"), id=f"nav-{_screen_id}",
             )
             items.append(item)
         return items

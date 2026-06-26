@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar, Coroutine
+from typing import TYPE_CHECKING, Any, ClassVar
+from collections.abc import Coroutine
 
 from rich.text import Text
 from textual.binding import Binding
@@ -49,7 +50,7 @@ class BaseScreen(Screen[None]):
     _search_list_id: ClassVar[str] = ""
 
     def __init__(
-        self, *, api_client: TuiApiClient | None = None, **kwargs: Any
+        self, *, api_client: TuiApiClient | None = None, **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         if api_client is not None:
@@ -65,7 +66,7 @@ class BaseScreen(Screen[None]):
     def on_mount(self) -> None:
         """Start auto-refresh timer and trigger initial data load."""
         self._refresh_timer = self.set_interval(
-            self._refresh_interval, self._refresh_all
+            self._refresh_interval, self._refresh_all,
         )
         self.call_after_refresh(self._refresh_all)
 
@@ -100,7 +101,7 @@ class BaseScreen(Screen[None]):
         """Override in subclass to fetch screen data."""
 
     async def _fetch_multiple(
-        self, *fetch_fns: Coroutine[Any, Any, None], label: str = "data"
+        self, *fetch_fns: Coroutine[Any, Any, None], label: str = "data",
     ) -> int:
         """Run multiple fetch coroutines with per-function error handling."""
         successes = 0

@@ -22,7 +22,7 @@ SIGLAB_THEME = Theme(
         "accent": "bold cyan",
         "label": "bold",
         "value": "",
-    }
+    },
 )
 
 

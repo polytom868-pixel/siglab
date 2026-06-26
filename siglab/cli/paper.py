@@ -25,20 +25,20 @@ def add_subparser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     start_parser = subparsers.add_parser(
-        "paper-start", help="Create a new paper trading session."
+        "paper-start", help="Create a new paper trading session.",
     )
     start_parser.add_argument(
-        "--session", default=None, help="Optional label for the session."
+        "--session", default=None, help="Optional label for the session.",
     )
     start_parser.add_argument(
-        "--sessions-dir", default=None, help="Directory for .npy session files."
+        "--sessions-dir", default=None, help="Directory for .npy session files.",
     )
     status_parser = subparsers.add_parser(
-        "paper-status", help="Show paper trading session status."
+        "paper-status", help="Show paper trading session status.",
     )
     status_parser.add_argument("--session", required=True, help="Session ID.")
     status_parser.add_argument(
-        "--sessions-dir", default=None, help="Directory for .npy session files."
+        "--sessions-dir", default=None, help="Directory for .npy session files.",
     )
     promote_parser = subparsers.add_parser(
         "paper-promote",
@@ -46,10 +46,10 @@ def add_subparser(
     )
     promote_parser.add_argument("--session", required=True, help="Session ID.")
     promote_parser.add_argument(
-        "--sessions-dir", default=None, help="Directory for .npy session files."
+        "--sessions-dir", default=None, help="Directory for .npy session files.",
     )
     promote_parser.add_argument(
-        "--threshold", type=float, default=None, help="Promotion score threshold."
+        "--threshold", type=float, default=None, help="Promotion score threshold.",
     )
     promote_parser.add_argument(
         "--consecutive-days",
@@ -97,19 +97,18 @@ async def run_paper_status(args: argparse.Namespace) -> None:
                     if not klines.empty:
                         try:
                             await client.process_klines(
-                                args.session, klines, symbol=sym
+                                args.session, klines, symbol=sym,
                             )
                         except Exception:
                             import logging
 
                             logging.getLogger(__name__).exception(
-                                "process_klines failed for %s", sym
+                                "process_klines failed for %s", sym,
                             )
         except Exception:
             import logging
 
             logging.getLogger(__name__).exception("Paper status fetch failed")
-            pass
         status = client.get_session_status(args.session)
         try:
             mark_prices = await client.get_mark_prices()

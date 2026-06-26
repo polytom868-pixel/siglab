@@ -19,7 +19,7 @@ def add_subparser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     parser = subparsers.add_parser(
-        "operator", help="Run the OperatorPipeline — evidence-to-decision cycle."
+        "operator", help="Run the OperatorPipeline — evidence-to-decision cycle.",
     )
     parser.add_argument(
         "--spec",
@@ -37,7 +37,7 @@ def add_subparser(
         help="Disable dry-run (requires SIGLAB_LIVE_ENABLED=1).",
     )
     parser.add_argument(
-        "--sessions-dir", default=None, help="Directory for paper session files."
+        "--sessions-dir", default=None, help="Directory for paper session files.",
     )
 
 

@@ -6,7 +6,8 @@ import random
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Protocol, cast
+from typing import Any, Protocol, cast
+from collections.abc import Awaitable, Callable
 
 
 class SoDEXWebSocketError(RuntimeError):
@@ -129,7 +130,7 @@ class SoDEXWebSocketClient:
                 import websockets
 
                 self._connection = cast(
-                    WebSocketConnection, await websockets.connect(self.url)
+                    WebSocketConnection, await websockets.connect(self.url),
                 )
             else:
                 self._connection = await self._connect(self.url)
@@ -141,7 +142,7 @@ class SoDEXWebSocketClient:
         return conn
 
     async def subscribe(
-        self, params: dict[str, Any], *, request_id: int | None = None
+        self, params: dict[str, Any], *, request_id: int | None = None,
     ) -> dict[str, Any]:
         _v_sub(params)
         conn = await self.connect()
@@ -155,7 +156,7 @@ class SoDEXWebSocketClient:
         return ack
 
     async def unsubscribe(
-        self, params: dict[str, Any], *, request_id: int | None = None
+        self, params: dict[str, Any], *, request_id: int | None = None,
     ) -> dict[str, Any]:
         _v_sub(params)
         conn = await self.connect()
@@ -183,7 +184,7 @@ class SoDEXWebSocketClient:
             return payload
         if not isinstance(payload.get("channel"), str) or "type" not in payload:
             raise SoDEXWebSocketFormatError(
-                "SoDEX WebSocket update missing channel/type"
+                "SoDEX WebSocket update missing channel/type",
             )
         return payload
 
@@ -198,10 +199,10 @@ class SoDEXWebSocketClient:
         self.metrics.reconnects += 1
         if self.metrics.reconnects > self.max_reconnects:
             raise SoDEXWebSocketDisconnected(
-                "SoDEX WebSocket reconnect budget exhausted"
+                "SoDEX WebSocket reconnect budget exhausted",
             )
         await asyncio.sleep(
-            min(0.5 * 2**self.metrics.reconnects, 30.0) * (0.5 + random.random() * 0.5)
+            min(0.5 * 2**self.metrics.reconnects, 30.0) * (0.5 + random.random() * 0.5),
         )
         await self.connect()
 
@@ -228,19 +229,19 @@ class SoDEXWebSocketClient:
             raw = await asyncio.wait_for(conn.recv(), timeout=timeout_s)
         except asyncio.TimeoutError as exc:
             raise SoDEXWebSocketTimeoutError(
-                "SoDEX WebSocket receive timed out"
+                "SoDEX WebSocket receive timed out",
             ) from exc
         except Exception as exc:
             self.metrics.disconnects += 1
             raise SoDEXWebSocketDisconnected(
-                f"SoDEX WebSocket disconnected: {exc}"
+                f"SoDEX WebSocket disconnected: {exc}",
             ) from exc
         try:
             payload = json.loads(raw)
         except (TypeError, json.JSONDecodeError) as exc:
             self.metrics.malformed_messages += 1
             raise SoDEXWebSocketFormatError(
-                "SoDEX WebSocket returned malformed JSON"
+                "SoDEX WebSocket returned malformed JSON",
             ) from exc
         if not isinstance(payload, dict):
             self.metrics.malformed_messages += 1
@@ -251,11 +252,11 @@ class SoDEXWebSocketClient:
     def _va(self, payload: dict[str, Any], *, expected_op: str) -> None:
         if payload.get("op") != expected_op:
             raise SoDEXWebSocketFormatError(
-                f"SoDEX WebSocket ack op was not {expected_op}"
+                f"SoDEX WebSocket ack op was not {expected_op}",
             )
         if payload.get("success") is not True:
             raise SoDEXWebSocketFormatError(
-                f"SoDEX WebSocket {expected_op} failed: {payload.get('error')}"
+                f"SoDEX WebSocket {expected_op} failed: {payload.get('error')}",
             )
         if "result" not in payload or "connID" not in payload:
             raise SoDEXWebSocketFormatError("SoDEX WebSocket ack missing result/connID")
@@ -264,35 +265,35 @@ class SoDEXWebSocketClient:
 def _v_sub(params: dict[str, Any]) -> None:
     if not isinstance(params, dict):
         raise SoDEXWebSocketConfigError(
-            "SoDEX WebSocket subscription params must be an object"
+            "SoDEX WebSocket subscription params must be an object",
         )
     channel = str(params.get("channel") or "").strip()
     if channel not in SODEX_WS_CHANNELS:
         raise SoDEXWebSocketConfigError(
-            f"Unsupported SoDEX WebSocket channel: {channel}"
+            f"Unsupported SoDEX WebSocket channel: {channel}",
         )
     if channel in SODEX_WS_ACCOUNT_CHANNELS:
         user = str(params.get("user") or "").strip()
         if not _EVM_ADDRESS_RE.match(user):
             raise SoDEXWebSocketConfigError(
-                f"SoDEX account WebSocket channel {channel} requires user as an EVM address"
+                f"SoDEX account WebSocket channel {channel} requires user as an EVM address",
             )
         if "accountID" in params:
             try:
                 account_id = int(params["accountID"])
             except (TypeError, ValueError) as exc:
                 raise SoDEXWebSocketConfigError(
-                    "SoDEX account WebSocket accountID must be an unsigned integer"
+                    "SoDEX account WebSocket accountID must be an unsigned integer",
                 ) from exc
             if account_id < 0:
                 raise SoDEXWebSocketConfigError(
-                    "SoDEX account WebSocket accountID must be an unsigned integer"
+                    "SoDEX account WebSocket accountID must be an unsigned integer",
                 )
     if channel in SODEX_WS_SYMBOL_CHANNELS and (
         not str(params.get("symbol") or "").strip()
     ):
         raise SoDEXWebSocketConfigError(
-            f"SoDEX WebSocket channel {channel} requires symbol"
+            f"SoDEX WebSocket channel {channel} requires symbol",
         )
 
 
@@ -300,6 +301,6 @@ def _v_choice(value: str, allowed: set[str], field: str) -> str:
     text = str(value or "").strip().lower()
     if text not in allowed:
         raise SoDEXWebSocketConfigError(
-            f"SoDEX WebSocket {field} must be one of {sorted(allowed)}"
+            f"SoDEX WebSocket {field} must be one of {sorted(allowed)}",
         )
     return text

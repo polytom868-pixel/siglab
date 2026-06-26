@@ -67,7 +67,7 @@ class PositionsTableWidget(Static):
             result.append("  " + "─" * 68 + "\n", style=BORDER_DIM)
         else:
             result.append(
-                "  SYMBOL        SIZE       ENTRY      UNREAL PnL\n", style=TEXT_MUTED
+                "  SYMBOL        SIZE       ENTRY      UNREAL PnL\n", style=TEXT_MUTED,
             )
             result.append("  " + "─" * 50 + "\n", style=BORDER_DIM)
         for pos in self.positions:
@@ -150,7 +150,7 @@ class PnlChartWidget(Static):
 class OrderFormWidget(Static):
     DEFAULT_CSS = "OrderFormWidget { height: auto; min-height: 14; padding: 0 1; background: #0d1210; }"
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
-        Binding("enter", "submit_order", "Submit Order", show=False)
+        Binding("enter", "submit_order", "Submit Order", show=False),
     ]
 
     def __init__(self, **kwargs: Any) -> None:
@@ -272,8 +272,11 @@ class OrderFormWidget(Static):
         self._error, self._success = err, suc
         self.refresh()
 
-    show_success = lambda s, m: s._set_msg("", m)
-    show_error = lambda s, m: s._set_msg(m, "")
+    def show_success(self, msg: str) -> None:
+        self._set_msg("", msg)
+
+    def show_error(self, msg: str) -> None:
+        self._set_msg(msg, "")
 
 
 class OrderHistoryWidget(Static):
@@ -296,12 +299,12 @@ class OrderHistoryWidget(Static):
             result.append("  " + "─" * 72 + "\n", style=BORDER_DIM)
         else:
             result.append(
-                "  TIME       SIDE  TYPE   SYM       QTY     STATUS\n", style=TEXT_MUTED
+                "  TIME       SIDE  TYPE   SYM       QTY     STATUS\n", style=TEXT_MUTED,
             )
             result.append("  " + "─" * 55 + "\n", style=BORDER_DIM)
         for o in self.orders[:50]:
             ts = time.strftime(
-                "%H:%M:%S", time.localtime(float(o.get("created_at", 0)))
+                "%H:%M:%S", time.localtime(float(o.get("created_at", 0))),
             )
             sd = str(o.get("side", "?"))
             ot = str(o.get("order_type", "?"))
@@ -339,17 +342,7 @@ class OrderHistoryWidget(Static):
 
 class PaperScreen(BaseScreen):
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = (
-        BaseScreen.BINDINGS
-        + [
-            Binding("s", "focus_symbol", "Symbol", show=True),
-            Binding("b", "toggle_side", "Buy/Sell", show=True),
-            Binding("t", "toggle_type", "Type", show=True),
-            Binding("Q", "focus_qty", "Qty", show=True),
-            Binding("p", "focus_price", "Price", show=True),
-            Binding("enter", "submit_order", "Submit", show=True),
-            Binding("n", "new_session", "New Session", show=True),
-            Binding("c", "cancel_order", "Cancel Order", show=True),
-        ]
+        [*BaseScreen.BINDINGS, Binding("s", "focus_symbol", "Symbol", show=True), Binding("b", "toggle_side", "Buy/Sell", show=True), Binding("t", "toggle_type", "Type", show=True), Binding("Q", "focus_qty", "Qty", show=True), Binding("p", "focus_price", "Price", show=True), Binding("enter", "submit_order", "Submit", show=True), Binding("n", "new_session", "New Session", show=True), Binding("c", "cancel_order", "Cancel Order", show=True)]
     )
     session_id: reactive[str] = reactive("")
     session_name: reactive[str] = reactive("")
@@ -425,7 +418,7 @@ class PaperScreen(BaseScreen):
                 f"Session {self.session_id[:8]}... ready",
             )
             safe_query(
-                self, "#order-form", OrderFormWidget, lambda f: f.set_symbol("BTC-USD")
+                self, "#order-form", OrderFormWidget, lambda f: f.set_symbol("BTC-USD"),
             )
             await self._refresh_all()
         except (ConnectionError, TimeoutError, ValueError, KeyError) as exc:
@@ -445,11 +438,11 @@ class PaperScreen(BaseScreen):
             self._upd_ords(data.get("orders", []))
             self._upd_pnl(data.get("pnl", {}))
             self._update_status_text(
-                f"Session {self.session_id[:8]}... . updated  [r]efresh  [s]ymbol [b]uy/sell [?]help"
+                f"Session {self.session_id[:8]}... . updated  [r]efresh  [s]ymbol [b]uy/sell [?]help",
             )
         except Exception as exc:
             self._update_status_text(
-                f"Refresh error: {sanitize_status_text(str(exc), 60)}  [r]etry"
+                f"Refresh error: {sanitize_status_text(str(exc), 60)}  [r]etry",
             )
             logger.warning("paper-status failed: %s", exc)
 
@@ -517,7 +510,7 @@ class PaperScreen(BaseScreen):
                 "#order-form",
                 OrderFormWidget,
                 lambda w: w.show_success(
-                    f"Order {od.get('order_id', '?')[:8]}... {params['side']} {params['quantity']} {params['symbol']}"
+                    f"Order {od.get('order_id', '?')[:8]}... {params['side']} {params['quantity']} {params['symbol']}",
                 ),
             )
             self.notify(
@@ -583,7 +576,7 @@ class PaperScreen(BaseScreen):
             return
         try:
             sym = (await self._api.cancel_paper_order(self.session_id, order_id)).get(
-                "symbol", "?"
+                "symbol", "?",
             )
             self.status_text = f"Cancelled order for {sym}"
             self.notify(f"Order cancelled: {sym}", severity="information", timeout=3)
@@ -611,7 +604,7 @@ class PaperScreen(BaseScreen):
 class _TextInputScreen(Screen[tuple[str, str] | None]):
     DEFAULT_CSS = "_TextInputScreen { align: center middle; background: rgba(0, 0, 0, 0.85); } width: 50; height: auto; padding: 1 2; background: #0d1210; border: solid #2a3a30; } color: #4ade80; text-style: bold; margin: 0 0 1 0; } background: #1a2a1f; }"
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
-        Binding("escape", "dismiss", "Cancel")
+        Binding("escape", "dismiss", "Cancel"),
     ]
 
     def __init__(self, field: str, prompt: str) -> None:
@@ -637,7 +630,7 @@ class _TextInputScreen(Screen[tuple[str, str] | None]):
 class _CancelOrderScreen(Screen[str | None]):
     DEFAULT_CSS = "_CancelOrderScreen { align: center middle; background: rgba(0, 0, 0, 0.85); } width: 60; height: auto; padding: 1 2; background: #0d1210; border: solid #2a3a30; } color: #4ade80; text-style: bold; margin: 0 0 1 0; } background: #1a2a1f; }"
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
-        Binding("escape", "dismiss", "Cancel")
+        Binding("escape", "dismiss", "Cancel"),
     ]
 
     def __init__(self, open_orders: list[dict[str, Any]]) -> None:
@@ -651,7 +644,7 @@ class _CancelOrderScreen(Screen[str | None]):
         ]
         yield Vertical(
             Static(
-                "Enter order # to cancel:\n" + "\n".join(ls), id="cancel-order-prompt"
+                "Enter order # to cancel:\n" + "\n".join(ls), id="cancel-order-prompt",
             ),
             Input(id="cancel-order-field"),
             id="cancel-order-dialog",
@@ -794,7 +787,7 @@ class CorrelationHeatmapWidget(Static):
         mx, names = self.matrix, self.strategy_names
         if not mx or len(mx) < 2:
             result.append(
-                "\n  Need ≥2 strategies for\n  correlation analysis\n", style=TEXT_MUTED
+                "\n  Need ≥2 strategies for\n  correlation analysis\n", style=TEXT_MUTED,
             )
             return result
         n = len(mx)
@@ -864,7 +857,7 @@ class AlertStreamWidget(Static):
 
 class RiskScreen(BaseScreen):
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = (
-        BaseScreen.BINDINGS + [Binding("f", "filter_alerts", "Filter", show=False)]
+        [*BaseScreen.BINDINGS, Binding("f", "filter_alerts", "Filter", show=False)]
     )
     _filter_severity: reactive[str] = reactive("all")
     _loading_widget_id: ClassVar[str] = "#risk-loading"
@@ -943,7 +936,7 @@ class RiskScreen(BaseScreen):
             self.status_text = "Live . Risk . WS updated"
             if cs is not None:
                 self.notify(
-                    f"Risk score updated: {cs:.2f}", severity="information", timeout=2
+                    f"Risk score updated: {cs:.2f}", severity="information", timeout=2,
                 )
         except Exception as exc:
             logger.debug("WS risk update handler error: %s", exc)
@@ -951,7 +944,7 @@ class RiskScreen(BaseScreen):
     async def _fetch_data(self) -> None:
         await self._fetch_risk_data()
         self._update_status_text(
-            "Live . Risk . refreshed  [r]efresh  [j/k]scroll  [f]ilter  [?]help"
+            "Live . Risk . refreshed  [r]efresh  [j/k]scroll  [f]ilter  [?]help",
         )
 
     async def _fetch_risk_data(self) -> None:
@@ -1029,7 +1022,7 @@ class RiskScreen(BaseScreen):
             ]
         )
         safe_query(
-            self, "#risk-alerts", AlertStreamWidget, lambda w: setattr(w, "alerts", fl)
+            self, "#risk-alerts", AlertStreamWidget, lambda w: setattr(w, "alerts", fl),
         )
 
     def action_move_down(self) -> None:

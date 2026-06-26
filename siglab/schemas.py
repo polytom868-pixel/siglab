@@ -23,7 +23,7 @@ class AssetUniverse:
 
     @classmethod
     def from_dict(
-        cls: type[AssetUniverse], payload: dict[str, Any] | None
+        cls: type[AssetUniverse], payload: dict[str, Any] | None,
     ) -> AssetUniverse:
         payload = payload or {}
         return cls(
@@ -93,7 +93,7 @@ class SignalSpec:
 
     def strategy_hash(self) -> str:
         canonical = json.dumps(
-            self.canonical_dict(), sort_keys=True, separators=(",", ":")
+            self.canonical_dict(), sort_keys=True, separators=(",", ":"),
         )
         return short_hash(canonical)
 

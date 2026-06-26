@@ -8,7 +8,8 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Protocol, cast
+from typing import Any, Protocol, cast
+from collections.abc import Callable
 
 from siglab.config import SiglabConfig
 from siglab.path_utils import resolve_path_from_root
@@ -25,13 +26,13 @@ class _MarketDataProvider(Protocol):
 
 class _AncestryStore(Protocol):
     def best(
-        self, track: str, run_session_id: str | None = ...
+        self, track: str, run_session_id: str | None = ...,
     ) -> dict[str, Any] | None: ...
 
     def experiment_detail(self, spec_hash: str) -> dict[str, Any] | None: ...
 
     def dashboard_rows(
-        self, track: str = ..., family: str = ..., run_session_id: str | None = ...
+        self, track: str = ..., family: str = ..., run_session_id: str | None = ...,
     ) -> list[dict[str, Any]]: ...
 
     def recent(self, track: str, limit: int = ...) -> list[dict[str, Any]]: ...
@@ -95,7 +96,7 @@ def read_jsonl_with_stats(
 
 
 def latest_record(
-    rows: list[dict[str, Any]], *, required_value: str | None = None
+    rows: list[dict[str, Any]], *, required_value: str | None = None,
 ) -> dict[str, Any] | None:
     rows = [row for row in rows if _record_has_required_value(row, required_value)]
     if not rows:
@@ -139,7 +140,7 @@ def _record_timestamp(row: dict[str, Any]) -> datetime | None:
     return parsed
 
 
-def float_or_none(value: float | int | str | None) -> float | None:
+def float_or_none(value: float | str | None) -> float | None:
     from siglab.utils import safe_float
 
     return safe_float(value)
@@ -161,15 +162,15 @@ def sosovalue_currency_id(rows: list[dict[str, Any]], symbol: str) -> int | None
 
 
 def deployment_eligible(
-    *, summary: dict[str, Any], trial_context: dict[str, Any] | None
+    *, summary: dict[str, Any], trial_context: dict[str, Any] | None,
 ) -> bool:
     return not deployment_ineligible_reasons(
-        summary=summary, trial_context=trial_context
+        summary=summary, trial_context=trial_context,
     )
 
 
 def deployment_ineligible_reasons(
-    *, summary: dict[str, Any], trial_context: dict[str, Any] | None
+    *, summary: dict[str, Any], trial_context: dict[str, Any] | None,
 ) -> list[str]:
     summary = dict(summary or {})
     trial_context = dict(trial_context or {})
@@ -234,9 +235,9 @@ def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
         parent_exists = parent.exists()
         parent_writable = bool(parent_exists and os.access(parent, os.W_OK))
         file_writable = bool(
-            not nonce_path.exists()
-            and parent_writable
-            or os.access(nonce_path, os.W_OK)
+            (not nonce_path.exists()
+            and parent_writable)
+            or os.access(nonce_path, os.W_OK),
         )
         parseable = True
         nonce_error = None
@@ -257,7 +258,7 @@ def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
             nonce_error = "nonce store file is not writable"
         nonce_store_status = {
             "ready": bool(
-                parent_exists and parent_writable and file_writable and parseable
+                parent_exists and parent_writable and file_writable and parseable,
             ),
             "path_present": True,
             "parent_writable": parent_writable,
@@ -267,14 +268,14 @@ def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
         }
         if not nonce_store_status["ready"]:
             missing.append(
-                f"SODEX_NONCE_STORE_PATH not ready: {nonce_store_status['error']}"
+                f"SODEX_NONCE_STORE_PATH not ready: {nonce_store_status['error']}",
             )
     if not private_key_present:
         missing.append("SODEX_PRIVATE_KEY")
     if environment not in {"mainnet", "testnet"}:
         missing.append("SODEX_ENVIRONMENT must be mainnet or testnet")
     mainnet_confirmation = str(
-        source.get("SODEX_MAINNET_LIVE_WRITE_CONFIRMATION") or ""
+        source.get("SODEX_MAINNET_LIVE_WRITE_CONFIRMATION") or "",
     ).strip()
     testnet_passed = (
         str(source.get("SODEX_TESTNET_PREFLIGHT_PASSED") or "").strip().lower()
@@ -284,7 +285,7 @@ def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
             missing.append("SODEX_TESTNET_PREFLIGHT_PASSED must be true before mainnet")
         if mainnet_confirmation != "I_UNDERSTAND_MAINNET_RISK":
             missing.append(
-                "SODEX_MAINNET_LIVE_WRITE_CONFIRMATION must equal I_UNDERSTAND_MAINNET_RISK"
+                "SODEX_MAINNET_LIVE_WRITE_CONFIRMATION must equal I_UNDERSTAND_MAINNET_RISK",
             )
     return {
         "public_read_ready": True,
@@ -347,17 +348,17 @@ def parse_sodex_enum(value: str, aliases: dict[str, int], field_name: str) -> in
     if normalized in aliases:
         return aliases[normalized]
     accepted = ", ".join(
-        [*aliases.keys(), *[str(v) for v in sorted(set(aliases.values()))]]
+        [*aliases.keys(), *[str(v) for v in sorted(set(aliases.values()))]],
     )
     print(
-        f"--{field_name.replace('_', '-')} must be one of: {accepted}", file=sys.stderr
+        f"--{field_name.replace('_', '-')} must be one of: {accepted}", file=sys.stderr,
     )
     raise SystemExit(1)
 
 
 def require_sosovalue_config(settings: SiglabConfig) -> Path:
     config_path = resolve_path_from_root(
-        settings.sosovalue_config_path, root_dir=settings.root_dir
+        settings.sosovalue_config_path, root_dir=settings.root_dir,
     )
     if not config_path.exists():
         print(
@@ -370,7 +371,7 @@ def require_sosovalue_config(settings: SiglabConfig) -> Path:
 
 
 def display_deployment_record(
-    *, settings: SiglabConfig, record: dict[str, Any]
+    *, settings: SiglabConfig, record: dict[str, Any],
 ) -> dict[str, Any]:
     normalized = dict(record)
     for key in [
@@ -381,7 +382,7 @@ def display_deployment_record(
         "config_path",
     ]:
         normalized[key] = display_path_static(
-            normalized.get(key), root_dir=settings.root_dir
+            normalized.get(key), root_dir=settings.root_dir,
         )
     return normalized
 
@@ -451,7 +452,7 @@ def minimal_research_summary(
 
 
 def incumbent_detail(
-    *, ancestry: _AncestryStore, track: str, run_session_id: str | None = None
+    *, ancestry: _AncestryStore, track: str, run_session_id: str | None = None,
 ) -> dict[str, Any] | None:
     best = ancestry.best(track, run_session_id=run_session_id)
     if best is None:
@@ -479,7 +480,7 @@ def base_spec_payload_for_family(
     )
 
     family_rows = ancestry.dashboard_rows(
-        track=track, family=family, run_session_id=run_session_id
+        track=track, family=family, run_session_id=run_session_id,
     )
     if family_rows:
         family_rows.sort(
@@ -518,11 +519,11 @@ def pick_deterministic_parent(
     recent_rows = ancestry.recent(track, limit=500)
     deterministic_rows = [row for row in recent_rows if row_is_deterministic(row)]
     family_counts: Counter[str] = Counter(
-        (str(row.get("family") or "") for row in deterministic_rows)
+        str(row.get("family") or "") for row in deterministic_rows
     )
     seed_order = list(seed_specs)
     min_count = min(
-        (family_counts.get(seed.family, 0) for seed in seed_order), default=0
+        (family_counts.get(seed.family, 0) for seed in seed_order), default=0,
     )
     least_used = [
         seed for seed in seed_order if family_counts.get(seed.family, 0) == min_count
@@ -547,7 +548,7 @@ def spec_trade_style(spec: dict[str, Any]) -> str:
 
 
 def write_artifact(
-    settings: SiglabConfig, track: str, evaluation: dict[str, Any]
+    settings: SiglabConfig, track: str, evaluation: dict[str, Any],
 ) -> Path:
     from siglab.io_utils import write_json
 
@@ -560,7 +561,7 @@ def write_artifact(
 
 
 def parse_family_scope(
-    family: str | None, families: str | None
+    family: str | None, families: str | None,
 ) -> str | list[str] | None:
     if family and families:
         print("Use either --family or --families, not both", file=sys.stderr)
@@ -576,7 +577,7 @@ def parse_family_scope(
     return parsed
 
 
-def _format_optional_pct(value: float | int | str | None) -> str:
+def _format_optional_pct(value: float | str | None) -> str:
     if value is None:
         return "n/a"
     try:
@@ -585,7 +586,7 @@ def _format_optional_pct(value: float | int | str | None) -> str:
         return "n/a"
 
 
-def _format_optional_number(value: float | int | str | None) -> str:
+def _format_optional_number(value: float | str | None) -> str:
     if value is None:
         return "n/a"
     try:
@@ -595,7 +596,7 @@ def _format_optional_number(value: float | int | str | None) -> str:
 
 
 def external_research_from_llm_trace(
-    *, llm_trace: dict[str, Any] | None, web_researcher: _ResearchProvider
+    *, llm_trace: dict[str, Any] | None, web_researcher: _ResearchProvider,
 ) -> dict[str, Any]:
     payload = tool_only_external_research(web_researcher=web_researcher)
     trace = dict((llm_trace or {}).get("trace") or {})
@@ -618,7 +619,7 @@ def external_research_from_llm_trace(
                 "answer": result.get("answer"),
                 "insights": list(result.get("insights") or []),
                 "sources": list(result.get("sources") or []),
-            }
+            },
         )
     if reports:
         payload["provider"] = "tavily_tool_calls"
@@ -675,7 +676,7 @@ def write_json_and_maybe_print(
 
 
 def display_paths(
-    values: str | Path | list[str | Path] | None, *, root_dir: Path | None
+    values: str | Path | list[str | Path] | None, *, root_dir: Path | None,
 ) -> list[str | None]:
     from siglab.path_utils import display_path as _dp
 

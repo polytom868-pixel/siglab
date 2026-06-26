@@ -84,17 +84,17 @@ class SoDEXPublicPerpsClient:
 
     async def symbols(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
         return await self._list(
-            "/markets/symbols", "perps.symbols", param_key="symbol", param_value=symbol
+            "/markets/symbols", "perps.symbols", param_key="symbol", param_value=symbol,
         )
 
     async def coins(self, *, coin: str | None = None) -> list[dict[str, Any]]:
         return await self._list(
-            "/markets/coins", "perps.coins", param_key="coin", param_value=coin
+            "/markets/coins", "perps.coins", param_key="coin", param_value=coin,
         )
 
     async def tickers(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
         return await self._list(
-            "/markets/tickers", "perps.tickers", param_key="symbol", param_value=symbol
+            "/markets/tickers", "perps.tickers", param_key="symbol", param_value=symbol,
         )
 
     async def mini_tickers(self, *, symbol: str | None = None) -> list[dict[str, Any]]:
@@ -122,7 +122,7 @@ class SoDEXPublicPerpsClient:
         )
 
     async def orderbook(
-        self, *, symbol: str, limit: int | None = None
+        self, *, symbol: str, limit: int | None = None,
     ) -> dict[str, Any]:
         params = {"limit": int(limit)} if limit is not None else None
         payload = await self._request(
@@ -135,7 +135,7 @@ class SoDEXPublicPerpsClient:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise SoDEXFormatError(
-                "perps.orderbook data was not an object", payload=payload
+                "perps.orderbook data was not an object", payload=payload,
             )
         result = dict(data)
         bids = data.get("bids", [])
@@ -146,7 +146,7 @@ class SoDEXPublicPerpsClient:
                 best_ask = float(asks[0][0])
             except (TypeError, IndexError, ValueError) as exc:
                 raise SoDEXFormatError(
-                    "perps.orderbook bid/ask price was not numeric", payload=payload
+                    "perps.orderbook bid/ask price was not numeric", payload=payload,
                 ) from exc
             mid = (best_bid + best_ask) / 2.0
             if mid > 0:
@@ -193,7 +193,7 @@ class SoDEXPublicPerpsClient:
         )
 
     async def trades(
-        self, *, symbol: str, limit: int | None = None
+        self, *, symbol: str, limit: int | None = None,
     ) -> list[dict[str, Any]]:
         params = {"limit": int(limit)} if limit is not None else None
         return self._rows(
@@ -208,7 +208,7 @@ class SoDEXPublicPerpsClient:
         )
 
     async def funding_history(
-        self, symbol: str, start_time: int, end_time: int
+        self, symbol: str, start_time: int, end_time: int,
     ) -> list[dict[str, Any]]:
         """Fetch historical funding rates for *symbol* between *start_time* and *end_time* (ms epochs)."""
         return self._rows(
@@ -223,7 +223,7 @@ class SoDEXPublicPerpsClient:
         )
 
     async def account_balances(
-        self, *, user_address: str, account_id: int | None = None
+        self, *, user_address: str, account_id: int | None = None,
     ) -> dict[str, Any]:
         return await self._account_object(
             endpoint="perps.account_balances",
@@ -253,12 +253,12 @@ class SoDEXPublicPerpsClient:
         data = payload.get("data")
         if not isinstance(data, (dict, list)):
             raise SoDEXFormatError(
-                "perps.account_orders data was not an object or list", payload=payload
+                "perps.account_orders data was not an object or list", payload=payload,
             )
         return {"data": data}
 
     async def account_positions(
-        self, *, user_address: str, account_id: int | None = None
+        self, *, user_address: str, account_id: int | None = None,
     ) -> dict[str, Any]:
         return await self._account_object(
             endpoint="perps.account_positions",
@@ -267,7 +267,7 @@ class SoDEXPublicPerpsClient:
         )
 
     async def account_state(
-        self, *, user_address: str, account_id: int | None = None
+        self, *, user_address: str, account_id: int | None = None,
     ) -> dict[str, Any]:
         return await self._account_object(
             endpoint="perps.account_state",
@@ -276,7 +276,7 @@ class SoDEXPublicPerpsClient:
         )
 
     async def _account_object(
-        self, *, endpoint: str, path: str, account_id: int | None = None
+        self, *, endpoint: str, path: str, account_id: int | None = None,
     ) -> dict[str, Any]:
         params = {"accountID": int(account_id)} if account_id is not None else None
         payload = await self._request(
@@ -289,7 +289,7 @@ class SoDEXPublicPerpsClient:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise SoDEXFormatError(
-                f"{endpoint} data was not an object", payload=payload
+                f"{endpoint} data was not an object", payload=payload,
             )
         return dict(data)
 
@@ -362,7 +362,7 @@ class SoDEXPublicPerpsClient:
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
-                limits=httpx.Limits(max_connections=8, max_keepalive_connections=4)
+                limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
             )
         return self._client
 
@@ -371,7 +371,7 @@ class SoDEXPublicPerpsClient:
             payload = response.json()
         except ValueError as exc:
             raise SoDEXFormatError(
-                f"{endpoint} returned malformed JSON", status_code=response.status_code
+                f"{endpoint} returned malformed JSON", status_code=response.status_code,
             ) from exc
         if not isinstance(payload, dict):
             raise SoDEXFormatError(
@@ -388,7 +388,7 @@ class SoDEXPublicPerpsClient:
         return payload
 
     def _classify_status(
-        self, status: int, endpoint: str
+        self, status: int, endpoint: str,
     ) -> tuple[SoDEXError | None, bool]:
         if status == 429:
             return (
@@ -398,7 +398,7 @@ class SoDEXPublicPerpsClient:
         if status == 408 or status >= 500:
             return (
                 SoDEXUpstreamError(
-                    f"{endpoint} retryable HTTP {status}", status_code=status
+                    f"{endpoint} retryable HTTP {status}", status_code=status,
                 ),
                 True,
             )
@@ -410,7 +410,7 @@ class SoDEXPublicPerpsClient:
         return (None, False)
 
     def _checked_payload(
-        self, response: httpx.Response, endpoint: str
+        self, response: httpx.Response, endpoint: str,
     ) -> dict[str, Any]:
         status = int(response.status_code)
         err, _ = self._classify_status(status, endpoint)
@@ -446,7 +446,7 @@ def _validate_evm_address(value: str) -> str:
         int(text[2:], 16)
     except ValueError as exc:
         raise SoDEXFormatError(
-            "SoDEX userAddress must contain only hex characters"
+            "SoDEX userAddress must contain only hex characters",
         ) from exc
     return text
 

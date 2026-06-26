@@ -23,37 +23,37 @@ class LLMRoutingPolicy:
         self.health = ModelHealth()
 
     def model_for_stage(
-        self, *, provider: str, stage: str | None, thinking_override: str | None = None
+        self, *, provider: str, stage: str | None, thinking_override: str | None = None,
     ) -> str:
         if provider != "bai":
             return resolve_llm_model(
-                self.settings, provider=provider, thinking_override=thinking_override
+                self.settings, provider=provider, thinking_override=thinking_override,
             )
         stage_name = str(stage or "default").strip().lower()
         if stage_name == "planner":
             return str(
                 getattr(self.settings, "bai_planner_model", "")
-                or getattr(self.settings, "bai_model", "deepseek-v4-flash")
+                or getattr(self.settings, "bai_model", "deepseek-v4-flash"),
             )
         if stage_name == "writer":
             return str(
                 getattr(self.settings, "bai_writer_model", "")
-                or getattr(self.settings, "bai_model", "deepseek-v4-flash")
+                or getattr(self.settings, "bai_model", "deepseek-v4-flash"),
             )
         if stage_name == "reflector":
             return str(
                 getattr(self.settings, "bai_reflector_model", "")
-                or getattr(self.settings, "bai_fallback_fast_model", "kimi-k2.5")
+                or getattr(self.settings, "bai_fallback_fast_model", "kimi-k2.5"),
             )
         if stage_name == "benchmark":
             return str(
                 getattr(self.settings, "bai_writer_model", "")
-                or getattr(self.settings, "bai_model", "deepseek-v4-flash")
+                or getattr(self.settings, "bai_model", "deepseek-v4-flash"),
             )
         return str(getattr(self.settings, "bai_model", "deepseek-v4-flash"))
 
     def candidates(
-        self, *, provider: str, stage: str | None, primary: str
+        self, *, provider: str, stage: str | None, primary: str,
     ) -> list[str]:
         if provider != "bai":
             return [primary]
@@ -97,7 +97,7 @@ class LLMRoutingPolicy:
         self.health.recent_errors[model] = error_class
 
     def record_latency(
-        self, *, model: str, stage: str | None, elapsed_ms: float
+        self, *, model: str, stage: str | None, elapsed_ms: float,
     ) -> None:
         stage_name = str(stage or "").strip().lower()
         if (

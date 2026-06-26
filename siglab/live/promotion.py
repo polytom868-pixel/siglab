@@ -65,7 +65,7 @@ def compute_sub_scores(metrics: dict[str, Any]) -> dict[str, float]:
 
 
 def compute_composite_score(
-    metrics: dict[str, Any], weights: dict[str, float] | None = None
+    metrics: dict[str, Any], weights: dict[str, float] | None = None,
 ) -> float:
     """Compute weighted composite score from raw metrics."""
     w = weights if weights is not None else dict(DEFAULT_WEIGHTS)
@@ -74,7 +74,7 @@ def compute_composite_score(
     total_weight = sum(recognised.values())
     if total_weight <= 0.0:
         return 0.0
-    composite = sum((sub_scores[k] * recognised[k] for k in recognised)) / total_weight
+    composite = sum(sub_scores[k] * recognised[k] for k in recognised) / total_weight
     return max(0.0, min(1.0, composite))
 
 
@@ -108,7 +108,7 @@ def promotion_eligible(
                 True,
                 f"Composite score {latest:.4f} above threshold {t} for {c} consecutive days",
             )
-        below_count = sum((1 for s in recent_scores if s < t))
+        below_count = sum(1 for s in recent_scores if s < t)
         return (
             False,
             f"Composite score below threshold {t} on {below_count} of last {c} days (latest: {latest:.4f})",
@@ -123,7 +123,7 @@ def _ts_to_day_key(timestamp: float) -> str:
 
 
 def extract_session_metrics(
-    client: SoDEXPaperPerpsClient, session_id: str
+    client: SoDEXPaperPerpsClient, session_id: str,
 ) -> dict[str, Any]:
     """Extract raw aggregate metrics from a paper trading session."""
     session = client.get_session(session_id)
@@ -151,12 +151,12 @@ def extract_session_metrics(
         prior_entry = pos_entry.get(sym, 0.0)
         _fill_price = order.fill_price if order.fill_price is not None else order.price
         trade_pnl = compute_trade_pnl(
-            _fill_price, order.quantity, prior_qty, prior_entry, order.side.value
+            _fill_price, order.quantity, prior_qty, prior_entry, order.side.value,
         )
         daily_pnl[day] = daily_pnl.get(day, 0.0) + trade_pnl
         _fill_price = order.fill_price if order.fill_price is not None else order.price
         new_qty, new_entry = update_position(
-            order.side.value, order.quantity, _fill_price, prior_qty, prior_entry
+            order.side.value, order.quantity, _fill_price, prior_qty, prior_entry,
         )
         pos_qty[sym] = new_qty
         pos_entry[sym] = new_entry
@@ -177,16 +177,16 @@ def extract_session_metrics(
         prior_entry = pos_entry_wr.get(sym, 0.0)
         _fill_price = order.fill_price if order.fill_price is not None else order.price
         tp = compute_trade_pnl(
-            _fill_price, order.quantity, prior_qty, prior_entry, order.side.value
+            _fill_price, order.quantity, prior_qty, prior_entry, order.side.value,
         )
         trade_pnls.append(tp)
         _fill_price = order.fill_price if order.fill_price is not None else order.price
         new_qty, new_entry = update_position(
-            order.side.value, order.quantity, _fill_price, prior_qty, prior_entry
+            order.side.value, order.quantity, _fill_price, prior_qty, prior_entry,
         )
         pos_qty_wr[sym] = new_qty
         pos_entry_wr[sym] = new_entry
-    profitable = sum((1 for p in trade_pnls if p > 0))
+    profitable = sum(1 for p in trade_pnls if p > 0)
     total_trades = len(trade_pnls)
     win_rate = profitable / total_trades if total_trades > 0 else 0.5
     if len(equity) > 0:
@@ -206,7 +206,7 @@ def extract_session_metrics(
 
 
 def extract_daily_metrics(
-    client: SoDEXPaperPerpsClient, session_id: str
+    client: SoDEXPaperPerpsClient, session_id: str,
 ) -> list[dict[str, Any]]:
     """Extract per-trading-day raw metrics from a paper session."""
     session = client.get_session(session_id)
@@ -240,19 +240,19 @@ def extract_daily_metrics(
                 order.fill_price if order.fill_price is not None else order.price
             )
             tp = compute_trade_pnl(
-                _fill_price, order.quantity, prior_qty, prior_entry, order.side.value
+                _fill_price, order.quantity, prior_qty, prior_entry, order.side.value,
             )
             trade_pnls_day.append(tp)
             day_pnl += tp
             new_qty, new_entry = update_position(
-                order.side.value, order.quantity, _fill_price, prior_qty, prior_entry
+                order.side.value, order.quantity, _fill_price, prior_qty, prior_entry,
             )
             running_pos_qty[sym] = new_qty
             running_pos_entry[sym] = new_entry
         cumulative_equity += day_pnl
         total_trades_day = len(trade_pnls_day)
         win_rate_day = (
-            sum((1 for p in trade_pnls_day if p > 0)) / total_trades_day
+            sum(1 for p in trade_pnls_day if p > 0) / total_trades_day
             if total_trades_day > 0
             else 0.5
         )
@@ -266,6 +266,6 @@ def extract_daily_metrics(
                 else 0.0,
                 "day_pnl": day_pnl,
                 "trade_count": total_trades_day,
-            }
+            },
         )
     return daily_list
