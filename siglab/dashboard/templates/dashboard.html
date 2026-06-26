@@ -54,34 +54,14 @@
   </div>
 </header>
 
-<section class="most-recent-run" id="mostRecentRun"
-         hx-get="/partials/dashboard/most_recent_run"
-         hx-trigger="load"
-         hx-indicator=".skeleton-card">
-</section>
-
-
-<section class="quick-actions">
-  <h2 class="quick-actions-title">Quick Actions</h2>
-  <div class="quick-actions-grid">
-    <a href="/ops" class="quick-action-card">
-      <span class="quick-action-icon">📋</span>
-      <span class="quick-action-label">View Ops Board</span>
-    </a>
-    <a href="#" class="quick-action-card" onclick="window.open('/api/export/runs?format=csv', '_blank'); return false;">
-      <span class="quick-action-icon">📥</span>
-      <span class="quick-action-label">Export Runs (CSV)</span>
-    </a>
-    <a href="#" class="quick-action-card" onclick="window.open('/api/export/runs?format=json', '_blank'); return false;">
-      <span class="quick-action-icon">📄</span>
-      <span class="quick-action-label">Export Runs (JSON)</span>
-    </a>
-    <a href="#" class="quick-action-card" onclick="window.location.reload(); return false;">
-      <span class="quick-action-icon">🔄</span>
-      <span class="quick-action-label">Refresh Data</span>
-    </a>
-  </div>
-</section>
+<details class="most-recent-run" id="mostRecentRun" open>
+  <summary class="most-recent-run-header">
+    <h2>Most Recent Run</h2>
+  </summary>
+  <div hx-get="/partials/dashboard/most_recent_run"
+       hx-trigger="load"
+       hx-indicator=".skeleton-card"></div>
+</details>
 
 
 <section class="summary-grid" id="summaryCards"

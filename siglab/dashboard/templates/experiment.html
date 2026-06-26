@@ -4,6 +4,14 @@
 <a class="navbar-link active" aria-label="Current experiment detail" href="#">Experiment</a>
 {% endblock %}
 
+{% block breadcrumb %}
+<a href="/" class="breadcrumb-item">Dashboard</a>
+<span class="breadcrumb-separator">›</span>
+<a href="/runs/" class="breadcrumb-item">Run</a>
+<span class="breadcrumb-separator">›</span>
+<span class="breadcrumb-current" x-text="$store.selection.selectedHash || 'Experiment'">Experiment</span>
+{% endblock %}
+
 {% block content %}
 <header class="hero experiment-hero">
   <div>
@@ -125,7 +133,7 @@
   </div>
 </details>
 
-<details class="panel experiment-section">
+<details class="panel experiment-section" open>
   <summary class="panel-header experiment-section-header">
     <h2>Trade Tape</h2>
   </summary>

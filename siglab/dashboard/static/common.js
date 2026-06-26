@@ -661,6 +661,18 @@ document.addEventListener("click", (event) => {
   // Close button
   helpClose.addEventListener("click", closeHelp);
 
+  // Help trigger button in navbar
+  const helpTrigger = document.getElementById("helpTrigger");
+  if (helpTrigger) {
+    helpTrigger.addEventListener("click", () => {
+      if (helpDialog.open) {
+        closeHelp();
+      } else {
+        openHelp();
+      }
+    });
+  }
+
   // Click on backdrop to close
   helpDialog.addEventListener("click", (e) => {
     if (e.target === helpDialog || e.target.classList.contains("help-modal-backdrop")) {

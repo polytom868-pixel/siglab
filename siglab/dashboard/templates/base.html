@@ -37,10 +37,19 @@
         <button id="commandPaletteTrigger" class="command-palette-trigger" aria-label="Open command palette (Cmd+K)" title="Search (Cmd+K)">
           <span class="command-palette-trigger-icon">⌘K</span>
         </button>
+        <button id="helpTrigger" class="help-trigger" aria-label="Open help (?)" title="Help (?)">
+          <span class="help-trigger-icon">?</span>
+        </button>
         <span class="status-dot"></span>
         <span class="status-label">SigLab</span>
         <button id="themeToggle" class="theme-toggle" aria-label="Switch to light mode" title="Switch theme">🌙</button>
       </div>
+
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      {% block breadcrumb %}
+      <a href="/" class="breadcrumb-item">Dashboard</a>
+      {% endblock %}
+    </nav>
 
     <div class="page-shell" id="main-content" role="main">
       {% block content %}{% endblock %}

@@ -954,9 +954,9 @@ input[type="checkbox"] {
 
 .chart-wrap {
   position: relative;
-  height: 460px;
+  height: 320px;
   padding: 8px 12px 20px;
-  aspect-ratio: 1200/460;
+  aspect-ratio: 1200/320;
   max-width: 100%;
 }
 
@@ -1492,7 +1492,7 @@ pre {
 }
 
 .skeleton-chart {
-  height: 460px;
+  height: 320px;
 }
 
 .skeleton-row {
@@ -1828,6 +1828,63 @@ pre {
 }
 
 
+
+/* ─── Breadcrumb ─── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  font-size: var(--type-label);
+  color: var(--muted);
+}
+
+.breadcrumb-item {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+
+.breadcrumb-item:hover {
+  color: var(--green);
+}
+
+.breadcrumb-separator {
+  color: var(--muted);
+}
+
+.breadcrumb-current {
+  color: var(--text);
+  font-weight: 500;
+}
+
+
+.help-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.help-trigger:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-accent);
+}
+
+.help-trigger-icon {
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+
 /* ─── Responsive ─── */
 
 @media (max-width: 1080px) {
@@ -2007,7 +2064,7 @@ pre {
 .chart-wrap object {
   width: 100%;
   height: auto;
-  max-height: 460px;
+  max-height: 320px;
   overflow: visible;
 }
 
