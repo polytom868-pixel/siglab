@@ -662,5 +662,64 @@ function outOfSampleMetric(summary, prefix) {
   return `${formatPercent(summary?.[`${prefix}_total_return`])} / ${formatNumber(summary?.[`${prefix}_sharpe`], 2)}`;
 }
 
+
+// ─── Section State Persistence ─────────────────────────────────────
+const SECTION_STATE_KEY = "siglab.experimentSections";
+
+function loadSectionState() {
+  try {
+    const saved = localStorage.getItem(SECTION_STATE_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch { return {}; }
+}
+
+function saveSectionState(state) {
+  try { localStorage.setItem(SECTION_STATE_KEY, JSON.stringify(state)); } catch {}
+}
+
+function initSectionPersistence() {
+  const sections = document.querySelectorAll("details.experiment-section");
+  if (!sections.length) return;
+
+  const saved = loadSectionState();
+
+  // Restore saved state
+  sections.forEach((section, i) => {
+    const key = `section_${i}`;
+    if (key in saved) {
+      section.open = saved[key];
+    }
+  });
+
+  // Save on toggle
+  sections.forEach((section, i) => {
+    section.addEventListener("toggle", () => {
+      const state = loadSectionState();
+      state[`section_${i}`] = section.open;
+      saveSectionState(state);
+    });
+  });
+}
+
+// Initialize on DOMContentLoaded
+document.addEventListener("DOMContentLoaded", initSectionPersistence);
+
+// ─── Keyboard Shortcut: E to toggle all sections ──────────────────
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  if (e.key === "e" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    const sections = document.querySelectorAll("details.experiment-section");
+    if (!sections.length) return;
+    const allOpen = Array.from(sections).every(s => s.open);
+    sections.forEach(s => { s.open = !allOpen; });
+    // Save new state
+    const state = {};
+    sections.forEach((s, i) => { state[`section_${i}`] = s.open; });
+    saveSectionState(state);
+  }
+});
+
+
 // close IIFE
 })();

@@ -362,6 +362,16 @@ h2 {
   background: var(--fail-soft);
 }
 
+.ops-panel--market {
+  grid-column: span 2;
+  min-height: 200px;
+}
+
+.ops-panel--sodex {
+  border-left: 3px solid var(--amber);
+}
+
+
 .ops-panel h2 {
   margin-bottom: 12px;
   color: var(--ops-heading, #f4f7f5);
@@ -648,7 +658,7 @@ input[type="checkbox"] {
 
 .summary-card {
   padding: 18px 20px;
-  min-height: 120px;
+  min-height: 80px;
   position: relative;
   overflow: hidden;
 }
