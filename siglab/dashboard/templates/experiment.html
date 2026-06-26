@@ -7,7 +7,6 @@
 {% block content %}
 <header class="hero experiment-hero">
   <div>
-    <p class="eyebrow">SoSoValue SigLab</p>
     <h1 id="experimentTitle" x-text="$store.selection.selectedHash || 'Experiment'">Experiment</h1>
     <p class="subhead" id="experimentSubtitle">
       Full-run timeline, exposure, and position history.
@@ -17,7 +16,11 @@
        x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>
   </div>
   <div class="hero-controls">
-    <a id="backLink" class="button-link" href="/">Back to Dashboard</a>
+    <a id="backLink" class="button-link experiment-back-link" href="/">← Back to Dashboard</a>
+    <button type="button" class="button-link" aria-label="Export experiment as JSON"
+            @click="window.open('/api/export/experiments?format=json', '_blank')">Export JSON</button>
+    <button type="button" class="button-link" aria-label="Export experiment as CSV"
+            @click="window.open('/api/export/experiments?format=csv', '_blank')">Export CSV</button>
   </div>
 </header>
 
@@ -78,26 +81,21 @@
   </aside>
 </section>
 
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h2>Live Deployment</h2>
-      <p>Export this experiment as a runnable SoSoValue strategy and optionally schedule runner updates.</p>
-    </div>
-  </div>
+<details class="panel experiment-section" open>
+  <summary class="panel-header experiment-section-header">
+    <h2>Live Deployment</h2>
+  </summary>
   <div class="detail-content" id="deploymentPanel"
        hx-get="/partials/experiment/deployment?spec_hash={{ spec_hash or '' }}"
        hx-trigger="load"
        hx-indicator=".skeleton-card"></div>
-</section>
+</details>
 
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h2>Asset Action Timeline</h2>
-      <p id="assetActionsSubtitle">Retained trade-price path and action markers by asset. These use stored execution prices, not full candles.</p>
-    </div>
-  </div>
+<details class="panel experiment-section">
+  <summary class="panel-header experiment-section-header">
+    <h2>Asset Action Timeline</h2>
+  </summary>
+  <p id="assetActionsSubtitle">Retained trade-price path and action markers by asset. These use stored execution prices, not full candles.</p>
   <div id="assetActionCharts" class="asset-action-grid"
        hx-get="/partials/experiment/actions?spec_hash={{ spec_hash or '' }}"
        hx-trigger="load"
@@ -105,18 +103,13 @@
     <div class="asset-action-card"><div class="skeleton-chart" style="height:200px;"></div></div>
     <div class="asset-action-card"><div class="skeleton-chart" style="height:200px;"></div></div>
   </div>
-</section>
+</details>
 
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h2>Long / Short Timeline</h2>
-      <p>
-        Position-weight heatmap for the canonical full run. Green is long,
-        amber is short.
-      </p>
-    </div>
-  </div>
+<details class="panel experiment-section">
+  <summary class="panel-header experiment-section-header">
+    <h2>Long / Short Timeline</h2>
+  </summary>
+  <p>Position-weight heatmap for the canonical full run. Green is long, amber is short.</p>
   <div class="heatmap-shell">
     <div class="heatmap-legend">
       <span class="pill">Long</span>
@@ -130,21 +123,19 @@
       <div class="skeleton-chart" style="height:200px;"></div>
     </div>
   </div>
-</section>
+</details>
 
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h2>Trade Tape</h2>
-      <p id="tradeSubtitle">Executed trades for the canonical run.</p>
-    </div>
-    <label class="inline-control" for="displayCapitalInput">
-      <span>Display Capital (USD)</span>
-    </label>
-    <input id="displayCapitalInput" type="number" min="1000" step="1000"
-           x-model="$store.displayCapital.usd"
-           @change="htmx.trigger('#tradesTable', 'load')" />
-  </div>
+<details class="panel experiment-section">
+  <summary class="panel-header experiment-section-header">
+    <h2>Trade Tape</h2>
+  </summary>
+  <p id="tradeSubtitle">Executed trades for the canonical run.</p>
+  <label class="inline-control" for="displayCapitalInput">
+    <span>Display Capital (USD)</span>
+  </label>
+  <input id="displayCapitalInput" type="number" min="1000" step="1000"
+         x-model="$store.displayCapital.usd"
+         @change="htmx.trigger('#tradesTable', 'load')" />
   <div class="table-wrap custom-scrollbar">
     <table>
       <thead>
@@ -166,7 +157,8 @@
              hx-indicator=".skeleton-card"></tbody>
     </table>
   </div>
-</section>
+</details>
+
 {% endblock %}
 
 {% block scripts_extra %}

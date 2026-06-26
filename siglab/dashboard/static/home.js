@@ -69,7 +69,14 @@ async function refresh() {
     HOME_STATE.payload = data;
     HOME_STATE.lastUpdatedTimestamp = Date.now();
     updateFreshnessIndicator();
-    populateFamilyFilter(HOME_STATE.payload?.summary?.families || [], family, escapeHtml);
+    // Compute family counts from runs
+    const runs = data.runs || [];
+    const familyCounts = {};
+    for (const run of runs) {
+      const fam = run.family || "";
+      if (fam) familyCounts[fam] = (familyCounts[fam] || 0) + 1;
+    }
+    populateFamilyFilter(data.summary?.families || [], family, escapeHtml, familyCounts);
     render();
   } catch (error) {
     if (error.name !== "AbortError") {
@@ -152,10 +159,14 @@ function renderRunCards(runs) {
   const metricMeta = METRIC_META[metricKey] || METRIC_META.aggregate_score;
   if (!runs.length) {
     container.innerHTML = `
-      <article class="waiting-card">
+      <article class="waiting-card waiting-card-empty-state">
         <div class="waiting-card-title">No runs recorded yet</div>
-        <p class="waiting-card-copy">No runs recorded yet.</p>
         <p class="waiting-card-copy">Runs will appear once an experiment evaluation finishes.</p>
+        <div class="waiting-card-command">
+          <code>python3 -m siglab run --track trend_signals --iterations 1</code>
+          <button class="waiting-card-copy-btn" onclick="navigator.clipboard.writeText('python3 -m siglab run --track trend_signals --iterations 1')" aria-label="Copy command">Copy</button>
+        </div>
+        <p class="waiting-card-copy">Or use the <strong>Operator</strong> pipeline to run an evidence-to-decision cycle.</p>
       </article>
     `;
     return;

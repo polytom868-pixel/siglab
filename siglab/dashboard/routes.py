@@ -1421,6 +1421,150 @@ async def api_experiment_deploy(request: Request, spec_hash: str) -> dict[str, A
     )
 
 
+@router.get("/api/search")
+async def api_search(
+    request: Request, q: str = "", limit: int = 20
+) -> dict[str, Any]:
+    """Search across runs, experiments, and actions."""
+    query = q.strip().lower()
+    if not query:
+        return {"results": [], "query": q}
+
+    dashboard = request.app.state.dashboard
+    results: list[dict[str, Any]] = []
+
+    # Search runs
+    runs_data = dashboard.runs_payload()
+    for run in runs_data.get("runs", []):
+        run_id = str(run.get("run_id", ""))
+        label = str(run.get("label", ""))
+        track = str(run.get("track", ""))
+        family = str(run.get("family", ""))
+        searchable = f"{run_id} {label} {track} {family}".lower()
+        if query in searchable:
+            results.append({
+                "type": "run",
+                "title": label or run_id,
+                "subtitle": f"{track} · {family}" if track and family else track or family,
+                "url": f"/runs/{run_id}",
+                "icon": "📊",
+            })
+
+    # Search experiments
+    experiments_data = dashboard.experiments_payload()
+    for exp in experiments_data.get("experiments", []):
+        spec_hash = str(exp.get("spec_hash", ""))
+        hypothesis = str(exp.get("hypothesis", ""))
+        family = str(exp.get("family", ""))
+        track = str(exp.get("track", ""))
+        searchable = f"{spec_hash} {hypothesis} {family} {track}".lower()
+        if query in searchable:
+            results.append({
+                "type": "experiment",
+                "title": hypothesis[:80] or spec_hash[:16],
+                "subtitle": f"{family} · {track}",
+                "url": f"/experiments/{spec_hash}",
+                "icon": "🧪",
+            })
+
+    # Search actions (static list)
+    actions = [
+        {"title": "View Ops Board", "url": "/ops", "icon": "📋", "keywords": "ops board operations status"},
+        {"title": "View Dashboard", "url": "/", "icon": "📊", "keywords": "dashboard runs home"},
+        {"title": "Export Runs (CSV)", "url": "/api/export/runs?format=csv", "icon": "📥", "keywords": "export runs csv download"},
+        {"title": "Export Runs (JSON)", "url": "/api/export/runs?format=json", "icon": "📥", "keywords": "export runs json download"},
+        {"title": "Export Experiments (CSV)", "url": "/api/export/experiments?format=csv", "icon": "📥", "keywords": "export experiments csv download"},
+        {"title": "Export Experiments (JSON)", "url": "/api/export/experiments?format=json", "icon": "📥", "keywords": "export experiments json download"},
+        {"title": "Refresh Data", "url": "#", "icon": "🔄", "keywords": "refresh reload update"},
+        {"title": "Toggle Theme", "url": "#", "icon": "🌙", "keywords": "theme dark light mode"},
+        {"title": "Help & Documentation", "url": "#", "icon": "❓", "keywords": "help documentation guide glossary metrics"},
+    ]
+    for action in actions:
+        searchable = f"{action['title']} {action['keywords']}".lower()
+        if query in searchable:
+            results.append({
+                "type": "action",
+                "title": action["title"],
+                "subtitle": "Action",
+                "url": action["url"],
+                "icon": action["icon"],
+            })
+
+    # Limit results
+    results = results[:limit]
+
+    return {"results": results, "query": q, "count": len(results)}
+
+@router.get("/api/export/runs")
+async def api_export_runs(
+    request: Request, format: str = "json", track: str | None = None, family: str | None = None
+) -> Response:
+    """Export runs as CSV or JSON."""
+    dashboard = request.app.state.dashboard
+    data = dashboard.runs_payload(
+        track=canonical_track_name(track) if track else None, family=family
+    )
+    runs = data.get("runs", [])
+
+    if format == "csv":
+        import csv
+        import io
+        output = io.StringIO()
+        if runs:
+            writer = csv.DictWriter(output, fieldnames=runs[0].keys())
+            writer.writeheader()
+            writer.writerows(runs)
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=siglab_runs.csv"},
+        )
+    return Response(
+        content=json.dumps(data, default=str, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=siglab_runs.json"},
+    )
+
+
+@router.get("/api/export/experiments")
+async def api_export_experiments(
+    request: Request, format: str = "json", track: str | None = None, family: str | None = None
+) -> Response:
+    """Export experiments as CSV or JSON."""
+    dashboard = request.app.state.dashboard
+    data = dashboard.experiments_payload(
+        track=canonical_track_name(track) if track else None, family=family
+    )
+    experiments = data.get("experiments", [])
+
+    if format == "csv":
+        import csv
+        import io
+        output = io.StringIO()
+        if experiments:
+            # Flatten nested fields for CSV
+            flat = []
+            for exp in experiments:
+                row = {k: v for k, v in exp.items() if not isinstance(v, (dict, list))}
+                summary = exp.get("summary", {})
+                for k, v in summary.items():
+                    row[f"summary.{k}"] = v
+                flat.append(row)
+            if flat:
+                writer = csv.DictWriter(output, fieldnames=flat[0].keys())
+                writer.writeheader()
+                writer.writerows(flat)
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=siglab_experiments.csv"},
+        )
+    return Response(
+        content=json.dumps(data, default=str, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=siglab_experiments.json"},
+    )
+
 @router.get("/ops-board")
 async def ops_board(request: Request) -> dict[str, Any]:
     if (config := request.app.state.dashboard.config) is None:
@@ -1814,6 +1958,36 @@ async def partial_dashboard_runs(
             "family": family,
             "metric": "aggregate_score",
         },
+    )
+
+@router.get("/partials/dashboard/most_recent_run")
+async def partial_dashboard_most_recent_run(request: Request) -> Any:
+    """Return the most recent run as a hero section."""
+    dashboard = request.app.state.dashboard
+    data = dashboard.runs_payload()
+    runs = data.get("runs", [])
+    if not runs:
+        return Response(content="", media_type="text/html")
+    most_recent = runs[0]
+    run_id = most_recent.get("run_id", "")
+    label = most_recent.get("label", run_id)
+    track = most_recent.get("track", "")
+    family = most_recent.get("family", "")
+    status = most_recent.get("status", "")
+    status_class = "status-pass" if status in ("deployd", "pass") else "status-fail"
+    return Response(
+        content=f"""
+        <div class="most-recent-run-content">
+          <div class="most-recent-run-header">
+            <span class="most-recent-run-badge">Most Recent Run</span>
+            <span class="{status_class}">{status}</span>
+          </div>
+          <h2 class="most-recent-run-title">{label}</h2>
+          <p class="most-recent-run-meta">{track} · {family}</p>
+          <a href="/runs/{run_id}" class="button-link">View Run Details →</a>
+        </div>
+        """,
+        media_type="text/html",
     )
 
 

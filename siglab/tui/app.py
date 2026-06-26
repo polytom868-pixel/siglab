@@ -36,7 +36,7 @@ class PlaceholderScreen(Screen[Any]):
         yield Static(id="placeholder-screen")
         yield Static("Coming soon", id="placeholder-text")
 
-    DEFAULT_CSS = "PlaceholderScreen { align: center middle; height: 100%; width: 100%; } color: #7d9483; text-style: italic; }"
+    DEFAULT_CSS = "PlaceholderScreen { align: center middle; height: 100%; width: 100%; } #placeholder-text { color: #7d9483; text-style: italic; }"
 
     def __init__(self, screen_name: str, screen_id: str = "") -> None:
         super().__init__()
@@ -53,7 +53,7 @@ class PlaceholderScreen(Screen[Any]):
 class HelpScreen(ModalScreen[None]):
     """Overlay showing keyboard shortcuts (global + per-screen)."""
 
-    DEFAULT_CSS = "HelpScreen { align: center middle; background: rgba(0, 0, 0, 0.85); } width: 56; max-width: 90%; height: auto; max-height: 80%; padding: 1 2; background: #0d1210; border: solid #2a3a30; overflow-y: auto; } text-style: bold; color: #4ade80; margin: 0 0 1 0; }"
+    DEFAULT_CSS = "HelpScreen { align: center middle; background: rgba(0, 0, 0, 0.85); } #help-dialog { width: 56; max-width: 90%; height: auto; max-height: 80%; padding: 1 2; background: #0d1210; border: solid #2a3a30; overflow-y: auto; } #help-title { text-style: bold; color: #4ade80; margin: 0 0 1 0; }"
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "dismiss", "Close"),
         Binding("q", "dismiss", "Close"),

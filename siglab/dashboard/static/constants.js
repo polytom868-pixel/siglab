@@ -179,8 +179,8 @@ window.SigLabUi.FAMILY_GUIDE = {
 // Constants
 window.SigLabUi.DEFAULT_DISPLAY_CAPITAL_USD = 100000;
 window.SigLabUi.DISPLAY_CAPITAL_STORAGE_KEY = "siglab.displayCapitalUsd";
-window.SigLabUi.AUTO_REFRESH_INTERVAL_MS = 10000;
-window.SigLabUi.OPS_REFRESH_INTERVAL_MS = 15000;
+window.SigLabUi.AUTO_REFRESH_INTERVAL_MS = 30000;
+window.SigLabUi.OPS_REFRESH_INTERVAL_MS = 60000;
 
 // API paths
 window.SigLabUi.API = {

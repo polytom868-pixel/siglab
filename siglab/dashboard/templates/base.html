@@ -34,17 +34,111 @@
         <a class="navbar-link {% block nav_ops_active %}{% endblock %}" aria-label="View operations board" href="/ops">Ops</a>
       </div>
       <div class="navbar-status">
+        <button id="commandPaletteTrigger" class="command-palette-trigger" aria-label="Open command palette (Cmd+K)" title="Search (Cmd+K)">
+          <span class="command-palette-trigger-icon">⌘K</span>
+        </button>
         <span class="status-dot"></span>
         <span class="status-label">SigLab</span>
         <button id="themeToggle" class="theme-toggle" aria-label="Switch to light mode" title="Switch theme">🌙</button>
       </div>
-    </nav>
 
     <div class="page-shell" id="main-content" role="main">
       {% block content %}{% endblock %}
     </div>
 
     <div id="errorToast" class="toast-error hidden" role="alert" aria-live="assertive"></div>
+
+    <!-- Command Palette (Cmd+K) -->
+    <dialog id="commandPalette" class="command-palette" role="dialog" aria-label="Command palette">
+      <div class="command-palette-backdrop"></div>
+      <div class="command-palette-content">
+        <div class="command-palette-header">
+          <input
+            type="text"
+            id="commandPaletteInput"
+            class="command-palette-input"
+            placeholder="Search runs, experiments, actions..."
+            aria-label="Search"
+            autocomplete="off"
+          />
+          <kbd class="command-palette-kbd">ESC</kbd>
+        </div>
+        <div id="commandPaletteResults" class="command-palette-results">
+          <div class="command-palette-empty">Type to search...</div>
+        </div>
+        <div class="command-palette-footer">
+          <span class="command-palette-hint">↑↓ navigate · ↵ select · esc close</span>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Help Modal (?) -->
+    <dialog id="helpModal" class="help-modal" role="dialog" aria-label="Help and documentation">
+      <div class="help-modal-backdrop"></div>
+      <div class="help-modal-content">
+        <div class="help-modal-header">
+          <h2>SigLab Help</h2>
+          <button id="helpModalClose" class="help-modal-close" aria-label="Close help">✕</button>
+        </div>
+        <div class="help-modal-body">
+          <section class="help-section">
+            <h3>Data Model</h3>
+            <dl class="help-glossary">
+              <dt>Run</dt>
+              <dd>A single research session. Contains multiple experiments evaluated in sequence.</dd>
+              <dt>Experiment</dt>
+              <dd>A strategy hypothesis tested against historical data. Has a spec hash, family, and evaluation metrics.</dd>
+              <dt>Track</dt>
+              <dd>A category of strategies: <strong>Directional Perps</strong> (trend-following) or <strong>Systematic Carry</strong> (yield-based).</dd>
+              <dt>Family</dt>
+              <dd>A specific strategy template (e.g., momentum_carry, pair_trade). Each family has its own feature set and parameters.</dd>
+              <dt>Spec Hash</dt>
+              <dd>Unique identifier for an experiment's configuration. Same spec hash = same strategy parameters.</dd>
+            </dl>
+          </section>
+          <section class="help-section">
+            <h3>Metrics Glossary</h3>
+            <dl class="help-glossary">
+              <dt>Overall Score</dt>
+              <dd>Primary selector metric. Combines Sharpe, return, and stability into a single score.</dd>
+              <dt>Median Sharpe Ratio</dt>
+              <dd>Risk-adjusted return. Higher is better. >1.0 is good, >2.0 is excellent.</dd>
+              <dt>Median CAGR</dt>
+              <dd>Compound annual growth rate. Annualized return across selector windows.</dd>
+              <dt>Median Return</dt>
+              <dd>Total return across selector windows. Not annualized.</dd>
+              <dt>Pre-Audit Return</dt>
+              <dd>Return measured before the audit boundary. Used for in-sample evaluation.</dd>
+              <dt>Median Calmar Ratio</dt>
+              <dd>Return / max drawdown. Higher is better. Measures how much return per unit of drawdown risk.</dd>
+              <dt>Validation Return</dt>
+              <dd>Out-of-sample return on validation slices. More trustworthy than in-sample metrics.</dd>
+              <dt>Validation Sharpe</dt>
+              <dd>Out-of-sample Sharpe on validation slices.</dd>
+              <dt>Audit Return</dt>
+              <dd>Final untouched out-of-sample return. The most trustworthy metric — data the strategy has never seen.</dd>
+              <dt>Audit Sharpe</dt>
+              <dd>Final untouched out-of-sample Sharpe.</dd>
+            </dl>
+          </section>
+          <section class="help-section">
+            <h3>Common Workflows</h3>
+            <dl class="help-glossary">
+              <dt>Create a new run</dt>
+              <dd><code>python3 -m siglab run --track trend_signals --iterations 1</code></dd>
+              <dt>View the ops board</dt>
+              <dd>Navigate to <a href="/ops">/ops</a> or click "Ops" in the navbar.</dd>
+              <dt>Export data</dt>
+              <dd>Use the Export CSV/JSON buttons on the dashboard, or <code>/api/export/runs?format=csv</code>.</dd>
+              <dt>Search for a run or experiment</dt>
+              <dd>Press <kbd>Cmd+K</kbd> or <kbd>/</kbd> to open the command palette. Type to search.</dd>
+              <dt>Keyboard shortcuts</dt>
+              <dd><kbd>R</kbd> refresh · <kbd>/</kbd> search · <kbd>1-7</kbd> ops panels · <kbd>Esc</kbd> back</dd>
+            </dl>
+          </section>
+        </div>
+      </div>
+    </dialog>
 
     <!-- HTMX for partial swaps -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>

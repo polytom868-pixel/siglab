@@ -8,7 +8,6 @@
 {% block content %}
 <header class="hero">
   <div>
-    <p class="eyebrow">SoSoValue SigLab</p>
     <h1 id="runTitle" x-text="$store.selection.selectedRunId || 'Run'">Run</h1>
     <p class="subhead" id="runSubtitle">Per-run experiment history, improvement curve, and experiment detail.</p>
     <p class="scope-summary" id="scopeSummary"
@@ -42,16 +41,15 @@
 
 <section class="summary-grid" id="runSummaryCards"
          hx-get="/partials/run/summary?run_id={{ run_id or '' }}"
-         hx-trigger="load, every 10s"
+         hx-trigger="load, every 30s"
          hx-indicator=".skeleton-card">
 </section>
 
-<div id="familyPills" style="display:flex;align-items:center;gap:10px;padding:8px 0;flex-wrap:wrap;">
-  <span id="familyGuideSubtitle" style="font-size:12px;color:var(--muted);white-space:nowrap;">Families</span>
-  <div id="familyGuideCards"
+<div id="familyPills" class="family-pills">
+  <span id="familyGuideSubtitle" class="family-pills-label">Families</span>
+  <div id="familyGuideCards" class="family-pills-cards"
        hx-get="/partials/run/family_pills?run_id={{ run_id or '' }}"
-       hx-trigger="load"
-       style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+       hx-trigger="load"></div>
   <button id="clearFamilyFilter" type="button" class="pill slate" aria-label="Show all families"
           @click="$store.filter.family = 'all'; htmx.trigger('#experimentsTable', 'load')">Clear</button>
 </div>

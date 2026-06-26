@@ -5,7 +5,6 @@
 {% block content %}
 <header class="hero">
   <div>
-    <p class="eyebrow">SoSoValue SigLab</p>
     <h1>Run Dashboard</h1>
     <p class="subhead">
       Compare runs as separate search sessions, see each run's own improvement curve,
@@ -46,12 +45,48 @@
     </label>
     <button id="refreshButton" type="button" aria-label="Refresh data"
             @click="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Refresh</button>
+    <button id="exportCsv" type="button" class="button-link" aria-label="Export runs as CSV"
+            @click="window.open('/api/export/runs?format=csv&track=' + ($store.filter.track === 'all' ? '' : $store.filter.track) + '&family=' + ($store.filter.family === 'all' ? '' : $store.filter.family), '_blank')">Export CSV</button>
+    <button id="exportJson" type="button" class="button-link" aria-label="Export runs as JSON"
+            @click="window.open('/api/export/runs?format=json&track=' + ($store.filter.track === 'all' ? '' : $store.filter.track) + '&family=' + ($store.filter.family === 'all' ? '' : $store.filter.family), '_blank')">Export JSON</button>
+    <button id="resetFilters" type="button" class="button-link" aria-label="Reset all filters to default"
+            @click="$store.filter.track = 'all'; $store.filter.family = 'all'; $store.filter.metric = 'aggregate_score'; htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Reset</button>
   </div>
 </header>
 
+<section class="most-recent-run" id="mostRecentRun"
+         hx-get="/partials/dashboard/most_recent_run"
+         hx-trigger="load"
+         hx-indicator=".skeleton-card">
+</section>
+
+
+<section class="quick-actions">
+  <h2 class="quick-actions-title">Quick Actions</h2>
+  <div class="quick-actions-grid">
+    <a href="/ops" class="quick-action-card">
+      <span class="quick-action-icon">📋</span>
+      <span class="quick-action-label">View Ops Board</span>
+    </a>
+    <a href="#" class="quick-action-card" onclick="window.open('/api/export/runs?format=csv', '_blank'); return false;">
+      <span class="quick-action-icon">📥</span>
+      <span class="quick-action-label">Export Runs (CSV)</span>
+    </a>
+    <a href="#" class="quick-action-card" onclick="window.open('/api/export/runs?format=json', '_blank'); return false;">
+      <span class="quick-action-icon">📄</span>
+      <span class="quick-action-label">Export Runs (JSON)</span>
+    </a>
+    <a href="#" class="quick-action-card" onclick="window.location.reload(); return false;">
+      <span class="quick-action-icon">🔄</span>
+      <span class="quick-action-label">Refresh Data</span>
+    </a>
+  </div>
+</section>
+
+
 <section class="summary-grid" id="summaryCards"
          hx-get="/partials/dashboard/summary"
-         hx-trigger="load, every 10s"
+         hx-trigger="load, every 30s"
          hx-indicator=".skeleton-card">
 </section>
 
@@ -64,7 +99,7 @@
   </div>
   <div id="runCards" class="run-grid"
        hx-get="/partials/dashboard/runs?track={{ track or 'all' }}&family={{ family or 'all' }}"
-       hx-trigger="load, every 10s"
+       hx-trigger="load, every 30s"
        hx-indicator=".skeleton-card">
     <div class="panel run-card"><div class="skeleton-card"></div></div>
     <div class="panel run-card"><div class="skeleton-card"></div></div>
