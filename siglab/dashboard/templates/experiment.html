@@ -9,6 +9,7 @@
 <header class="hero experiment-hero">
   <div>
     <h1 id="experimentTitle" x-text="$store.selection.selectedHash || 'Experiment'">Experiment</h1>
+    <p id="experimentSubtitle" class="subhead"></p>
     <p class="freshness-indicator" id="freshnessIndicator"
        x-show="$store.refresh.lastUpdated"
        x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>
@@ -18,10 +19,7 @@
   </div>
 </header>
 
-<section class="summary-grid" id="experimentSummary"
-         hx-get="/partials/experiment/summary?spec_hash={{ spec_hash or '' }}"
-         hx-trigger="load"
-         hx-indicator=".skeleton-card">
+<section class="summary-grid" id="experimentSummary">
 </section>
 
 <section class="panel chart-panel">
@@ -32,10 +30,7 @@
     </div>
   </div>
   <div class="chart-wrap">
-    <div id="equityChartWrap"
-         hx-get="/partials/experiment/equity_chart?spec_hash={{ spec_hash or '' }}"
-         hx-trigger="load"
-         hx-indicator=".skeleton-chart">
+    <div id="equityChartWrap">
       <svg id="equityChart" role="img" aria-label="Portfolio equity chart" viewBox="0 0 1200 420"></svg>
     </div>
     <div id="pageTooltip" class="tooltip hidden"></div>
@@ -51,10 +46,7 @@
       </div>
     </div>
     <div class="chart-wrap compact-chart-wrap">
-      <div id="metricsChartWrap"
-           hx-get="/partials/experiment/metrics_chart?spec_hash={{ spec_hash or '' }}"
-           hx-trigger="load"
-           hx-indicator=".skeleton-chart">
+      <div id="metricsChartWrap">
         <svg id="metricsChart" role="img" aria-label="Run metrics chart" viewBox="0 0 1200 300"></svg>
       </div>
     </div>
@@ -68,10 +60,7 @@
         <p>Current scope, asset usage, and artifact status.</p>
       </div>
     </div>
-    <div class="detail-content" id="experimentSnapshot"
-         hx-get="/partials/experiment/snapshot?spec_hash={{ spec_hash or '' }}"
-         hx-trigger="load"
-         hx-indicator=".skeleton-card"></div>
+    <div class="detail-content" id="experimentSnapshot"></div>
   </aside>
 </section>
 
@@ -79,10 +68,7 @@
   <div class="panel-header">
     <h2>Live Deployment</h2>
   </div>
-  <div class="detail-content" id="deploymentPanel"
-       hx-get="/partials/experiment/deployment?spec_hash={{ spec_hash or '' }}"
-       hx-trigger="load"
-       hx-indicator=".skeleton-card"></div>
+  <div class="detail-content" id="deploymentPanel"></div>
 </section>
 
 <section class="panel experiment-section">
@@ -90,10 +76,7 @@
     <h2>Asset Action Timeline</h2>
   </div>
   <p id="assetActionsSubtitle">Retained trade-price path and action markers by asset. These use stored execution prices, not full candles.</p>
-  <div id="assetActionCharts" class="asset-action-grid"
-       hx-get="/partials/experiment/actions?spec_hash={{ spec_hash or '' }}"
-       hx-trigger="load"
-       hx-indicator=".skeleton-chart">
+  <div id="assetActionCharts" class="asset-action-grid">
     <div class="asset-action-card"><div class="skeleton-chart" style="height:200px;"></div></div>
     <div class="asset-action-card"><div class="skeleton-chart" style="height:200px;"></div></div>
   </div>
@@ -110,10 +93,7 @@
       <span class="pill amber">Short</span>
       <span class="pill slate">Flat</span>
     </div>
-    <div class="heatmap-wrap custom-scrollbar"
-         hx-get="/partials/experiment/heatmap?spec_hash={{ spec_hash or '' }}"
-         hx-trigger="load"
-         hx-indicator=".skeleton-chart">
+    <div id="positionHeatmap" class="heatmap-wrap custom-scrollbar">
       <div class="skeleton-chart" style="height:200px;"></div>
     </div>
   </div>
@@ -129,7 +109,7 @@
   </label>
   <input id="displayCapitalInput" type="number" min="1000" step="1000"
          x-model="$store.displayCapital.usd"
-         @change="htmx.trigger('#tradesTable', 'load')" />
+         @change="PAGE_STATE.displayCapitalUsd = parseInt($store.displayCapital.usd, 10); renderTrades(PAGE_STATE.payload?.canonical_run?.trades || [])" />
   <div class="table-wrap custom-scrollbar">
     <table>
       <thead>
@@ -145,10 +125,7 @@
           <th>Tx Cost ($)</th>
         </tr>
       </thead>
-      <tbody id="tradesTable"
-             hx-get="/partials/experiment/trades?spec_hash={{ spec_hash or '' }}&page=1&display_capital=100000"
-             hx-trigger="load"
-             hx-indicator=".skeleton-card"></tbody>
+      <tbody id="tradesTable"></tbody>
     </table>
   </div>
 </section>
