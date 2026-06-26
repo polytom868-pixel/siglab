@@ -5,11 +5,6 @@
 <a class="navbar-link active" aria-label="Current run detail" href="#">Run</a>
 {% endblock %}
 
-{% block breadcrumb %}
-<a href="/" class="breadcrumb-item">Dashboard</a>
-<span class="breadcrumb-separator">›</span>
-<span class="breadcrumb-current" x-text="$store.selection.selectedRunId || 'Run'">Run</span>
-{% endblock %}
 
 {% block content %}
 <header class="hero">
