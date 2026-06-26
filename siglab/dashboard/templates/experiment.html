@@ -92,7 +92,7 @@
   </summary>
   <div class="detail-content" id="deploymentPanel"
        hx-get="/partials/experiment/deployment?spec_hash={{ spec_hash or '' }}"
-       hx-trigger="load"
+       hx-trigger="revealed"
        hx-indicator=".skeleton-card"></div>
 </details>
 
@@ -103,7 +103,7 @@
   <p id="assetActionsSubtitle">Retained trade-price path and action markers by asset. These use stored execution prices, not full candles.</p>
   <div id="assetActionCharts" class="asset-action-grid"
        hx-get="/partials/experiment/actions?spec_hash={{ spec_hash or '' }}"
-       hx-trigger="load"
+       hx-trigger="revealed"
        hx-indicator=".skeleton-chart">
     <div class="asset-action-card"><div class="skeleton-chart" style="height:200px;"></div></div>
     <div class="asset-action-card"><div class="skeleton-chart" style="height:200px;"></div></div>
@@ -123,7 +123,7 @@
     </div>
     <div class="heatmap-wrap custom-scrollbar"
          hx-get="/partials/experiment/heatmap?spec_hash={{ spec_hash or '' }}"
-         hx-trigger="load"
+         hx-trigger="revealed"
          hx-indicator=".skeleton-chart">
       <div class="skeleton-chart" style="height:200px;"></div>
     </div>
@@ -158,7 +158,7 @@
       </thead>
       <tbody id="tradesTable"
              hx-get="/partials/experiment/trades?spec_hash={{ spec_hash or '' }}&page=1&display_capital=100000"
-             hx-trigger="load"
+             hx-trigger="revealed"
              hx-indicator=".skeleton-card"></tbody>
     </table>
   </div>

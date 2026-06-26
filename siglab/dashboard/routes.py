@@ -267,6 +267,9 @@ class DashboardState:
     ws_manager: Any = None
     start_time: float = 0.0
     _json_cache: dict[str, Any] = field(default_factory=dict)
+    _experiments_cache: dict[str, Any] = field(default_factory=dict)
+    _experiments_cache_ts: float = 0.0
+    _EXPERIMENTS_CACHE_TTL: float = 30.0
 
     def _lp(self) -> str:
         return "unknown" if self.config is None else resolve_llm_provider(self.config)
@@ -857,12 +860,17 @@ class DashboardState:
                 },
             ],
         }
-        canonical_run.setdefault("evaluation_windows", [])
-        return canonical_run
-
     def experiments_payload(
         self, track: str | None = None, family: str | None = None
     ) -> dict[str, Any]:
+        import time
+        cache_key = f"{track}:{family}"
+        now = time.monotonic()
+        if (
+            cache_key in self._experiments_cache
+            and (now - self._experiments_cache_ts) < self._EXPERIMENTS_CACHE_TTL
+        ):
+            return self._experiments_cache[cache_key]
         scoped_rows = self._aes(track=track)
         experiments = [
             row for row in scoped_rows if not family or row["family"] == family
@@ -904,7 +912,7 @@ class DashboardState:
                 "best_return": best["summary"].get("median_total_return", 0.0),
                 "best_cagr": best["summary"].get("median_cagr", 0.0),
             }
-        return {
+        result = {
             "generated_at": self._ni(),
             "scope": {"track": track, "family": family},
             "summary": summary,
@@ -916,6 +924,9 @@ class DashboardState:
                 "description": "Primary selection metric used by SigLab. It is computed on the evaluator's selector windows. Validation slices are visible during search, while the final audit slice stays out of the selector.",
             },
         }
+        self._experiments_cache[cache_key] = result
+        self._experiments_cache_ts = now
+        return result
 
     def runs_payload(
         self, track: str | None = None, family: str | None = None
@@ -1960,35 +1971,6 @@ async def partial_dashboard_runs(
         },
     )
 
-@router.get("/partials/dashboard/most_recent_run")
-async def partial_dashboard_most_recent_run(request: Request) -> Any:
-    """Return the most recent run as a hero section."""
-    dashboard = request.app.state.dashboard
-    data = dashboard.runs_payload()
-    runs = data.get("runs", [])
-    if not runs:
-        return Response(content="", media_type="text/html")
-    most_recent = runs[0]
-    run_id = most_recent.get("run_id", "")
-    label = most_recent.get("label", run_id)
-    track = most_recent.get("track", "")
-    family = most_recent.get("family", "")
-    status = most_recent.get("status", "")
-    status_class = "status-pass" if status in ("deployd", "pass") else "status-fail"
-    return Response(
-        content=f"""
-        <div class="most-recent-run-content">
-          <div class="most-recent-run-header">
-            <span class="most-recent-run-badge">Most Recent Run</span>
-            <span class="{status_class}">{status}</span>
-          </div>
-          <h2 class="most-recent-run-title">{label}</h2>
-          <p class="most-recent-run-meta">{track} · {family}</p>
-          <a href="/runs/{run_id}" class="button-link">View Run Details →</a>
-        </div>
-        """,
-        media_type="text/html",
-    )
 
 
 _PARTIAL_OPS = {
