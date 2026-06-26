@@ -6,62 +6,46 @@
 <header class="hero">
   <div>
     <h1>Run Dashboard</h1>
-    <p class="subhead">
-      Compare runs as separate search sessions, see each run's own improvement curve,
-      and drill into a specific run only when you need experiment-level detail.
-    </p>
-    <p class="scope-summary" id="scopeSummary"
-       x-text="'Viewing ' + ($store.filter.track === 'all' ? 'all tracks' : $store.filter.track) + ' and ' + ($store.filter.family === 'all' ? 'all families' : $store.filter.family) + '.'">
-      Viewing all tracks and all families.
-    </p>
-    <p class="freshness-indicator" id="freshnessIndicator"
-       x-show="$store.refresh.lastUpdated"
-       x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>
   </div>
   <div class="hero-controls" role="search">
-    <label for="trackFilter">Track</label>
-    <select id="trackFilter"
-            aria-label="Filter by track"
-            x-model="$store.filter.track"
-            @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
-      <option value="all">All Tracks</option>
-      <option value="trend_signals">Directional Perps</option>
-      <option value="yield_flows">Systematic Carry</option>
-    </select>
-    <label for="familyFilter">Family</label>
-    <select id="familyFilter"
-            aria-label="Filter by family"
-            x-model="$store.filter.family"
-            @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
-      <option value="all">All Families</option>
-    </select>
-    <label for="metricFilter">Metric</label>
-    <select id="metricFilter"
-            aria-label="Select metric"
-            x-model="$store.filter.metric"></select>
-    <label class="checkbox">
-      <input type="checkbox" id="autoRefresh" checked />
-      Auto refresh
-    </label>
-    <button id="refreshButton" type="button" aria-label="Refresh data"
-            @click="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Refresh</button>
-    <button id="exportCsv" type="button" class="button-link" aria-label="Export runs as CSV"
-            @click="window.open('/api/export/runs?format=csv&track=' + ($store.filter.track === 'all' ? '' : $store.filter.track) + '&family=' + ($store.filter.family === 'all' ? '' : $store.filter.family), '_blank')">Export CSV</button>
-    <button id="exportJson" type="button" class="button-link" aria-label="Export runs as JSON"
-            @click="window.open('/api/export/runs?format=json&track=' + ($store.filter.track === 'all' ? '' : $store.filter.track) + '&family=' + ($store.filter.family === 'all' ? '' : $store.filter.family), '_blank')">Export JSON</button>
-    <button id="resetFilters" type="button" class="button-link" aria-label="Reset all filters to default"
-            @click="$store.filter.track = 'all'; $store.filter.family = 'all'; $store.filter.metric = 'aggregate_score'; htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Reset</button>
+    <div class="hero-filters">
+      <label for="trackFilter">Track</label>
+      <select id="trackFilter"
+              aria-label="Filter by track"
+              x-model="$store.filter.track"
+              @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
+        <option value="all">All Tracks</option>
+        <option value="trend_signals">Directional Perps</option>
+        <option value="yield_flows">Systematic Carry</option>
+      </select>
+      <label for="familyFilter">Family</label>
+      <select id="familyFilter"
+              aria-label="Filter by family"
+              x-model="$store.filter.family"
+              @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
+        <option value="all">All Families</option>
+      </select>
+      <label for="metricFilter">Metric</label>
+      <select id="metricFilter"
+              aria-label="Select metric"
+              x-model="$store.filter.metric"></select>
+    </div>
+    <div class="hero-actions">
+      <label class="checkbox">
+        <input type="checkbox" id="autoRefresh" checked />
+        Auto refresh
+      </label>
+      <button id="refreshButton" type="button" aria-label="Refresh data"
+              @click="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Refresh</button>
+      <button id="exportCsv" type="button" class="button-link" aria-label="Export runs as CSV"
+              @click="window.open('/api/export/runs?format=csv&track=' + ($store.filter.track === 'all' ? '' : $store.filter.track) + '&family=' + ($store.filter.family === 'all' ? '' : $store.filter.family), '_blank')">CSV</button>
+      <button id="exportJson" type="button" class="button-link" aria-label="Export runs as JSON"
+              @click="window.open('/api/export/runs?format=json&track=' + ($store.filter.track === 'all' ? '' : $store.filter.track) + '&family=' + ($store.filter.family === 'all' ? '' : $store.filter.family), '_blank')">JSON</button>
+      <button id="resetFilters" type="button" class="button-link" aria-label="Reset all filters to default"
+              @click="$store.filter.track = 'all'; $store.filter.family = 'all'; $store.filter.metric = 'aggregate_score'; htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Reset</button>
+    </div>
   </div>
 </header>
-
-<details class="most-recent-run" id="mostRecentRun" open>
-  <summary class="most-recent-run-header">
-    <h2>Most Recent Run</h2>
-  </summary>
-  <div hx-get="/partials/dashboard/most_recent_run"
-       hx-trigger="load"
-       hx-indicator=".skeleton-card"></div>
-</details>
 
 
 <section class="summary-grid" id="summaryCards"

@@ -477,6 +477,21 @@ h2 {
   align-items: end;
 }
 
+.hero-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+
 label {
   display: grid;
   gap: 5px;
@@ -678,6 +693,28 @@ input[type="checkbox"] {
 .summary-card:hover::before {
   opacity: 1;
 }
+
+.summary-card--good {
+  border-left: 3px solid var(--green);
+}
+
+.summary-card--warn {
+  border-left: 3px solid var(--amber);
+}
+
+.summary-card--bad {
+  border-left: 3px solid var(--fail);
+}
+
+.summary-card-trend {
+  margin-left: 6px;
+  font-size: var(--type-label);
+}
+
+.trend-up { color: var(--green); }
+.trend-down { color: var(--fail); }
+.trend-flat { color: var(--muted); }
+
 
 .summary-card .label {
   font-size: var(--type-label);
@@ -964,9 +1001,9 @@ input[type="checkbox"] {
 
 .chart-wrap {
   position: relative;
-  height: 320px;
+  height: 240px;
   padding: 8px 12px 20px;
-  aspect-ratio: 1200/320;
+  aspect-ratio: 1200/240;
   max-width: 100%;
 }
 
@@ -1502,7 +1539,7 @@ pre {
 }
 
 .skeleton-chart {
-  height: 320px;
+  height: 240px;
 }
 
 .skeleton-row {
@@ -2074,7 +2111,7 @@ pre {
 .chart-wrap object {
   width: 100%;
   height: auto;
-  max-height: 320px;
+  max-height: 240px;
   overflow: visible;
 }
 

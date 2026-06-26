@@ -154,10 +154,12 @@
         (card) => {
           const description = card.description || "";
           const titleAttr = description ? ` title="${escapeHtml(description)}"` : "";
+          const healthClass = card.health ? ` summary-card--${card.health}` : "";
+          const trend = card.trend ? `<span class="summary-card-trend trend-${card.trend}">${card.trend === "up" ? "↑" : card.trend === "down" ? "↓" : ""}</span>` : "";
           return `
-          <article class="panel summary-card">
+          <article class="panel summary-card${healthClass}">
             <div class="label"${titleAttr}>${escapeHtml(card.label)}</div>
-            <div class="value ${card.valueClass || ""}">${escapeHtml(card.value)}</div>
+            <div class="value ${card.valueClass || ""}">${escapeHtml(card.value)}${trend}</div>
             <div class="detail">${escapeHtml(card.detail)}</div>
           </article>
         `;

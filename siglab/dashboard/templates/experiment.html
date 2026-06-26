@@ -16,9 +16,6 @@
 <header class="hero experiment-hero">
   <div>
     <h1 id="experimentTitle" x-text="$store.selection.selectedHash || 'Experiment'">Experiment</h1>
-    <p class="subhead" id="experimentSubtitle">
-      Full-run timeline, exposure, and position history.
-    </p>
     <p class="freshness-indicator" id="freshnessIndicator"
        x-show="$store.refresh.lastUpdated"
        x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>
@@ -89,7 +86,7 @@
   </aside>
 </section>
 
-<details class="panel experiment-section" open>
+<details class="panel experiment-section">
   <summary class="panel-header experiment-section-header">
     <h2>Live Deployment</h2>
   </summary>
@@ -133,7 +130,7 @@
   </div>
 </details>
 
-<details class="panel experiment-section" open>
+<details class="panel experiment-section">
   <summary class="panel-header experiment-section-header">
     <h2>Trade Tape</h2>
   </summary>

@@ -15,9 +15,6 @@
 <header class="hero">
   <div>
     <h1 id="runTitle" x-text="$store.selection.selectedRunId || 'Run'">Run</h1>
-    <p class="subhead" id="runSubtitle">Per-run experiment history, improvement curve, and experiment detail.</p>
-    <p class="scope-summary" id="scopeSummary"
-       x-text="'Run: ' + ($store.selection.selectedRunId || 'loading...')"></p>
     <p class="freshness-indicator" id="freshnessIndicator"
        x-show="$store.refresh.lastUpdated"
        x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>

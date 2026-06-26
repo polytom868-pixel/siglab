@@ -6,11 +6,8 @@
 <header class="hero">
   <div>
     <h1>Research Operations Board</h1>
-    <p class="subhead">
-      One read-only screen for demo readiness, live-boundary truth, provider telemetry, and latest market evidence.
-    </p>
-    <p class="scope-summary" id="opsGeneratedAt"
-       x-text="$store.refresh.lastUpdated ? 'Generated: ' + $store.refresh.lastUpdated : 'Loading operator state...'">Loading operator state...</p>
+    <p class="freshness-indicator" id="opsGeneratedAt"
+       x-text="$store.refresh.lastUpdated ? 'Last updated: ' + $store.refresh.lastUpdated : ''"></p>
   </div>
   <div class="hero-controls">
     <label class="checkbox">
