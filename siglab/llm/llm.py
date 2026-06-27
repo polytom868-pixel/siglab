@@ -5,12 +5,11 @@ import json
 import logging
 import re
 import time
-from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 if TYPE_CHECKING:
     from siglab.config import SiglabConfig
@@ -19,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ClaudeClient",
-    "ClaudeTool",
     "LLMAuthError",
     "LLMConfigError",
     "LLMFormatError",
@@ -31,37 +29,9 @@ __all__ = [
 ]
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
-ToolHandler = Callable[[dict[str, Any]], Awaitable[Any] | Any]
 _OPENAI_MODEL = "deepseek-v4-flash"
 
 
-# ── Tool descriptor ────────────────────────────────────────────────
-
-
-@dataclass
-class ClaudeTool:
-    """Descriptor for a tool/function the LLM may call."""
-
-    name: str
-    description: str
-    params: dict[str, Any]
-    handler: ToolHandler | None = None
-
-    def __init__(self, name: str, description: str, params: dict[str, Any] | None = None, *, handler: ToolHandler | None = None, parameters: dict[str, Any] | None = None) -> None:
-        self.name = name
-        self.description = description
-        self.params = params if params is not None else (parameters or {})
-        self.handler = handler
-
-    def canonical(self) -> dict[str, Any]:
-        return {
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.params,
-            },
-            "type": "function",
-        }
 
 
 # ── Error hierarchy ────────────────────────────────────────────────
@@ -106,11 +76,11 @@ class LLMFormatError(LLMProviderError):
 
 
 class ClaudeClient:
-    """Anthropic-compatible LLM client using the Anthropic SDK.
+    """OpenAI-compatible LLM client using the OpenAI SDK.
 
     Reads api_key from env ``OPENMODEL_API_KEY`` and base_url from env
     ``OPENMODEL_BASE_URL``.  The model is always *deepseek-v4-flash*
-    served via OpenModel AI via the Anthropic Messages API.
+    served via OpenModel AI.
     """
 
     def __init__(self, settings: SiglabConfig) -> None:
@@ -141,13 +111,13 @@ class ClaudeClient:
 
     # ── transport ───────────────────────────────────────────────
 
-    def _get_client(self) -> AsyncAnthropic:
+    def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
             api_key = str(self.settings.openmodel_api_key or "")
             base_url = str(
                 self.settings.openmodel_base_url
             ).rstrip("/")
-            self._client = AsyncAnthropic(
+            self._client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=base_url,
                 max_retries=2,
@@ -164,36 +134,20 @@ class ClaudeClient:
         tools: list[dict[str, Any]] | None = None,
         response_format: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        # Extract system prompt (Anthropic uses separate 'system' param)
-        system_parts: list[str] = []
-        anthro_messages: list[dict[str, Any]] = []
-        for msg in messages:
-            role = msg.get("role", "")
-            if role == "system":
-                content = str(msg.get("content", "") or "")
-                if content.strip():
-                    system_parts.append(content)
-            else:
-                anthro_messages.append(msg)
-
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": anthro_messages,
+            "messages": messages,
             "max_tokens": max_tokens or 4096,
         }
-        if system_parts:
-            kwargs["system"] = "\n\n".join(system_parts)
         if tools:
-            kwargs["tools"] = [_openai_tool_to_anthropic(t) for t in tools]
-        if response_format and response_format.get("type") == "json_object":
-            kwargs["output_config"] = {
-                "format": {"type": "json_schema", "schema": {"type": "object"}}
-            }
+            kwargs["tools"] = tools
+        if response_format:
+            kwargs["response_format"] = response_format
 
         started = time.perf_counter()
         self._request_count += 1
         try:
-            response = await self._get_client().messages.create(**kwargs)
+            response = await self._get_client().chat.completions.create(**kwargs)
         except Exception as exc:
             self._transport_failures += 1
             raise _map_openai_error(exc, self.provider_name) from exc
@@ -203,34 +157,43 @@ class ClaudeClient:
 
         usage = response.usage
         if usage is not None:
-            self._prompt_tokens += usage.input_tokens
-            self._completion_tokens += usage.output_tokens
-            self._total_tokens += usage.input_tokens + usage.output_tokens
+            self._prompt_tokens += usage.prompt_tokens
+            self._completion_tokens += usage.completion_tokens
+            self._total_tokens += usage.total_tokens
 
-        # Map Anthropic content blocks to OpenAI-like text + tool_calls
-        text_content = ""
+        choice = response.choices[0] if response.choices else {}
+        message = choice.message if hasattr(choice, "message") else choice.get("message", {})
+        if not isinstance(message, dict):
+            message = {
+                "content": message.content or "",
+                "tool_calls": list(message.tool_calls) if message.tool_calls else [],
+                "role": message.role or "assistant",
+            }
+
+        text_content = str(message.get("content") or "")
+        raw_tool_calls = message.get("tool_calls") or []
         tool_calls: list[dict[str, Any]] = []
-        for block in response.content:
-            if block.type == "text":
-                text_content = str(block.text or "")
-            elif block.type == "tool_use":
+        for tc in raw_tool_calls:
+            if hasattr(tc, "id"):
                 tool_calls.append({
-                    "id": block.id,
+                    "id": tc.id,
                     "type": "function",
                     "function": {
-                        "name": block.name,
-                        "arguments": json.dumps(dict(block.input)) if block.input else "{}",
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                })
+            else:
+                tool_calls.append({
+                    "id": tc.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": tc.get("function", {}).get("name", ""),
+                        "arguments": tc.get("function", {}).get("arguments", "{}"),
                     },
                 })
 
-        # Map Anthropic stop_reason to OpenAI finish_reason
-        stop_reason = response.stop_reason or ""
-        finish_reason = {
-            "end_turn": "stop",
-            "max_tokens": "length",
-            "tool_use": "tool_calls",
-            "stop_sequence": "stop",
-        }.get(stop_reason, "stop")
+        finish_reason = choice.finish_reason if hasattr(choice, "finish_reason") else choice.get("finish_reason", "stop")
 
         message_dict: dict[str, Any] = {
             "role": "assistant",
@@ -250,9 +213,9 @@ class ClaudeClient:
                 }
             ],
             "usage": {
-                "prompt_tokens": usage.input_tokens if usage else 0,
-                "completion_tokens": usage.output_tokens if usage else 0,
-                "total_tokens": (usage.input_tokens + usage.output_tokens) if usage else 0,
+                "prompt_tokens": usage.prompt_tokens if usage else 0,
+                "completion_tokens": usage.completion_tokens if usage else 0,
+                "total_tokens": usage.total_tokens if usage else 0,
             },
             "_siglab_model_used": model,
         }
@@ -343,20 +306,20 @@ class ClaudeClient:
         user_prompt: str,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
-        json_mode: bool = False,
+        json_mode: bool = True,
         thinking_override: str | None = None,
         stage: str | None = None,
     ) -> dict[str, Any]:
-        return await self.complete_json_with_tools(
+        ct = await self._tool_loop(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            tools=[],
             max_tokens=max_tokens,
             timeout_s=timeout_s,
             json_mode=json_mode,
             thinking_override=thinking_override,
             stage=stage,
         )
+        return self._parse_j(ct)
 
     async def complete_json_messages(
         self,
@@ -376,7 +339,6 @@ class ClaudeClient:
         payload = self._build_pl(
             messages=[{"role": "system", "content": system_prompt}, *list(messages)],
             max_tokens=max_tokens,
-            tools=[],
             json_mode=json_mode,
             thinking_override=thinking_override,
             stage=stage,
@@ -384,7 +346,6 @@ class ClaudeClient:
         self.last_exchange = {
             "system_prompt": system_prompt,
             "messages": list(messages),
-            "tool_names": [],
         }
         body = await self._chat_comp(payload=payload, timeout_s=timeout_s, stage=stage)
         choice = self._choice(body)
@@ -426,7 +387,6 @@ class ClaudeClient:
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=max_tokens,
-            tools=[],
             json_mode=False,
             thinking_override=thinking_override,
             stage=stage,
@@ -434,7 +394,6 @@ class ClaudeClient:
         self.last_exchange = {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
-            "tool_names": [],
         }
         body = await self._chat_comp(payload=payload, timeout_s=timeout_s, stage=stage)
         choice = self._choice(body)
@@ -454,128 +413,61 @@ class ClaudeClient:
             self.last_exchange["final_content"] = ct
         return ct
 
-    async def complete_json_with_tools(
-        self,
-        *,
-        system_prompt: str,
-        user_prompt: str,
-        tools: Sequence[ClaudeTool] | None = None,
-        max_tokens: int | None = None,
-        timeout_s: float | None = None,
-        max_tool_rounds: int | None = None,
-        json_mode: bool = False,
-        thinking_override: str | None = None,
-        stage: str | None = None,
-    ) -> dict[str, Any]:
-        ct = await self._tool_loop(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            tools=tools,
-            max_tokens=max_tokens,
-            timeout_s=timeout_s,
-            max_tool_rounds=max_tool_rounds,
-            json_mode=json_mode,
-            thinking_override=thinking_override,
-            stage=stage,
-            exhausted_msg=_TOOL_EXHAUSTED_JSON,
-        )
-        return self._parse_j(ct)
-
-    # ── tool loop ───────────────────────────────────────────────
 
     async def _tool_loop(
         self,
         *,
         system_prompt: str,
         user_prompt: str,
-        tools: Sequence[ClaudeTool] | None,
         max_tokens: int | None,
         timeout_s: float | None,
-        max_tool_rounds: int | None,
         json_mode: bool,
         thinking_override: str | None,
         stage: str | None,
-        exhausted_msg: str,
     ) -> str:
         if not self.is_configured:
             raise LLMConfigError(
                 "OpenAI API key is not configured", provider=self.provider_name
             )
-        tl = list(tools or [])
-        tm = {tool.name: tool for tool in tl}
         self.last_exchange = {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
-            "tool_names": [tool.name for tool in tl],
         }
         msgs: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        rr = (
-            self.settings.claude_max_tool_rounds
-            if max_tool_rounds is None
-            else max_tool_rounds
-        )
-        ffwt = False
         trace: dict[str, Any] = {
             "provider": self.provider_name,
             "model": _OPENAI_MODEL,
             "thinking_mode": "default",
-            "tool_choice": "auto" if tl else "none",
-            "tool_count_available": len(tl),
-            "max_tool_rounds": rr,
-            "tool_rounds_used": 0,
-            "tool_calls": [],
             "final_content_preview": None,
         }
         self.last_trace = trace
-        while True:
-            payload = self._build_pl(
-                messages=msgs,
-                max_tokens=max_tokens,
-                tools=[] if ffwt else tl,
-                json_mode=json_mode,
-                thinking_override=thinking_override,
-                stage=stage,
-            )
-            body = await self._chat_comp(
-                payload=payload, timeout_s=timeout_s, stage=stage
-            )
-            trace["model"] = str(body.get("_siglab_model_used", _OPENAI_MODEL))
-            choice = self._choice(body)
-            msg = choice.get("message") or {}
-            tcs = list(msg.get("tool_calls") or [])
-            if tcs and tm:
-                if rr <= 0:
-                    trace["error"] = "max_tool_rounds_exhausted_forced_final"
-                    msgs.append({"role": "user", "content": exhausted_msg})
-                    tm = {}
-                    ffwt = True
-                    continue
-                rr -= 1
-                trace["tool_rounds_used"] = int(trace["tool_rounds_used"]) + 1
-                msgs.append(self._tool_call_msg(msg))
-                for tc in tcs:
-                    tool_msg, trace_entry = await self._exec_tool(
-                        tool_call=tc, tool_map=tm,
-                    )
-                    trace["tool_calls"].append(trace_entry)
-                    msgs.append(tool_msg)
-                continue
-            ct = self._extract_ct(body)
-            trace["final_content_preview"] = _compact_scalar(ct[:2200])
-            trace["response_finish_reason"] = choice.get("finish_reason")
-            if self.last_exchange is not None:
-                self.last_exchange["final_content"] = ct
-            return ct
+        payload = self._build_pl(
+            messages=msgs,
+            max_tokens=max_tokens,
+            json_mode=json_mode,
+            thinking_override=thinking_override,
+            stage=stage,
+        )
+        body = await self._chat_comp(
+            payload=payload, timeout_s=timeout_s, stage=stage
+        )
+        trace["model"] = str(body.get("_siglab_model_used", _OPENAI_MODEL))
+        choice = self._choice(body)
+        ct = self._extract_ct(body)
+        trace["final_content_preview"] = _compact_scalar(ct[:2200])
+        trace["response_finish_reason"] = choice.get("finish_reason")
+        if self.last_exchange is not None:
+            self.last_exchange["final_content"] = ct
+        return ct
 
     def _build_pl(
         self,
         *,
         messages: list[dict[str, Any]],
         max_tokens: int | None,
-        tools: Sequence[ClaudeTool] | None,
         json_mode: bool,
         thinking_override: str | None,
         stage: str | None,
@@ -583,63 +475,10 @@ class ClaudeClient:
         payload: dict[str, Any] = {"model": _OPENAI_MODEL, "messages": messages}
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
-        tl = list(tools or [])
-        if tl:
-            payload["tools"] = [t.canonical() for t in tl]
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         return payload
 
-    def _tool_call_msg(self, msg: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "role": msg.get("role", "assistant"),
-            "content": msg.get("content") or "",
-            "tool_calls": msg.get("tool_calls") or [],
-        }
-
-    async def _exec_tool(
-        self,
-        *,
-        tool_call: dict[str, Any],
-        tool_map: dict[str, ClaudeTool],
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        tc_id = tool_call.get("id", "")
-        func = tool_call.get("function") or {}
-        name = func.get("name", "")
-        raw_args = func.get("arguments", "{}")
-        try:
-            args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            args = {}
-        trace_entry = {
-            "tool_call_id": tc_id,
-            "name": name,
-            "arguments": args,
-            "error": None,
-            "summary": None,
-        }
-        tool = tool_map.get(name)
-        if tool is None:
-            result = f"Unknown tool: {name}"
-            trace_entry["error"] = result
-        elif tool.handler is None:
-            result = f"No handler registered for tool: {name}"
-            trace_entry["error"] = result
-        else:
-            try:
-                handler = tool.handler
-                if asyncio.iscoroutinefunction(handler):
-                    result = await handler(args)
-                else:
-                    result = handler(args)
-            except Exception as exc:
-                result = f"Tool error: {exc}"
-                trace_entry["error"] = str(exc)
-        return {
-            "role": "tool",
-            "tool_call_id": tc_id,
-            "content": str(result),
-        }, trace_entry
 
     def _record_msg(self, *, message: dict[str, Any], finish_reason: str | None) -> None:
         pass
@@ -654,14 +493,6 @@ class ClaudeClient:
 # ── helpers ────────────────────────────────────────────────────────
 
 
-def _openai_tool_to_anthropic(tool: dict[str, Any]) -> dict[str, Any]:
-    """Convert OpenAI-style tool dict to Anthropic tool format."""
-    func = tool.get("function") or {}
-    return {
-        "name": func.get("name", ""),
-        "description": func.get("description", ""),
-        "input_schema": func.get("parameters", {}),
-    }
 
 
 def _map_openai_error(exc: Exception, provider: str) -> LLMProviderError:
@@ -685,10 +516,6 @@ def _compact_scalar(value: object, max_len: int = 200) -> str | None:
     return text[:max_len] + "..." if len(text) > max_len else text
 
 
-_TOOL_EXHAUSTED_JSON = json.dumps({
-    "error": "Max tool rounds exhausted",
-    "action": "return the best partial result",
-})
 
 
 

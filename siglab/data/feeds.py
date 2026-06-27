@@ -1373,6 +1373,30 @@ class SoSoValueClient:
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
 
+    async def currency_market_snapshot(self, currency_id: int) -> dict[str, Any]:
+        """Fetch live price, market cap, ATH data for a currency."""
+        spec = SoSoValueRequestSpec(
+            name="currency.market_snapshot",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path=f"/currencies/{currency_id}/market-snapshot",
+            ttl_s=60.0,
+        )
+        return await self.request(spec)
+
+    async def currency_klines(self, currency_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        """Fetch spot OHLCV klines for a currency."""
+        spec = SoSoValueRequestSpec(
+            name="currency.klines",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path=f"/currencies/{currency_id}/klines",
+            params={"limit": limit},
+            ttl_s=60.0,
+        )
+        payload = await self.request(spec)
+        return (payload or {}).get("data") or []
+
     def _build_news_params(
         self,
         *,
@@ -1432,6 +1456,19 @@ class SoSoValueClient:
         )
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
+
+    async def news_search(self, keyword: str, page_num: int = 1, page_size: int = 10) -> list[dict[str, Any]]:
+        """Search news by keyword."""
+        spec = SoSoValueRequestSpec(
+            name="news.search",
+            method="GET",
+            base_url=self.endpoints.news_base_url,
+            path="/api/v1/news/search",
+            params={"keyword": keyword, "pageNum": page_num, "pageSize": page_size},
+            ttl_s=60.0,
+        )
+        payload = await self.request(spec)
+        return (payload or {}).get("data", {}).get("list") or []
 
     async def featured_news_pages(
         self,

@@ -1,6 +1,5 @@
 from siglab.llm.llm import (
     ClaudeClient,
-    ClaudeTool,
     LLMAuthError,
     LLMConfigError,
     LLMFormatError,
@@ -13,7 +12,6 @@ from siglab.llm.llm import (
 
 __all__ = [
     "ClaudeClient",
-    "ClaudeTool",
     "LLMAuthError",
     "LLMConfigError",
     "LLMFormatError",
@@ -23,3 +21,4 @@ __all__ = [
     "LLMTransportError",
     "LLMUpstreamError",
 ]
+
