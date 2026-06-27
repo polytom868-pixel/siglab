@@ -920,6 +920,9 @@ class RiskScreen(BaseScreen):
         bo = 1.0
         while True:
             try:
+                if not hasattr(self._api, "ws_subscribe_risk"):
+                    logger.debug("WS risk: ws_subscribe_risk not available, skipping")
+                    return
                 await self._api.ws_subscribe_risk(self._on_ws_risk_update)
             except asyncio.CancelledError:
                 return

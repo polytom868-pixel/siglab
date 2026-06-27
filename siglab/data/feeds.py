@@ -22,7 +22,7 @@ from siglab.config import SiglabConfig
 from siglab.data.store import ParquetLake
 from siglab.schemas import AssetUniverse, SignalSpec
 from siglab.track_registry import resolve_track
-from siglab.utils import percentile as _percentile
+from siglab.utils import dget, percentile as _percentile
 from siglab.utils import safe_float as _safe_float
 from siglab.utils import short_hash
 import contextlib
@@ -221,8 +221,8 @@ class MarketDataProvider:
             api_key=settings.sosovalue_api_key_override,
             endpoints=SoSoValueEndpoints(
                 openapi_base_url=settings.sosovalue_base_url,
-                etf_base_url=settings.sosovalue_base_url,
-                news_base_url=settings.sosovalue_base_url,
+                etf_base_url=settings.etf_base_url,
+                news_base_url=settings.news_base_url,
             ),
             timeout_s=settings.sosovalue_timeout_s,
             retries=settings.sosovalue_retries,
@@ -339,11 +339,11 @@ class MarketDataProvider:
             summary["perp_symbols"] = symbols
             summary["perp_data_source"] = perp_bundle["source"]
             summary["market_bundle"] = {
-                **dict(summary.get("market_bundle") or {}),
+                **summary.get("market_bundle", {}),
                 "bundle_id": perp_bundle.get("bundle_id")
-                or summary.get("market_bundle", {}).get("bundle_id"),
+                or dget(summary, "market_bundle", "bundle_id"),
                 "as_of": perp_bundle.get("bundle_as_of")
-                or summary.get("market_bundle", {}).get("as_of"),
+                or dget(summary, "market_bundle", "as_of"),
             }
             summary["perp_snapshot"] = [
                 {
@@ -1167,7 +1167,7 @@ class MarketDataProvider:
     def _write_bundle_manifest(self, payload: dict[str, Any]) -> None:
         if self._active_bundle_id is None and (not payload.get("bundle_id")):
             return
-        self._bundle_manifest = {**dict(self._bundle_manifest), **dict(payload)}
+        self._bundle_manifest = {**self._bundle_manifest, **payload}
         self.lake.write_json(
             "market_bundles",
             str(self._bundle_manifest.get("bundle_id") or self._active_bundle_id),
@@ -1339,10 +1339,10 @@ class SoSoValueClient:
             ttl_s=300.0,
             required_fields=(
                 "date",
-                "total_net_inflow",
-                "total_value_traded",
-                "total_net_assets",
-                "cum_net_inflow",
+                "totalNetInflow",
+                "totalValueTraded",
+                "totalNetAssets",
+                "cumNetInflow",
             ),
             identity_fields=("date",),
             require_non_empty=True,

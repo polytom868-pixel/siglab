@@ -18,7 +18,7 @@ from siglab.llm_metadata import (
 from siglab.path_utils import display_path, resolve_path_from_root
 from siglab.track_registry import resolve_track, track_label
 from siglab.live import deployment_readiness
-from siglab.utils import _now_iso
+from siglab.utils import _now_iso, dget
 
 logger = logging.getLogger(__name__)
 
@@ -307,10 +307,10 @@ class ExperimentEnricher:
         ):
             windows = artifact.get("windows") or []
             cagr_values = [
-                float(window.get("stats", {}).get("cagr"))
+                float(dget(window, "stats", "cagr"))
                 for window in windows
-                if isinstance(window.get("stats", {}).get("cagr"), (int, float))
-                and math.isfinite(float(window.get("stats", {}).get("cagr")))
+                if isinstance(dget(window, "stats", "cagr"), (int, float))
+                and math.isfinite(float(dget(window, "stats", "cagr")))
             ]
             if cagr_values:
                 midpoint = len(cagr_values) // 2

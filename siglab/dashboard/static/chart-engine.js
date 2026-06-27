@@ -97,8 +97,7 @@ function sparklineSvg(points, metricKey) {
   if (!values.length) {
     return `<svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline"><text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No finite values retained</text></svg>`;
   }
-  const container = svg.parentElement;
-  const width = Math.max(100, container?.clientWidth || 360);
+  const width = 360;
   const height = 110;
   const margin = { top: 10, right: 10, bottom: 18, left: 10 };
   const plotWidth = width - margin.left - margin.right;

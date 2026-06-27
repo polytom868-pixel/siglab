@@ -70,8 +70,8 @@ def _bsm(
     asset_breadth: int,
     rg_meta: dict[str, Any],
     prices: pd.DataFrame,
-    **extra: object,
 ) -> dict[str, Any]:
+    assert "prices" not in extra, "prices passed both as param and in extra"
     return {
         "track": spec.track,
         "family": spec.family,

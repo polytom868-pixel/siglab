@@ -34,6 +34,8 @@ def main() -> None:
     _sodex_mod.add_subparser(subparsers)
     _paper_mod.add_subparser(subparsers)
     _operator_mod.add_subparser(subparsers)
+    from siglab.cli import evidence as _evidence_mod
+    _evidence_mod.add_subparser(subparsers)
     tui_p = subparsers.add_parser("tui", help="Launch the SigLab Terminal UI.")
     tui_p.set_defaults(_handler="tui")
     args = parser.parse_args()
@@ -84,6 +86,12 @@ def main() -> None:
         return
     if args.command == "operator":
         asyncio.run(_operator_mod.run_operator(args))
+        return
+    if args.command == "evidence-build":
+        asyncio.run(_evidence_mod.run_evidence_build(args))
+        return
+    if args.command == "evidence-map":
+        _evidence_mod.run_evidence_map(args)
         return
 
 

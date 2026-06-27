@@ -42,7 +42,7 @@ from siglab.llm_metadata import (
 )
 from siglab.path_utils import display_path, resolve_path_from_root
 from siglab.track_registry import canonical_track_name, resolve_track, track_label
-from siglab.utils import _now_iso
+from siglab.utils import _now_iso, dget
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +106,8 @@ def _ctd(config: SiglabConfig) -> dict[str, Any]:
         "sosovalue": {
             "config_path": str(config.sosovalue_config_path),
             "openapi_base_url": config.sosovalue_base_url,
-            "etf_base_url": config.sosovalue_base_url,
-            "news_base_url": config.sosovalue_base_url,
+            "etf_base_url": config.etf_base_url,
+            "news_base_url": config.news_base_url,
             "timeout_s": config.sosovalue_timeout_s,
             "retries": config.sosovalue_retries,
             "api_key_configured": config.sosovalue_api_key_override is not None,
@@ -219,7 +219,7 @@ def _rs(
             }
         entry = runs_map[run_session_id]
         entry["experiment_count"] += 1
-        is_llm = bool(row.get("research_summary", {}).get("llm_tool_trace"))
+        is_llm = bool(dget(row, "research_summary", "llm_tool_trace"))
         is_det = bool(rc.get("deterministic"))
         if is_llm:
             entry["llm_experiment_count"] += 1
@@ -243,11 +243,9 @@ def _rs(
             entry["best_aggregate_score"] = score
             entry["best_spec_hash"] = row["spec_hash"]
             entry["best_family"] = fv
-            entry["best_validation_total_return"] = row.get("summary", {}).get(
-                "validation_total_return",
-            )
-            entry["best_pre_audit_canonical_total_return"] = row.get("summary", {}).get(
-                "pre_audit_canonical_total_return",
+            entry["best_validation_total_return"] = dget(row, "summary", "validation_total_return")
+            entry["best_pre_audit_canonical_total_return"] = dget(
+                row, "summary", "pre_audit_canonical_total_return",
             )
         entry["first_created_at"] = min(entry["first_created_at"], row["created_at"])
         entry["last_created_at"] = max(entry["last_created_at"], row["created_at"])
@@ -624,17 +622,16 @@ class DashboardState:
         ):
             windows = artifact.get("windows") or []
             cagr_values = [
-                float(window.get("stats", {}).get("cagr"))
+                float(dget(window, "stats", "cagr"))
                 for window in windows
-                if isinstance(window.get("stats", {}).get("cagr"), (int, float))
-                and math.isfinite(float(window.get("stats", {}).get("cagr")))
+                if isinstance(dget(window, "stats", "cagr"), (int, float))
+                and math.isfinite(float(dget(window, "stats", "cagr")))
             ]
             if cagr_values:
                 midpoint = len(cagr_values) // 2
                 ordered = sorted(cagr_values)
                 summary["median_cagr"] = (
-                    ordered[midpoint]
-                    if len(ordered) % 2 == 1
+                    ordered[midpoint] if len(ordered) % 2 == 1
                     else 0.5 * (ordered[midpoint - 1] + ordered[midpoint])
                 )
             else:
@@ -907,10 +904,9 @@ class DashboardState:
             ),
             "deployd_count": sum(1 for row in experiments if row["deployd"]),
             "tool_traced_count": sum(
-                1 for row in experiments if row.get("tool_trace", {}).get("tool_calls")
+                1 for row in experiments if dget(row, "tool_trace", "tool_calls")
             ),
             "tracks": cast(dict[str, dict[str, Any]], {}),
-            "families": sorted({row["family"] for row in scoped_rows}),
         }
         for track_name in sorted({row["track"] for row in experiments}):
             rows = [row for row in experiments if row["track"] == track_name]
@@ -976,25 +972,14 @@ class DashboardState:
                     "run_iteration_label": experiment.get("run_iteration_label"),
                     "passed": bool(experiment.get("passed")),
                     "deployd": bool(experiment.get("deployd")),
-                    "aggregate_score": experiment.get("summary", {}).get(
-                        "aggregate_score",
-                    ),
-                    "median_sharpe": experiment.get("summary", {}).get("median_sharpe"),
-                    "median_cagr": experiment.get("summary", {}).get("median_cagr"),
-                    "median_total_return": experiment.get("summary", {}).get(
-                        "median_total_return",
-                    ),
-                    "median_calmar": experiment.get("summary", {}).get("median_calmar"),
-                    "pre_audit_canonical_total_return": experiment.get(
-                        "summary",
-                        {},
-                    ).get("pre_audit_canonical_total_return"),
-                    "validation_total_return": experiment.get("summary", {}).get(
-                        "validation_total_return",
-                    ),
-                    "audit_total_return": experiment.get("summary", {}).get(
-                        "audit_total_return",
-                    ),
+                    "aggregate_score": dget(experiment, "summary", "aggregate_score"),
+                    "median_sharpe": dget(experiment, "summary", "median_sharpe"),
+                    "median_cagr": dget(experiment, "summary", "median_cagr"),
+                    "median_total_return": dget(experiment, "summary", "median_total_return"),
+                    "median_calmar": dget(experiment, "summary", "median_calmar"),
+                    "pre_audit_canonical_total_return": dget(experiment, "summary", "pre_audit_canonical_total_return"),
+                    "validation_total_return": dget(experiment, "summary", "validation_total_return"),
+                    "audit_total_return": dget(experiment, "summary", "audit_total_return"),
                 },
             )
         annotated_runs = []
@@ -1016,7 +1001,7 @@ class DashboardState:
                 (
                     exp.get("tool_trace") or {}
                     for exp in reversed(run_experiments)
-                    if (exp.get("tool_trace") or {}).get("model")
+                    if dget(exp, "tool_trace", "model")
                 ),
                 {},
             )
@@ -1355,11 +1340,11 @@ def _load_artifact(root_dir: Path, relative_path: str) -> dict[str, Any]:
 def _soa_standalone(artifacts: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {
         "buildathon_demo": {
-            "demo_manifest": artifacts.get("demo_manifest", {}).get("status"),
-            "telemetry_report": artifacts.get("telemetry", {}).get("status"),
-            "market_report": artifacts.get("market_report", {}).get("status"),
-            "sodex_preflight": artifacts.get("sodex_preflight", {}).get("status"),
-            "wave_status": artifacts.get("wave_status", {}).get("status"),
+            "demo_manifest": dget(artifacts, "demo_manifest", "status"),
+            "telemetry_report": dget(artifacts, "telemetry", "status"),
+            "market_report": dget(artifacts, "market_report", "status"),
+            "sodex_preflight": dget(artifacts, "sodex_preflight", "status"),
+            "wave_status": dget(artifacts, "wave_status", "status"),
         },
     }
 
@@ -1408,8 +1393,8 @@ async def get_config(request: Request) -> dict[str, Any]:
         "sosovalue": {
             "config_path": str(c.sosovalue_config_path),
             "openapi_base_url": c.sosovalue_base_url,
-            "etf_base_url": c.sosovalue_base_url,
-            "news_base_url": c.sosovalue_base_url,
+            "etf_base_url": c.etf_base_url,
+            "news_base_url": c.news_base_url,
             "timeout_s": c.sosovalue_timeout_s,
             "retries": c.sosovalue_retries,
             "api_key_configured": c.sosovalue_api_key_override is not None,
@@ -1457,10 +1442,13 @@ async def api_experiment_detail(request: Request, spec_hash: str) -> dict[str, A
 
 @router.get("/api/experiments/{spec_hash}/series")
 async def api_experiment_series(request: Request, spec_hash: str) -> dict[str, Any]:
-    payload = request.app.state.dashboard.experiment_series_payload(spec_hash)
-    if payload is None:
-        raise HTTPException(status_code=404, detail="Experiment not found")
-    return payload
+    try:
+        payload = request.app.state.dashboard.experiment_series_payload(spec_hash)
+        if payload is None:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+        return payload
+    except Exception as exc:
+        return {"error": "Internal error", "detail": str(exc)}
 
 
 @router.post("/api/experiments/{spec_hash}/deploy")
@@ -1487,7 +1475,7 @@ async def api_search(
     """Search across runs, experiments, and actions."""
     query = q.strip().lower()
     if not query:
-        return {"results": [], "query": q}
+        return {"results": [], "query": q, "count": 0}
 
     dashboard = request.app.state.dashboard
     results: list[dict[str, Any]] = []
@@ -1495,10 +1483,10 @@ async def api_search(
     # Search runs
     runs_data = dashboard.runs_payload()
     for run in runs_data.get("runs", []):
-        run_id = str(run.get("run_id", ""))
-        label = str(run.get("label", ""))
+        run_id = str(run.get("run_session_id", ""))
+        label = str(run.get("run_label", ""))
         track = str(run.get("track", ""))
-        family = str(run.get("family", ""))
+        family = str(run.get("families", ""))
         searchable = f"{run_id} {label} {track} {family}".lower()
         if query in searchable:
             results.append(
@@ -1517,7 +1505,7 @@ async def api_search(
     experiments_data = dashboard.experiments_payload()
     for exp in experiments_data.get("experiments", []):
         spec_hash = str(exp.get("spec_hash", ""))
-        hypothesis = str(exp.get("hypothesis", ""))
+        hypothesis = str(exp.get("hypothesis", "") or exp.get("spec", {}).get("hypothesis", ""))
         family = str(exp.get("family", ""))
         track = str(exp.get("track", ""))
         searchable = f"{spec_hash} {hypothesis} {family} {track}".lower()
@@ -1725,7 +1713,7 @@ async def ops_board(request: Request) -> dict[str, Any]:
         },
         "summary": {
             "buildathon_demo": {
-                k: artifacts.get(k, {}).get("status")
+                k: dget(artifacts, k, "status")
                 for k in (
                     "demo_manifest",
                     "telemetry",
@@ -1986,26 +1974,26 @@ async def risk(request: Request) -> dict[str, Any]:
 
 @router.get("/market/symbols")
 async def market_symbols(request: Request) -> dict[str, Any]:
-    logger.debug("Market symbols requested")
-    if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
-        return {"symbols": [], "note": "SoDEXFeeds not available"}
     try:
+        feeds = request.app.state.dashboard.get_sodex_feeds()
+        if feeds is None:
+            return {"symbols": [], "note": "SoDEXFeeds not available"}
         symbols = await feeds.fetch_symbols()
         return {"symbols": symbols, "count": len(symbols)}
-    except (httpx.HTTPError, OSError, ValueError) as exc:
+    except (AttributeError, httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market symbols error: %s", exc)
         return {"symbols": [], "error": "Internal error"}
 
 
 @router.get("/market/tickers")
 async def market_tickers(request: Request) -> dict[str, Any]:
-    logger.debug("Market tickers requested")
-    if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
-        return {"tickers": [], "note": "SoDEXFeeds not available"}
     try:
+        feeds = request.app.state.dashboard.get_sodex_feeds()
+        if feeds is None:
+            return {"tickers": [], "note": "SoDEXFeeds not available"}
         tickers = await feeds.fetch_tickers()
         return {"tickers": tickers, "count": len(tickers)}
-    except (httpx.HTTPError, OSError, ValueError) as exc:
+    except (AttributeError, httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market tickers error: %s", exc)
         return {"tickers": [], "error": "Internal error"}
 
@@ -2017,10 +2005,10 @@ async def market_klines(
     interval: str = "1h",
     limit: int = 60,
 ) -> dict[str, Any]:
-    logger.debug("Market klines requested: %s", symbol)
-    if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
-        return {"klines": [], "symbol": symbol, "note": "SoDEXFeeds not available"}
     try:
+        feeds = request.app.state.dashboard.get_sodex_feeds()
+        if feeds is None:
+            return {"klines": [], "symbol": symbol, "note": "SoDEXFeeds not available"}
         frame = await feeds.fetch_klines(symbol, interval, limit=limit)
         records = (
             frame.reset_index().to_dict(orient="records") if not frame.empty else []
@@ -2035,7 +2023,7 @@ async def market_klines(
             "interval": interval,
             "count": len(records),
         }
-    except (httpx.HTTPError, OSError, ValueError) as exc:
+    except (AttributeError, httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market klines error (%s): %s", symbol, exc)
         return {"klines": [], "symbol": symbol, "error": "Internal error"}
 
@@ -2046,22 +2034,22 @@ async def market_orderbook(
     symbol: str,
     limit: int = 20,
 ) -> dict[str, Any]:
-    logger.debug("Market orderbook requested: %s", symbol)
-    if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
-        return {
-            "bids": [],
-            "asks": [],
-            "symbol": symbol,
-            "note": "SoDEXFeeds not available",
-        }
     try:
+        feeds = request.app.state.dashboard.get_sodex_feeds()
+        if feeds is None:
+            return {
+                "bids": [],
+                "asks": [],
+                "symbol": symbol,
+                "note": "SoDEXFeeds not available",
+            }
         data = await feeds.fetch_orderbook(symbol, limit=limit)
         return {
             "bids": data.get("bids", []),
             "asks": data.get("asks", []),
             "symbol": symbol,
         }
-    except (httpx.HTTPError, OSError, ValueError) as exc:
+    except (AttributeError, httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market orderbook error (%s): %s", symbol, exc)
         return {"bids": [], "asks": [], "symbol": symbol, "error": "Internal error"}
 
@@ -2655,69 +2643,70 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-_WS_HANDLERS = {}
-
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    await websocket.accept()
-    state = websocket.app.state.dashboard
-    manager = state.ws_manager
-    manager.register(websocket)
-    subscribed_symbols: set[str] = set()
-    subscription_types: set[str] = set()
-    risk_push_tasks: set[asyncio.Task[None]] = set()
     try:
-        await _send_json(
-            websocket,
-            {
-                "type": "connected",
-                "message": "SigLab WebSocket connected",
-                "timestamp": _now_iso(),
-            },
-        )
-        while True:
-            try:
-                raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-            except asyncio.TimeoutError:
+        await websocket.accept()
+        state = websocket.app.state.dashboard
+        manager = state.ws_manager
+        manager.register(websocket)
+        subscribed_symbols: set[str] = set()
+        subscription_types: set[str] = set()
+        risk_push_tasks: set[asyncio.Task[None]] = set()
+        try:
+            await _send_json(
+                websocket,
+                {
+                    "type": "connected",
+                    "message": "SigLab WebSocket connected",
+                    "timestamp": _now_iso(),
+                },
+            )
+            while True:
                 try:
+                    raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    try:
+                        await _send_json(
+                            websocket,
+                            {"type": "ping", "timestamp": _now_iso()},
+                        )
+                    except (OSError, ValueError):
+                        logger.debug("WebSocket send error in ping keepalive")
+                        break
+                    continue
+                if not raw.strip():
+                    continue
+                try:
+                    message = json.loads(raw)
+                except (json.JSONDecodeError, TypeError, ValueError):
                     await _send_json(
                         websocket,
-                        {"type": "ping", "timestamp": _now_iso()},
+                        {"type": "error", "message": "Invalid JSON payload"},
                     )
-                except (OSError, ValueError):
-                    logger.debug("WebSocket send error in ping keepalive")
-                    break
-                continue
-            if not raw.strip():
-                continue
-            try:
-                message = json.loads(raw)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                await _send_json(
+                    continue
+                await _handle_message(
                     websocket,
-                    {"type": "error", "message": "Invalid JSON payload"},
+                    message,
+                    manager,
+                    subscribed_symbols,
+                    subscription_types,
+                    risk_push_tasks,
                 )
-                continue
-            await _handle_message(
-                websocket,
-                message,
-                manager,
-                subscribed_symbols,
-                subscription_types,
-                risk_push_tasks,
-            )
-    except WebSocketDisconnect:
-        pass
-    except (OSError, ValueError) as exc:
-        logger.warning("WS error: %s", exc)
-    finally:
-        for task in risk_push_tasks:
-            task.cancel()
-        risk_push_tasks.clear()
-        manager.unregister(websocket)
-        for symbol in list(subscribed_symbols):
-            manager.unsubscribe(symbol, websocket)
+        except WebSocketDisconnect:
+            pass
+        except (OSError, ValueError) as exc:
+            logger.warning("WS error: %s", exc)
+        finally:
+            for task in risk_push_tasks:
+                task.cancel()
+            risk_push_tasks.clear()
+            manager.unregister(websocket)
+            for symbol in list(subscribed_symbols):
+                manager.unsubscribe(symbol, websocket)
+    except Exception as exc:
+        logger.error("WebSocket handler error: %s", exc, exc_info=True)
 
 
 async def _periodic_risk_push(ws: WebSocket) -> None:
@@ -2809,38 +2798,35 @@ async def _handle_message(
     risk_push_tasks=None,
 ):
     action = str(message.get("action") or message.get("type") or "").strip().lower()
-    _WS_HANDLERS.clear()
-    _WS_HANDLERS.update(
-        {
-            "ping": lambda: _send_json(
-                websocket,
-                {"type": "pong", "timestamp": _now_iso()},
-            ),
-            "pong": lambda: _send_json(
-                websocket,
-                {"type": "pong", "timestamp": _now_iso()},
-            ),
-            "subscribe": lambda: _handle_subscribe(
-                websocket,
-                message,
-                manager,
-                subscribed_symbols,
-                subscription_types,
-                risk_push_tasks,
-            ),
-            "unsubscribe": lambda: _handle_unsubscribe(
-                websocket,
-                message,
-                manager,
-                subscribed_symbols,
-                subscription_types,
-                risk_push_tasks,
-            ),
-            "get_positions": lambda: _stream_positions(websocket),
-            "get_risk": lambda: _stream_risk_scores(websocket),
-        },
-    )
-    handler = _WS_HANDLERS.get(action)
+    _handlers = {
+        "ping": lambda: _send_json(
+            websocket,
+            {"type": "pong", "timestamp": _now_iso()},
+        ),
+        "pong": lambda: _send_json(
+            websocket,
+            {"type": "pong", "timestamp": _now_iso()},
+        ),
+        "subscribe": lambda: _handle_subscribe(
+            websocket,
+            message,
+            manager,
+            subscribed_symbols,
+            subscription_types,
+            risk_push_tasks,
+        ),
+        "unsubscribe": lambda: _handle_unsubscribe(
+            websocket,
+            message,
+            manager,
+            subscribed_symbols,
+            subscription_types,
+            risk_push_tasks,
+        ),
+        "get_positions": lambda: _stream_positions(websocket),
+        "get_risk": lambda: _stream_risk_scores(websocket),
+    }
+    handler = _handlers.get(action)
     if handler:
         await handler()
     else:

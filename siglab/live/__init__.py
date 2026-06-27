@@ -16,7 +16,7 @@ from siglab.live.promotion import (
     promotion_eligible,
 )
 from siglab.live.reconciliation import ReconciliationEngine
-from siglab.live.runtime import DirectionalPerpsSigLabStrategy
+from siglab.live.paper_client import DirectionalPerpsSigLabStrategy
 from siglab.live.sodex_client import (
     SoDEXError,
     SoDEXFormatError,

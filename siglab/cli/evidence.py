@@ -59,8 +59,8 @@ async def run_evidence_build(args: argparse.Namespace) -> None:
         api_key=settings.sosovalue_api_key_override,
         endpoints=SoSoValueEndpoints(
             openapi_base_url=settings.sosovalue_base_url,
-            etf_base_url=settings.sosovalue_base_url,
-            news_base_url=settings.sosovalue_base_url,
+            etf_base_url=settings.etf_base_url,
+            news_base_url=settings.news_base_url,
         ),
         timeout_s=settings.sosovalue_timeout_s,
         retries=settings.sosovalue_retries,

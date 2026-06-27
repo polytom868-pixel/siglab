@@ -51,18 +51,18 @@ def int_or_zero(value: str | int | None) -> int:
         return 0
 
 
-h = hashlib.sha256
+_sha256 = hashlib.sha256
 
 
 def feature_hash(features: list[str], length: int = 16) -> str:
     """Deterministic hash of a feature list. Order-independent."""
     payload = "|".join(sorted(str(f) for f in features))
-    return h(payload.encode("utf-8")).hexdigest()[:length]
+    return _sha256(payload.encode("utf-8")).hexdigest()[:length]
 
 
 def short_hash(payload: str, length: int = 16) -> str:
     """Truncated SHA-256 hex digest."""
-    return h(payload.encode("utf-8")).hexdigest()[:length]
+    return _sha256(payload.encode("utf-8")).hexdigest()[:length]
 
 
 async def _get_url(url: str, **kw: Any) -> dict[str, Any]:

@@ -14,11 +14,6 @@ def normalize_llm_provider(value: str | None) -> str | None:
 
 
 def resolve_llm_provider(settings: SiglabConfig) -> str:
-    explicit = normalize_llm_provider(getattr(settings, "llm_provider", None))
-    if explicit is not None:
-        return explicit
-    if getattr(settings, "openmodel_api_key", None):
-        return "openai"
     return "openai"
 
 
@@ -41,9 +36,7 @@ def resolve_llm_model(
     provider: str | None = None,
     thinking_override: str | None = None,
 ) -> str:
-    return str(
-        getattr(settings, "openmodel_model", "deepseek-v4-flash") or "deepseek-v4-flash",
-    )
+    return str(settings.openmodel_model or "deepseek-v4-flash")
 
 
 def default_llm_model_display(
@@ -51,9 +44,7 @@ def default_llm_model_display(
     *,
     provider: str | None = None,
 ) -> str:
-    return str(
-        getattr(settings, "openmodel_model", "deepseek-v4-flash") or "deepseek-v4-flash",
-    )
+    return str(settings.openmodel_model or "deepseek-v4-flash")
 
 
 def resolve_llm_api_key(
@@ -61,9 +52,8 @@ def resolve_llm_api_key(
     *,
     provider: str | None = None,
 ) -> str | None:
-    return getattr(settings, "openmodel_api_key", None)
+    return settings.openmodel_api_key
 
 
 def resolve_llm_base_url(settings: SiglabConfig, *, provider: str | None = None) -> str:
-    return str(getattr(settings, "openmodel_base_url", "https://api.b.ai"))
-
+    return str(settings.openmodel_base_url or "https://api.openmodel.ai/v1")

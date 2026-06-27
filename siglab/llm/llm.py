@@ -131,7 +131,7 @@ class ClaudeClient:
 
     @property
     def is_configured(self) -> bool:
-        return bool(getattr(self.settings, "openmodel_api_key", None))
+        return bool(self.settings.openmodel_api_key)
 
     @property
     def provider_name(self) -> str:
@@ -141,9 +141,9 @@ class ClaudeClient:
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
-            api_key = str(getattr(self.settings, "openmodel_api_key", None) or "")
+            api_key = str(self.settings.openmodel_api_key or "")
             base_url = str(
-                getattr(self.settings, "openmodel_base_url", "https://api.b.ai")
+                self.settings.openmodel_base_url
             ).rstrip("/")
             self._client = AsyncOpenAI(
                 api_key=api_key,

@@ -23,7 +23,8 @@ from siglab.live.position_ledger import (
     compute_funding_cost,
     compute_trade_pnl,
 )
-from siglab.live.signal_compile import compile_spec
+from siglab.utils import dget
+from siglab.evaluation.compile import compile_spec
 from siglab.live.sodex_client import (
     SoDEXSignedPerpsClient,
     SoDEXTransportError,
@@ -162,7 +163,7 @@ class PaperSession:
             "positions": {s: p.to_dict() for s, p in self.positions.items()},
             "pnl": self.pnl,
             "last_funding_time": self.last_funding_time,
-            "metadata": dict(self.metadata),
+            "metadata": self.metadata,
             "initial_balance": self.initial_balance,
             "maintenance_margin_rate": self.maintenance_margin_rate,
         }
@@ -883,19 +884,19 @@ class SoDEXExecutionAdapter:
     coin_to_asset: dict[str, int] = {}
 
     def __init__(self, config: dict[str, Any] | None = None, **kwargs: Any) -> None:
-        self.config = dict(config or {})
+        self.config = config or {}
         self.client = self.config.get("sodex_client")
         self.wallet_address = kwargs.get("wallet_address")
-        self.coin_to_asset = dict(
+        self.coin_to_asset = (
             self.config.get("coin_to_asset")
             or getattr(self.client, "coin_to_asset", {})
-            or {},
+            or {}
         )
 
     def setup(self) -> dict[str, Any]:
         if self.client is not None:
             return self.dependency_report()
-        sg = dict(self.config.get("sodex_signing") or {})
+        sg = self.config.get("sodex_signing") or {}
         akn = sg.get("api_key_name") or self.config.get("sodex_api_key_name")
         aid_r = (
             sg.get("accountID")
@@ -1007,7 +1008,7 @@ class SoDEXExecutionAdapter:
 
     def dependency_report(self) -> dict[str, Any]:
         c = self.client
-        sg = dict(self.config.get("sodex_signing") or {})
+        sg = self.config.get("sodex_signing") or {}
         akn = sg.get("api_key_name") or self.config.get("sodex_api_key_name")
         aid = (
             sg.get("accountID")
@@ -1115,7 +1116,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         self._cb = CircuitBreakerState()
 
     def _wallet_addr(self) -> str:
-        r = dict(self.live_spec.get("runtime") or {})
+        r = self.live_spec.get("runtime") or {}
         a = r.get("wallet_address") or r.get("address") or ""
         return str(a)
 
@@ -1128,7 +1129,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
 
     async def setup(self) -> None:
         self.live_spec = self._load_spec()
-        self.spec = SignalSpec.from_dict(dict(self.live_spec["spec"]))
+        self.spec = SignalSpec.from_dict(self.live_spec["spec"])
         self.name = str(
             self.live_spec.get("strategy_name") or self.spec.strategy_hash(),
         )
@@ -1154,7 +1155,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
 
     async def update(self) -> StatusTuple:
         st = await self._build_status(include_trade_plan=True)
-        ss = dict(st["strategy_status"])
+        ss = st["strategy_status"]
         plan = list(ss.get("trade_plan") or [])
         av = float(st.get("portfolio_value", 0.0))
         dr = self._adr_dry()
@@ -1186,7 +1187,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
                 o["size"] = _ff(o["size"]) * 0.75
         ad = self._req_adapter()
         addr = self._wallet_addr()
-        rt = dict(self.live_spec.get("runtime") or {})
+        rt = self.live_spec.get("runtime") or {}
         lv = max(1, math.ceil(_ff(rt.get("live_leverage"), 1.0)))
         ex = 0
         for o in plan:
@@ -1218,12 +1219,12 @@ class DirectionalPerpsSigLabStrategy(Strategy):
 
     async def withdraw(self, **kwargs: Any) -> StatusTuple:
         st = await self._build_status(include_trade_plan=False)
-        cp = dict(st["strategy_status"].get("current_positions") or {})
+        cp = st["strategy_status"].get("current_positions") or {}
         if not cp:
             return (True, "No open perp positions to close")
         if self._adr_dry():
             return (True, f"Dry run would close {len(cp)} perp positions")
-        rt = dict(self.live_spec.get("runtime") or {})
+        rt = self.live_spec.get("runtime") or {}
         ad = self._req_adapter()
         addr = self._wallet_addr()
         cl = 0
@@ -1264,7 +1265,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         return {
             "strategy_name": self.name,
             "spec_hash": self.live_spec.get("spec_hash"),
-            "runtime": dict(self.live_spec.get("runtime") or {}),
+            "runtime": self.live_spec.get("runtime") or {},
             "sodex_adapter": ar,
         }
 
@@ -1277,13 +1278,13 @@ class DirectionalPerpsSigLabStrategy(Strategy):
         cp = self._perp_pos(st)
         av = self._acct_val(st)
         nd = await self._net_dep(addr, fallback=av)
-        rt = dict(self.live_spec.get("runtime") or {})
+        rt = self.live_spec.get("runtime") or {}
         lv = _ff(rt.get("live_leverage"), 1.0)
         tp = (
             self._trade_plan(
-                target_weights=dict(ts_["target_weights"]),
+                target_weights=ts_["target_weights"],
                 current_positions=cp,
-                mids=dict(ts_["mid_prices"]),
+                mids=ts_["mid_prices"],
                 account_value=av,
                 leverage=lv,
                 min_trade_usd=_ff(rt.get("min_trade_usd"), 25.0),
@@ -1306,7 +1307,7 @@ class DirectionalPerpsSigLabStrategy(Strategy):
                 "latest_signal_timestamp": ts_.get("timestamp"),
                 "dry_run": self._adr_dry(),
                 "current_account_value": round(av, 6),
-                "target_weights": _cw(dict(ts_["target_weights"])),
+                "target_weights": _cw(ts_["target_weights"]),
                 "current_positions": _cw(cp),
                 "trade_plan": tp,
                 "compiled_metadata": ts_.get("compiled_metadata"),
@@ -1371,8 +1372,8 @@ class DirectionalPerpsSigLabStrategy(Strategy):
 
     def _acct_val(self, state: dict[str, Any]) -> float:
         return max(
-            _ff((state.get("crossMarginSummary") or {}).get("accountValue"), 0.0),
-            _ff((state.get("marginSummary") or {}).get("accountValue"), 0.0),
+            _ff(dget(state, "crossMarginSummary", "accountValue"), 0.0),
+            _ff(dget(state, "marginSummary", "accountValue"), 0.0),
             0.0,
         )
 

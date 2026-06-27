@@ -174,8 +174,8 @@ def etf_inflow_evidence(
         if not date:
             continue
         for relation, attr_key in [
-            ("total_net_inflow", "total_value_traded"),
-            ("total_net_assets", "cum_net_inflow"),
+            ("totalNetInflow", "totalValueTraded"),
+            ("totalNetAssets", "cumNetInflow"),
         ]:
             records.append(
                 EvidenceRecord(

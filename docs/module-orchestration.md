@@ -264,7 +264,7 @@ Defined in `siglab/config.py`. Constructed by `load_settings()`.
 |-------|---------|---------|
 | `sosovalue_api_key_override` | `SOSOVALUE_API_KEY` | `None` |
 | `sosovalue_openapi_base_url` | `SOSOVALUE_OPENAPI_BASE_URL` | `"https://openapi.sosovalue.com/openapi/v1"` |
-| `sosovalue_etf_base_url` | `SOSOVALUE_ETF_BASE_URL` | `"https://api.sosovalue.xyz"` |
+| `sosovalue_etf_base_url` | `SOSOVALUE_ETF_BASE_URL` | `"https://openapi.sosovalue.com"` |
 | `sosovalue_news_base_url` | `SOSOVALUE_NEWS_BASE_URL` | `"https://openapi.sosovalue.com"` |
 | `sosovalue_timeout_s` | `SOSOVALUE_TIMEOUT_S` | `30.0` |
 | `sosovalue_retries` | `SOSOVALUE_RETRIES` | `2` |

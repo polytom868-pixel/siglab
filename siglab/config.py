@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,8 @@ class SiglabConfig:
     ancestry_db_path: Path
     sosovalue_api_key_override: str | None
     sosovalue_base_url: str = "https://openapi.sosovalue.com"
+    etf_base_url: str = "https://openapi.sosovalue.com"
+    news_base_url: str = "https://openapi.sosovalue.com"
     sosovalue_timeout_s: float = 30.0
     sosovalue_retries: int = 2
     claude_timeout_s: float = 300.0
@@ -100,7 +103,15 @@ def load_settings() -> SiglabConfig:
     strategy_export_dir = Path(strategy_export_value).expanduser()
     if not strategy_export_dir.is_absolute():
         strategy_export_dir = (root_dir / strategy_export_dir).resolve()
-    llm_provider = "openai"
+    llm_provider = _get("LLM_PROVIDER", default="openai")
+    sosovalue_api_key_override = _get("SOSOVALUE_API_KEY")
+    if sosovalue_api_key_override is None and config_path.exists():
+        try:
+            with open(config_path) as f:
+                cfg = json.load(f)
+            sosovalue_api_key_override = cfg.get("system", {}).get("api_key")
+        except (json.JSONDecodeError, OSError):
+            pass
     return SiglabConfig(
         root_dir=root_dir,
         sosovalue_config_path=config_path,
@@ -109,10 +120,12 @@ def load_settings() -> SiglabConfig:
         artifact_dir=root_dir / "runs",
         live_dir=root_dir / "live",
         ancestry_db_path=root_dir / "siglab.db",
-        sosovalue_api_key_override=_get("SOSOVALUE_API_KEY"),
+        etf_base_url=_get("SOSOVALUE_ETF_BASE_URL", "https://openapi.sosovalue.com"),
+        news_base_url=_get("SOSOVALUE_NEWS_BASE_URL", "https://openapi.sosovalue.com"),
         sosovalue_base_url=_get("SOSOVALUE_BASE_URL", "https://openapi.sosovalue.com"),
         sosovalue_timeout_s=float(_get("SOSOVALUE_TIMEOUT_S", "30")),
         sosovalue_retries=int(_get("SOSOVALUE_RETRIES", "2")),
+        sosovalue_api_key_override=sosovalue_api_key_override,
         claude_timeout_s=float(_get("CLAUDE_TIMEOUT_S", "300")),
         llm_provider=llm_provider,
         claude_max_tool_rounds=int(_get("CLAUDE_MAX_TOOL_ROUNDS", "25")),

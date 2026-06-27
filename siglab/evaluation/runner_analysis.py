@@ -6,7 +6,7 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 
-from siglab.utils import safe_float as _sf
+from siglab.utils import dget, safe_float as _sf
 
 
 def mean_pairwise_rolling_corr(returns: pd.DataFrame, *, window: int) -> pd.Series:
@@ -653,7 +653,7 @@ def _trp(te: list[dict[str, Any]]) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
         by_label: dict[str, list[dict[str, Any]]] = {}
         for e in te:
-            lbl = str((e.get("entry_regime") or {}).get(lk) or "").strip()
+            lbl = str(dget(e, "entry_regime", lk) or "").strip()
             if lbl:
                 by_label.setdefault(lbl, []).append(e)
         for lbl, matched in by_label.items():
@@ -1131,10 +1131,8 @@ def _pgd(
             "broken_while_active_fraction": _sf(
                 float((~gm)[am1].mean()) if bool(am1.any()) else None,
             ),
-            "exit_on_break": bool(
-                compiled_metadata.get("regime_gates", {}).get("exit_on_break", True),
-            ),
-            "entry": compiled_metadata.get("regime_gates", {}).get("entry") or [],
+            "exit_on_break": dget(compiled_metadata, "regime_gates", "exit_on_break", default=True),
+            "entry": dget(compiled_metadata, "regime_gates", "entry") or [],
         }
         afg = _sf(rgs.get("active_fraction"))
         if afg is not None and afg < 0.3:
@@ -1200,11 +1198,11 @@ def _pcfm(cm: dict[str, Any]) -> dict[str, Any]:
             "train_window_count": int(sw.get("train_window_count", 0) or 0),
             "trial_count": int(sw.get("trial_count", 0) or 0),
             "best_train_score": _sf(
-                sw.get("best_train_summary", {}).get("aggregate_score"),
+                dget(sw, "best_train_summary", "aggregate_score"),
                 default=None,
             ),
             "best_train_return": _sf(
-                sw.get("best_train_summary", {}).get("median_total_return"),
+                dget(sw, "best_train_summary", "median_total_return"),
                 default=None,
             ),
         }
