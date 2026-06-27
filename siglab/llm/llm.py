@@ -413,6 +413,111 @@ class ClaudeClient:
             self.last_exchange["final_content"] = ct
         return ct
 
+    async def complete_with_tools(
+        self,
+        *,
+        user_prompt: str,
+        system_prompt: str | None = "You are a crypto research assistant with access to real-time data tools. Use them to answer the user's questions factually.",
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+        max_tool_rounds: int = 5,
+        stage: str | None = None,
+    ) -> str:
+        """Send a prompt with tool-calling enabled. Runs the tool-use loop
+        (LLM calls tool → handler executes → result fed back → LLM
+        produces final answer) and returns the final text."""
+        if not self.is_configured:
+            raise LLMConfigError(
+                "OpenAI API key is not configured", provider=self.provider_name
+            )
+        from siglab.llm.tools import RESEARCH_TOOLS, tools_to_openai_schema
+
+        tool_defs = tools_to_openai_schema(RESEARCH_TOOLS)
+        tool_map = {t.name: t for t in RESEARCH_TOOLS}
+
+        msgs: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt or "You are a helpful assistant."},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        self.last_exchange = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+        }
+
+        round_count = 0
+        trace: dict[str, Any] = {
+            "provider": self.provider_name,
+            "model": _OPENAI_MODEL,
+            "thinking_mode": "default",
+            "tool_choice": "auto",
+            "tool_count_available": len(tool_defs),
+            "tool_rounds_used": 0,
+            "final_content_preview": None,
+        }
+        self.last_trace = trace
+
+        while round_count < max_tool_rounds:
+            payload = self._build_pl(
+                messages=msgs,
+                max_tokens=max_tokens,
+                json_mode=False,
+                thinking_override=None,
+                stage=stage,
+            )
+            payload["tools"] = tool_defs
+            body = await self._chat_comp(
+                payload=payload, timeout_s=timeout_s, stage=stage
+            )
+            trace["model"] = str(body.get("_siglab_model_used", _OPENAI_MODEL))
+            choice = self._choice(body)
+            finish_reason = choice.get("finish_reason")
+            message = choice.get("message", {})
+            content = str(message.get("content") or "")
+            tool_calls = message.get("tool_calls") or []
+
+            if not tool_calls or finish_reason == "stop":
+                # No more tool calls — this is the final answer
+                trace["tool_rounds_used"] = round_count
+                trace["final_content_preview"] = _compact_scalar(content[:2200])
+                trace["response_finish_reason"] = finish_reason
+                if self.last_exchange is not None:
+                    self.last_exchange["final_content"] = content
+                return content
+
+            # Append the assistant message with tool_calls to the conversation
+            msgs.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
+
+            # Execute each tool call and append the result
+            for tc in tool_calls:
+                tool_name = tc.get("function", {}).get("name", "")
+                tool_args_str = tc.get("function", {}).get("arguments", "{}")
+                tool_call_id = tc.get("id", "")
+
+                tool = tool_map.get(tool_name)
+                if tool is None:
+                    result_text = f"Error: unknown tool '{tool_name}'"
+                else:
+                    try:
+                        args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else dict(tool_args_str)
+                        result_text = await tool.handler(**args)
+                    except Exception as exc:
+                        result_text = f"Error executing {tool_name}: {exc}"
+
+                msgs.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": result_text,
+                })
+
+            round_count += 1
+
+        # Fell through max rounds — return last partial content
+        trace["tool_rounds_used"] = round_count
+        trace["final_content_preview"] = _compact_scalar("(max rounds reached)")
+        trace["response_finish_reason"] = "max_tool_rounds"
+        return "Maximum tool rounds reached without final answer."
+
 
     async def _tool_loop(
         self,

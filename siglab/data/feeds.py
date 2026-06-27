@@ -1384,14 +1384,25 @@ class SoSoValueClient:
         )
         return await self.request(spec)
 
-    async def currency_klines(self, currency_id: int, limit: int = 100) -> list[dict[str, Any]]:
-        """Fetch spot OHLCV klines for a currency."""
+    async def currency_klines(
+        self,
+        currency_id: int,
+        interval: str = "1d",
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Fetch spot OHLCV klines for a currency.
+
+        Args:
+            currency_id: SoSoValue numeric currency ID.
+            interval: Candle interval ("1d" is free; "1h", "4h", "15m" need whitelisted key).
+            limit: Max rows.
+        """
         spec = SoSoValueRequestSpec(
             name="currency.klines",
             method="GET",
             base_url=self.endpoints.openapi_base_url,
             path=f"/currencies/{currency_id}/klines",
-            params={"limit": limit},
+            params={"interval": interval, "limit": limit},
             ttl_s=60.0,
         )
         payload = await self.request(spec)

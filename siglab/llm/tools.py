@@ -1,0 +1,146 @@
+"""LLM tools for autonomous crypto research."""
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class ResearchTool:
+    """A tool the LLM can call for research."""
+    name: str
+    description: str
+    parameters: dict[str, Any]  # JSON Schema format
+    handler: Callable[..., Awaitable[str]]  # Returns text summary
+
+
+# Tool: Get ETF inflow data
+async def get_etf_flow(etf_type: str = "us-btc-spot") -> str:
+    """Get latest ETF inflow/outflow data. etf_type: us-btc-spot or us-eth-spot."""
+    from siglab.data.feeds import SoSoValueClient
+    from siglab.config import load_settings
+    settings = load_settings()
+    key = settings.sosovalue_api_key_override
+    if not key:
+        return "Error: No SoSoValue API key configured"
+    client = SoSoValueClient(api_key=key)
+    rows = await client.etf_historical_inflow(etf_type=etf_type)
+    if not rows:
+        return "No ETF data available"
+    latest = rows[0]
+    return (
+        f"Latest {etf_type} data:\n"
+        f"  Date: {latest.get('date')}\n"
+        f"  Net Flow: ${latest.get('totalNetInflow', 0):,.0f}\n"
+        f"  Net Assets: ${latest.get('totalNetAssets', 0):,.0f}\n"
+        f"  Total rows available: {len(rows)}"
+    )
+
+
+ETF_FLOW_TOOL = ResearchTool(
+    name="get_etf_flow",
+    description="Get latest BTC or ETH ETF inflow/outflow data from SoSoValue",
+    parameters={
+        "type": "object",
+        "properties": {
+            "etf_type": {
+                "type": "string",
+                "enum": ["us-btc-spot", "us-eth-spot"],
+                "description": "ETF type to query",
+            }
+        },
+        "required": [],
+    },
+    handler=get_etf_flow,
+)
+
+
+# Tool: Get SoDEX market data
+async def get_market_data(symbol: str = "BTC-USD") -> str:
+    """Get current market data for a perpetual symbol from SoDEX."""
+    from siglab.data.feeds import SoDEXPublicPerpsClient
+
+    client = SoDEXPublicPerpsClient()
+    tickers = await client.tickers()
+    for t in tickers:
+        if t.get("s") == symbol or t.get("symbol") == symbol:
+            return (
+                f"Market data for {symbol}:\n"
+                f"  Last Price: {t.get('lastPx') or t.get('lastPrice', 'N/A')}\n"
+                f"  Bid: {t.get('bidPx') or t.get('bidPrice', 'N/A')}\n"
+                f"  Ask: {t.get('askPx') or t.get('askPrice', 'N/A')}\n"
+                f"  24h Volume: {t.get('volume') or t.get('baseVolume', 'N/A')}"
+            )
+    return f"No data found for symbol {symbol}"
+
+
+MARKET_DATA_TOOL = ResearchTool(
+    name="get_market_data",
+    description="Get current market data (price, bid, ask, volume) for a perp symbol from SoDEX",
+    parameters={
+        "type": "object",
+        "properties": {
+            "symbol": {
+                "type": "string",
+                "description": "Trading pair symbol (e.g. BTC-USD, ETH-USD)",
+            }
+        },
+        "required": [],
+    },
+    handler=get_market_data,
+)
+
+
+# Tool: Get SoSoValue news
+async def get_crypto_news(currency: str = "BTC", limit: int = 5) -> str:
+    """Get latest crypto news for a specific currency."""
+    from siglab.data.feeds import SoSoValueClient
+    from siglab.config import load_settings
+
+    settings = load_settings()
+    key = settings.sosovalue_api_key_override
+    if not key:
+        return "Error: No SoSoValue API key configured"
+    client = SoSoValueClient(api_key=key)
+    rows = await client.featured_news_by_currency(page_size=limit)
+    if not rows:
+        return "No news available"
+    result = [f"Latest {limit} crypto news items:"]
+    for row in rows[:limit]:
+        title = (row.get("multilanguageContent") or [{}])[0].get("title") or row.get("title") or "Untitled"
+        result.append(f"  - {title}")
+    return "\n".join(result)
+
+
+NEWS_TOOL = ResearchTool(
+    name="get_crypto_news",
+    description="Get latest crypto news headlines from SoSoValue",
+    parameters={
+        "type": "object",
+        "properties": {
+            "currency": {"type": "string", "description": "Currency to get news for"},
+            "limit": {"type": "integer", "description": "Number of news items (max 10)"},
+        },
+        "required": [],
+    },
+    handler=get_crypto_news,
+)
+
+
+# All tools registry
+RESEARCH_TOOLS: list[ResearchTool] = [ETF_FLOW_TOOL, MARKET_DATA_TOOL, NEWS_TOOL]
+
+
+def tools_to_openai_schema(tools: list[ResearchTool]) -> list[dict]:
+    """Convert ResearchTool definitions to OpenAI tool calling format."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+            },
+        }
+        for t in tools
+    ]

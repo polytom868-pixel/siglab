@@ -9,9 +9,18 @@ from siglab.llm.llm import (
     LLMTransportError,
     LLMUpstreamError,
 )
+from siglab.llm.tools import (
+    ETF_FLOW_TOOL,
+    MARKET_DATA_TOOL,
+    NEWS_TOOL,
+    RESEARCH_TOOLS,
+    ResearchTool,
+    tools_to_openai_schema,
+)
 
 __all__ = [
     "ClaudeClient",
+    "ETF_FLOW_TOOL",
     "LLMAuthError",
     "LLMConfigError",
     "LLMFormatError",
@@ -20,5 +29,10 @@ __all__ = [
     "LLMRateLimitError",
     "LLMTransportError",
     "LLMUpstreamError",
+    "MARKET_DATA_TOOL",
+    "NEWS_TOOL",
+    "RESEARCH_TOOLS",
+    "ResearchTool",
+    "tools_to_openai_schema",
 ]
 
