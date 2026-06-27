@@ -3,7 +3,10 @@ from siglab.data.evidence import (
     EvidenceStore,
     etf_inflow_evidence,
     news_evidence,
+    sodex_rest_evidence,
     sodex_ws_evidence,
+    sodex_quote_evidence,
+    _news_relevance_score,
     summarize_evidence,
 )
 from siglab.data.feeds import (
@@ -34,6 +37,8 @@ __all__ = [
     "SoDEXWeightScheduler",
     "etf_inflow_evidence",
     "news_evidence",
+    "sodex_rest_evidence",
     "sodex_ws_evidence",
+    "sodex_quote_evidence",
     "summarize_evidence",
 ]

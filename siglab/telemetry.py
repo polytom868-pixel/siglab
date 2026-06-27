@@ -225,8 +225,9 @@ def build_telemetry_payload(
     *,
     trace_paths: list[Path],
     provider_metric_paths: list[Path],
+    evidence_paths: list[Path] | None = None,
 ) -> dict[str, Any]:
-    """Aggregate trace + provider-metrics into one telemetry payload."""
+    """Aggregate trace + provider-metrics (+ optional evidence) into one telemetry payload."""
     payload = aggregate_trace_telemetry(trace_paths)
     payload["trace_paths_scanned"] = len(trace_paths)
     payload["provider_metrics"] = aggregate_provider_metrics_artifacts(
@@ -240,6 +241,8 @@ def build_telemetry_payload(
         if payload["provider_metrics"]["artifact_count"] > 0
         else "not_applicable"
     )
+    if evidence_paths is not None:
+        payload["evidence"] = aggregate_evidence_telemetry(evidence_paths)
     return payload
 
 
@@ -317,3 +320,53 @@ def _count(values: Iterable[Any]) -> dict[str, int]:
         key = str(value)
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def evidence_paths_for_telemetry(
+    settings: SiglabConfig,
+) -> list[Path]:
+    """Find evidence JSONL files for telemetry."""
+    base = settings.artifact_dir / "evidence"
+    if not base.exists():
+        return []
+    results: list[Path] = []
+    for pattern in ("*sosovalue*.jsonl", "sodex*.jsonl"):
+        results.extend(sorted(base.glob(pattern)))
+    return results
+
+
+def aggregate_evidence_telemetry(
+    evidence_paths: Iterable[Path],
+) -> dict[str, Any]:
+    """Aggregate evidence file stats for telemetry payload.
+
+    Returns evidence_count, evidence_sources, evidence_time (most recent
+    observed_at across all evidence files).
+    """
+    evidence_count = 0
+    evidence_sources: list[str] = []
+    greatest_observed_at: str | None = None
+    for path in evidence_paths:
+        if not path.exists():
+            continue
+        records: list[dict[str, Any]] = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+        except (IndexError, json.JSONDecodeError):
+            payload = {}
+        evidence_count += len(records)
+        evidence_sources.append(path.name)
+        for rec in records:
+            observed = str(rec.get("observed_at") or "")
+            if observed and (greatest_observed_at is None or observed > greatest_observed_at):
+                greatest_observed_at = observed
+    return {
+        "evidence_count": evidence_count,
+        "evidence_sources": evidence_sources,
+        "evidence_file_count": len(evidence_sources),
+        "evidence_time": greatest_observed_at,
+    }

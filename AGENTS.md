@@ -19,8 +19,9 @@ unless the relevant code, live validation, and docs prove it.
 
 ```bash
 python3 -m pytest -q
-python3 -m siglab.cli profile --strict --json
-python3 -m siglab.cli demo-manifest --json
+python3 -m siglab.cli demo run --json
+python3 -m siglab.cli demo manifest --json
+python3 -m siglab.cli market-report --entity BTC --json
 python3 -m siglab.cli telemetry-report --track trend_signals --json
 ```
 
@@ -30,13 +31,11 @@ Use `docs/demo-script.md` as the buildathon demo script.
 
 The proof chain is:
 
-1. `evidence-build` for SoSoValue evidence.
-2. `sodex-ws-probe` for public SoDEX quote evidence.
-3. `evidence-map` for graph inspection.
-4. `market-report` for operator-facing decision support.
-5. `telemetry-report` for provider/tool telemetry.
-6. `sodex-preflight` and `valuechain-preflight` for live boundary truth.
-7. `demo-manifest` to index the artifact set.
+1. `demo run` auto-collects SoSoValue ETF + news evidence and SoDEX REST perps quote evidence.
+2. `market-report` builds operator-facing decision support from evidence files.
+3. `telemetry-report` for provider/tool/evidence telemetry.
+4. `sodex-preflight` for live boundary truth.
+5. `demo manifest` to index the artifact set.
 
 ## Repo-Local Skills
 

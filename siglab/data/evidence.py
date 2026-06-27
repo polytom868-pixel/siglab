@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import asyncio
 import json
 import logging
 from collections import Counter
@@ -11,6 +12,53 @@ from typing import Any
 from collections.abc import Callable, Iterable
 
 logger = logging.getLogger(__name__)
+
+_CURRENCY_SYMBOL_ALIASES: dict[str, str] = {
+    "BITCOIN": "BTC",
+    "ETHEREUM": "ETH",
+    "SOLANA": "SOL",
+    "XRP": "XRP",
+    "DOGECOIN": "DOGE",
+    "BNB": "BNB",
+    "HYPERLIQUID": "HYPE",
+    "SUI": "SUI",
+}
+
+
+def _news_relevance_score(
+    item: dict[str, Any],
+    symbols: set[str],
+) -> float:
+    """Score a news item's relevance to given currency symbols (0.0–1.0).
+
+    Checks matchedCurrencies field first, then falls back to title/summary text
+    matching. Returns 1.0 for explicit currency match, 0.3 per text mention
+    (capped at 1.0).
+    """
+    matched_list = item.get("matched_currencies") or item.get("matchedCurrencies")
+    if matched_list:
+        matched_ids: set[str] = set()
+        for c in matched_list:
+            if isinstance(c, dict):
+                name = str(c.get("currencyName") or c.get("symbol") or "").upper().strip()
+                if name:
+                    matched_ids.add(name)
+                    alias = _CURRENCY_SYMBOL_ALIASES.get(name)
+                    if alias:
+                        matched_ids.add(alias)
+            elif isinstance(c, (str, int, float)):
+                name = str(c).upper().strip()
+                if name:
+                    matched_ids.add(name)
+        if matched_ids & symbols:
+            return 1.0
+    title = str(_first_of(item, ("title", "headline")) or "").upper()
+    summary = str(_first_of(item, ("summary", "description", "content")) or "").upper()
+    text = title + " " + summary
+    matches = sum(1 for sym in symbols if sym in text)
+    if matches:
+        return min(1.0, 0.3 * matches)
+    return 0.0
 
 
 @dataclass(frozen=True)
@@ -217,7 +265,11 @@ def news_evidence(
     module: str = "Feeds",
     default_entity: str = "market",
     source: str = "sosovalue.featured_news",
+    currency_filter: set[str] | None = None,
 ) -> list[EvidenceRecord]:
+    if currency_filter:
+        symbols = {str(s).upper().strip() for s in currency_filter}
+        rows = [r for r in rows if _news_relevance_score(r, symbols) > 0.0]
     def _extract(row: dict[str, Any]) -> EvidenceRecord | None:
         content = _preferred_multilingual_content(row.get("multilanguageContent"))
         title = str(
@@ -303,6 +355,133 @@ def sodex_ws_evidence(
         )
     return _collect_evidence(rows, _extract)
 
+
+def sodex_rest_evidence(
+    tickers: Iterable[dict[str, Any]],
+    *,
+    observed_at: str,
+    evidence_path: str,
+) -> list[EvidenceRecord]:
+    """Convert SoDEX REST /markets/tickers + /markets/bookTickers into evidence records.
+
+    Each ticker dict may contain the following fields (SoDEX native or canonical names):
+        symbol, lastPx/lastPrice, priceChangePercent,
+        bidPx/bidPrice, askPx/askPrice,
+        volume/baseVolume, quoteVolume.
+    """
+    def _extract(row: dict[str, Any]) -> list[EvidenceRecord]:
+        symbol = str(_first_of(row, ("symbol",)) or "unknown")
+        entity = symbol.upper()
+        last_price = _coerce_float(_first_of(row, ("lastPx", "lastPrice")))
+        bid_price = _coerce_float(_first_of(row, ("bidPx", "bidPrice")))
+        ask_price = _coerce_float(_first_of(row, ("askPx", "askPrice")))
+        price_change = _coerce_float(_first_of(row, ("priceChangePercent",)))
+        base_volume = _coerce_float(_first_of(row, ("volume", "baseVolume")))
+        quote_volume = _coerce_float(_first_of(row, ("quoteVolume",)))
+
+        records: list[EvidenceRecord] = []
+        common = dict(
+            source="sodex.rest.perps_market_tickers",
+            observed_at=observed_at,
+            entity=entity,
+            module="SoDEX",
+            confidence=0.9,
+            evidence_path=evidence_path,
+            attributes={"symbol": symbol},
+        )
+        if last_price is not None:
+            records.append(EvidenceRecord(**common, relation="mark_price", value=last_price))
+        if bid_price is not None:
+            records.append(EvidenceRecord(**common, relation="bid_price", value=bid_price))
+        if ask_price is not None:
+            records.append(EvidenceRecord(**common, relation="ask_price", value=ask_price))
+        if price_change is not None:
+            records.append(
+                EvidenceRecord(**common, relation="price_change_24h_pct", value=price_change)
+            )
+        if base_volume is not None:
+            records.append(
+                EvidenceRecord(**common, relation="base_volume_24h", value=base_volume)
+            )
+        if quote_volume is not None:
+            records.append(
+                EvidenceRecord(**common, relation="quote_volume_24h", value=quote_volume)
+            )
+        # Consolidated quote record for market report consumption
+        if bid_price is not None or ask_price is not None:
+            quote_value = ask_price if ask_price is not None else bid_price
+            records.append(
+                EvidenceRecord(
+                    source="sodex.rest.perps_market_tickers",
+                    observed_at=observed_at,
+                    entity=entity,
+                    module="SoDEX",
+                    relation="quote",
+                    value=quote_value,
+                    confidence=0.9,
+                    evidence_path=evidence_path,
+                    attributes={"symbol": symbol, "bid": bid_price, "ask": ask_price},
+                )
+            )
+        return records
+    return _collect_evidence(tickers, _extract)
+
+
+
+def _merge_ticker_book(
+    tickers: list[dict[str, Any]],
+    book_tickers: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge ticker data with book ticker data keyed by symbol."""
+    book_by_symbol: dict[str, dict[str, Any]] = {}
+    for bt in book_tickers:
+        sym = str(bt.get("symbol") or "")
+        if sym:
+            book_by_symbol[sym] = bt
+    merged: list[dict[str, Any]] = []
+    for tk in tickers:
+        sym = str(tk.get("symbol") or "")
+        row = dict(tk)
+        if sym in book_by_symbol:
+            bt = book_by_symbol[sym]
+            row["bidPx"] = _first_of(bt, ("bidPx", "bidPrice"))
+            row["askPx"] = _first_of(bt, ("askPx", "askPrice"))
+        merged.append(row)
+    return merged
+
+
+async def sodex_quote_evidence(
+    client: Any,  # SoDEXPublicPerpsClient — avoid circular import of the class
+    *,
+    observed_at: str,
+    evidence_path: str,
+) -> list[EvidenceRecord]:
+    """Fetch SoDEX tickers + book tickers and convert to evidence records.
+
+    Args:
+        client: SoDEXPublicPerpsClient instance (or duck-typed with
+            ``tickers()`` and ``book_tickers()`` async methods).
+    """
+    tickers_data, book_tickers_data = await asyncio.gather(
+        client.tickers(),
+        client.book_tickers(),
+        return_exceptions=True,
+    )
+    if isinstance(tickers_data, Exception):
+        logger.warning("sodex_quote_evidence: tickers() failed: %s", tickers_data)
+        tickers_data = []
+    if isinstance(book_tickers_data, Exception):
+        logger.warning("sodex_quote_evidence: book_tickers() failed: %s", book_tickers_data)
+        book_tickers_data = []
+    merged = _merge_ticker_book(
+        list(tickers_data) if isinstance(tickers_data, list) else [],
+        list(book_tickers_data) if isinstance(book_tickers_data, list) else [],
+    )
+    return sodex_rest_evidence(
+        merged,
+        observed_at=observed_at,
+        evidence_path=evidence_path,
+    )
 
 def link_feed_events_to_etf_flows(
     rows: Iterable[dict[str, Any]],

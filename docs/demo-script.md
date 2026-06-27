@@ -8,101 +8,73 @@ This script is strict: it proves live data ingestion and operator reporting, but
 - Repo-local B.AI config exists at `.siglab-provider.env` if LLM loop demo is needed.
 - No SoDEX signed-write claim is allowed unless `siglab sodex-preflight --json` reports `live_write_allowed: true`.
 
-## 1. Build SoSoValue Evidence
+## 1. One-Shot Demo Run
+
+The single command that automatically collects all evidence and produces the full report:
 
 ```bash
-python3 -m siglab.cli evidence-build \
-  --currency BTC \
-  --etf-type us-btc-spot \
-  --news-page-size 20 \
-  --news-pages 2 \
-  --output runs/evidence/live_sosovalue_probe_btc_pages.jsonl \
-  --summary-output runs/evidence/live_sosovalue_probe_btc_pages.summary.json \
-  --json
+python3 -m siglab.cli demo run --json
 ```
 
 Expected proof:
 
-- `record_count` greater than zero.
-- ETF records from `sosovalue.etf_historical_inflow`.
-- Feed records from `sosovalue.featured_news` or `sosovalue.featured_news_by_currency`.
-- Warnings remain non-causal.
+- `preflight` reports signed execution state honestly.
+- `evidence` section shows non-zero files (SoSoValue + SoDEX).
+- `market_report` shows status `PARTIAL` or `READY_FOR_OPERATOR_REVIEW` based on evidence completeness.
+- Market report includes `sosovalue_rows_read > 0` and `sodex_rows_read > 0` when live data is available.
+- `telemetry_report` provides tool/providers metrics.
+
+The demo run writes `runs/demo_run_latest.json` containing:
+- `sodex_preflight` — live-boundary readiness
+- `demo_manifest` — artifact inventory
+- `market_report` — entity, status, warnings
+- `evidence` — evidence file paths and generation errors
+- `telemetry_report` — trace/providers/evidence telemetry
+
+Evidence files are written to `runs/evidence/`:
+- `runs/evidence/sosovalue_evidence_*.jsonl` — SoSoValue ETF inflow + news records
+- `runs/evidence/sodex_rest_evidence_*.jsonl` — SoDEX REST perps ticker + book ticker records
 
 ## Fast Refresh Existing Proof Artifacts
 
 If evidence artifacts already exist, refresh the operator board inputs without live trading:
 
 ```bash
-python3 -m siglab.cli demo-refresh --json
-python3 -m siglab.cli dashboard --host 127.0.0.1 --port 8765
+python3 -m siglab.cli demo manifest --json
 ```
-
-Then open `http://127.0.0.1:8765/ops`.
 
 Expected proof:
 
-- Refresh writes latest preflight, telemetry, market report, demo report, demo manifest, and wave-status artifacts.
+- Manifest indexes market report, evidence files, telemetry report, provider metrics, and readiness audit.
 - Signed SoDEX live execution remains refused unless preflight prerequisites really pass.
 - Missing evidence yields a partial market report instead of a fake opportunity.
+- Evidence telemetry in the manifest shows evidence_count and evidence_sources.
 
-## 2. Probe SoDEX Public WebSocket
-
-```bash
-python3 -m siglab.cli sodex-ws-probe \
-  --channel allBookTicker \
-  --timeout-seconds 12 \
-  --evidence-output runs/evidence/sodex_ws_evidence.jsonl \
-  --json
-```
-
-Expected proof:
-
-- `ready: true`.
-- `signed: false`.
-- `live_write: false`.
-- `evidence_records_appended` greater than zero.
-- BTC quote evidence includes bid/ask aliases when present.
-
-## 3. Render Evidence Graph
-
-```bash
-python3 -m siglab.cli evidence-map \
-  --evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl \
-  --output runs/evidence/evidence_graph.html \
-  --json
-```
-
-Expected proof:
-
-- HTML file exists.
-- Graph says links are not causal claims.
-
-## 4. Generate Market Report
+## 2. Market Report (standalone)
 
 ```bash
 python3 -m siglab.cli market-report \
   --entity BTC \
-  --sosovalue-evidence runs/evidence/live_sosovalue_probe_btc_pages.jsonl \
-  --sodex-evidence runs/evidence/sodex_ws_evidence.jsonl \
   --output runs/market_report_latest.json \
   --html-output runs/market_report_latest.html \
   --json
 ```
+
+By default reads the latest evidence from `runs/evidence/`.
 
 Expected proof:
 
 - Status is `READY_FOR_OPERATOR_REVIEW` when ETF, feed, and quote evidence exist.
 - Report includes ETF flow direction, SoDEX bid/ask, recent news titles, and live-write refusal.
 - Report explicitly states causality is not claimed.
-- Report selection semantics say it uses parsed timestamps and skips invalid required values, so stale or malformed duplicate rows should not win.
 - Report includes `decision_support.stance`, required confirmations, invalidation checks, next actions, and risk controls.
 
-## 5. Capture Provider Telemetry
+## 3. Capture Provider Telemetry
 
 ```bash
 python3 -m siglab.cli telemetry-report \
   --track trend_signals \
-  --json > runs/latest_telemetry_report.json
+  --json
 ```
 
 Expected proof:
@@ -110,8 +82,9 @@ Expected proof:
 - `provider_metrics_status` is `present` after a run that wrote provider metrics.
 - Provider metrics include latency, usage tokens when returned by upstream, B.AI Credits estimate when priced tokens exist, and context/credit pressure event counts.
 - `cost_usd` remains `null`; the demo must say Credits are not USD.
+- When evidence files exist, telemetry includes `evidence.evidence_count` and `evidence.evidence_sources`.
 
-## 6. Verify Live Boundary
+## 4. Verify Live Boundary
 
 ```bash
 python3 -m siglab.cli sodex-preflight --json
@@ -122,25 +95,18 @@ Expected proof:
 - If signed credentials are missing, live write is refused with exact missing prerequisites.
 - No deployment/demo language should imply real trading readiness while this fails.
 
-## 7. Optional B.AI Loop With Budget Guard
+## 5. Optional B.AI Loop With Budget Guard
 
 ```bash
 set -a && . ./.siglab-provider.env && set +a
-python3 -m siglab.cli run \
-  --track trend_signals \
-  --iterations 1 \
-  --max-call-estimated-credits 3000 \
-  --max-total-credits 6000 \
-  --max-provider-errors 1 \
-  --agent-label demo-deepseek-v4-flash \
-  --run-label demo-deepseek-v4-flash
+python3 -m siglab.cli operator \
+  --session demo-session-1
 ```
 
 Expected proof:
 
 - Provider/model is recorded in traces.
-- Credits telemetry is recorded in `runs/provider_metrics/*.jsonl` when B.AI returns usage.
-- If the estimated one-call budget is too low, the run refuses before provider HTTP.
+- Credits telemetry is recorded in `runs/provider_metrics/*.jsonl` when the provider returns usage.
 
 ## Brutal Red Flags To Say Out Loud
 
@@ -150,57 +116,26 @@ Expected proof:
 - USD spend is not enforced. B.AI Credits are enforced as Credits, not dollars.
 - A strategy run can honestly return no passing candidate. Do not cherry-pick or relabel a rejected candidate as an opportunity.
 
-## 8. Build Demo Manifest
+## Available CLI Commands
 
 ```bash
-python3 -m siglab.cli demo-manifest \
-  --output runs/demo_manifest_latest.json \
-  --html-output runs/demo_manifest_latest.html \
-  --json
+# Demo / evidence pipeline
+python3 -m siglab.cli demo run --json          # full collection → manifest → market → telemetry
+python3 -m siglab.cli demo manifest --json      # index existing artifacts
+
+# Market report
+python3 -m siglab.cli market-report --entity BTC --json
+
+# Telemetry
+python3 -m siglab.cli telemetry-report --track trend_signals --json
+
+# SoDEX boundary
+python3 -m siglab.cli sodex-preflight --json
+
+# Operator pipeline
+python3 -m siglab.cli operator --session demo --json
+
+# Dashboard
+python3 -m siglab.cli dashboard --port 8080
+python3 -m siglab.cli dashboard-start --port 8080
 ```
-
-Expected proof:
-
-- Manifest indexes market report, evidence graph, telemetry report, provider metrics, API surface docs, and readiness audit.
-- HTML panel exists at `runs/demo_manifest_latest.html`.
-- `sodex_live_write_allowed` remains false unless SoDEX preflight passes.
-- `causality_claimed` and `usd_cost_claimed` remain false.
-
-## 9. Open Operator Ops Board
-
-```bash
-python3 -m siglab.cli wave-status \
-  --wave-number 1 \
-  --phase demo \
-  --status running \
-  --goal "show input-to-action flow with live-boundary truth" \
-  --agents "operator,dashboard,hardening" \
-  --outputs "market report,ops board,preflight" \
-  --blockers "signed SoDEX live execution unproven" \
-  --validation-status targeted_pass \
-  --next-decision "continue demo refresh"
-
-python3 -m siglab.cli dashboard --host 127.0.0.1 --port 8765
-```
-
-Open `http://127.0.0.1:8765/ops`.
-
-Expected proof:
-
-- `/ops` reads `runs/demo_manifest_latest.json`, `runs/latest_telemetry_report.json`, `runs/market_report_latest.json`, and `runs/sodex_preflight_latest.json`.
-- Missing or malformed artifacts are shown as missing/malformed, not silently treated as ready.
-- The board shows current wave status, SoSoValue flow status, SoDEX public evidence, live-write refusal state, provider telemetry, red flags, and latest market-report stance.
-- The board is read-only. It is a demo/operator monitor, not a live trading surface.
-
-## 10. Optional External-Agent Benchmark Deck
-
-```bash
-python3 -m siglab.cli benchmark-status --deck trend_signals_external
-```
-
-Expected proof:
-
-- The committed `benchmarks/trend_signals_external` deck is readable without first running `benchmark-init`.
-- `spec.yaml` and `best_spec.yaml` share the same incumbent hash.
-- External agents are told to edit only `spec.yaml` and run `benchmark-eval`.
-- The deck is strategy research only; it does not imply signed SoDEX execution readiness.

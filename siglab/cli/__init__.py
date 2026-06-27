@@ -26,13 +26,14 @@ def main() -> None:
     from siglab.cli import helpers as _market_mod
     from siglab.cli import operator as _operator_mod
     from siglab.cli import sodex as _sodex_mod
-
+    from siglab.cli import evidence as _evidence_mod
     _demo_mod.add_subparser(subparsers)
     _market_mod.add_subparser(subparsers)
     _market_mod.telemetry_add_subparser(subparsers)
     _dashboard_mod.add_subparser(subparsers)
     _sodex_mod.add_subparser(subparsers)
     _operator_mod.add_subparser(subparsers)
+    _evidence_mod.add_subparser(subparsers)
     args = parser.parse_args()
     from siglab.cli.rich_utils import init_console
 
@@ -61,6 +62,8 @@ def main() -> None:
         return
     if args.command == "operator":
         asyncio.run(_operator_mod.run_operator(args))
+    if args.command == "evidence-build":
+        _evidence_mod.run_evidence_build(args)
         return
 
 
