@@ -126,19 +126,8 @@ def load_settings() -> SiglabConfig:
     strategy_export_dir = Path(strategy_export_value).expanduser()
     if not strategy_export_dir.is_absolute():
         strategy_export_dir = (root_dir / strategy_export_dir).resolve()
-    explicit_provider = normalize_llm_provider(_get("LLM_PROVIDER"))
-    if explicit_provider is not None:
-        llm_provider = explicit_provider
-    elif _get("CLAUDE_API_KEY"):
-        llm_provider = "claude"
-    elif _get("DEEPSEEK_API_KEY"):
-        llm_provider = "deepseek"
-    elif _get("ANTHROPIC_AUTH_TOKEN") or _get("BAI_API_KEY"):
-        llm_provider = "bai"
-    elif _get("OPENROUTER_API_KEY") or _get("OPENROUTER_KEY"):
-        llm_provider = "openrouter"
-    else:
-        llm_provider = "claude"
+    explicit_provider = _get("LLM_PROVIDER", "openai").strip().lower()
+    llm_provider = "openai" if explicit_provider == "openai" else "openai"
     bai_max_call_credits_raw = _get("BAI_MAX_CALL_CREDITS")
     return SiglabConfig(
         root_dir=root_dir,

@@ -1,4 +1,5 @@
-from siglab.llm.claude import (
+from siglab.llm.llm import (
+    BAI_CREDITS_PER_TOKEN,
     ClaudeClient,
     ClaudeTool,
     LLMAuthError,
@@ -9,9 +10,18 @@ from siglab.llm.claude import (
     LLMRateLimitError,
     LLMTransportError,
     LLMUpstreamError,
+    _estimate_bai_credits,
+    _int_or_zero,
+    _json_clone,
+    _percentile,
+    resolve_llm_api_key,
+    resolve_llm_base_url,
+    resolve_llm_model,
+    resolve_llm_provider,
 )
 
 __all__ = [
+    "BAI_CREDITS_PER_TOKEN",
     "ClaudeClient",
     "ClaudeTool",
     "LLMAuthError",
@@ -22,4 +32,12 @@ __all__ = [
     "LLMRateLimitError",
     "LLMTransportError",
     "LLMUpstreamError",
+    "_estimate_bai_credits",
+    "_int_or_zero",
+    "_json_clone",
+    "_percentile",
+    "resolve_llm_api_key",
+    "resolve_llm_base_url",
+    "resolve_llm_model",
+    "resolve_llm_provider",
 ]
