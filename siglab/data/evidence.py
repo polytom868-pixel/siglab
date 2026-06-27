@@ -383,6 +383,7 @@ def sodex_rest_evidence(
         common = dict(
             source="sodex.rest.perps_market_tickers",
             observed_at=observed_at,
+            timestamp=observed_at,
             entity=entity,
             module="SoDEX",
             confidence=0.9,

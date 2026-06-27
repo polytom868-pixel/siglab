@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 
 if TYPE_CHECKING:
     from siglab.config import SiglabConfig
@@ -104,11 +104,11 @@ class LLMFormatError(LLMProviderError):
 
 
 class ClaudeClient:
-    """OpenAI-compatible LLM client using the OpenAI SDK.
+    """Anthropic-compatible LLM client using the Anthropic SDK.
 
     Reads api_key from env ``OPENMODEL_API_KEY`` and base_url from env
     ``OPENMODEL_BASE_URL``.  The model is always *deepseek-v4-flash*
-    served via OpenModel AI.
+    served via OpenModel AI via the Anthropic Messages API.
     """
 
     def __init__(self, settings: SiglabConfig) -> None:
@@ -139,27 +139,17 @@ class ClaudeClient:
 
     # ── transport ───────────────────────────────────────────────
 
-    def _get_client(self) -> AsyncOpenAI:
+    def _get_client(self) -> AsyncAnthropic:
         if self._client is None:
             api_key = str(self.settings.openmodel_api_key or "")
             base_url = str(
                 self.settings.openmodel_base_url
             ).rstrip("/")
-            self._client = AsyncOpenAI(
+            self._client = AsyncAnthropic(
                 api_key=api_key,
                 base_url=base_url,
                 max_retries=2,
                 timeout=self.settings.claude_timeout_s,
-                http_client=httpx.AsyncClient(
-                    timeout=httpx.Timeout(
-                        self.settings.claude_timeout_s,
-                        connect=10.0,
-                        read=self.settings.claude_timeout_s,
-                        write=30.0,
-                        pool=10.0,
-                    ),
-                    limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
-                ),
             )
         return self._client
 
@@ -172,43 +162,95 @@ class ClaudeClient:
         tools: list[dict[str, Any]] | None = None,
         response_format: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {"model": model, "messages": messages}
-        if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+        # Extract system prompt (Anthropic uses separate 'system' param)
+        system_parts: list[str] = []
+        anthro_messages: list[dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role", "")
+            if role == "system":
+                content = str(msg.get("content", "") or "")
+                if content.strip():
+                    system_parts.append(content)
+            else:
+                anthro_messages.append(msg)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": anthro_messages,
+            "max_tokens": max_tokens or 4096,
+        }
+        if system_parts:
+            kwargs["system"] = "\n\n".join(system_parts)
         if tools:
-            kwargs["tools"] = tools
-        if response_format:
-            kwargs["response_format"] = response_format
+            kwargs["tools"] = [_openai_tool_to_anthropic(t) for t in tools]
+        if response_format and response_format.get("type") == "json_object":
+            kwargs["output_config"] = {
+                "format": {"type": "json_schema", "schema": {"type": "object"}}
+            }
+
         started = time.perf_counter()
         self._request_count += 1
         try:
-            response = await self._get_client().chat.completions.create(**kwargs)
+            response = await self._get_client().messages.create(**kwargs)
         except Exception as exc:
             self._transport_failures += 1
             raise _map_openai_error(exc, self.provider_name) from exc
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         self._success_count += 1
         self._latencies_ms.append(elapsed_ms)
+
         usage = response.usage
         if usage is not None:
-            self._prompt_tokens += usage.prompt_tokens
-            self._completion_tokens += usage.completion_tokens
-            self._total_tokens += usage.total_tokens
-        choice = response.choices[0] if response.choices else None
+            self._prompt_tokens += usage.input_tokens
+            self._completion_tokens += usage.output_tokens
+            self._total_tokens += usage.input_tokens + usage.output_tokens
+
+        # Map Anthropic content blocks to OpenAI-like text + tool_calls
+        text_content = ""
+        tool_calls: list[dict[str, Any]] = []
+        for block in response.content:
+            if block.type == "text":
+                text_content = str(block.text or "")
+            elif block.type == "tool_use":
+                tool_calls.append({
+                    "id": block.id,
+                    "type": "function",
+                    "function": {
+                        "name": block.name,
+                        "arguments": json.dumps(dict(block.input)) if block.input else "{}",
+                    },
+                })
+
+        # Map Anthropic stop_reason to OpenAI finish_reason
+        stop_reason = response.stop_reason or ""
+        finish_reason = {
+            "end_turn": "stop",
+            "max_tokens": "length",
+            "tool_use": "tool_calls",
+            "stop_sequence": "stop",
+        }.get(stop_reason, "stop")
+
+        message_dict: dict[str, Any] = {
+            "role": "assistant",
+            "content": text_content,
+        }
+        if tool_calls:
+            message_dict["tool_calls"] = tool_calls
+
         return {
             "id": response.id,
             "model": response.model,
             "choices": [
                 {
-                    "index": choice.index if choice else 0,
-                    "message": dict(choice.message) if choice else {},
-                    "finish_reason": choice.finish_reason if choice else "stop",
+                    "index": 0,
+                    "message": message_dict,
+                    "finish_reason": finish_reason,
                 }
             ],
             "usage": {
-                "prompt_tokens": usage.prompt_tokens if usage else 0,
-                "completion_tokens": usage.completion_tokens if usage else 0,
-                "total_tokens": usage.total_tokens if usage else 0,
+                "prompt_tokens": usage.input_tokens if usage else 0,
+                "completion_tokens": usage.output_tokens if usage else 0,
+                "total_tokens": (usage.input_tokens + usage.output_tokens) if usage else 0,
             },
             "_siglab_model_used": model,
         }
@@ -603,6 +645,16 @@ class ClaudeClient:
 # ── helpers ────────────────────────────────────────────────────────
 
 
+def _openai_tool_to_anthropic(tool: dict[str, Any]) -> dict[str, Any]:
+    """Convert OpenAI-style tool dict to Anthropic tool format."""
+    func = tool.get("function") or {}
+    return {
+        "name": func.get("name", ""),
+        "description": func.get("description", ""),
+        "input_schema": func.get("parameters", {}),
+    }
+
+
 def _map_openai_error(exc: Exception, provider: str) -> LLMProviderError:
     exc_str = str(exc).lower()
     if "401" in exc_str or "unauthorized" in exc_str or "auth" in exc_str:
@@ -684,4 +736,4 @@ def resolve_llm_api_key(
 
 
 def resolve_llm_base_url(settings: SiglabConfig, *, provider: str | None = None) -> str:
-    return str(settings.openmodel_base_url or "https://api.openmodel.ai/v1")
+    return str(settings.openmodel_base_url or "https://api.openmodel.ai")

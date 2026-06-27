@@ -321,7 +321,7 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
         "sosovalue_evidence": str(evidence_dir / "sosovalue.jsonl")
         if (evidence_dir / "sosovalue.jsonl").exists()
         else "",
-        "sodex_ws_evidence": str(runs_dir / "evidence" / "sodex_ws.jsonl"),
+        "sodex_rest_evidence": str(runs_dir / "evidence" / "sodex_rest.jsonl"),
         "evidence_graph": str(latest_path(evidence_dir, "*graph*.html") or ""),
         "market_report_json": str(market_report_path)
         if market_report_path.exists()
@@ -334,10 +334,9 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
         "demo_run_json": str(runs_dir / "demo_run_latest.json"),
         "demo_manifest_json": str(runs_dir / "demo_manifest_latest.json"),
     }
-    # Fix the broken artifact_status
     artifact_status = {
         "sosovalue_input_to_output": bool(artifacts.get("market_report_json")),
-        "sodex_public_market_data": bool(artifacts.get("sodex_ws_evidence")),
+        "sodex_public_market_data": bool(artifacts.get("sodex_rest_evidence")),
         "sodex_live_write_allowed": bool(preflight.get("live_write_allowed")),
         "provider_metrics_present": bool(provider_metric_paths),
         "telemetry_provider_metrics_status": telemetry.get("provider_metrics_status"),

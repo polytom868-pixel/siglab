@@ -593,7 +593,7 @@ def run_command(args: argparse.Namespace) -> None:
     sodex_path = (
         resolve_path_from_root(args.sodex_evidence, root_dir=settings.root_dir)
         if args.sodex_evidence
-        else evidence_dir / "sodex_ws.jsonl"
+        else evidence_dir / "sodex_rest.jsonl"
     )
     report = build_market_report(
         entity=str(args.entity or "BTC").upper(),

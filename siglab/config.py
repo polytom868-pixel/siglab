@@ -130,7 +130,7 @@ class SiglabConfig:
     memory_scope: str = "session_local"
     claude_max_tool_rounds: int = 25
     openmodel_api_key: str | None = None
-    openmodel_base_url: str = "https://api.openmodel.ai/v1"
+    openmodel_base_url: str = "https://api.openmodel.ai"
     openmodel_model: str = "deepseek-v4-flash"
     tracks: tuple[str, ...] = CANONICAL_TRACKS
 
@@ -205,7 +205,7 @@ def load_settings() -> SiglabConfig:
         llm_provider=llm_provider,
         claude_max_tool_rounds=int(_get("CLAUDE_MAX_TOOL_ROUNDS", "25")),
         openmodel_api_key=_get("OPENMODEL_API_KEY"),
-        openmodel_base_url=_get("OPENMODEL_BASE_URL", "https://api.openmodel.ai/v1"),
+        openmodel_base_url=_get("OPENMODEL_BASE_URL", "https://api.openmodel.ai"),
         openmodel_model=_get("OPENMODEL_MODEL", "deepseek-v4-flash"),
         population_size=int(_get("SIGLAB_POPULATION_SIZE", "4")),
     )
