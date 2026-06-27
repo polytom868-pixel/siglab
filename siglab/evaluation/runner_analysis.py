@@ -267,7 +267,7 @@ def _sps(
     mask: pd.Series,
     label: str,
 ) -> dict[str, Any]:
-    am = mask.reindex(r.index).fillna(False).astype(bool)
+    am = mask.reindex(r.index).fillna(value=False).astype(dtype=bool)
     subset = r[am].dropna()
     esub = gross_exposure.reindex(r.index).fillna(0.0)[am]
     if subset.empty:
@@ -562,7 +562,7 @@ def _prd(
                 if label == "market_trend"
                 else mask < median_float
                 if has_median
-                else pd.Series(False, index=prices.index),
+                else pd.Series(data=False, index=prices.index),
                 label=hi_label,
             ),
             _sps(
@@ -572,7 +572,7 @@ def _prd(
                 if label == "market_trend"
                 else mask >= median_float
                 if has_median
-                else pd.Series(False, index=prices.index),
+                else pd.Series(data=False, index=prices.index),
                 label=lo_label,
             ),
         ]
@@ -1106,7 +1106,7 @@ def _pgd(
         bt.append("weak_score_alignment")
     rgs: dict[str, Any] | None = None
     if regime_gate_mask is not None:
-        gm = regime_gate_mask.reindex(sf.index).ffill().fillna(False).astype(bool)
+        gm = regime_gate_mask.reindex(sf.index).ffill().fillna(value=False).astype(dtype=bool)
         rgs = {
             "configured": True,
             "active_fraction": _sf(float(gm.mean())),
@@ -1154,7 +1154,7 @@ def _pgd(
         ),
         "position_flip_rate": _sf(pfr),
         "entry_signal_while_flat_fraction": _sf(
-            float(sem2d.any(axis=1)[fm1].mean()) if bool(fm1.any()) else None,
+            float(np.asarray(sem2d).any(axis=1)[np.asarray(fm1)].mean()) if bool(fm1.any()) else None,
         ),
         "score_alignment_when_active": aaf,
         "median_active_asset_count": _sf(mav),

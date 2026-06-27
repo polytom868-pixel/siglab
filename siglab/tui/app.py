@@ -214,7 +214,7 @@ class SigLabTUI(App[None]):
         Binding("3", "go_to_screen('risk')", "Risk", show=True),
         Binding("4", "go_to_screen('evidence')", "Evidence", show=False),
     ]
-    api_connected: reactive[bool] = reactive(False)
+    api_connected: reactive[bool] = reactive(default=False)
 
     def __init__(self) -> None:
         super().__init__()

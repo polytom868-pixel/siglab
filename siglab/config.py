@@ -193,7 +193,7 @@ def load_settings() -> SiglabConfig:
         population_size=int(_get("SIGLAB_POPULATION_SIZE", "4")),
         optuna_trials=int(_get("SIGLAB_OPTUNA_TRIALS", "20")),
         memory_scope=_get("SIGLAB_MEMORY_SCOPE", "session_local"),
-        use_historical_seeds=_get_bool("SIGLAB_USE_HISTORICAL_SEEDS", False),
+        use_historical_seeds=_get_bool("SIGLAB_USE_HISTORICAL_SEEDS", default=False),
         tavily_api_key=_get("TAVILY_API_KEY"),
         tavily_base_url=_get("TAVILY_BASE_URL", "https://api.tavily.com"),
         tavily_max_results=int(_get("TAVILY_MAX_RESULTS", "5")),

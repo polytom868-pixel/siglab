@@ -177,24 +177,30 @@ def _mask_ff(
     ff: dict[str, pd.DataFrame],
     eligible: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
-    return {n: f.where(eligible.reindex_like(f).fillna(False)) for n, f in ff.items()}
+    return {n: f.where(eligible.reindex_like(f).fillna(value=False)) for n, f in ff.items()}
 
 
 def _ensure_elig(score: pd.DataFrame, eligible: pd.DataFrame) -> pd.DataFrame:
     adj = score.copy()
-    ea = eligible.reindex_like(adj).fillna(False)
+    ea = eligible.reindex_like(adj).fillna(value=False)
     for ts in ea.sum(axis=1)[ea.sum(axis=1) == 1].index:
         labels = list(ea.columns[ea.loc[ts]])
         if labels:
-            adj.loc[ts, labels[0]] = max(float(adj.loc[ts, labels[0]]), 1.0)
+            current_raw = cast(float, adj.loc[ts, labels[0]])
+            current_f = (
+                float(current_raw.real)
+                if isinstance(current_raw, complex)
+                else float(current_raw)
+            )
+            adj.loc[ts, labels[0]] = max(current_f, 1.0)
     return adj
 
 
 def _rgm(idx: pd.Index, rgm: pd.Series | None) -> pd.Series:
     return (
-        rgm.reindex(idx).ffill().fillna(False).astype(bool)
+        rgm.reindex(idx).ffill().fillna(value=False).astype(dtype=bool)
         if rgm is not None
-        else pd.Series(True, index=idx, dtype=bool)
+        else pd.Series(data=True, index=idx, dtype=bool)
     )
 
 
@@ -231,12 +237,12 @@ def _brp(
                 cands = [j for j in cands if row[j] > 0.0]
             if min_abs_score > 0.0:
                 cands = [j for j in cands if row[j] >= min_abs_score]
-            li = cands
+            li = [int(j) for j in cands]
         if short_count > 0:
             cands = ci[np.argsort(row[ci])][: min(short_count, len(ci))]
             if min_abs_score > 0.0:
                 cands = [j for j in cands if row[j] <= -min_abs_score]
-            si = cands
+            si = [int(j) for j in cands]
         for j in set(li) & set(si):
             if row[j] >= 0.0:
                 si.remove(j)
@@ -453,12 +459,12 @@ def _gmff(
     num = frame.apply(pd.to_numeric, errors="coerce")
     if minimum is None and maximum is None:
         return cast(pd.Series, num.fillna(0.0).gt(0.0).all(axis=1))
-    mask = pd.Series(True, index=num.index, dtype=bool)
+    mask = pd.Series(data=True, index=num.index, dtype=bool)
     if minimum is not None:
         mask &= num.ge(float(minimum)).all(axis=1)
     if maximum is not None:
         mask &= num.le(float(maximum)).all(axis=1)
-    return mask.fillna(False)
+    return mask.fillna(value=False)
 
 
 def _rrg(
@@ -511,7 +517,7 @@ def _rrg(
     if cmask is None:
         return (None, {"configured": False, "entry": [], "exit_on_break": eob})
     return (
-        cmask.fillna(False),
+        cmask.fillna(value=False),
         {
             "configured": True,
             "entry": details,
@@ -587,7 +593,7 @@ def _pt_rf(
     }
 
 
-def _ppt_mf(provider, markets, histories):
+def _ppt_mf(provider: MarketDataProvider, markets, histories: dict[str, pd.DataFrame]):
     labels = list(histories)
 
     def _mf(column):
@@ -614,7 +620,7 @@ def _ppt_mf(provider, markets, histories):
     }
     dte = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
     for lbl in prices.columns:
-        exp = expiry_by_label[lbl]
+        exp = expiry_by_label.get(lbl, pd.Timestamp("2099-12-31"))
         dte[lbl] = (
             (exp - prices.index.to_series()).dt.total_seconds() / 86400.0
         ).values

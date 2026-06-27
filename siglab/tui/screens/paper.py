@@ -361,7 +361,7 @@ class PaperScreen(BaseScreen):
     session_name: reactive[str] = reactive("")
     _loading_widget_id: ClassVar[str] = "#paper-loading"
     _refresh_interval: ClassVar[float] = 15.0
-    _api_client_class: ClassVar[type] = TuiApiClient
+    _api_client_class: ClassVar[type | None] = TuiApiClient
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -883,7 +883,7 @@ class RiskScreen(BaseScreen):
     _loading_widget_id: ClassVar[str] = "#risk-loading"
     _status_widget_id: ClassVar[str] = "#risk-status"
     _refresh_interval: ClassVar[float] = 15.0
-    _api_client_class: ClassVar[type] = TuiApiClient
+    _api_client_class: ClassVar[type | None] = TuiApiClient
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

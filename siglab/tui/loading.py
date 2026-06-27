@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from rich.text import Text
-from textual.reactive import reactive
+from textual.reactive import Reactive, reactive
 from textual.timer import Timer
 from textual.widgets import Static
 
@@ -17,7 +17,7 @@ _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 class LoadingIndicator(Static):
     """Animated spinner widget that shows activity during data fetches."""
 
-    loading: reactive[bool] = reactive(False)
+    loading: Reactive[bool] = reactive(default=False)
     status_text: reactive[str] = reactive("")
     DEFAULT_CSS = "LoadingIndicator { height: 1; width: auto; min-width: 1; padding: 0 1; background: #0d1210; color: #7d9483; }"
 

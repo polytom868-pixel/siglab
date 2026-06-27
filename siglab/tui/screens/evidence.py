@@ -382,14 +382,14 @@ class EvidenceScreen(BaseScreen):
         Binding("e", "filter_entity", "Entities", show=True),
         Binding("ctrl+l", "filter_clear", "Clear", show=False),
     ]
-    api_connected: reactive[bool] = reactive(False)
-    graph_loading: reactive[bool] = reactive(False)
-    demo_running: reactive[bool] = reactive(False)
+    api_connected: reactive[bool] = reactive(default=False)
+    graph_loading: reactive[bool] = reactive(default=False)
+    demo_running: reactive[bool] = reactive(default=False)
     active_pane: reactive[str] = reactive("graph")
     _loading_widget_id: ClassVar[str] = "#evidence-loading"
     _status_widget_id: ClassVar[str] = "#evidence-status"
     _refresh_interval: ClassVar[float] = 30.0
-    _api_client_class: ClassVar[type] = TuiApiClient
+    _api_client_class: ClassVar[type | None] = TuiApiClient
     _search_input_id: ClassVar[str] = "evidence-filter"
 
     def __init__(self, **kwargs: Any) -> None:
@@ -731,7 +731,7 @@ class MarketScreen(BaseScreen):
     _loading_widget_id: ClassVar[str] = "#market-loading"
     _status_widget_id: ClassVar[str] = "#market-status"
     _refresh_interval: ClassVar[float] = 30.0
-    _api_client_class: ClassVar[type] = TuiApiClient
+    _api_client_class: ClassVar[type | None] = TuiApiClient
     _search_input_id: ClassVar[str] = "symbol-search"
     _search_list_id: ClassVar[str] = "symbol-list"
 

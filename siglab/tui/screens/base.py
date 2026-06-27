@@ -41,7 +41,7 @@ class BaseScreen(Screen[None]):
         Binding("/", "focus_search", "Search", show=False),
         Binding("question_mark", "app.show_help", "Help", show=False),
     ]
-    is_loading: reactive[bool] = reactive(True)
+    is_loading: reactive[bool] = reactive(default=True)
     status_text: reactive[str] = reactive("Connecting…")
     _loading_widget_id: ClassVar[str] = ""
     _status_widget_id: ClassVar[str] = ""
@@ -87,7 +87,7 @@ class BaseScreen(Screen[None]):
     async def _refresh_all(self) -> None:
         """Fetch all data with loading state management."""
         self.is_loading = True
-        self._set_loading(True)
+        self._set_loading(loading=True)
         try:
             await self._fetch_data()
         except Exception as exc:
@@ -97,7 +97,7 @@ class BaseScreen(Screen[None]):
             logger.warning("%s refresh failed: %s", self.__class__.__name__, exc)
         finally:
             self.is_loading = False
-            self._set_loading(False)
+            self._set_loading(loading=False)
 
     async def _fetch_data(self) -> None:
         """Override in subclass to fetch screen data."""

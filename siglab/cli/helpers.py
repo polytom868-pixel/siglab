@@ -483,50 +483,6 @@ def incumbent_detail(
     return cast(dict[str, Any] | None, ancestry.experiment_detail(spec_hash))
 
 
-def base_spec_payload_for_family(
-    *,
-    track: str,
-    family: str,
-    parent: SignalSpec,
-    ancestry: _AncestryStore,
-    mutator: _Mutator,
-    run_session_id: str | None = None,
-    custom_symbols: list[str] | None = None,
-    use_historical_seeds: bool = False,
-) -> dict[str, Any]:
-    from siglab.run_config import load_seed_specs_for_run as _load_seed_specs_for_run
-    from siglab.run_config import (
-        override_seed_spec_symbols as _override_seed_spec_symbols,
-    )
-
-    family_rows = ancestry.dashboard_rows(
-        track=track,
-        family=family,
-        run_session_id=run_session_id,
-    )
-    if family_rows:
-        family_rows.sort(
-            key=lambda row: (
-                int(bool(row.get("passed"))),
-                int(bool(row.get("deployd"))),
-                float(dict(row.get("summary") or {}).get("aggregate_score") or -1e18),
-                str(row.get("created_at") or ""),
-            ),
-            reverse=True,
-        )
-        return dict(family_rows[0].get("spec") or {})
-    if parent.family == family:
-        return _override_seed_spec_symbols(parent, custom_symbols).canonical_dict()
-    seed_specs = _load_seed_specs_for_run(
-        mutator=mutator,
-        track=track,
-        family_scope=family,
-        custom_symbols=custom_symbols,
-        use_historical_seeds=use_historical_seeds,
-    )
-    if seed_specs:
-        return seed_specs[0].canonical_dict()
-    return _override_seed_spec_symbols(parent, custom_symbols).canonical_dict()
 
 
 def pick_deterministic_parent(
