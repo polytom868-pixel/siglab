@@ -437,7 +437,7 @@ class PaperScreen(BaseScreen):
                 lambda f: f.set_symbol("BTC-USD"),
             )
             await self._refresh_all()
-        except (ConnectionError, TimeoutError, ValueError, KeyError) as exc:
+        except Exception as exc:
             self.is_loading, self.status_text = False, f"Init error: {exc}"
             logger.warning("Session init failed: %s", exc)
 
