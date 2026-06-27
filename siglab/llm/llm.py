@@ -616,9 +616,6 @@ def _map_openai_error(exc: Exception, provider: str) -> LLMProviderError:
     return LLMUpstreamError(str(exc)[:200], provider=provider)
 
 
-def _estimate_bai_credits(*, input_tokens: int, output_tokens: int) -> float:
-    return max(0, int(input_tokens)) * 0.00014 + max(0, int(output_tokens)) * 0.00056
-
 
 def _compact_scalar(value: object, max_len: int = 200) -> str | None:
     if not value:
