@@ -32,8 +32,8 @@ The demo run writes `runs/demo_run_latest.json` containing:
 - `telemetry_report` — trace/providers/evidence telemetry
 
 Evidence files are written to `runs/evidence/`:
-- `runs/evidence/sosovalue_evidence_*.jsonl` — SoSoValue ETF inflow + news records
-- `runs/evidence/sodex_rest_evidence_*.jsonl` — SoDEX REST perps ticker + book ticker records
+- `runs/evidence/sosovalue.jsonl` — SoSoValue ETF inflow + news records
+- `runs/evidence/sodex_rest.jsonl` — SoDEX REST perps ticker + book ticker records
 
 ## Fast Refresh Existing Proof Artifacts
 

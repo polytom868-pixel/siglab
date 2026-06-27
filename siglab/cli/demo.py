@@ -70,8 +70,8 @@ def run_demo_run(args: argparse.Namespace) -> None:
             "artifact_count": len(manifest.get("artifacts", {}) or {}),
         }
         evidence_dir = settings.artifact_dir / "evidence"
-        sosovalue_path: Path | None = latest_path(evidence_dir, "*sosovalue*.jsonl")
-        sodex_ws_path: Path = evidence_dir / "sodex_ws_evidence.jsonl"
+        sosovalue_path: Path | None = evidence_dir / "sosovalue.jsonl"
+        sodex_ws_path: Path = evidence_dir / "sodex_ws.jsonl"
         _evidence_errors: list[str] = []
 
         def _gen_evidence() -> tuple[Path | None, Path | None]:
@@ -84,16 +84,26 @@ def run_demo_run(args: argparse.Namespace) -> None:
                 sodex_quote_evidence,
             )
             from siglab.data.feeds import SoDEXPublicPerpsClient, SoSoValueClient
-
             observed_at = datetime.now(UTC).isoformat()
             ssv_path: Path | None = None
             sodex_rest_path: Path | None = None
 
             async def _fetch() -> None:
                 nonlocal ssv_path, sodex_rest_path
-                ssv_ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-                ssv_path = evidence_dir / f"sosovalue_evidence_{ssv_ts}.jsonl"
-                sodex_rest_path = evidence_dir / f"sodex_rest_evidence_{ssv_ts}.jsonl"
+                # Clean up old evidence files before writing new ones
+                for p in evidence_dir.glob("sosovalue_evidence*.jsonl"):
+                    p.unlink()
+                for p in evidence_dir.glob("sodex_rest_evidence*.jsonl"):
+                    p.unlink()
+                for p in evidence_dir.glob("sodex_ws_evidence.jsonl"):
+                    p.unlink()
+                # Remove canonical files so EvidenceStore starts fresh
+                for name in ("sosovalue.jsonl", "sodex_rest.jsonl", "sodex_ws.jsonl"):
+                    p = evidence_dir / name
+                    if p.exists():
+                        p.unlink()
+                ssv_path = evidence_dir / "sosovalue.jsonl"
+                sodex_rest_path = evidence_dir / "sodex_rest.jsonl"
                 # SoSoValue ETF + news
                 if settings.sosovalue_api_key_override:
                     try:
@@ -308,10 +318,10 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
         evidence_paths=evidence_paths,
     )
     artifacts = {
-        "sosovalue_evidence": str(
-            latest_path(evidence_dir, "*sosovalue*.jsonl") or "",
-        ),
-        "sodex_ws_evidence": str(runs_dir / "evidence" / "sodex_ws_evidence.jsonl"),
+        "sosovalue_evidence": str(evidence_dir / "sosovalue.jsonl")
+        if (evidence_dir / "sosovalue.jsonl").exists()
+        else "",
+        "sodex_ws_evidence": str(runs_dir / "evidence" / "sodex_ws.jsonl"),
         "evidence_graph": str(latest_path(evidence_dir, "*graph*.html") or ""),
         "market_report_json": str(market_report_path)
         if market_report_path.exists()

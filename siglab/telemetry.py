@@ -330,7 +330,7 @@ def evidence_paths_for_telemetry(
     if not base.exists():
         return []
     results: list[Path] = []
-    for pattern in ("*sosovalue*.jsonl", "sodex*.jsonl"):
+    for pattern in ("sosovalue.jsonl", "sodex_rest.jsonl", "sodex_ws.jsonl"):
         results.extend(sorted(base.glob(pattern)))
     return results
 

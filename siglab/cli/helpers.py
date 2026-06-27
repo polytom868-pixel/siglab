@@ -588,12 +588,12 @@ def run_command(args: argparse.Namespace) -> None:
     sosovalue_path = (
         resolve_path_from_root(args.sosovalue_evidence, root_dir=settings.root_dir)
         if args.sosovalue_evidence
-        else latest_path(evidence_dir, "*sosovalue*.jsonl")
+        else evidence_dir / "sosovalue.jsonl"
     )
     sodex_path = (
         resolve_path_from_root(args.sodex_evidence, root_dir=settings.root_dir)
         if args.sodex_evidence
-        else evidence_dir / "sodex_ws_evidence.jsonl"
+        else evidence_dir / "sodex_ws.jsonl"
     )
     report = build_market_report(
         entity=str(args.entity or "BTC").upper(),

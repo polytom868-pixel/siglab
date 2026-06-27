@@ -47,13 +47,24 @@ async def _async_evidence_build(args: argparse.Namespace) -> None:
         else settings.root_dir / "runs" / "evidence"
     )
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Clean up old evidence files before writing new ones
+    for p in output_dir.glob("sosovalue_evidence*.jsonl"):
+        p.unlink()
+    for p in output_dir.glob("sodex_rest_evidence*.jsonl"):
+        p.unlink()
+    for p in output_dir.glob("sodex_ws_evidence.jsonl"):
+        p.unlink()
+    # Remove canonical files so EvidenceStore starts fresh
+    for name in ("sosovalue.jsonl", "sodex_rest.jsonl", "sodex_ws.jsonl"):
+        p = output_dir / name
+        if p.exists():
+            p.unlink()
     observed_at = datetime.now(UTC).isoformat()
 
     errors: list[str] = []
     written_paths: list[Path] = []
-
+    ssv_path = output_dir / "sosovalue.jsonl"
     # --- SoSoValue evidence ---
-    ssv_path = output_dir / f"sosovalue_evidence_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.jsonl"
     ssv_store = EvidenceStore(ssv_path)
 
     if settings.sosovalue_api_key_override:
@@ -88,7 +99,7 @@ async def _async_evidence_build(args: argparse.Namespace) -> None:
             errors.append(f"SoSoValue evidence failed: {exc}")
 
     # --- SoDEX evidence ---
-    sodex_path = output_dir / f"sodex_rest_evidence_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.jsonl"
+    sodex_path = output_dir / "sodex_rest.jsonl"
     sodex_store = EvidenceStore(sodex_path)
 
     try:
