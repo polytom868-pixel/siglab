@@ -115,6 +115,8 @@ class BaseScreen(Screen[None]):
                 successes += 1
             except (httpx.HTTPError, OSError, ValueError, RuntimeError) as exc:
                 logger.debug("%s sub-fetch failed: %s", label, exc)
+            except Exception:
+                logger.debug("%s sub-fetch failed (unexpected)", label)
         return successes
     def _set_loading(self, loading: bool) -> None:
         if not self._loading_widget_id:
