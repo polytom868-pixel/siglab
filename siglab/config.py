@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import overload
 
-from siglab.llm_metadata import normalize_llm_provider
 from siglab.track_registry import CANONICAL_TRACKS
 
 

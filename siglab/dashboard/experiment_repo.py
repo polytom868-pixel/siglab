@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from siglab.config import SiglabConfig
 from siglab.data.deployment_store import DeploymentStore
-from siglab.io_utils import load_json_path
+from siglab.utils import load_json_path
 from siglab.track_registry import canonical_track_name, resolve_track
 
 logger = logging.getLogger(__name__)

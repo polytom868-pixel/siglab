@@ -26,7 +26,7 @@ from siglab.data.sodex_client import (
     SoDEXRateLimitError,
     SoDEXTransportError,
     SoDEXUpstreamError,
-    _batch_order_weight,
+    batch_order_weight,
 )
 
 __all__ = [
@@ -565,7 +565,7 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
             path="/trade/orders",
             body=body,
             domain="futures",
-            weight=_batch_order_weight(len(orders)),
+            weight=batch_order_weight(len(orders)),
         )
 
     def update_leverage_request(
@@ -606,7 +606,7 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
             path="/trade/orders",
             body=perps_cancel_order_body(account_id=self.account_id, cancels=cancels),
             domain="futures",
-            weight=_batch_order_weight(len(cancels)),
+            weight=batch_order_weight(len(cancels)),
         )
 
     def schedule_cancel_request(

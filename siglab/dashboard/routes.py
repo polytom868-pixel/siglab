@@ -27,10 +27,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from siglab.config import SiglabConfig, load_settings
 from siglab.data.deployment_store import DeploymentStore
-from siglab.io_utils import load_json_path
+from siglab.utils import load_json_path
 from siglab.live import LiveDeploymentManager, deployment_readiness
 from siglab.llm import ClaudeClient
-from siglab.llm_metadata import (
+from siglab.llm.llm import (
     default_llm_model_display,
     infer_llm_provider,
     resolve_llm_provider,
@@ -258,6 +258,8 @@ class DashboardState:
     _experiments_cache: dict[str, Any] = field(default_factory=dict)
     _experiments_cache_ts: float = 0.0
     _EXPERIMENTS_CACHE_TTL: float = 30.0
+    _ops_cache: dict[str, Any] | None = None
+    _runs_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def _lp(self) -> str:
         return "unknown" if self.config is None else resolve_llm_provider(self.config)
@@ -576,6 +578,12 @@ class DashboardState:
 
     def _ni(self) -> str:
         return _now_iso()
+
+    def _invalidate_caches(self) -> None:
+        self._ops_cache = None
+        self._runs_cache.clear()
+        self._experiments_cache.clear()
+        self._experiments_cache_ts = 0.0
 
     def _ae(
         self,
@@ -932,14 +940,19 @@ class DashboardState:
         track: str | None = None,
         family: str | None = None,
     ) -> dict[str, Any]:
+        cache_key = f"{track}:{family}"
+        if cache_key in self._runs_cache:
+            return self._runs_cache[cache_key]
         experiments = self._aes(track=track, family=family)
         if (db_path := self._dbp()) is None:
-            return {
+            result = {
                 "generated_at": self._ni(),
                 "scope": {"track": track, "family": family},
                 "summary": {},
                 "runs": [],
             }
+            self._runs_cache[cache_key] = result
+            return result
         runs = _rs(str(db_path), track=track, family=family)
         series_by_run: dict[str, list[dict[str, Any]]] = {}
         families = sorted(
@@ -1005,7 +1018,7 @@ class DashboardState:
             key=lambda row: float(row.get("best_aggregate_score") or float("-inf")),
             default=None,
         )
-        return {
+        result = {
             "generated_at": self._ni(),
             "scope": {"track": track, "family": family},
             "summary": {
@@ -1029,6 +1042,8 @@ class DashboardState:
             },
             "runs": annotated_runs,
         }
+        self._runs_cache[cache_key] = result
+        return result
 
     def _loa(self, relative_path: str) -> dict[str, Any]:
         if self.config is None:
@@ -1160,6 +1175,8 @@ class DashboardState:
         }
 
     def ops_payload(self) -> dict[str, Any]:
+        if self._ops_cache is not None:
+            return self._ops_cache
         artifacts = {
             "demo_manifest": self._loa("runs/demo_manifest_latest.json"),
             "telemetry": self._loa("runs/latest_telemetry_report.json"),
@@ -1167,7 +1184,7 @@ class DashboardState:
             "sodex_preflight": self._loa("runs/sodex_preflight_latest.json"),
             "wave_status": self._loa("runs/wave_status_latest.json"),
         }
-        return {
+        result = {
             "generated_at": self._ni(),
             "artifact_status": {
                 name: {
@@ -1182,6 +1199,8 @@ class DashboardState:
             },
             "summary": self._soa(artifacts),
         }
+        self._ops_cache = result
+        return result
 
     def experiment_detail_payload(self, spec_hash: str) -> dict[str, Any] | None:
         detail = self._ed(spec_hash)
@@ -1579,6 +1598,7 @@ async def api_ops(request: Request) -> dict[str, Any]:
 
 @router.get("/partials/dashboard/summary")
 async def partial_dashboard_summary(request: Request) -> Any:
+    request.app.state.dashboard._invalidate_caches()
     if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     return _tmpl(request).TemplateResponse(
@@ -1594,6 +1614,7 @@ async def partial_dashboard_runs(
     track: str = "all",
     family: str = "all",
 ) -> Any:
+    request.app.state.dashboard._invalidate_caches()
     if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     _track = track if track and track != "all" else None
@@ -1684,6 +1705,7 @@ _PARTIAL_OPS = {
 
 @router.get("/partials/ops/{name}")
 async def partial_ops_router(request: Request, name: str) -> Any:
+    request.app.state.dashboard._invalidate_caches()
     if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     handler = _PARTIAL_OPS.get(name)

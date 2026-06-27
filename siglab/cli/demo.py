@@ -23,7 +23,7 @@ from siglab.cli.telemetry import (
 )
 from siglab.config import SiglabConfig, load_settings
 from siglab.evaluation.signal_narrative import build_signal_narrative
-from siglab.io_utils import write_json
+from siglab.utils import write_json
 from siglab.path_utils import resolve_path_from_root
 
 

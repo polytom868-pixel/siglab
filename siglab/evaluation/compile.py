@@ -16,8 +16,7 @@ from siglab.evaluation.events import (
 )
 from siglab.evaluation.feature_dsl import load_feature_spec, resolve_feature_frames
 from siglab.evaluation.runner_analysis import mean_pairwise_rolling_corr
-from siglab.evaluation.strategy_semantics import PAIR_TRADE_FAMILIES
-from siglab.families import (
+from siglab.track_registry import (
     family_capabilities,
     family_diagnostic_adapter,
     family_execution_profile,
@@ -26,8 +25,6 @@ from siglab.families import (
 )
 from siglab.schemas import CompiledChild, SignalSpec
 from siglab.utils import feature_hash as _fh
-
-_PERF_PROFILES = {"ranked_directional", "basket_neutral_spread", "ranked_carry"}
 
 
 def _ssp(
@@ -70,6 +67,7 @@ def _bsm(
     asset_breadth: int,
     rg_meta: dict[str, Any],
     prices: pd.DataFrame,
+    **extra: Any,
 ) -> dict[str, Any]:
     assert "prices" not in extra, "prices passed both as param and in extra"
     return {
@@ -727,8 +725,6 @@ async def _apply_hedge(
     return cp, cpos, funding, src
 
 
-
-
 def _pt_lm(
     *,
     spec: SignalSpec,
@@ -791,7 +787,7 @@ def _lrf(
     }
 
 
-async def compile_spec(
+async def _compile_pair_trade(
     settings: SiglabConfig,
     provider: MarketDataProvider,
     spec: SignalSpec,
@@ -805,502 +801,596 @@ async def compile_spec(
     ps = family_policy_schema(fs)
     fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
     a = fspec.get("aliases") or {}
-    if spec.track == "trend_signals" and spec.family in PAIR_TRADE_FAMILIES:
-        rs = [str(s).upper() for s in spec.universe.basis_groups[:2]]
-        symbols = await provider.discover_perp_symbols(rs, limit=2)
-        od = [s for s in rs if s in symbols]
-        for s in symbols:
-            if s not in od:
-                od.append(s)
-        if len(od) != 2:
-            raise ValueError("Pair trade family requires exactly two supported symbols")
-        a1, a2 = od[0], od[1]
-        bundle = await provider.fetch_perp_bundle(
-            symbols=od,
-            lookback_days=spec.universe.lookback_days,
-            interval=spec.universe.interval,
-        )
-        raw_frames = _pair_rf(
+    rs = [str(s).upper() for s in spec.universe.basis_groups[:2]]
+    symbols = await provider.discover_perp_symbols(rs, limit=2)
+    od = [s for s in rs if s in symbols]
+    for s in symbols:
+        if s not in od:
+            od.append(s)
+    if len(od) != 2:
+        raise ValueError("Pair trade family requires exactly two supported symbols")
+    a1, a2 = od[0], od[1]
+    bundle = await provider.fetch_perp_bundle(
+        symbols=od,
+        lookback_days=spec.universe.lookback_days,
+        interval=spec.universe.interval,
+    )
+    raw_frames = _pair_rf(
+        prices=bundle["prices"],
+        funding=bundle["funding"],
+        a1=a1,
+        a2=a2,
+    )
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
+    pp = _ppp(family=spec.family, params=spec.params, defaults=d)
+    positions = _bptp(
+        score,
+        a1=a1,
+        a2=a2,
+        gross_target=pp["gross_target"],
+        max_gross_target=pp["max_gross_target"],
+        max_asset_weight=spec.risk.max_asset_weight,
+        entry_abs_score=pp["entry_abs_score"],
+        exit_abs_score=pp["exit_abs_score"],
+        flip_abs_score=pp["flip_abs_score"],
+        max_holding_bars=pp["max_holding_bars"],
+        cooldown_bars=pp["cooldown_bars"],
+        signal_leverage_scale=pp["signal_leverage_scale"],
+        regime_gate_mask=rgm,
+        exit_on_regime_break=bool(rgm_meta.get("exit_on_break", True)),
+    )
+    return CompiledChild(
+        prices=bundle["prices"][od],
+        target_positions=positions,
+        funding_rates=bundle["funding"][od],
+        signal_score=score,
+        signal_components=sc,
+        regime_gate_mask=rgm,
+        metadata=_bsm(
+            spec,
+            capabilities=caps,
+            execution_profile=ep,
+            diagnostic_adapter=da,
+            policy_schema=ps,
+            features=spec.features,
+            feature_hash=_fh(spec.features),
+            source=bundle["source"],
+            bundle_as_of=bundle.get("bundle_as_of"),
+            asset_breadth=len(od),
             prices=bundle["prices"],
-            funding=bundle["funding"],
-            a1=a1,
-            a2=a2,
-        )
-        _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
-        pp = _ppp(family=spec.family, params=spec.params, defaults=d)
-        positions = _bptp(
-            score,
-            a1=a1,
-            a2=a2,
+            rg_meta=rgm_meta,
+            symbols=od,
+            asset_1_symbol=a1,
+            asset_2_symbol=a2,
             gross_target=pp["gross_target"],
             max_gross_target=pp["max_gross_target"],
-            max_asset_weight=spec.risk.max_asset_weight,
             entry_abs_score=pp["entry_abs_score"],
             exit_abs_score=pp["exit_abs_score"],
             flip_abs_score=pp["flip_abs_score"],
             max_holding_bars=pp["max_holding_bars"],
             cooldown_bars=pp["cooldown_bars"],
+            min_abs_score=pp["min_abs_score"],
             signal_leverage_scale=pp["signal_leverage_scale"],
-            regime_gate_mask=rgm,
-            exit_on_regime_break=bool(rgm_meta.get("exit_on_break", True)),
-        )
-        return CompiledChild(
-            prices=bundle["prices"][od],
-            target_positions=positions,
-            funding_rates=bundle["funding"][od],
-            signal_score=score,
-            signal_components=sc,
-            regime_gate_mask=rgm,
-            metadata=_bsm(
-                spec,
-                capabilities=caps,
-                execution_profile=ep,
-                diagnostic_adapter=da,
-                policy_schema=ps,
-                features=spec.features,
-                feature_hash=_fh(spec.features),
-                source=bundle["source"],
-                bundle_as_of=bundle.get("bundle_as_of"),
-                asset_breadth=len(od),
-                prices=bundle["prices"],
-                rg_meta=rgm_meta,
-                symbols=od,
-                asset_1_symbol=a1,
-                asset_2_symbol=a2,
-                gross_target=pp["gross_target"],
-                max_gross_target=pp["max_gross_target"],
-                entry_abs_score=pp["entry_abs_score"],
-                exit_abs_score=pp["exit_abs_score"],
-                flip_abs_score=pp["flip_abs_score"],
-                max_holding_bars=pp["max_holding_bars"],
-                cooldown_bars=pp["cooldown_bars"],
-                min_abs_score=pp["min_abs_score"],
-                signal_leverage_scale=pp["signal_leverage_scale"],
-                leverage_profile="unlevered"
-                if spec.family == "perp_pair_trade_unlevered"
-                else "levered",
-            ),
-        )
-    if spec.track == "trend_signals" and ep in _PERF_PROFILES:
-        symbols = await provider.discover_perp_symbols(
-            spec.universe.basis_groups,
-            limit=spec.universe.max_symbols,
-        )
-        bundle = await provider.fetch_perp_bundle(
-            symbols=symbols,
-            lookback_days=spec.universe.lookback_days,
-            interval=spec.universe.interval,
-        )
-        raw_frames = _prf(bundle["prices"], bundle["funding"])
-        _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
-        score = _align_cs(score, symbols=symbols)
-        sc = _align_cs_comp(sc, symbols=symbols)
-        rgm, rgm_meta = _rrg(spec.regime_gates, aliases=a, raw_frames=raw_frames)
-        led = True
-        sed = ep != "ranked_directional"
-        policy = _rpp(
-            params=spec.params,
-            defaults=d,
-            long_enabled_default=led,
-            short_enabled_default=sed,
-        )
-        positions = _brp(
-            score,
-            long_count=policy["long_count"] if policy["long_enabled"] else 0,
-            short_count=policy["short_count"] if policy["short_enabled"] else 0,
-            gross_target=policy["gross_target"],
-            max_asset_weight=spec.risk.max_asset_weight,
-            require_positive_longs=ep == "ranked_directional",
-            min_abs_score=policy["min_abs_score"],
-            require_both_sides=ep in {"basket_neutral_spread", "ranked_carry"},
-            regime_gate_mask=rgm,
-        )
-        return CompiledChild(
+            leverage_profile="unlevered"
+            if spec.family == "perp_pair_trade_unlevered"
+            else "levered",
+        ),
+    )
+
+
+async def _compile_ranked_perf(
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
+) -> CompiledChild:
+    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
+    d = fs.get("defaults") or {}
+    fw = fs.get("feature_weights") or {}
+    caps = family_capabilities(fs)
+    ep = family_execution_profile(fs)
+    da = family_diagnostic_adapter(fs)
+    ps = family_policy_schema(fs)
+    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
+    a = fspec.get("aliases") or {}
+    symbols = await provider.discover_perp_symbols(
+        spec.universe.basis_groups,
+        limit=spec.universe.max_symbols,
+    )
+    bundle = await provider.fetch_perp_bundle(
+        symbols=symbols,
+        lookback_days=spec.universe.lookback_days,
+        interval=spec.universe.interval,
+    )
+    raw_frames = _prf(bundle["prices"], bundle["funding"])
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
+    score = _align_cs(score, symbols=symbols)
+    sc = _align_cs_comp(sc, symbols=symbols)
+    rgm, rgm_meta = _rrg(spec.regime_gates, aliases=a, raw_frames=raw_frames)
+    led = True
+    sed = ep != "ranked_directional"
+    policy = _rpp(
+        params=spec.params,
+        defaults=d,
+        long_enabled_default=led,
+        short_enabled_default=sed,
+    )
+    positions = _brp(
+        score,
+        long_count=policy["long_count"] if policy["long_enabled"] else 0,
+        short_count=policy["short_count"] if policy["short_enabled"] else 0,
+        gross_target=policy["gross_target"],
+        max_asset_weight=spec.risk.max_asset_weight,
+        require_positive_longs=ep == "ranked_directional",
+        min_abs_score=policy["min_abs_score"],
+        require_both_sides=ep in {"basket_neutral_spread", "ranked_carry"},
+        regime_gate_mask=rgm,
+    )
+    return CompiledChild(
+        prices=bundle["prices"],
+        target_positions=positions,
+        funding_rates=bundle["funding"],
+        signal_score=score,
+        signal_components=sc,
+        regime_gate_mask=rgm,
+        metadata=_bsm(
+            spec,
+            capabilities=caps,
+            execution_profile=ep,
+            diagnostic_adapter=da,
+            policy_schema=ps,
+            features=spec.features,
+            feature_hash=_fh(spec.features),
+            source=bundle["source"],
+            bundle_as_of=bundle.get("bundle_as_of"),
+            asset_breadth=len(symbols),
             prices=bundle["prices"],
-            target_positions=positions,
-            funding_rates=bundle["funding"],
-            signal_score=score,
-            signal_components=sc,
-            regime_gate_mask=rgm,
-            metadata=_bsm(
-                spec,
-                capabilities=caps,
-                execution_profile=ep,
-                diagnostic_adapter=da,
-                policy_schema=ps,
-                features=spec.features,
-                feature_hash=_fh(spec.features),
-                source=bundle["source"],
-                bundle_as_of=bundle.get("bundle_as_of"),
-                asset_breadth=len(symbols),
-                prices=bundle["prices"],
-                rg_meta=rgm_meta,
-                symbols=symbols,
-                long_enabled=policy["long_enabled"],
-                short_enabled=policy["short_enabled"],
-                long_count=policy["long_count"],
-                short_count=policy["short_count"],
-                min_abs_score=policy["min_abs_score"],
-                gross_target=policy["gross_target"],
-            ),
-        )
-    if spec.family == "basis_spread":
-        symbols = await provider.discover_perp_symbols(
-            spec.universe.basis_groups,
-            limit=spec.universe.max_symbols,
-        )
-        bundle = await provider.fetch_perp_bundle(
+            rg_meta=rgm_meta,
             symbols=symbols,
-            lookback_days=spec.universe.lookback_days,
-            interval=spec.universe.interval,
+            long_enabled=policy["long_enabled"],
+            short_enabled=policy["short_enabled"],
+            long_count=policy["long_count"],
+            short_count=policy["short_count"],
+            min_abs_score=policy["min_abs_score"],
+            gross_target=policy["gross_target"],
+        ),
+    )
+
+
+async def _compile_basis_spread(
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
+) -> CompiledChild:
+    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
+    d = fs.get("defaults") or {}
+    fw = fs.get("feature_weights") or {}
+    caps = family_capabilities(fs)
+    ep = family_execution_profile(fs)
+    da = family_diagnostic_adapter(fs)
+    ps = family_policy_schema(fs)
+    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
+    a = fspec.get("aliases") or {}
+    symbols = await provider.discover_perp_symbols(
+        spec.universe.basis_groups,
+        limit=spec.universe.max_symbols,
+    )
+    bundle = await provider.fetch_perp_bundle(
+        symbols=symbols,
+        lookback_days=spec.universe.lookback_days,
+        interval=spec.universe.interval,
+    )
+    raw_frames = _prf(bundle["prices"], bundle["funding"])
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
+    pair_positions = _bpp(
+        score,
+        selection_count=int(
+            spec.params.get("selection_count", d.get("selection_count", 2)),
+        ),
+        gross_target=float(
+            spec.params.get("gross_target", d.get("gross_target", 1.0)),
+        ),
+        max_asset_weight=spec.risk.max_asset_weight,
+        regime_gate_mask=rgm,
+    )
+    sp, sf = convert_to_spot(bundle["prices"])
+    prices = pd.concat(
+        [sp.add_suffix("_SPOT"), bundle["prices"].add_suffix("_PERP")],
+        axis=1,
+    ).sort_index()
+    funding = _reindex_ffill_fillna(
+        pd.concat(
+            [sf.add_suffix("_SPOT"), bundle["funding"].add_suffix("_PERP")],
+            axis=1,
         )
-        raw_frames = _prf(bundle["prices"], bundle["funding"])
-        _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
-        pair_positions = _bpp(
-            score,
+        .sort_index(),
+        prices.index,
+    )
+    return CompiledChild(
+        prices=prices,
+        target_positions=_reindex_ffill_fillna(pair_positions, prices.index),
+        funding_rates=funding,
+        signal_score=score,
+        signal_components=sc,
+        regime_gate_mask=rgm,
+        metadata=_bsm(
+            spec,
+            capabilities=caps,
+            execution_profile=ep,
+            diagnostic_adapter=da,
+            policy_schema=ps,
+            features=spec.features,
+            feature_hash=_fh(spec.features),
+            source=bundle["source"],
+            bundle_as_of=bundle.get("bundle_as_of"),
+            asset_breadth=len(symbols),
+            prices=prices,
+            rg_meta=rgm_meta,
+            symbols=symbols,
             selection_count=int(
                 spec.params.get("selection_count", d.get("selection_count", 2)),
             ),
             gross_target=float(
                 spec.params.get("gross_target", d.get("gross_target", 1.0)),
             ),
-            max_asset_weight=spec.risk.max_asset_weight,
-            regime_gate_mask=rgm,
-        )
-        sp, sf = convert_to_spot(bundle["prices"])
-        prices = pd.concat(
-            [sp.add_suffix("_SPOT"), bundle["prices"].add_suffix("_PERP")],
-            axis=1,
-        ).sort_index()
-        funding = _reindex_ffill_fillna(
-            pd.concat(
-                [sf.add_suffix("_SPOT"), bundle["funding"].add_suffix("_PERP")],
-                axis=1,
-            )
-            .sort_index(),
-            prices.index,
-        )
-        return CompiledChild(
+        ),
+    )
+
+
+async def _compile_stable_pt(
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
+) -> CompiledChild:
+    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
+    d = fs.get("defaults") or {}
+    fw = fs.get("feature_weights") or {}
+    caps = family_capabilities(fs)
+    ep = family_execution_profile(fs)
+    da = family_diagnostic_adapter(fs)
+    ps = family_policy_schema(fs)
+    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
+    a = fspec.get("aliases") or {}
+    markets = await provider.discover_stable_pt_markets(
+        spec.universe,
+        limit=spec.universe.max_symbols,
+    )
+    histories = await provider.fetch_pt_histories(
+        markets,
+        lookback_days=spec.universe.lookback_days,
+    )
+    if not histories:
+        raise ValueError("No stable PT histories available for this spec")
+    prices, iapy, uapy, ttl, dte = _ppt_mf(provider, markets, histories)
+    raw_frames = _pt_rf(
+        prices=prices,
+        implied_apy=iapy,
+        underlying_apy=uapy,
+        total_tvl=ttl,
+        dte=dte,
+    )
+    ff, score, _, _, _ = _ssp(raw_frames, spec, a, fw)
+    pt_state = classify_pt_market_state(
+        prices=prices,
+        days_to_expiry=dte,
+        required_frames=[iapy, uapy, ttl],
+        roll_days_before_expiry=spec.risk.roll_days_before_expiry,
+        min_days_to_expiry=spec.universe.min_days_to_expiry,
+        max_days_to_expiry=spec.universe.max_days_to_expiry,
+    )
+    ff = _mask_ff(ff, pt_state["eligible"])
+    score = _ensure_elig(
+        cast(pd.DataFrame, _ws(ff, spec.features, fw, return_components=False)),
+        pt_state["eligible"],
+    )
+    positions = _brp(
+        score,
+        long_count=int(
+            spec.params.get("selection_count", d.get("selection_count", 3)),
+        ),
+        short_count=0,
+        gross_target=float(
+            spec.params.get("gross_target", d.get("gross_target", 0.9)),
+        ),
+        max_asset_weight=spec.risk.max_asset_weight,
+        require_positive_longs=True,
+    )
+    roll_events = detect_pt_roll_events(
+        positions,
+        eligible=pt_state["eligible"],
+        inside_roll_window=pt_state["inside_roll_window"],
+        expired_or_untradable=pt_state["expired_or_untradable"],
+        days_to_expiry=dte,
+    )
+    funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+    return CompiledChild(
+        prices=prices,
+        target_positions=_reindex_ffill_fillna(positions, prices.index),
+        funding_rates=funding,
+        metadata=_bsm(
+            spec,
+            capabilities=caps,
+            execution_profile=ep,
+            diagnostic_adapter=da,
+            policy_schema=ps,
+            features=spec.features,
+            feature_hash=_fh(spec.features),
+            source="pendle_public",
+            bundle_as_of=prices.index.max().isoformat()
+            if not prices.empty
+            else None,
+            asset_breadth=len(prices.columns),
             prices=prices,
-            target_positions=_reindex_ffill_fillna(pair_positions, prices.index),
-            funding_rates=funding,
-            signal_score=score,
-            signal_components=sc,
-            regime_gate_mask=rgm,
-            metadata=_bsm(
-                spec,
-                capabilities=caps,
-                execution_profile=ep,
-                diagnostic_adapter=da,
-                policy_schema=ps,
-                features=spec.features,
-                feature_hash=_fh(spec.features),
-                source=bundle["source"],
-                bundle_as_of=bundle.get("bundle_as_of"),
-                asset_breadth=len(symbols),
-                prices=prices,
-                rg_meta=rgm_meta,
-                symbols=symbols,
-                selection_count=int(
-                    spec.params.get("selection_count", d.get("selection_count", 2)),
-                ),
-                gross_target=float(
-                    spec.params.get("gross_target", d.get("gross_target", 1.0)),
-                ),
-            ),
-        )
-    if spec.family == "stable_pt_ladder":
-        markets = await provider.discover_stable_pt_markets(
-            spec.universe,
-            limit=spec.universe.max_symbols,
-        )
-        histories = await provider.fetch_pt_histories(
-            markets,
-            lookback_days=spec.universe.lookback_days,
-        )
-        if not histories:
-            raise ValueError("No stable PT histories available for this spec")
-        prices, iapy, uapy, ttl, dte = _ppt_mf(provider, markets, histories)
-        raw_frames = _pt_rf(
-            prices=prices,
-            implied_apy=iapy,
-            underlying_apy=uapy,
-            total_tvl=ttl,
-            dte=dte,
-        )
-        ff, score, _, _, _ = _ssp(raw_frames, spec, a, fw)
-        pt_state = classify_pt_market_state(
-            prices=prices,
-            days_to_expiry=dte,
-            required_frames=[iapy, uapy, ttl],
-            roll_days_before_expiry=spec.risk.roll_days_before_expiry,
-            min_days_to_expiry=spec.universe.min_days_to_expiry,
-            max_days_to_expiry=spec.universe.max_days_to_expiry,
-        )
-        ff = _mask_ff(ff, pt_state["eligible"])
-        score = _ensure_elig(
-            cast(pd.DataFrame, _ws(ff, spec.features, fw, return_components=False)),
-            pt_state["eligible"],
-        )
-        positions = _brp(
-            score,
-            long_count=int(
+            rg_meta={},
+            markets=list(prices.columns),
+            selection_count=int(
                 spec.params.get("selection_count", d.get("selection_count", 3)),
             ),
-            short_count=0,
             gross_target=float(
                 spec.params.get("gross_target", d.get("gross_target", 0.9)),
             ),
-            max_asset_weight=spec.risk.max_asset_weight,
-            require_positive_longs=True,
-        )
-        roll_events = detect_pt_roll_events(
-            positions,
-            eligible=pt_state["eligible"],
-            inside_roll_window=pt_state["inside_roll_window"],
-            expired_or_untradable=pt_state["expired_or_untradable"],
-            days_to_expiry=dte,
-        )
-        funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-        return CompiledChild(
-            prices=prices,
-            target_positions=_reindex_ffill_fillna(positions, prices.index),
-            funding_rates=funding,
-            metadata=_bsm(
-                spec,
-                capabilities=caps,
-                execution_profile=ep,
-                diagnostic_adapter=da,
-                policy_schema=ps,
-                features=spec.features,
-                feature_hash=_fh(spec.features),
-                source="pendle_public",
-                bundle_as_of=prices.index.max().isoformat()
-                if not prices.empty
-                else None,
-                asset_breadth=len(prices.columns),
+            **_pt_lm(
+                spec=spec,
                 prices=prices,
-                rg_meta={},
-                markets=list(prices.columns),
-                selection_count=int(
-                    spec.params.get("selection_count", d.get("selection_count", 3)),
-                ),
-                gross_target=float(
-                    spec.params.get("gross_target", d.get("gross_target", 0.9)),
-                ),
-                **_pt_lm(
-                    spec=spec,
-                    prices=prices,
-                    days_to_expiry=dte,
-                    eligible=pt_state["eligible"],
-                    inside_roll_window=pt_state["inside_roll_window"],
-                    expired_or_untradable=pt_state["expired_or_untradable"],
-                    roll_events=roll_events,
-                ),
+                days_to_expiry=dte,
+                eligible=pt_state["eligible"],
+                inside_roll_window=pt_state["inside_roll_window"],
+                expired_or_untradable=pt_state["expired_or_untradable"],
+                roll_events=roll_events,
             ),
-        )
-    if spec.family == "pt_yield_rotation":
-        markets = await provider.discover_pt_markets(
-            spec.universe,
-            limit=spec.universe.max_symbols,
-        )
-        histories = await provider.fetch_pt_histories(
-            markets,
-            lookback_days=spec.universe.lookback_days,
-        )
-        if not histories:
-            raise ValueError("No PT histories available for this spec")
-        prices, iapy, uapy, ttl, dte = _ppt_mf(provider, markets, histories)
-        raw_frames = _pt_rf(
-            prices=prices,
-            implied_apy=iapy,
-            underlying_apy=uapy,
-            total_tvl=ttl,
-            dte=dte,
-        )
-        ff, score, _, _, _ = _ssp(raw_frames, spec, a, fw)
-        pt_state = classify_pt_market_state(
-            prices=prices,
-            days_to_expiry=dte,
-            required_frames=[iapy, uapy, ttl],
-            roll_days_before_expiry=spec.risk.roll_days_before_expiry,
-            min_days_to_expiry=spec.universe.min_days_to_expiry,
-            max_days_to_expiry=spec.universe.max_days_to_expiry,
-        )
-        ff = _mask_ff(ff, pt_state["eligible"])
-        score = _ensure_elig(
-            cast(pd.DataFrame, _ws(ff, spec.features, fw, return_components=False)),
-            pt_state["eligible"],
-        )
-        pt_positions = _brp(
-            score,
-            long_count=int(
+        ),
+    )
+
+
+async def _compile_pt_yield(
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
+) -> CompiledChild:
+    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
+    d = fs.get("defaults") or {}
+    fw = fs.get("feature_weights") or {}
+    caps = family_capabilities(fs)
+    ep = family_execution_profile(fs)
+    da = family_diagnostic_adapter(fs)
+    ps = family_policy_schema(fs)
+    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
+    a = fspec.get("aliases") or {}
+    markets = await provider.discover_pt_markets(
+        spec.universe,
+        limit=spec.universe.max_symbols,
+    )
+    histories = await provider.fetch_pt_histories(
+        markets,
+        lookback_days=spec.universe.lookback_days,
+    )
+    if not histories:
+        raise ValueError("No PT histories available for this spec")
+    prices, iapy, uapy, ttl, dte = _ppt_mf(provider, markets, histories)
+    raw_frames = _pt_rf(
+        prices=prices,
+        implied_apy=iapy,
+        underlying_apy=uapy,
+        total_tvl=ttl,
+        dte=dte,
+    )
+    ff, score, _, _, _ = _ssp(raw_frames, spec, a, fw)
+    pt_state = classify_pt_market_state(
+        prices=prices,
+        days_to_expiry=dte,
+        required_frames=[iapy, uapy, ttl],
+        roll_days_before_expiry=spec.risk.roll_days_before_expiry,
+        min_days_to_expiry=spec.universe.min_days_to_expiry,
+        max_days_to_expiry=spec.universe.max_days_to_expiry,
+    )
+    ff = _mask_ff(ff, pt_state["eligible"])
+    score = _ensure_elig(
+        cast(pd.DataFrame, _ws(ff, spec.features, fw, return_components=False)),
+        pt_state["eligible"],
+    )
+    pt_positions = _brp(
+        score,
+        long_count=int(
+            spec.params.get("selection_count", d.get("selection_count", 2)),
+        ),
+        short_count=0,
+        gross_target=float(
+            spec.params.get("gross_target", d.get("gross_target", 0.8)),
+        ),
+        max_asset_weight=spec.risk.max_asset_weight,
+        require_positive_longs=True,
+    )
+    roll_events = detect_pt_roll_events(
+        pt_positions,
+        eligible=pt_state["eligible"],
+        inside_roll_window=pt_state["inside_roll_window"],
+        expired_or_untradable=pt_state["expired_or_untradable"],
+        days_to_expiry=dte,
+    )
+    funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+    cp = prices.copy()
+    cpos = _reindex_ffill_fillna(pt_positions, prices.index)
+    hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
+    hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
+    hsym: list[str] = []
+    src = "pendle_public"
+    if hm == "perp":
+        m2hs = {
+            provider.market_label(r): str(r.get("hedgeSymbol"))
+            for r in markets
+            if provider.market_label(r) in prices.columns
+            and r.get("hedgeSymbol")
+            and str(r.get("hedgeSymbol")) != "USD"
+        }
+        hsym = sorted(set(m2hs.values()))
+        if hsym:
+            cp, cpos, funding, src = await _apply_hedge(
+                cpos=cpos, prices=prices, funding=funding,
+                m2hs=m2hs, hedge_symbols=hsym, hr=hr, src=src,
+                provider=provider, lookback_days=spec.universe.lookback_days,
+            )
+    return CompiledChild(
+        prices=cp,
+        target_positions=cpos,
+        funding_rates=funding,
+        metadata=_bsm(
+            spec,
+            capabilities=caps,
+            execution_profile=ep,
+            diagnostic_adapter=da,
+            policy_schema=ps,
+            features=spec.features,
+            feature_hash=_fh(spec.features),
+            source=src,
+            bundle_as_of=prices.index.max().isoformat()
+            if not prices.empty
+            else None,
+            asset_breadth=len(prices.columns),
+            prices=cp,
+            rg_meta={},
+            markets=list(prices.columns),
+            hedge_mode=hm,
+            hedge_ratio=hr,
+            hedge_symbols=hsym,
+            selection_count=int(
                 spec.params.get("selection_count", d.get("selection_count", 2)),
             ),
-            short_count=0,
             gross_target=float(
                 spec.params.get("gross_target", d.get("gross_target", 0.8)),
             ),
-            max_asset_weight=spec.risk.max_asset_weight,
-            require_positive_longs=True,
-        )
-        roll_events = detect_pt_roll_events(
-            pt_positions,
-            eligible=pt_state["eligible"],
-            inside_roll_window=pt_state["inside_roll_window"],
-            expired_or_untradable=pt_state["expired_or_untradable"],
-            days_to_expiry=dte,
-        )
-        funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-        cp = prices.copy()
-        cpos = _reindex_ffill_fillna(pt_positions, prices.index)
-        hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
-        hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
-        hsym: list[str] = []
-        src = "pendle_public"
-        if hm == "perp":
-            m2hs = {
-                provider.market_label(r): str(r.get("hedgeSymbol"))
-                for r in markets
-                if provider.market_label(r) in prices.columns
-                and r.get("hedgeSymbol")
-                and str(r.get("hedgeSymbol")) != "USD"
-            }
-            hsym = sorted(set(m2hs.values()))
-            if hsym:
-                cp, cpos, funding, src = await _apply_hedge(
-                    cpos=cpos, prices=prices, funding=funding,
-                    m2hs=m2hs, hedge_symbols=hsym, hr=hr, src=src,
-                    provider=provider, lookback_days=spec.universe.lookback_days,
-                )
-        return CompiledChild(
-            prices=cp,
-            target_positions=cpos,
-            funding_rates=funding,
-            metadata=_bsm(
-                spec,
-                capabilities=caps,
-                execution_profile=ep,
-                diagnostic_adapter=da,
-                policy_schema=ps,
-                features=spec.features,
-                feature_hash=_fh(spec.features),
-                source=src,
-                bundle_as_of=prices.index.max().isoformat()
-                if not prices.empty
-                else None,
-                asset_breadth=len(prices.columns),
-                prices=cp,
-                rg_meta={},
-                markets=list(prices.columns),
-                hedge_mode=hm,
-                hedge_ratio=hr,
-                hedge_symbols=hsym,
-                selection_count=int(
-                    spec.params.get("selection_count", d.get("selection_count", 2)),
-                ),
-                gross_target=float(
-                    spec.params.get("gross_target", d.get("gross_target", 0.8)),
-                ),
-                **_pt_lm(
-                    spec=spec,
-                    prices=prices,
-                    days_to_expiry=dte,
-                    eligible=pt_state["eligible"],
-                    inside_roll_window=pt_state["inside_roll_window"],
-                    expired_or_untradable=pt_state["expired_or_untradable"],
-                    roll_events=roll_events,
-                ),
+            **_pt_lm(
+                spec=spec,
+                prices=prices,
+                days_to_expiry=dte,
+                eligible=pt_state["eligible"],
+                inside_roll_window=pt_state["inside_roll_window"],
+                expired_or_untradable=pt_state["expired_or_untradable"],
+                roll_events=roll_events,
             ),
-        )
-    if spec.family == "lending_carry_rotation":
-        markets = await provider.discover_lending_markets(
-            spec.universe,
-            limit=spec.universe.max_symbols,
-        )
-        lb = await provider.fetch_lending_bundle(
-            markets,
-            lookback_days=spec.universe.lookback_days,
-        )
-        if lb["prices"].empty:
-            raise ValueError("No lending histories available for this spec")
-        lp = _blpf(lb["prices"], lb["combined_supply_apy"])
-        raw_frames = _lrf(
-            lending_prices=lp,
-            combined_supply_apy=lb["combined_supply_apy"],
-            supply_apr=lb["supply_apr"],
-            supply_reward_apr=lb["supply_reward_apr"],
-            base_yield_apy=lb["base_yield_apy"],
-            utilization=lb["utilization"],
-            supply_tvl_usd=lb["supply_tvl_usd"],
-            borrow_apr=lb["borrow_apr"],
-            borrow_tvl_usd=lb["borrow_tvl_usd"],
-        )
-        _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
-        lpos = _brp(
-            score,
-            long_count=int(
+        ),
+    )
+
+
+async def _compile_lending_carry(
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
+) -> CompiledChild:
+    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
+    d = fs.get("defaults") or {}
+    fw = fs.get("feature_weights") or {}
+    caps = family_capabilities(fs)
+    ep = family_execution_profile(fs)
+    da = family_diagnostic_adapter(fs)
+    ps = family_policy_schema(fs)
+    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
+    a = fspec.get("aliases") or {}
+    markets = await provider.discover_lending_markets(
+        spec.universe,
+        limit=spec.universe.max_symbols,
+    )
+    lb = await provider.fetch_lending_bundle(
+        markets,
+        lookback_days=spec.universe.lookback_days,
+    )
+    if lb["prices"].empty:
+        raise ValueError("No lending histories available for this spec")
+    lp = _blpf(lb["prices"], lb["combined_supply_apy"])
+    raw_frames = _lrf(
+        lending_prices=lp,
+        combined_supply_apy=lb["combined_supply_apy"],
+        supply_apr=lb["supply_apr"],
+        supply_reward_apr=lb["supply_reward_apr"],
+        base_yield_apy=lb["base_yield_apy"],
+        utilization=lb["utilization"],
+        supply_tvl_usd=lb["supply_tvl_usd"],
+        borrow_apr=lb["borrow_apr"],
+        borrow_tvl_usd=lb["borrow_tvl_usd"],
+    )
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
+    lpos = _brp(
+        score,
+        long_count=int(
+            spec.params.get("selection_count", d.get("selection_count", 2)),
+        ),
+        short_count=0,
+        gross_target=float(
+            spec.params.get("gross_target", d.get("gross_target", 0.8)),
+        ),
+        max_asset_weight=spec.risk.max_asset_weight,
+        require_positive_longs=True,
+        regime_gate_mask=rgm,
+    )
+    funding = pd.DataFrame(0.0, index=lp.index, columns=lp.columns)
+    cp = lp.copy()
+    cpos = _reindex_ffill_fillna(lpos, lp.index)
+    hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
+    hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
+    lh: list[str] = []
+    src = lb["source"]
+    if hm == "perp":
+        m2hs = {
+            label: s for label, s in lb["hedge_symbols"].items() if s and s != "USD"
+        }
+        lh = sorted(set(m2hs.values()))
+        if lh:
+            cp, cpos, funding, src = await _apply_hedge(
+                cpos=cpos, prices=lp, funding=funding,
+                m2hs=m2hs, hedge_symbols=lh, hr=hr, src=src,
+                provider=provider, lookback_days=spec.universe.lookback_days,
+            )
+    return CompiledChild(
+        prices=cp,
+        target_positions=cpos,
+        funding_rates=funding,
+        signal_score=score,
+        signal_components=sc,
+        regime_gate_mask=rgm,
+        metadata=_bsm(
+            spec,
+            capabilities=caps,
+            execution_profile=ep,
+            diagnostic_adapter=da,
+            policy_schema=ps,
+            features=spec.features,
+            feature_hash=_fh(spec.features),
+            source=src,
+            bundle_as_of=lb.get("bundle_as_of"),
+            asset_breadth=len(lp.columns),
+            prices=cp,
+            rg_meta=rgm_meta,
+            markets=list(lp.columns),
+            hedge_mode=hm,
+            hedge_ratio=hr,
+            hedge_symbols=lh,
+            selection_count=int(
                 spec.params.get("selection_count", d.get("selection_count", 2)),
             ),
-            short_count=0,
             gross_target=float(
                 spec.params.get("gross_target", d.get("gross_target", 0.8)),
             ),
-            max_asset_weight=spec.risk.max_asset_weight,
-            require_positive_longs=True,
-            regime_gate_mask=rgm,
-        )
-        funding = pd.DataFrame(0.0, index=lp.index, columns=lp.columns)
-        cp = lp.copy()
-        cpos = _reindex_ffill_fillna(lpos, lp.index)
-        hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
-        hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
-        lh: list[str] = []
-        src = lb["source"]
-        if hm == "perp":
-            m2hs = {
-                label: s for label, s in lb["hedge_symbols"].items() if s and s != "USD"
-            }
-            lh = sorted(set(m2hs.values()))
-            if lh:
-                cp, cpos, funding, src = await _apply_hedge(
-                    cpos=cpos, prices=lp, funding=funding,
-                    m2hs=m2hs, hedge_symbols=lh, hr=hr, src=src,
-                    provider=provider, lookback_days=spec.universe.lookback_days,
-                )
-        return CompiledChild(
-            prices=cp,
-            target_positions=cpos,
-            funding_rates=funding,
-            signal_score=score,
-            signal_components=sc,
-            regime_gate_mask=rgm,
-            metadata=_bsm(
-                spec,
-                capabilities=caps,
-                execution_profile=ep,
-                diagnostic_adapter=da,
-                policy_schema=ps,
-                features=spec.features,
-                feature_hash=_fh(spec.features),
-                source=src,
-                bundle_as_of=lb.get("bundle_as_of"),
-                asset_breadth=len(lp.columns),
-                prices=cp,
-                rg_meta=rgm_meta,
-                markets=list(lp.columns),
-                hedge_mode=hm,
-                hedge_ratio=hr,
-                hedge_symbols=lh,
-                selection_count=int(
-                    spec.params.get("selection_count", d.get("selection_count", 2)),
-                ),
-                gross_target=float(
-                    spec.params.get("gross_target", d.get("gross_target", 0.8)),
-                ),
-            ),
-        )
-    raise ValueError(f"Unsupported spec family: {spec.family}")
+        ),
+    )
+
+
+_FAMILY_COMPILERS = {
+    'pair_trade': _compile_pair_trade,
+    'ranked_perf': _compile_ranked_perf,
+    'basis_spread': _compile_basis_spread,
+    'stable_pt_ladder': _compile_stable_pt,
+    'pt_yield_rotation': _compile_pt_yield,
+    'lending_carry_rotation': _compile_lending_carry,
+}
+
+
+async def compile_spec(
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
+) -> CompiledChild:
+    if spec.family not in _FAMILY_COMPILERS:
+        raise ValueError(f"Unsupported spec family: {spec.family}")
+    compiler = _FAMILY_COMPILERS[spec.family]
+    return await compiler(settings, provider, spec)
 
 
 # backward compat aliases for tests

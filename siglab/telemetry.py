@@ -8,6 +8,7 @@ from collections.abc import Iterable
 
 from siglab.utils import percentile as _percentile
 from siglab.utils import safe_float
+from siglab.config import SiglabConfig
 
 
 @dataclass(frozen=True)
@@ -219,6 +220,61 @@ def aggregate_provider_metrics_artifacts(
         },
         "confidence": _confidence(len(rows)),
     }
+
+def build_telemetry_payload(
+    *,
+    trace_paths: list[Path],
+    provider_metric_paths: list[Path],
+) -> dict[str, Any]:
+    """Aggregate trace + provider-metrics into one telemetry payload."""
+    payload = aggregate_trace_telemetry(trace_paths)
+    payload["trace_paths_scanned"] = len(trace_paths)
+    payload["provider_metrics"] = aggregate_provider_metrics_artifacts(
+        provider_metric_paths,
+    )
+    payload["provider_metrics_paths_scanned"] = len(provider_metric_paths)
+    payload["provider_metrics_status"] = (
+        "missing"
+        if trace_paths and payload["provider_metrics"]["artifact_count"] == 0
+        else "present"
+        if payload["provider_metrics"]["artifact_count"] > 0
+        else "not_applicable"
+    )
+    return payload
+
+
+def trace_paths_for_telemetry(
+    *,
+    settings: SiglabConfig,
+    track: str,
+    run_session_id: str | None,
+) -> list[Path]:
+    base = settings.artifact_dir
+    if run_session_id:
+        pattern = f"*/workspaces/{run_session_id}/iterations/**/*_trace.json"
+    elif track == "all":
+        pattern = "*/workspaces/*/iterations/**/*_trace.json"
+    else:
+        pattern = f"{track}/workspaces/*/iterations/**/*_trace.json"
+    return sorted(base.glob(pattern))
+
+
+def provider_metric_paths_for_telemetry(
+    *,
+    settings: SiglabConfig,
+    run_session_id: str | None,
+) -> list[Path]:
+    base = settings.artifact_dir / "provider_metrics"
+    if run_session_id:
+        jsonl_path = base / f"{run_session_id}.jsonl"
+        if jsonl_path.exists():
+            return [jsonl_path]
+        latest_path = base / f"{run_session_id}.latest.json"
+        return [latest_path] if latest_path.exists() else []
+    jsonl_paths = sorted(base.glob("*.jsonl"))
+    if jsonl_paths:
+        return jsonl_paths
+    return sorted(base.glob("*.latest.json"))
 
 
 def _confidence(sample_count: int) -> str:

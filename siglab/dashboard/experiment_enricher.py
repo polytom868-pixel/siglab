@@ -10,7 +10,7 @@ from typing import Any
 
 from siglab.config import SiglabConfig
 from siglab.dashboard.experiment_repo import ExperimentRepo
-from siglab.llm_metadata import (
+from siglab.llm.llm import (
     default_llm_model_display,
     infer_llm_provider,
     resolve_llm_provider,

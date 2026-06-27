@@ -531,7 +531,7 @@ def write_artifact(
     track: str,
     evaluation: dict[str, Any],
 ) -> Path:
-    from siglab.io_utils import write_json
+    from siglab.utils import write_json
 
     target_dir = settings.artifact_dir / track
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -651,7 +651,7 @@ def write_json_and_maybe_print(
     writer: Callable[..., Any] | None = None,
 ) -> Path:
     if writer is None:
-        from siglab.io_utils import write_json as _write_json
+        from siglab.utils import write_json as _write_json
 
         writer = _write_json
     written = writer(path, payload)

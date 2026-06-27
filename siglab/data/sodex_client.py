@@ -492,7 +492,7 @@ def _validate_evm_address(value: str) -> str:
     return text
 
 
-def _batch_order_weight(order_count: int) -> int:
+def batch_order_weight(order_count: int) -> int:
     if order_count < 1:
         return 1
     return 1 + int(order_count) // 40
