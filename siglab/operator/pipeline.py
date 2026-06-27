@@ -53,7 +53,9 @@ class OperatorPipeline:
     """Orchestrates the full research-to-decision pipeline."""
 
     def __init__(
-        self, dry_run: bool, paper_client: SoDEXPaperPerpsClient | None = None,
+        self,
+        dry_run: bool,
+        paper_client: SoDEXPaperPerpsClient | None = None,
     ) -> None:
         if not isinstance(dry_run, bool):
             raise TypeError("dry_run must be a bool")
@@ -62,7 +64,8 @@ class OperatorPipeline:
         self._circuit_breaker = CircuitBreakerState()
 
     def evidence_to_decision(
-        self, evidence_records: list[dict[str, Any]],
+        self,
+        evidence_records: list[dict[str, Any]],
     ) -> TradeSignal:
         """Aggregate raw evidence records into a consensus trade signal."""
         if not evidence_records:
@@ -176,7 +179,11 @@ class OperatorPipeline:
         )
 
     def position_to_paper(
-        self, signal: TradeSignal, session_id: str, *, mark_price: float | None = None,
+        self,
+        signal: TradeSignal,
+        session_id: str,
+        *,
+        mark_price: float | None = None,
     ) -> dict[str, Any]:
         """Convert a trade signal into a paper order."""
         if signal.direction == "HOLD":
@@ -214,7 +221,9 @@ class OperatorPipeline:
         return result
 
     async def run_once(
-        self, spec: dict[str, Any], market_data: dict[str, Any],
+        self,
+        spec: dict[str, Any],
+        market_data: dict[str, Any],
     ) -> tuple[TradeSignal, Position | None, RiskReport]:
         """Full single-pass pipeline: evidence → signal → risk → position."""
         evidence_records: list[dict[str, Any]] = list(
@@ -245,6 +254,7 @@ class OperatorPipeline:
                 )
             else:
                 logger.warning(
-                    "No valid price for %s — cannot build position", signal.symbol,
+                    "No valid price for %s — cannot build position",
+                    signal.symbol,
                 )
         return (signal, position, risk_report)

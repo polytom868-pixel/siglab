@@ -6,13 +6,13 @@ from typing import Any, cast
 from collections.abc import Callable, Sequence
 
 from rich.text import Text
+from textual.css.query import NoMatches, WrongType
 
 from siglab.utils import safe_float  # noqa: F401 — re-exported for tests
 
 
 # _Queryable protocol removed — Screen.query_one has overloaded signatures
 # that resist clean protocol matching. safe_query catches all exceptions anyway.
-
 
 
 ACCENT_GREEN = "#4ade80"
@@ -161,7 +161,8 @@ def format_count(value: float | None) -> str:
 
 def severity_color(severity: str) -> str:
     return {"critical": ERROR_RED, "warning": WARNING_YELLOW, "info": INFO_BLUE}.get(
-        severity.lower().strip(), TEXT_MUTED,
+        severity.lower().strip(),
+        TEXT_MUTED,
     )
 
 
@@ -215,6 +216,7 @@ def gauge_color(score: float) -> str:
         else ACCENT_GREEN
     )
 
+
 def safe_query(
     screen: Any,
     widget_id: str,
@@ -224,7 +226,7 @@ def safe_query(
     try:
         w = screen.query_one(widget_id, widget_type)
         return fn(w) if fn else w
-    except Exception:
+    except (NoMatches, WrongType):
         return None
 
 
@@ -248,7 +250,11 @@ def sanitize_status_text(text: str, max_len: int = 120) -> str:
 
 
 def bar_gauge(
-    value: float, width: int = 10, *, filled_char: str = "█", empty_char: str = "░",
+    value: float,
+    width: int = 10,
+    *,
+    filled_char: str = "█",
+    empty_char: str = "░",
 ) -> str:
     return filled_char * max(0, min(width, int(value * width))) + empty_char * (
         width - max(0, min(width, int(value * width)))
@@ -363,7 +369,9 @@ class OrderBookView:
 
     @classmethod
     def from_dict(
-        cls: type[OrderBookView], data: dict[str, Any], symbol: str,
+        cls: type[OrderBookView],
+        data: dict[str, Any],
+        symbol: str,
     ) -> OrderBookView:
         return cls(
             bids=tuple(data.get("bids", [])),

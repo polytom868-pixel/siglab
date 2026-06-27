@@ -29,7 +29,9 @@ class EvidenceRecord:
     def __post_init__(self) -> None:
         if not 0.0 <= self.confidence <= 1.0:
             object.__setattr__(
-                self, "confidence", max(0.0, min(1.0, float(self.confidence))),
+                self,
+                "confidence",
+                max(0.0, min(1.0, float(self.confidence))),
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -131,17 +133,27 @@ class EvidenceStore:
     def summary(self, *, max_day_gap: int = 1, top_links: int = 10) -> dict[str, Any]:
         rows = self.load()
         return summarize_evidence(
-            rows, self.linked_relations(max_day_gap=max_day_gap), top_links=top_links,
+            rows,
+            self.linked_relations(max_day_gap=max_day_gap),
+            top_links=top_links,
         )
 
     def write_summary(
-        self, path: Path, *, max_day_gap: int = 1, top_links: int = 10,
+        self,
+        path: Path,
+        *,
+        max_day_gap: int = 1,
+        top_links: int = 10,
     ) -> dict[str, Any]:
         summary = self.summary(max_day_gap=max_day_gap, top_links=top_links)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
-                summary, ensure_ascii=True, indent=2, sort_keys=True, default=str,
+                summary,
+                ensure_ascii=True,
+                indent=2,
+                sort_keys=True,
+                default=str,
             )
             + "\n",
             encoding="utf-8",
@@ -238,7 +250,10 @@ def news_evidence(
 
 
 def sodex_ws_evidence(
-    update: dict[str, Any], *, observed_at: str, evidence_path: str,
+    update: dict[str, Any],
+    *,
+    observed_at: str,
+    evidence_path: str,
 ) -> list[EvidenceRecord]:
     channel = str(update.get("channel") or "")
     update_type = str(update.get("type") or "")
@@ -280,7 +295,9 @@ def sodex_ws_evidence(
 
 
 def link_feed_events_to_etf_flows(
-    rows: Iterable[dict[str, Any]], *, max_day_gap: int = 1,
+    rows: Iterable[dict[str, Any]],
+    *,
+    max_day_gap: int = 1,
 ) -> list[dict[str, Any]]:
     materialized = list(rows)
     flows = [
@@ -430,6 +447,7 @@ def _coerce_float(value: object) -> float | None:
             return float(value.strip())
         except ValueError:
             return None
+    return None
 
 
 def _preferred_multilingual_content(value: object) -> dict[str, Any]:
@@ -447,7 +465,9 @@ def _preferred_multilingual_content(value: object) -> dict[str, Any]:
 
 
 def _matched_currency_symbol(
-    value: object, *, preferred: str | None = None,
+    value: object,
+    *,
+    preferred: str | None = None,
 ) -> str | None:
     if not isinstance(value, list):
         return None
@@ -471,6 +491,7 @@ def _first_of(row: dict[str, Any], keys: Iterable[str]) -> Any:
         value = row.get(key)
         if value is not None:
             return value
+    return None
 
 
 def _record_day(value: object) -> date | None:
@@ -492,3 +513,4 @@ def _record_day(value: object) -> date | None:
         except ValueError:
             continue
     logger.warning("Unparseable evidence timestamp %r; returning None", raw)
+    return None

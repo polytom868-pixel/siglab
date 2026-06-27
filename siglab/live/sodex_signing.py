@@ -12,6 +12,7 @@ from typing import Any, Protocol, cast
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 from eth_utils.crypto import keccak
+import contextlib
 
 __all__ = ["keccak"]
 SUPPORTED_SODEX_SIGNED_ACTIONS = frozenset(
@@ -44,7 +45,12 @@ class SoDEXDryRunSigner:
     signer_type = "dry-run"
 
     def sign_typed_payload(
-        self, *, domain: str, account_id: int, payload_hash: str, nonce: int,
+        self,
+        *,
+        domain: str,
+        account_id: int,
+        payload_hash: str,
+        nonce: int,
     ) -> str:
         raise SoDEXNotReadyError(
             "SoDEX dry-run signer refuses to sign — configure a real signer with SODEX_PRIVATE_KEY or SODEX_AWS_KMS_KEY_ARN environment variables.",
@@ -55,7 +61,12 @@ class SoDEXSigner(Protocol):
     signer_type: str
 
     def sign_typed_payload(
-        self, *, domain: str, account_id: int, payload_hash: str, nonce: int,
+        self,
+        *,
+        domain: str,
+        account_id: int,
+        payload_hash: str,
+        nonce: int,
     ) -> str: ...
 
 
@@ -79,7 +90,10 @@ class SoDEXPrivateKeySigner:
     signer_type = "evm-private-key"
 
     def __init__(
-        self, *, private_key: str | None, environment: str = "mainnet",
+        self,
+        *,
+        private_key: str | None,
+        environment: str = "mainnet",
     ) -> None:
         if not private_key:
             raise SoDEXConfigError("SoDEX private key is required for live signing")
@@ -87,7 +101,12 @@ class SoDEXPrivateKeySigner:
         self.environment = environment
 
     def sign_typed_payload(
-        self, *, domain: str, account_id: int, payload_hash: str, nonce: int,
+        self,
+        *,
+        domain: str,
+        account_id: int,
+        payload_hash: str,
+        nonce: int,
     ) -> str:
         _validate_domain(domain=domain, environment=self.environment)
         typed_data = build_exchange_action_typed_data(
@@ -99,7 +118,8 @@ class SoDEXPrivateKeySigner:
         return prefixed_eip712_signature(
             "0x"
             + Account.sign_message(
-                encode_typed_data(full_message=typed_data), private_key=self.private_key,
+                encode_typed_data(full_message=typed_data),
+                private_key=self.private_key,
             ).signature.hex(),
         )
 
@@ -119,7 +139,8 @@ class SoDEXNonceManager:
         if store_path is not None and store_path.exists():
             for key, values in dict(json.loads(store_path.read_text()) or {}).items():
                 self._seen[str(key)] = deque(
-                    [int(v) for v in values], maxlen=self.high_water_size,
+                    [int(v) for v in values],
+                    maxlen=self.high_water_size,
                 )
 
     def next_nonce(self, api_key_name: str) -> int:
@@ -163,17 +184,17 @@ class SoDEXNonceManager:
             ensure_ascii=True,
         )
         fd, tmp_path = tempfile.mkstemp(
-            prefix=".nonce-", suffix=".tmp", dir=str(self.store_path.parent),
+            prefix=".nonce-",
+            suffix=".tmp",
+            dir=str(self.store_path.parent),
         )
         try:
             with os.fdopen(fd, "w") as fh:
                 fh.write(data)
             os.replace(tmp_path, self.store_path)
         except OSError:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
 
 
@@ -200,7 +221,10 @@ def payload_hash(payload: OrderedDict[str, Any]) -> str:
 
 
 def build_signed_headers(
-    *, api_key_name: str, signature: str, nonce: int,
+    *,
+    api_key_name: str,
+    signature: str,
+    nonce: int,
 ) -> dict[str, str]:
     if not api_key_name:
         raise SoDEXConfigError("X-API-Key name is required")
@@ -216,7 +240,11 @@ def build_signed_headers(
 
 
 def build_signature_input(
-    *, domain: str, account_id: int, body: OrderedDict[str, Any], nonce: int,
+    *,
+    domain: str,
+    account_id: int,
+    body: OrderedDict[str, Any],
+    nonce: int,
 ) -> dict[str, Any]:
     validate_action_payload(body)
     return {
@@ -261,7 +289,11 @@ def build_eip712_domain(*, domain: str, environment: str = "mainnet") -> dict[st
 
 
 def build_exchange_action_typed_data(
-    *, domain: str, environment: str, payload_hash_value: str, nonce: int,
+    *,
+    domain: str,
+    environment: str,
+    payload_hash_value: str,
+    nonce: int,
 ) -> dict[str, Any]:
     if not str(payload_hash_value).startswith("0x"):
         raise SoDEXConfigError("payloadHash must be a 0x-prefixed bytes32 hex string")
@@ -331,7 +363,10 @@ def _pab(action: str, params: list[tuple[str, Any]]) -> OrderedDict[str, Any]:
 
 
 def perps_new_order_body(
-    *, account_id: int, symbol_id: int, orders: list[OrderedDict[str, Any]],
+    *,
+    account_id: int,
+    symbol_id: int,
+    orders: list[OrderedDict[str, Any]],
 ) -> OrderedDict[str, Any]:
     if not orders:
         raise SoDEXConfigError("Perps order batch cannot be empty")
@@ -352,7 +387,11 @@ def perps_new_order_body(
 
 
 def perps_update_leverage_body(
-    *, account_id: int, symbol_id: int, leverage: int, margin_mode: int,
+    *,
+    account_id: int,
+    symbol_id: int,
+    leverage: int,
+    margin_mode: int,
 ) -> OrderedDict[str, Any]:
     return _pab(
         "updateLeverage",
@@ -366,7 +405,10 @@ def perps_update_leverage_body(
 
 
 def perps_cancel_item(
-    *, symbol_id: int, order_id: int | None = None, cl_ord_id: str | None = None,
+    *,
+    symbol_id: int,
+    order_id: int | None = None,
+    cl_ord_id: str | None = None,
 ) -> OrderedDict[str, Any]:
     if (order_id is None and (not cl_ord_id)) or (order_id is not None and cl_ord_id):
         raise SoDEXConfigError(
@@ -382,7 +424,9 @@ def perps_cancel_item(
 
 
 def perps_cancel_order_body(
-    *, account_id: int, cancels: list[OrderedDict[str, Any]],
+    *,
+    account_id: int,
+    cancels: list[OrderedDict[str, Any]],
 ) -> OrderedDict[str, Any]:
     if not cancels:
         raise SoDEXConfigError("Perps cancel batch cannot be empty")
@@ -399,7 +443,9 @@ def perps_cancel_order_body(
 
 
 def perps_schedule_cancel_body(
-    *, account_id: int, scheduled_timestamp: int | None = None,
+    *,
+    account_id: int,
+    scheduled_timestamp: int | None = None,
 ) -> OrderedDict[str, Any]:
     return _pab(
         "scheduleCancel",
@@ -414,7 +460,10 @@ def perps_schedule_cancel_body(
 
 
 def perps_update_margin_body(
-    *, account_id: int, symbol_id: int, amount: str,
+    *,
+    account_id: int,
+    symbol_id: int,
+    amount: str,
 ) -> OrderedDict[str, Any]:
     if not isinstance(amount, str) or not amount.strip():
         raise SoDEXConfigError("UpdateMargin amount must be a non-empty DecimalString")

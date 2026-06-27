@@ -41,7 +41,8 @@ class ReconciliationEngine:
         if float(np.std(bt)) > 0 and float(np.std(pt)) > 0:
             correlation = float(
                 np.corrcoef(np.asarray(bt, dtype=float), np.asarray(pt, dtype=float))[
-                    0, 1,
+                    0,
+                    1,
                 ],
             )
         else:

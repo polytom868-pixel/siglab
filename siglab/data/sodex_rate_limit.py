@@ -35,7 +35,11 @@ class SoDEXError(RuntimeError):
     """Base class for all SoDEX errors (transport, rate-limit, upstream, weight)."""
 
     def __init__(
-        self, message: str, *, status_code: int | None = None, payload: object = None,
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        payload: object = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -73,7 +77,9 @@ class SoDEXWeightScheduler:
 
     @staticmethod
     def documented_weight(
-        endpoint: str, *, default: int = SODEX_DEFAULT_ENDPOINT_WEIGHT,
+        endpoint: str,
+        *,
+        default: int = SODEX_DEFAULT_ENDPOINT_WEIGHT,
     ) -> int:
         return int(SODEX_ENDPOINT_WEIGHTS.get(endpoint, default))
 

@@ -64,6 +64,7 @@ class FilterableListWidget(Static, Generic[T]):
         items = getattr(self, self._items_reactive)
         if items and 0 <= self.selected_index < len(items):
             return items[self.selected_index]
+        return None
 
     def toggle_select(self) -> None:
         """Toggle multi-select on the current item."""

@@ -7,6 +7,7 @@ import math
 import os
 import sqlite3
 import time
+import httpx
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -126,7 +127,9 @@ _config_to_dict = _ctd
 
 
 def _dr(
-    db_path: str | Path, track: str | None = None, family: str | None = None,
+    db_path: str | Path,
+    track: str | None = None,
+    family: str | None = None,
 ) -> list[dict[str, Any]]:
     path = Path(db_path)
     if not path.exists():
@@ -178,7 +181,9 @@ def _dr(
 
 
 def _rs(
-    db_path: str | Path, track: str | None = None, family: str | None = None,
+    db_path: str | Path,
+    track: str | None = None,
+    family: str | None = None,
 ) -> list[dict[str, Any]]:
     rows = _dr(db_path, track=track, family=family)
     runs_map: dict[str, dict[str, Any]] = {}
@@ -475,7 +480,8 @@ class DashboardState:
             normalized = {**row}
             normalized["stages"] = sorted(row["stages"])
             normalized["latency_cost_ms"] = round(
-                float(normalized["latency_cost_ms"]), 3,
+                float(normalized["latency_cost_ms"]),
+                3,
             )
             report.append(normalized)
         return report
@@ -557,7 +563,8 @@ class DashboardState:
                 },
             )
         placeholders.sort(
-            key=lambda row: str(row.get("last_created_at") or ""), reverse=True,
+            key=lambda row: str(row.get("last_created_at") or ""),
+            reverse=True,
         )
         return placeholders
 
@@ -572,7 +579,10 @@ class DashboardState:
         )
 
     def _aes(
-        self, *, track: str | None = None, family: str | None = None,
+        self,
+        *,
+        track: str | None = None,
+        family: str | None = None,
     ) -> list[dict[str, Any]]:
         if (db_path := self._dbp()) is None:
             return []
@@ -584,7 +594,10 @@ class DashboardState:
         return _now_iso()
 
     def _ae(
-        self, experiment: dict[str, Any], *, include_artifact: bool = False,
+        self,
+        experiment: dict[str, Any],
+        *,
+        include_artifact: bool = False,
     ) -> dict[str, Any]:
         spec = {**experiment.get("spec", {})}
         summary = {**experiment.get("summary", {})}
@@ -593,7 +606,8 @@ class DashboardState:
         artifact = {**experiment.get("artifact", {})} if include_artifact else {}
         if not artifact and raw_artifact_path and (self.config is not None):
             artifact_path = resolve_path_from_root(
-                raw_artifact_path, root_dir=self.config.root_dir,
+                raw_artifact_path,
+                root_dir=self.config.root_dir,
             )
             if artifact_path.exists():
                 try:
@@ -605,8 +619,7 @@ class DashboardState:
         )
         median_cagr = summary.get("median_cagr")
         if "median_cagr" not in summary or not (
-            isinstance(median_cagr, (int, float))
-            and math.isfinite(float(median_cagr))
+            isinstance(median_cagr, (int, float)) and math.isfinite(float(median_cagr))
         ):
             windows = artifact.get("windows") or []
             cagr_values = [
@@ -763,10 +776,12 @@ class DashboardState:
             "long_enabled": params.get("long_enabled"),
             "short_enabled": params.get("short_enabled"),
             "hedge_mode": params.get(
-                "hedge_mode", compiled_metadata.get("hedge_mode", "none"),
+                "hedge_mode",
+                compiled_metadata.get("hedge_mode", "none"),
             ),
             "hedge_ratio": params.get(
-                "hedge_ratio", compiled_metadata.get("hedge_ratio"),
+                "hedge_ratio",
+                compiled_metadata.get("hedge_ratio"),
             ),
         }
         experiment["feature_hash"] = experiment.get(
@@ -819,7 +834,8 @@ class DashboardState:
             experiment["run_position"] = run_position_by_session[run_session_id]
             score = float(experiment["summary"].get("aggregate_score", 0.0))
             best_by_track_metric[track_name] = max(
-                score, best_by_track_metric.get(track_name, float("-inf")),
+                score,
+                best_by_track_metric.get(track_name, float("-inf")),
             )
             experiment["best_so_far_aggregate_score"] = best_by_track_metric[track_name]
         return experiments
@@ -861,10 +877,14 @@ class DashboardState:
             ],
         }
         return canonical_run
+
     def experiments_payload(
-        self, track: str | None = None, family: str | None = None,
+        self,
+        track: str | None = None,
+        family: str | None = None,
     ) -> dict[str, Any]:
         import time
+
         cache_key = f"{track}:{family}"
         now = time.monotonic()
         if (
@@ -880,19 +900,13 @@ class DashboardState:
         summary: dict[str, Any] = {
             "experiment_count": len(experiments),
             "run_count": len(runs),
-            "benchmark_run_count": sum(
-                1 for row in runs if row.get("benchmark_mode")
-            ),
+            "benchmark_run_count": sum(1 for row in runs if row.get("benchmark_mode")),
             "harness_run_count": sum(
                 1 for row in runs if not row.get("benchmark_mode")
             ),
             "deployd_count": sum(1 for row in experiments if row["deployd"]),
             "tool_traced_count": sum(
-
-                    1
-                    for row in experiments
-                    if row.get("tool_trace", {}).get("tool_calls")
-
+                1 for row in experiments if row.get("tool_trace", {}).get("tool_calls")
             ),
             "tracks": cast(dict[str, dict[str, Any]], {}),
             "families": sorted({row["family"] for row in scoped_rows}),
@@ -902,7 +916,8 @@ class DashboardState:
             if not rows:
                 continue
             best = max(
-                rows, key=lambda row: float(row["summary"].get("aggregate_score", 0.0)),
+                rows,
+                key=lambda row: float(row["summary"].get("aggregate_score", 0.0)),
             )
             summary["tracks"][track_name] = {
                 "label": track_label(track_name),
@@ -930,7 +945,9 @@ class DashboardState:
         return result
 
     def runs_payload(
-        self, track: str | None = None, family: str | None = None,
+        self,
+        track: str | None = None,
+        family: str | None = None,
     ) -> dict[str, Any]:
         experiments = self._aes(track=track, family=family)
         if (db_path := self._dbp()) is None:
@@ -968,7 +985,8 @@ class DashboardState:
                     ),
                     "median_calmar": experiment.get("summary", {}).get("median_calmar"),
                     "pre_audit_canonical_total_return": experiment.get(
-                        "summary", {},
+                        "summary",
+                        {},
                     ).get("pre_audit_canonical_total_return"),
                     "validation_total_return": experiment.get("summary", {}).get(
                         "validation_total_return",
@@ -1082,7 +1100,8 @@ class DashboardState:
             }
         mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
         age_seconds = max(
-            0.0, (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds(),
+            0.0,
+            (datetime.now(UTC) - mtime.astimezone(UTC)).total_seconds(),
         )
         return {
             "status": "present",
@@ -1256,7 +1275,10 @@ class DashboardState:
         }
 
     async def deploy_experiment(
-        self, *, spec_hash: str, payload: dict[str, Any],
+        self,
+        *,
+        spec_hash: str,
+        payload: dict[str, Any],
     ) -> dict[str, Any]:
         if self.config is None:
             return {
@@ -1266,7 +1288,9 @@ class DashboardState:
             }
         store = self.deployment_store or DeploymentStore(self.config.ancestry_db_path)
         manager = LiveDeploymentManager(
-            self.config, store, claude=ClaudeClient(self.config),
+            self.config,
+            store,
+            claude=ClaudeClient(self.config),
         )
         record = await manager.deploy(
             spec_hash=spec_hash,
@@ -1346,7 +1370,8 @@ async def health(request: Request) -> dict[str, Any]:
         "status": "ok",
         "version": SIGLAB_VERSION,
         "uptime_seconds": round(
-            time.time() - request.app.state.dashboard.start_time, 3,
+            time.time() - request.app.state.dashboard.start_time,
+            3,
         ),
     }
 
@@ -1390,19 +1415,25 @@ async def get_config(request: Request) -> dict[str, Any]:
 
 @router.get("/api/experiments")
 async def api_experiments(
-    request: Request, track: str | None = None, family: str | None = None,
+    request: Request,
+    track: str | None = None,
+    family: str | None = None,
 ) -> dict[str, Any]:
     return request.app.state.dashboard.experiments_payload(
-        track=canonical_track_name(track) if track else None, family=family,
+        track=canonical_track_name(track) if track else None,
+        family=family,
     )
 
 
 @router.get("/api/runs")
 async def api_runs(
-    request: Request, track: str | None = None, family: str | None = None,
+    request: Request,
+    track: str | None = None,
+    family: str | None = None,
 ) -> dict[str, Any]:
     return request.app.state.dashboard.runs_payload(
-        track=canonical_track_name(track) if track else None, family=family,
+        track=canonical_track_name(track) if track else None,
+        family=family,
     )
 
 
@@ -1429,13 +1460,16 @@ async def api_experiment_deploy(request: Request, spec_hash: str) -> dict[str, A
     except (json.JSONDecodeError, TypeError, ValueError):
         body = {}
     return await request.app.state.dashboard.deploy_experiment(
-        spec_hash=spec_hash, payload=body,
+        spec_hash=spec_hash,
+        payload=body,
     )
 
 
 @router.get("/api/search")
 async def api_search(
-    request: Request, q: str = "", limit: int = 20,
+    request: Request,
+    q: str = "",
+    limit: int = 20,
 ) -> dict[str, Any]:
     """Search across runs, experiments, and actions."""
     query = q.strip().lower()
@@ -1454,13 +1488,17 @@ async def api_search(
         family = str(run.get("family", ""))
         searchable = f"{run_id} {label} {track} {family}".lower()
         if query in searchable:
-            results.append({
-                "type": "run",
-                "title": label or run_id,
-                "subtitle": f"{track} · {family}" if track and family else track or family,
-                "url": f"/runs/{run_id}",
-                "icon": "📊",
-            })
+            results.append(
+                {
+                    "type": "run",
+                    "title": label or run_id,
+                    "subtitle": f"{track} · {family}"
+                    if track and family
+                    else track or family,
+                    "url": f"/runs/{run_id}",
+                    "icon": "📊",
+                }
+            )
 
     # Search experiments
     experiments_data = dashboard.experiments_payload()
@@ -1471,56 +1509,111 @@ async def api_search(
         track = str(exp.get("track", ""))
         searchable = f"{spec_hash} {hypothesis} {family} {track}".lower()
         if query in searchable:
-            results.append({
-                "type": "experiment",
-                "title": hypothesis[:80] or spec_hash[:16],
-                "subtitle": f"{family} · {track}",
-                "url": f"/experiments/{spec_hash}",
-                "icon": "🧪",
-            })
+            results.append(
+                {
+                    "type": "experiment",
+                    "title": hypothesis[:80] or spec_hash[:16],
+                    "subtitle": f"{family} · {track}",
+                    "url": f"/experiments/{spec_hash}",
+                    "icon": "🧪",
+                }
+            )
 
     # Search actions (static list)
     actions = [
-        {"title": "View Ops Board", "url": "/ops", "icon": "📋", "keywords": "ops board operations status"},
-        {"title": "View Dashboard", "url": "/", "icon": "📊", "keywords": "dashboard runs home"},
-        {"title": "Export Runs (CSV)", "url": "/api/export/runs?format=csv", "icon": "📥", "keywords": "export runs csv download"},
-        {"title": "Export Runs (JSON)", "url": "/api/export/runs?format=json", "icon": "📥", "keywords": "export runs json download"},
-        {"title": "Export Experiments (CSV)", "url": "/api/export/experiments?format=csv", "icon": "📥", "keywords": "export experiments csv download"},
-        {"title": "Export Experiments (JSON)", "url": "/api/export/experiments?format=json", "icon": "📥", "keywords": "export experiments json download"},
-        {"title": "Refresh Data", "url": "#", "icon": "🔄", "keywords": "refresh reload update"},
-        {"title": "Toggle Theme", "url": "#", "icon": "🌙", "keywords": "theme dark light mode"},
-        {"title": "Help & Documentation", "url": "#", "icon": "❓", "keywords": "help documentation guide glossary metrics"},
+        {
+            "title": "View Ops Board",
+            "url": "/ops",
+            "icon": "📋",
+            "keywords": "ops board operations status",
+        },
+        {
+            "title": "View Dashboard",
+            "url": "/",
+            "icon": "📊",
+            "keywords": "dashboard runs home",
+        },
+        {
+            "title": "Export Runs (CSV)",
+            "url": "/api/export/runs?format=csv",
+            "icon": "📥",
+            "keywords": "export runs csv download",
+        },
+        {
+            "title": "Export Runs (JSON)",
+            "url": "/api/export/runs?format=json",
+            "icon": "📥",
+            "keywords": "export runs json download",
+        },
+        {
+            "title": "Export Experiments (CSV)",
+            "url": "/api/export/experiments?format=csv",
+            "icon": "📥",
+            "keywords": "export experiments csv download",
+        },
+        {
+            "title": "Export Experiments (JSON)",
+            "url": "/api/export/experiments?format=json",
+            "icon": "📥",
+            "keywords": "export experiments json download",
+        },
+        {
+            "title": "Refresh Data",
+            "url": "#",
+            "icon": "🔄",
+            "keywords": "refresh reload update",
+        },
+        {
+            "title": "Toggle Theme",
+            "url": "#",
+            "icon": "🌙",
+            "keywords": "theme dark light mode",
+        },
+        {
+            "title": "Help & Documentation",
+            "url": "#",
+            "icon": "❓",
+            "keywords": "help documentation guide glossary metrics",
+        },
     ]
     for action in actions:
         searchable = f"{action['title']} {action['keywords']}".lower()
         if query in searchable:
-            results.append({
-                "type": "action",
-                "title": action["title"],
-                "subtitle": "Action",
-                "url": action["url"],
-                "icon": action["icon"],
-            })
+            results.append(
+                {
+                    "type": "action",
+                    "title": action["title"],
+                    "subtitle": "Action",
+                    "url": action["url"],
+                    "icon": action["icon"],
+                }
+            )
 
     # Limit results
     results = results[:limit]
 
     return {"results": results, "query": q, "count": len(results)}
 
+
 @router.get("/api/export/runs")
 async def api_export_runs(
-    request: Request, format: str = "json", track: str | None = None, family: str | None = None,
+    request: Request,
+    format: str = "json",
+    track: str | None = None,
+    family: str | None = None,
 ) -> Response:
     """Export runs as CSV or JSON."""
     dashboard = request.app.state.dashboard
     data = dashboard.runs_payload(
-        track=canonical_track_name(track) if track else None, family=family,
+        track=canonical_track_name(track) if track else None,
+        family=family,
     )
     runs = data.get("runs", [])
 
     if format == "csv":
         import csv
         import io
+
         output = io.StringIO()
         if runs:
             writer = csv.DictWriter(output, fieldnames=runs[0].keys())
@@ -1540,18 +1633,23 @@ async def api_export_runs(
 
 @router.get("/api/export/experiments")
 async def api_export_experiments(
-    request: Request, format: str = "json", track: str | None = None, family: str | None = None,
+    request: Request,
+    format: str = "json",
+    track: str | None = None,
+    family: str | None = None,
 ) -> Response:
     """Export experiments as CSV or JSON."""
     dashboard = request.app.state.dashboard
     data = dashboard.experiments_payload(
-        track=canonical_track_name(track) if track else None, family=family,
+        track=canonical_track_name(track) if track else None,
+        family=family,
     )
     experiments = data.get("experiments", [])
 
     if format == "csv":
         import csv
         import io
+
         output = io.StringIO()
         if experiments:
             # Flatten nested fields for CSV
@@ -1569,13 +1667,16 @@ async def api_export_experiments(
         return Response(
             content=output.getvalue(),
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=siglab_experiments.csv"},
+            headers={
+                "Content-Disposition": "attachment; filename=siglab_experiments.csv"
+            },
         )
     return Response(
         content=json.dumps(data, default=str, indent=2),
         media_type="application/json",
         headers={"Content-Disposition": "attachment; filename=siglab_experiments.json"},
     )
+
 
 @router.get("/ops-board")
 async def ops_board(request: Request) -> dict[str, Any]:
@@ -1683,11 +1784,17 @@ def _beg(state: DashboardState) -> dict[str, Any] | None:
 
     for source, count in source_counts.items():
         nodes[f"source:{source}"] = _n(
-            f"source:{source}", str(source), "source", int(count),
+            f"source:{source}",
+            str(source),
+            "source",
+            int(count),
         )
     for entity, count in entity_counts.items():
         nodes[f"entity:{entity}"] = _n(
-            f"entity:{entity}", str(entity), "entity", int(count),
+            f"entity:{entity}",
+            str(entity),
+            "entity",
+            int(count),
         )
     for link in links:
         if not isinstance(link, dict):
@@ -1741,7 +1848,7 @@ def _bsr(state: DashboardState) -> list[dict[str, Any]]:
         return []
     try:
         rows = state.lineage.dashboard_rows()
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         logger.warning("Failed to load skill report rows: %s", exc)
         return []
     skill_usage: dict[str, dict[str, Any]] = {}
@@ -1853,7 +1960,7 @@ def _crm(state: DashboardState) -> dict[str, Any]:
         return compute_risk_metrics(sessions_dir)
     except ImportError:
         return {**empty_risk_response(), "note": "numpy not available"}
-    except Exception as exc:
+    except (OSError, ValueError, TypeError) as exc:
         logger.warning("Risk computation failed: %s", exc)
         return {**empty_risk_response(), "note": "Error computing risk metrics"}
 
@@ -1872,7 +1979,7 @@ async def market_symbols(request: Request) -> dict[str, Any]:
     try:
         symbols = await feeds.fetch_symbols()
         return {"symbols": symbols, "count": len(symbols)}
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market symbols error: %s", exc)
         return {"symbols": [], "error": "Internal error"}
 
@@ -1885,14 +1992,17 @@ async def market_tickers(request: Request) -> dict[str, Any]:
     try:
         tickers = await feeds.fetch_tickers()
         return {"tickers": tickers, "count": len(tickers)}
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market tickers error: %s", exc)
         return {"tickers": [], "error": "Internal error"}
 
 
 @router.get("/market/klines/{symbol}")
 async def market_klines(
-    request: Request, symbol: str, interval: str = "1h", limit: int = 60,
+    request: Request,
+    symbol: str,
+    interval: str = "1h",
+    limit: int = 60,
 ) -> dict[str, Any]:
     logger.debug("Market klines requested: %s", symbol)
     if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
@@ -1912,14 +2022,16 @@ async def market_klines(
             "interval": interval,
             "count": len(records),
         }
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market klines error (%s): %s", symbol, exc)
         return {"klines": [], "symbol": symbol, "error": "Internal error"}
 
 
 @router.get("/market/orderbook/{symbol}")
 async def market_orderbook(
-    request: Request, symbol: str, limit: int = 20,
+    request: Request,
+    symbol: str,
+    limit: int = 20,
 ) -> dict[str, Any]:
     logger.debug("Market orderbook requested: %s", symbol)
     if (feeds := request.app.state.dashboard.get_sodex_feeds()) is None:
@@ -1936,7 +2048,7 @@ async def market_orderbook(
             "asks": data.get("asks", []),
             "symbol": symbol,
         }
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("Market orderbook error (%s): %s", symbol, exc)
         return {"bids": [], "asks": [], "symbol": symbol, "error": "Internal error"}
 
@@ -1954,7 +2066,9 @@ async def partial_dashboard_summary(request: Request) -> Any:
 
 @router.get("/partials/dashboard/runs")
 async def partial_dashboard_runs(
-    request: Request, track: str = "all", family: str = "all",
+    request: Request,
+    track: str = "all",
+    family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
@@ -1973,12 +2087,13 @@ async def partial_dashboard_runs(
     )
 
 
-
 _PARTIAL_OPS = {
     "summary": (
         "partials/ops/_ops_summary.html",
         lambda s, r, tmpl: tmpl.TemplateResponse(
-            r, "partials/ops/_ops_summary.html", {"request": r, **s.ops_payload()},
+            r,
+            "partials/ops/_ops_summary.html",
+            {"request": r, **s.ops_payload()},
         ),
     ),
     "artifact_health": (
@@ -2055,14 +2170,18 @@ async def partial_ops_router(request: Request, name: str) -> Any:
 
 @router.get("/partials/run/summary")
 async def partial_run_summary(
-    request: Request, run_id: str = "", track: str = "all", family: str = "all",
+    request: Request,
+    run_id: str = "",
+    track: str = "all",
+    family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
     payload = request.app.state.dashboard.experiments_payload(
-        track=_track, family=_family,
+        track=_track,
+        family=_family,
     )
     runs = payload.get("runs", [])
     experiments = payload.get("experiments", [])
@@ -2086,7 +2205,9 @@ async def partial_run_summary(
 
 @router.get("/partials/run/family_pills")
 async def partial_run_family_pills(
-    request: Request, run_id: str = "", family: str = "all",
+    request: Request,
+    run_id: str = "",
+    family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
@@ -2116,7 +2237,8 @@ async def partial_run_improvement_chart(
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
     experiments = request.app.state.dashboard.experiments_payload(
-        track=_track, family=_family,
+        track=_track,
+        family=_family,
     ).get("experiments", [])
     if run_id:
         experiments = [e for e in experiments if e.get("run_session_id") == run_id]
@@ -2129,14 +2251,18 @@ async def partial_run_improvement_chart(
 
 @router.get("/partials/run/experiment_table")
 async def partial_run_experiment_table(
-    request: Request, run_id: str = "", track: str = "all", family: str = "all",
+    request: Request,
+    run_id: str = "",
+    track: str = "all",
+    family: str = "all",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
     experiments = request.app.state.dashboard.experiments_payload(
-        track=_track, family=_family,
+        track=_track,
+        family=_family,
     ).get("experiments", [])
     if run_id:
         experiments = [e for e in experiments if e.get("run_session_id") == run_id]
@@ -2179,7 +2305,8 @@ _PARTIAL_EXP = {
         {
             "request": r,
             "experiment": (s.experiment_detail_payload(spec_hash) or {}).get(
-                "experiment", {},
+                "experiment",
+                {},
             )
             or {}
             if spec_hash
@@ -2239,7 +2366,8 @@ _PARTIAL_EXP = {
         {
             "request": r,
             "experiment": (s.experiment_detail_payload(spec_hash) or {}).get(
-                "experiment", {},
+                "experiment",
+                {},
             )
             or {}
             if spec_hash
@@ -2294,7 +2422,9 @@ _PARTIAL_EXP = {
 
 @router.get("/partials/experiment/{name}")
 async def partial_experiment_router(
-    request: Request, name: str, spec_hash: str = "",
+    request: Request,
+    name: str,
+    spec_hash: str = "",
 ) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
@@ -2309,7 +2439,9 @@ async def template_dashboard(request: Request) -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     return tmpl.TemplateResponse(
-        request, "dashboard.html", {"request": request, "track": "all", "family": "all"},
+        request,
+        "dashboard.html",
+        {"request": request, "track": "all", "family": "all"},
     )
 
 
@@ -2329,7 +2461,9 @@ async def template_experiment(request: Request, spec_hash: str = "") -> Any:
     if isinstance(tmpl := request.app.state.dashboard.templates, dict):
         return tmpl
     return tmpl.TemplateResponse(
-        request, "experiment.html", {"request": request, "spec_hash": spec_hash},
+        request,
+        "experiment.html",
+        {"request": request, "spec_hash": spec_hash},
     )
 
 
@@ -2468,25 +2602,33 @@ def create_app() -> FastAPI:
     @app.get("/")
     async def serve_dashboard(request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "dashboard.html", {"request": request},
+            request,
+            "dashboard.html",
+            {"request": request},
         )
 
     @app.get("/ops")
     async def serve_ops(request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "ops.html", {"request": request},
+            request,
+            "ops.html",
+            {"request": request},
         )
 
     @app.get("/runs/{run_id:path}")
     async def serve_run_page(run_id: str, request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "run.html", {"request": request, "run_id": run_id},
+            request,
+            "run.html",
+            {"request": request, "run_id": run_id},
         )
 
     @app.get("/experiments/{spec_hash:path}")
     async def serve_experiment_page(spec_hash: str, request: Request):
         return request.app.state.dashboard.templates.TemplateResponse(
-            request, "experiment.html", {"request": request, "spec_hash": spec_hash},
+            request,
+            "experiment.html",
+            {"request": request, "spec_hash": spec_hash},
         )
 
     if _static_dir.is_dir():
@@ -2522,7 +2664,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             except asyncio.TimeoutError:
                 try:
                     await _send_json(
-                        websocket, {"type": "ping", "timestamp": _now_iso()},
+                        websocket,
+                        {"type": "ping", "timestamp": _now_iso()},
                     )
                 except (OSError, ValueError):
                     logger.debug("WebSocket send error in ping keepalive")
@@ -2534,7 +2677,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 message = json.loads(raw)
             except (json.JSONDecodeError, TypeError, ValueError):
                 await _send_json(
-                    websocket, {"type": "error", "message": "Invalid JSON payload"},
+                    websocket,
+                    {"type": "error", "message": "Invalid JSON payload"},
                 )
                 continue
             await _handle_message(
@@ -2547,7 +2691,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             )
     except WebSocketDisconnect:
         pass
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         logger.warning("WS error: %s", exc)
     finally:
         for task in risk_push_tasks:
@@ -2563,12 +2707,17 @@ async def _periodic_risk_push(ws: WebSocket) -> None:
         while True:
             await asyncio.sleep(15)
             await _stream_risk_scores(ws)
-    except (asyncio.CancelledError, Exception):
+    except (asyncio.CancelledError, OSError, ValueError):
         pass
 
 
 async def _handle_subscribe(
-    websocket, message, manager, subscribed_symbols, subscription_types, risk_push_tasks,
+    websocket,
+    message,
+    manager,
+    subscribed_symbols,
+    subscription_types,
+    risk_push_tasks,
 ):
     symbol = str(message.get("symbol") or "").strip().upper()
     sub_type = str(message.get("subscription_type") or "klines").strip().lower()
@@ -2612,7 +2761,12 @@ async def _handle_subscribe(
 
 
 async def _handle_unsubscribe(
-    websocket, message, manager, subscribed_symbols, subscription_types, risk_push_tasks,
+    websocket,
+    message,
+    manager,
+    subscribed_symbols,
+    subscription_types,
+    risk_push_tasks,
 ):
     symbol = str(message.get("symbol") or "").strip().upper()
     if symbol:
@@ -2623,7 +2777,8 @@ async def _handle_unsubscribe(
             manager.unsubscribe(sym, websocket)
         subscribed_symbols.clear()
     await _send_json(
-        websocket, {"type": "unsubscribed", "symbol": symbol or "all"},
+        websocket,
+        {"type": "unsubscribed", "symbol": symbol or "all"},
     )
 
 
@@ -2640,10 +2795,12 @@ async def _handle_message(
     _WS_HANDLERS.update(
         {
             "ping": lambda: _send_json(
-                websocket, {"type": "pong", "timestamp": _now_iso()},
+                websocket,
+                {"type": "pong", "timestamp": _now_iso()},
             ),
             "pong": lambda: _send_json(
-                websocket, {"type": "pong", "timestamp": _now_iso()},
+                websocket,
+                {"type": "pong", "timestamp": _now_iso()},
             ),
             "subscribe": lambda: _handle_subscribe(
                 websocket,
@@ -2679,7 +2836,9 @@ async def _handle_message(
 
 
 async def _stream_initial_data(
-    websocket: WebSocket, symbol: str, sub_type: str,
+    websocket: WebSocket,
+    symbol: str,
+    sub_type: str,
 ) -> None:
     if sub_type == "klines":
         await _send_json(
@@ -2706,7 +2865,8 @@ async def _stream_initial_data(
 
 
 async def _fetch_cached_klines(
-    websocket: WebSocket, symbol: str,
+    websocket: WebSocket,
+    symbol: str,
 ) -> list[dict[str, Any]]:
     try:
         if (feeds := websocket.app.state.dashboard.get_sodex_feeds()) is not None:
@@ -2729,7 +2889,7 @@ async def _fetch_cached_klines(
                         if val is not None:
                             rec[col] = float(val)
                 return records
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError, TypeError) as exc:
         logger.warning("WS klines fetch error for %s: %s", symbol, exc)
     now = datetime.now(UTC)
     timestamp = int(now.timestamp() * 1000)
@@ -2758,7 +2918,7 @@ async def _fetch_cached_ticker(websocket: WebSocket, symbol: str) -> dict[str, A
                     "ask": float(t.get("askPrice", t.get("ask", 0.0))),
                     "last_price": float(t.get("lastPrice", t.get("close", 0.0))),
                 }
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError, TypeError) as exc:
         logger.warning("WS ticker fetch error for %s: %s", symbol, exc)
     return {"bid": 0.0, "ask": 0.0, "last_price": 0.0}
 
@@ -2808,9 +2968,10 @@ async def _stream_positions(websocket: WebSocket) -> None:
                 "note": "Paper trading not available",
             },
         )
-    except Exception as exc:
+    except (OSError, ValueError, TypeError) as exc:
         await _send_json(
-            websocket, {"type": "positions", "positions": [], "note": f"Error: {exc}"},
+            websocket,
+            {"type": "positions", "positions": [], "note": f"Error: {exc}"},
         )
 
 
@@ -2854,7 +3015,7 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
                 "note": "numpy not available",
             },
         )
-    except Exception as exc:
+    except (OSError, ValueError, TypeError) as exc:
         await _send_json(
             websocket,
             {"type": "risk_score", **empty_risk_response(), "note": f"Error: {exc}"},
@@ -2864,5 +3025,5 @@ async def _stream_risk_scores(websocket: WebSocket) -> None:
 async def _send_json(websocket: WebSocket, data: dict[str, Any]) -> None:
     try:
         await websocket.send_json(data)
-    except Exception:
+    except (OSError, ValueError):
         logger.debug("WebSocket send_json failed (client likely disconnected)")

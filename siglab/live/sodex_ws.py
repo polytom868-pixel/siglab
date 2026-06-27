@@ -130,7 +130,8 @@ class SoDEXWebSocketClient:
                 import websockets
 
                 self._connection = cast(
-                    WebSocketConnection, await websockets.connect(self.url),
+                    WebSocketConnection,
+                    await websockets.connect(self.url),
                 )
             else:
                 self._connection = await self._connect(self.url)
@@ -142,7 +143,10 @@ class SoDEXWebSocketClient:
         return conn
 
     async def subscribe(
-        self, params: dict[str, Any], *, request_id: int | None = None,
+        self,
+        params: dict[str, Any],
+        *,
+        request_id: int | None = None,
     ) -> dict[str, Any]:
         _v_sub(params)
         conn = await self.connect()
@@ -156,7 +160,10 @@ class SoDEXWebSocketClient:
         return ack
 
     async def unsubscribe(
-        self, params: dict[str, Any], *, request_id: int | None = None,
+        self,
+        params: dict[str, Any],
+        *,
+        request_id: int | None = None,
     ) -> dict[str, Any]:
         _v_sub(params)
         conn = await self.connect()

@@ -38,6 +38,7 @@ from siglab.live.sodex_signing import (
 )
 from siglab.risk.guardian import CircuitBreakerState, compute_position_size
 from siglab.schemas import SignalSpec
+import contextlib
 
 if TYPE_CHECKING:
     from siglab.data.sodex_feeds import SoDEXFeeds
@@ -247,7 +248,9 @@ def _val_ot(ot: str) -> PaperOrderType:
 
 def _val_tif(tif: str) -> PaperTimeInForce:
     return _coerce(
-        tif, PaperTimeInForce, "time_in_force; expected GTC, IOC, FOK, or GTX",
+        tif,
+        PaperTimeInForce,
+        "time_in_force; expected GTC, IOC, FOK, or GTX",
     )
 
 
@@ -395,7 +398,11 @@ class SoDEXPaperPerpsClient:
         return o.to_dict()
 
     def get_orders(
-        self, session_id: str, *, symbol: str | None = None, status: str | None = None,
+        self,
+        session_id: str,
+        *,
+        symbol: str | None = None,
+        status: str | None = None,
     ) -> list[dict[str, Any]]:
         s = self.get_session(session_id)
         orders = list(s.orders.values())
@@ -422,7 +429,10 @@ class SoDEXPaperPerpsClient:
         return o.to_dict()
 
     def get_positions(
-        self, session_id: str, *, symbol: str | None = None,
+        self,
+        session_id: str,
+        *,
+        symbol: str | None = None,
     ) -> list[dict[str, Any]]:
         s = self.get_session(session_id)
         ps = list(s.positions.values())
@@ -483,14 +493,16 @@ class SoDEXPaperPerpsClient:
         if isinstance(klines, pd.DataFrame):
             if klines.empty:
                 logger.warning(
-                    "Empty klines for session %s — no orders processed", session_id,
+                    "Empty klines for session %s — no orders processed",
+                    session_id,
                 )
                 return fills
             kd = self._df_to_kd(klines, symbol=symbol)
         elif isinstance(klines, list):
             if not klines:
                 logger.warning(
-                    "Empty klines list for session %s — no orders processed", session_id,
+                    "Empty klines list for session %s — no orders processed",
+                    session_id,
                 )
                 return fills
             kd = list(klines)
@@ -525,7 +537,10 @@ class SoDEXPaperPerpsClient:
         return fills
 
     def _df_to_kd(
-        self, df: pd.DataFrame, *, symbol: str | None = None,
+        self,
+        df: pd.DataFrame,
+        *,
+        symbol: str | None = None,
     ) -> list[dict[str, Any]]:
         return [
             {
@@ -623,15 +638,17 @@ class SoDEXPaperPerpsClient:
             pos.entry_price = fp
         else:
             lp = pos.quantity > 0
-            rd = (
-                (lp
-                and o.side == PaperOrderSide.SELL)
-                or (not lp and o.side == PaperOrderSide.BUY)
+            rd = (lp and o.side == PaperOrderSide.SELL) or (
+                not lp and o.side == PaperOrderSide.BUY
             )
             if rd:
                 cq = min(o.quantity, abs(pos.quantity))
                 pnl = compute_trade_pnl(
-                    fp, cq, pos.quantity, pos.entry_price, o.side.value,
+                    fp,
+                    cq,
+                    pos.quantity,
+                    pos.entry_price,
+                    o.side.value,
                 )
                 s.pnl += pnl
                 pos.realized_pnl += pnl
@@ -650,7 +667,10 @@ class SoDEXPaperPerpsClient:
                 aq = o.quantity if o.side == PaperOrderSide.BUY else -o.quantity
                 nq = pos.quantity + aq
                 pos.entry_price = compute_avg_entry(
-                    pos.quantity, pos.entry_price, aq, fp,
+                    pos.quantity,
+                    pos.entry_price,
+                    aq,
+                    fp,
                 )
                 pos.quantity = nq
         if pos.quantity == 0:
@@ -717,7 +737,10 @@ class SoDEXPaperPerpsClient:
         return any_
 
     async def process_funding(
-        self, session_id: str, *, force: bool = False,
+        self,
+        session_id: str,
+        *,
+        force: bool = False,
     ) -> list[dict[str, Any]]:
         s = self.get_session(session_id)
         if not s.positions:
@@ -737,9 +760,11 @@ class SoDEXPaperPerpsClient:
             return []
         try:
             mp = await self.feeds.fetch_mark_prices()
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             logger.warning(
-                "Failed to fetch funding rates for session %s: %s", session_id, exc,
+                "Failed to fetch funding rates for session %s: %s",
+                session_id,
+                exc,
             )
             return []
         fm: dict[str, float] = {}
@@ -788,10 +813,8 @@ class SoDEXPaperPerpsClient:
                 json.dump(data, f)
             os.replace(tmp, str(path))
         except (OSError, TypeError, ValueError):
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp)
-            except OSError:
-                pass
             raise
 
     def _load_ss(self, session_id: str) -> PaperSession:
@@ -1175,7 +1198,10 @@ class DirectionalPerpsSigLabStrategy(Strategy):
             if ai is None:
                 raise ValueError(f"SoDEX asset id not found for {sym}")
             await ad.update_leverage(
-                asset_id=ai, leverage=lv, is_cross=True, address=addr,
+                asset_id=ai,
+                leverage=lv,
+                is_cross=True,
+                address=addr,
             )
             ok_, r_ = await ad.place_market_order(
                 asset_id=ai,

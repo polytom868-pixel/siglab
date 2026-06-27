@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import httpx
 import time
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
@@ -41,6 +42,7 @@ from siglab.tui.formatting import (
 from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen, render_header
 from siglab.tui.widgets.sparkline import sparkline_text
+import contextlib
 
 logger = logging.getLogger(__name__)
 PNL_HISTORY_MAX = 120
@@ -67,7 +69,8 @@ class PositionsTableWidget(Static):
             result.append("  " + "─" * 68 + "\n", style=BORDER_DIM)
         else:
             result.append(
-                "  SYMBOL        SIZE       ENTRY      UNREAL PnL\n", style=TEXT_MUTED,
+                "  SYMBOL        SIZE       ENTRY      UNREAL PnL\n",
+                style=TEXT_MUTED,
             )
             result.append("  " + "─" * 50 + "\n", style=BORDER_DIM)
         for pos in self.positions:
@@ -299,12 +302,14 @@ class OrderHistoryWidget(Static):
             result.append("  " + "─" * 72 + "\n", style=BORDER_DIM)
         else:
             result.append(
-                "  TIME       SIDE  TYPE   SYM       QTY     STATUS\n", style=TEXT_MUTED,
+                "  TIME       SIDE  TYPE   SYM       QTY     STATUS\n",
+                style=TEXT_MUTED,
             )
             result.append("  " + "─" * 55 + "\n", style=BORDER_DIM)
         for o in self.orders[:50]:
             ts = time.strftime(
-                "%H:%M:%S", time.localtime(float(o.get("created_at", 0))),
+                "%H:%M:%S",
+                time.localtime(float(o.get("created_at", 0))),
             )
             sd = str(o.get("side", "?"))
             ot = str(o.get("order_type", "?"))
@@ -341,9 +346,17 @@ class OrderHistoryWidget(Static):
 
 
 class PaperScreen(BaseScreen):
-    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = (
-        [*BaseScreen.BINDINGS, Binding("s", "focus_symbol", "Symbol", show=True), Binding("b", "toggle_side", "Buy/Sell", show=True), Binding("t", "toggle_type", "Type", show=True), Binding("Q", "focus_qty", "Qty", show=True), Binding("p", "focus_price", "Price", show=True), Binding("enter", "submit_order", "Submit", show=True), Binding("n", "new_session", "New Session", show=True), Binding("c", "cancel_order", "Cancel Order", show=True)]
-    )
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+        *BaseScreen.BINDINGS,
+        Binding("s", "focus_symbol", "Symbol", show=True),
+        Binding("b", "toggle_side", "Buy/Sell", show=True),
+        Binding("t", "toggle_type", "Type", show=True),
+        Binding("Q", "focus_qty", "Qty", show=True),
+        Binding("p", "focus_price", "Price", show=True),
+        Binding("enter", "submit_order", "Submit", show=True),
+        Binding("n", "new_session", "New Session", show=True),
+        Binding("c", "cancel_order", "Cancel Order", show=True),
+    ]
     session_id: reactive[str] = reactive("")
     session_name: reactive[str] = reactive("")
     _loading_widget_id: ClassVar[str] = "#paper-loading"
@@ -418,7 +431,10 @@ class PaperScreen(BaseScreen):
                 f"Session {self.session_id[:8]}... ready",
             )
             safe_query(
-                self, "#order-form", OrderFormWidget, lambda f: f.set_symbol("BTC-USD"),
+                self,
+                "#order-form",
+                OrderFormWidget,
+                lambda f: f.set_symbol("BTC-USD"),
             )
             await self._refresh_all()
         except (ConnectionError, TimeoutError, ValueError, KeyError) as exc:
@@ -440,7 +456,7 @@ class PaperScreen(BaseScreen):
             self._update_status_text(
                 f"Session {self.session_id[:8]}... . updated  [r]efresh  [s]ymbol [b]uy/sell [?]help",
             )
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             self._update_status_text(
                 f"Refresh error: {sanitize_status_text(str(exc), 60)}  [r]etry",
             )
@@ -519,7 +535,7 @@ class PaperScreen(BaseScreen):
                 timeout=3,
             )
             await self._refresh_all()
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             safe_query(
                 self,
                 "#order-form",
@@ -548,7 +564,7 @@ class PaperScreen(BaseScreen):
             params = self.query_one("#order-form", OrderFormWidget).get_order_params()
             if params:
                 await self._place_order(params)
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             logger.warning("Submit order failed: %s", exc)
 
     def action_new_session(self) -> None:
@@ -576,12 +592,13 @@ class PaperScreen(BaseScreen):
             return
         try:
             sym = (await self._api.cancel_paper_order(self.session_id, order_id)).get(
-                "symbol", "?",
+                "symbol",
+                "?",
             )
             self.status_text = f"Cancelled order for {sym}"
             self.notify(f"Order cancelled: {sym}", severity="information", timeout=3)
             await self._refresh_all()
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             self.status_text = f"Cancel error: {exc}"
             logger.warning("Cancel order error: %s", exc)
 
@@ -644,7 +661,8 @@ class _CancelOrderScreen(Screen[str | None]):
         ]
         yield Vertical(
             Static(
-                "Enter order # to cancel:\n" + "\n".join(ls), id="cancel-order-prompt",
+                "Enter order # to cancel:\n" + "\n".join(ls),
+                id="cancel-order-prompt",
             ),
             Input(id="cancel-order-field"),
             id="cancel-order-dialog",
@@ -787,7 +805,8 @@ class CorrelationHeatmapWidget(Static):
         mx, names = self.matrix, self.strategy_names
         if not mx or len(mx) < 2:
             result.append(
-                "\n  Need ≥2 strategies for\n  correlation analysis\n", style=TEXT_MUTED,
+                "\n  Need ≥2 strategies for\n  correlation analysis\n",
+                style=TEXT_MUTED,
             )
             return result
         n = len(mx)
@@ -856,9 +875,10 @@ class AlertStreamWidget(Static):
 
 
 class RiskScreen(BaseScreen):
-    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = (
-        [*BaseScreen.BINDINGS, Binding("f", "filter_alerts", "Filter", show=False)]
-    )
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+        *BaseScreen.BINDINGS,
+        Binding("f", "filter_alerts", "Filter", show=False),
+    ]
     _filter_severity: reactive[str] = reactive("all")
     _loading_widget_id: ClassVar[str] = "#risk-loading"
     _status_widget_id: ClassVar[str] = "#risk-status"
@@ -889,10 +909,8 @@ class RiskScreen(BaseScreen):
     async def on_unmount(self) -> None:
         if self._ws_task and not self._ws_task.done():
             self._ws_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._ws_task
-            except asyncio.CancelledError:
-                pass
         await super().on_unmount()
 
     async def _ws_risk_loop(self) -> None:
@@ -904,7 +922,7 @@ class RiskScreen(BaseScreen):
                 await self._api.ws_subscribe_risk(self._on_ws_risk_update)
             except asyncio.CancelledError:
                 return
-            except Exception as exc:
+            except (httpx.HTTPError, OSError, ValueError) as exc:
                 logger.debug("WS risk loop error (retry in %.0fs): %s", bo, exc)
                 await asyncio.sleep(bo)
                 bo = min(bo * 2, 30.0)
@@ -936,9 +954,11 @@ class RiskScreen(BaseScreen):
             self.status_text = "Live . Risk . WS updated"
             if cs is not None:
                 self.notify(
-                    f"Risk score updated: {cs:.2f}", severity="information", timeout=2,
+                    f"Risk score updated: {cs:.2f}",
+                    severity="information",
+                    timeout=2,
                 )
-        except Exception as exc:
+        except (ValueError, TypeError, KeyError) as exc:
             logger.debug("WS risk update handler error: %s", exc)
 
     async def _fetch_data(self) -> None:
@@ -984,7 +1004,7 @@ class RiskScreen(BaseScreen):
             )
             self._alerts = data.get("alerts", [])
             self._apply_alert_filter()
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             logger.debug("Risk data fetch failed: %s", exc)
             safe_query(
                 self,
@@ -1022,7 +1042,10 @@ class RiskScreen(BaseScreen):
             ]
         )
         safe_query(
-            self, "#risk-alerts", AlertStreamWidget, lambda w: setattr(w, "alerts", fl),
+            self,
+            "#risk-alerts",
+            AlertStreamWidget,
+            lambda w: setattr(w, "alerts", fl),
         )
 
     def action_move_down(self) -> None:

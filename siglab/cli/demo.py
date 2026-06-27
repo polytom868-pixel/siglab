@@ -77,7 +77,9 @@ def run_demo_run(args: argparse.Namespace) -> None:
         sosovalue_path = latest_path(evidence_dir, "*sosovalue*.jsonl")
         sodex_path = evidence_dir / "sodex_ws_evidence.jsonl"
         market = build_market_report(
-            entity="BTC", sosovalue_evidence=sosovalue_path, sodex_evidence=sodex_path,
+            entity="BTC",
+            sosovalue_evidence=sosovalue_path,
+            sodex_evidence=sodex_path,
         )
         market_summary = {
             "entity": market.get("entity"),
@@ -86,13 +88,17 @@ def run_demo_run(args: argparse.Namespace) -> None:
             "as_of": market.get("as_of"),
         }
         trace_paths = trace_paths_for_telemetry(
-            settings=settings, track="all", run_session_id=None,
+            settings=settings,
+            track="all",
+            run_session_id=None,
         )
         provider_metric_paths = provider_metric_paths_for_telemetry(
-            settings=settings, run_session_id=None,
+            settings=settings,
+            run_session_id=None,
         )
         telemetry = build_telemetry_payload(
-            trace_paths=trace_paths, provider_metric_paths=provider_metric_paths,
+            trace_paths=trace_paths,
+            provider_metric_paths=provider_metric_paths,
         )
         telemetry_summary = {
             "trace_count": telemetry.get("trace_count"),
@@ -219,7 +225,8 @@ def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
     from siglab.cli.telemetry import provider_metric_paths_for_telemetry
 
     provider_metric_paths = provider_metric_paths_for_telemetry(
-        settings=settings, run_session_id=None,
+        settings=settings,
+        run_session_id=None,
     )
     telemetry_path = runs_dir / "latest_telemetry_report.json"
     market_report_path = runs_dir / "market_report_latest.json"

@@ -7,7 +7,9 @@ from typing import Any
 
 
 def load_json_path(
-    value: str | Path | None, *, root_dir: Path | None = None,
+    value: str | Path | None,
+    *,
+    root_dir: Path | None = None,
 ) -> dict[str, Any] | None:
     if not value:
         return None
@@ -22,7 +24,11 @@ def load_json_path(
 
 
 def write_json(
-    path: Path, payload: object, *, indent: int = 2, ensure_ascii: bool = True,
+    path: Path,
+    payload: object,
+    *,
+    indent: int = 2,
+    ensure_ascii: bool = True,
 ) -> None:
     path.write_text(
         json.dumps(payload, indent=indent, ensure_ascii=ensure_ascii, default=str),

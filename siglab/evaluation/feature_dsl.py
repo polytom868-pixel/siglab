@@ -44,7 +44,10 @@ _ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def load_feature_spec(
-    root_dir: Path, *, track: str, family: str | None = None,
+    root_dir: Path,
+    *,
+    track: str,
+    family: str | None = None,
 ) -> dict[str, Any]:
     pld = yaml.safe_load((root_dir / "mutable" / "feature_lab.yaml").read_text())
     ts = pld.get("tracks", {}).get(storage_track_name(track) or track, {})
@@ -69,7 +72,10 @@ def load_feature_spec(
 
 
 def valid_expr(
-    expression: str, *, aliases: dict[str, str], raw_series: set[str],
+    expression: str,
+    *,
+    aliases: dict[str, str],
+    raw_series: set[str],
 ) -> bool:
     try:
         _eval(
@@ -85,13 +91,20 @@ def valid_expr(
 
 
 def resolve_feature_frames(
-    features: list[str], *, aliases: dict[str, str], raw_frames: dict[str, pd.DataFrame],
+    features: list[str],
+    *,
+    aliases: dict[str, str],
+    raw_frames: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
     cache: dict[str, pd.DataFrame] = {}
     resolved: dict[str, pd.DataFrame] = {}
     for ft in features:
         resolved[ft] = _eval(
-            ft, raw_frames=raw_frames, aliases=aliases, cache=cache, validate_only=False,
+            ft,
+            raw_frames=raw_frames,
+            aliases=aliases,
+            cache=cache,
+            validate_only=False,
         )
     return resolved
 
@@ -210,7 +223,10 @@ def _make_frame_periods_op(func: str):
 
 
 def _apply(
-    fn: str, args: list[pd.DataFrame | float], *, validate_only: bool,
+    fn: str,
+    args: list[pd.DataFrame | float],
+    *,
+    validate_only: bool,
 ) -> pd.DataFrame:
     h = _OP_REG.get(fn)
     if h is None:
@@ -333,7 +349,8 @@ def _op_mean_reversion_halflife(args, *, validate_only):
     phi = 1.0 + beta
     vphi = phi.where((phi > 0.0) & (phi < 1.0))
     return cast(
-        pd.DataFrame, (-np.log(2.0) / np.log(vphi)).replace([np.inf, -np.inf], np.nan),
+        pd.DataFrame,
+        (-np.log(2.0) / np.log(vphi)).replace([np.inf, -np.inf], np.nan),
     )
 
 
@@ -498,7 +515,8 @@ def _bin(
 
 
 def _ap(
-    left: pd.DataFrame | float, right: pd.DataFrame | float,
+    left: pd.DataFrame | float,
+    right: pd.DataFrame | float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         return _afp(left, right)
@@ -532,7 +550,8 @@ def _bcast(frame: pd.DataFrame, *, target_columns: list[str]) -> pd.DataFrame:
     if len(frame.columns) != 1:
         raise ValueError("broadcast_single_column_frame requires exactly one column")
     return pd.DataFrame(
-        {c: frame.iloc[:, 0] for c in target_columns}, index=frame.index,
+        {c: frame.iloc[:, 0] for c in target_columns},
+        index=frame.index,
     ).reindex(columns=target_columns)
 
 

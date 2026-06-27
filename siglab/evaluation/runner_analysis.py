@@ -86,7 +86,9 @@ def _mpsigs(frame: pd.DataFrame, *, eps_: float = 1e-09) -> pd.Series:
 
 
 def _eassets(
-    row: pd.Series, *, eps_: float = 1e-09,
+    row: pd.Series,
+    *,
+    eps_: float = 1e-09,
 ) -> tuple[list[str], list[str], list[str]]:
     c = pd.to_numeric(row, errors="coerce").fillna(0.0)
     active = [str(k) for k, v in c.items() if abs(float(v)) > eps_]
@@ -159,7 +161,9 @@ def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
     pts: pd.Timestamp | None = None
 
     def _addep(
-        es: pd.Timestamp, ee: pd.Timestamp, sig: tuple[tuple[str, int], ...],
+        es: pd.Timestamp,
+        ee: pd.Timestamp,
+        sig: tuple[tuple[str, int], ...],
     ) -> None:
         if not sig:
             return
@@ -257,7 +261,11 @@ def _edc(te: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def _sps(
-    *, r: pd.Series, gross_exposure: pd.Series, mask: pd.Series, label: str,
+    *,
+    r: pd.Series,
+    gross_exposure: pd.Series,
+    mask: pd.Series,
+    label: str,
 ) -> dict[str, Any]:
     am = mask.reindex(r.index).fillna(False).astype(bool)
     subset = r[am].dropna()
@@ -290,7 +298,10 @@ def _sps(
 
 
 def _prs(
-    *, prices: pd.DataFrame, tw: pd.DataFrame, funding_rates: pd.DataFrame | None,
+    *,
+    prices: pd.DataFrame,
+    tw: pd.DataFrame,
+    funding_rates: pd.DataFrame | None,
 ) -> dict[str, Any]:
     if prices.empty:
         return {"available": False}
@@ -368,10 +379,12 @@ def _prs(
         state["thresholds"].update(
             {
                 "pair_volatility_median": _sf(
-                    state["pair_volatility"].dropna().median(), default=None,
+                    state["pair_volatility"].dropna().median(),
+                    default=None,
                 ),
                 "pair_correlation_median": _sf(
-                    state["pair_correlation"].dropna().median(), default=None,
+                    state["pair_correlation"].dropna().median(),
+                    default=None,
                 ),
             },
         )
@@ -379,7 +392,8 @@ def _prs(
 
 
 def _lts(
-    idx: pd.Index, ts: str | float | pd.Timestamp | None,
+    idx: pd.Index,
+    ts: str | float | pd.Timestamp | None,
 ) -> pd.Timestamp | None:
     if len(idx) == 0 or ts is None:
         return None
@@ -447,7 +461,10 @@ def _pair_regime_snapshot(
         "funding_level_label": _rbl(flv, flt, "high_funding", "low_funding"),
         "funding_level_72h": flv,
         "funding_dispersion_label": _rbl(
-            fdv, ft, "funding_dispersed", "funding_compressed",
+            fdv,
+            ft,
+            "funding_dispersed",
+            "funding_compressed",
         ),
         "funding_dispersion_72h": fdv,
         "breadth_label": _rbl(bv, bt, "broad_participation", "weak_participation"),
@@ -483,7 +500,10 @@ def _pair_regime_snapshot(
                 ),
                 "pair_correlation_72h": pcv,
                 "pair_direction_label": _rbl(
-                    pdv, 0.0, "asset_1_leading", "asset_2_leading",
+                    pdv,
+                    0.0,
+                    "asset_1_leading",
+                    "asset_2_leading",
                 ),
                 "pair_direction_24h": pdv,
             },
@@ -492,7 +512,10 @@ def _pair_regime_snapshot(
 
 
 def _ptrwr(
-    *, tw: pd.DataFrame, r: pd.Series, regime_state: dict[str, Any],
+    *,
+    tw: pd.DataFrame,
+    r: pd.Series,
+    regime_state: dict[str, Any],
 ) -> list[dict[str, Any]]:
     eps = _ppeps(tw=tw, r=r)
     ann: list[dict[str, Any]] = []
@@ -556,7 +579,10 @@ def _prd(
 
     bs_ = {
         "market_trend": _bs(
-            "market_trend", rs["market_trend"], "market_uptrend", "market_downtrend",
+            "market_trend",
+            rs["market_trend"],
+            "market_uptrend",
+            "market_downtrend",
         ),
         "market_volatility": _bs(
             "market_volatility",
@@ -565,7 +591,10 @@ def _prd(
             "low_volatility",
         ),
         "funding_level": _bs(
-            "funding_level", rs["funding_level"], "high_funding", "low_funding",
+            "funding_level",
+            rs["funding_level"],
+            "high_funding",
+            "low_funding",
         ),
         "funding_dispersion": _bs(
             "funding_dispersion",
@@ -667,7 +696,8 @@ def _trp(te: list[dict[str, Any]]) -> dict[str, Any]:
                 "rows": rows,
                 "best_label": rows[0]["label"],
                 "worst_label": min(
-                    rows, key=lambda r: float(r.get("avg_return") or 1e9),
+                    rows,
+                    key=lambda r: float(r.get("avg_return") or 1e9),
                 )["label"],
             }
     return rp
@@ -704,7 +734,11 @@ def _wrs(
     ds = pd.Series(regime_state["position_direction"], index=idx).loc[mask]
     dc = ds.value_counts().to_dict()
     dpd = max(
-        ((str(dir_label), int(c)) for dir_label, c in dc.items() if str(dir_label) != "flat"),
+        (
+            (str(dir_label), int(c))
+            for dir_label, c in dc.items()
+            if str(dir_label) != "flat"
+        ),
         key=lambda x: x[1],
         default=(None, 0),
     )[0]
@@ -800,7 +834,10 @@ def _wrs(
 
 
 def _ewts(
-    *, te: list[dict[str, Any]], sts: pd.Timestamp, ets: pd.Timestamp,
+    *,
+    te: list[dict[str, Any]],
+    sts: pd.Timestamp,
+    ets: pd.Timestamp,
 ) -> dict[str, Any]:
     matched: list[dict[str, Any]] = []
     for e in te:
@@ -833,7 +870,10 @@ def _ewts(
 
 
 def _paesp(
-    *, equity_curve: pd.Series, te: list[dict[str, Any]], regime_state: dict[str, Any],
+    *,
+    equity_curve: pd.Series,
+    te: list[dict[str, Any]],
+    regime_state: dict[str, Any],
 ) -> dict[str, Any]:
     c = pd.to_numeric(equity_curve, errors="coerce").dropna()
     if c.shape[0] < 2:
@@ -859,7 +899,10 @@ def _paesp(
 
 
 def _patbp(
-    *, r: pd.Series, te: list[dict[str, Any]], regime_state: dict[str, Any],
+    *,
+    r: pd.Series,
+    te: list[dict[str, Any]],
+    regime_state: dict[str, Any],
 ) -> dict[str, Any]:
     c = pd.to_numeric(r, errors="coerce").dropna()
     if c.empty:
@@ -884,7 +927,9 @@ def _patbp(
             st = pd.Timestamp(dr.index[sl])
             ts = _ewts(te=te, sts=st, ets=et)
             ts["regime"] = _wrs(
-                regime_state=regime_state, start_timestamp=st, end_timestamp=et,
+                regime_state=regime_state,
+                start_timestamp=st,
+                end_timestamp=et,
             )
             return {
                 "label": label,
@@ -955,7 +1000,8 @@ def _paet(
             "entry_score": es,
             "entry_regime": {**e.get("entry_regime", {})},
             "entry_feature_contributors": _efeats(
-                signal_components=signal_components, timestamp=ets,
+                signal_components=signal_components,
+                timestamp=ets,
             ),
         }
 
@@ -990,7 +1036,8 @@ def _pgd(
     fm1 = ~am1
     eas = float(
         compiled_metadata.get(
-            "entry_abs_score", compiled_metadata.get("min_abs_score", 0.0),
+            "entry_abs_score",
+            compiled_metadata.get("min_abs_score", 0.0),
         ),
     )
     exas = float(compiled_metadata.get("exit_abs_score", max(0.0, eas * 0.5)))
@@ -1138,7 +1185,8 @@ def _pcfm(cm: dict[str, Any]) -> dict[str, Any]:
             "train_window_count": int(sw.get("train_window_count", 0) or 0),
             "trial_count": int(sw.get("trial_count", 0) or 0),
             "best_train_score": _sf(
-                sw.get("best_train_summary", {}).get("aggregate_score"), default=None,
+                sw.get("best_train_summary", {}).get("aggregate_score"),
+                default=None,
             ),
             "best_train_return": _sf(
                 sw.get("best_train_summary", {}).get("median_total_return"),

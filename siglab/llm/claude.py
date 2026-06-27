@@ -86,7 +86,8 @@ async def _or_models(
 ) -> dict[str, OpenRouterModelInfo]:
     now = time.monotonic()
     cache = cast(
-        dict[str, OpenRouterModelInfo], _or_models.__dict__.setdefault("_cache", {}),
+        dict[str, OpenRouterModelInfo],
+        _or_models.__dict__.setdefault("_cache", {}),
     )
     ca = _or_models.__dict__.get("_cached_at")
     cached_at: float | None = ca if isinstance(ca, (int, float)) else None
@@ -125,10 +126,12 @@ async def _or_models(
             model_id=model_id,
             name=str(entry.get("name") or model_id),
             prompt_usd_per_token=max(
-                0.0, safe_float(pricing.get("prompt"), default=0.0) or 0.0,
+                0.0,
+                safe_float(pricing.get("prompt"), default=0.0) or 0.0,
             ),
             completion_usd_per_token=max(
-                0.0, safe_float(pricing.get("completion"), default=0.0) or 0.0,
+                0.0,
+                safe_float(pricing.get("completion"), default=0.0) or 0.0,
             ),
         )
     _or_models.__dict__["_cache"] = out
@@ -145,7 +148,8 @@ def _or_cost(
 ) -> float:
     if catalog is None:
         catalog = cast(
-            dict[str, OpenRouterModelInfo], _or_models.__dict__.get("_cache", {}),
+            dict[str, OpenRouterModelInfo],
+            _or_models.__dict__.get("_cache", {}),
         )
     info = (
         catalog.get(model) or catalog.get(model.strip().lower())
@@ -180,7 +184,11 @@ class ClaudeTool:
 
 class LLMProviderError(RuntimeError):
     def __init__(
-        self, msg: str, *, provider: str | None = None, status_code: int | None = None,
+        self,
+        msg: str,
+        *,
+        provider: str | None = None,
+        status_code: int | None = None,
     ) -> None:
         super().__init__(msg)
         self.provider = provider
@@ -285,7 +293,9 @@ class ClaudeClient:
             thinking_override=thinking_override,
         )
         tt = resolve_llm_thinking_mode(
-            self.settings, provider=self.provider_name, override=thinking_override,
+            self.settings,
+            provider=self.provider_name,
+            override=thinking_override,
         )
         payload = self._build_pl(
             messages=[{"role": "system", "content": system_prompt}, *list(messages)],
@@ -346,7 +356,9 @@ class ClaudeClient:
             thinking_override=thinking_override,
         )
         tt = resolve_llm_thinking_mode(
-            self.settings, provider=self.provider_name, override=thinking_override,
+            self.settings,
+            provider=self.provider_name,
+            override=thinking_override,
         )
         payload = self._build_pl(
             messages=[
@@ -409,7 +421,9 @@ class ClaudeClient:
         tl = list(tools or [])
         tm = {tool.name: tool for tool in tl}
         tt = resolve_llm_thinking_mode(
-            self.settings, provider=self.provider_name, override=thinking_override,
+            self.settings,
+            provider=self.provider_name,
+            override=thinking_override,
         )
         sm = self.routing_policy.model_for_stage(
             provider=self.provider_name,
@@ -453,7 +467,9 @@ class ClaudeClient:
                 stage=stage,
             )
             body = await self._chat_comp(
-                payload=payload, timeout_s=timeout_s, stage=stage,
+                payload=payload,
+                timeout_s=timeout_s,
+                stage=stage,
             )
             sm = str(body.pop("_siglab_model_used", sm))
             trace["model"] = sm
@@ -473,7 +489,8 @@ class ClaudeClient:
                 msgs.append(self._tool_call_msg(msg))
                 for tc in tcs:
                     tool_message, trace_entry = await self._exec_tool(
-                        tool_call=tc, tool_map=tm,
+                        tool_call=tc,
+                        tool_map=tm,
                     )
                     trace["tool_calls"].append(trace_entry)
                     msgs.append(tool_message)
@@ -551,7 +568,9 @@ class ClaudeClient:
         stage: str | None = None,
     ) -> dict[str, Any]:
         tt = resolve_llm_thinking_mode(
-            self.settings, provider=self.provider_name, override=thinking_override,
+            self.settings,
+            provider=self.provider_name,
+            override=thinking_override,
         )
         pn = self.provider_name
         sm = self.routing_policy.model_for_stage(
@@ -608,7 +627,9 @@ class ClaudeClient:
             if pn == "openrouter":
                 max_call_usd = getattr(self.settings, "openrouter_max_call_usd", None)
                 estimated_cost = _or_cost(
-                    model=sm, prompt_tokens=eit, completion_tokens=rot,
+                    model=sm,
+                    prompt_tokens=eit,
+                    completion_tokens=rot,
                 )
                 ce = {
                     "stage": str(stage or "default"),
@@ -668,11 +689,15 @@ class ClaudeClient:
         pm = str(
             bp.get("model")
             or self.routing_policy.model_for_stage(
-                provider=self.provider_name, stage=stage, thinking_override=None,
+                provider=self.provider_name,
+                stage=stage,
+                thinking_override=None,
             ),
         )
         cs = self.routing_policy.candidates(
-            provider=self.provider_name, stage=stage, primary=pm,
+            provider=self.provider_name,
+            stage=stage,
+            primary=pm,
         )
         if not cs:
             raise LLMQuotaError(
@@ -720,7 +745,8 @@ class ClaudeClient:
                         body_429 = (response.text or "")[:500].lower()
                         if "free-models-per-day" in body_429 or "quota" in body_429:
                             self.routing_policy.mark_quota_failure(
-                                model, "LLMQuotaError",
+                                model,
+                                "LLMQuotaError",
                             )
                             last_error = LLMQuotaError(
                                 f"{'DeepSeek' if self.provider_name == 'deepseek' else 'OpenRouter' if self.provider_name == 'openrouter' else 'B.AI' if self.provider_name == 'bai' else 'Claude' if self.provider_name == 'claude' else 'LLM'} quota exceeded with HTTP 429: {body_429[:200]}",
@@ -750,7 +776,8 @@ class ClaudeClient:
                             or "balance" in ld
                         ):
                             self.routing_policy.mark_quota_failure(
-                                model, "LLMQuotaError",
+                                model,
+                                "LLMQuotaError",
                             )
                             last_error = LLMQuotaError(
                                 f"{'DeepSeek' if self.provider_name == 'deepseek' else 'OpenRouter' if self.provider_name == 'openrouter' else 'B.AI' if self.provider_name == 'bai' else 'Claude' if self.provider_name == 'claude' else 'LLM'} quota failed with HTTP {status}: {detail}",
@@ -801,7 +828,9 @@ class ClaudeClient:
                             )
                         self._success_count += 1
                         self.routing_policy.record_latency(
-                            model=model, stage=stage, elapsed_ms=elapsed_ms,
+                            model=model,
+                            stage=stage,
+                            elapsed_ms=elapsed_ms,
                         )
                         self._record_use(body.get("usage"), model=model)
                         body["_siglab_model_used"] = model
@@ -830,7 +859,9 @@ class ClaudeClient:
         return {
             "provider": self.provider_name,
             "model": self.routing_policy.model_for_stage(
-                provider=self.provider_name, stage=None, thinking_override=None,
+                provider=self.provider_name,
+                stage=None,
+                thinking_override=None,
             ),
             "p50_ms": _percentile(latencies, 50),
             "p95_ms": _percentile(latencies, 95),
@@ -996,7 +1027,8 @@ class ClaudeClient:
 
     def _extract_ct(self, body: dict[str, Any]) -> str:
         if isinstance(
-            ct := (self._choice(body).get("message") or {}).get("content"), str,
+            ct := (self._choice(body).get("message") or {}).get("content"),
+            str,
         ):
             return ct
         if isinstance(ct, list):
@@ -1056,7 +1088,10 @@ class ClaudeClient:
             self.last_trace["assistant_turns"] = turns
 
     async def _exec_tool(
-        self, *, tool_call: dict[str, Any], tool_map: dict[str, ClaudeTool],
+        self,
+        *,
+        tool_call: dict[str, Any],
+        tool_map: dict[str, ClaudeTool],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         function_payload = tool_call.get("function") or {}
         tool_name = str(function_payload.get("name") or "")
@@ -1075,7 +1110,7 @@ class ClaudeClient:
                 try:
                     outcome = tool.handler(arguments)
                     result = await outcome if hasattr(outcome, "__await__") else outcome
-                except Exception as exc:
+                except (OSError, ValueError, TypeError, RuntimeError) as exc:
                     result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
                 else:
                     lat_ms = (time.perf_counter() - started) * 1000.0
@@ -1136,12 +1171,19 @@ class ClaudeClient:
 
 
 def _estimate_bai_credits(
-    *, input_tokens: int, output_tokens: int, rates: tuple[float, float, float, float],
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    rates: tuple[float, float, float, float],
 ) -> float:
     return max(0, int(input_tokens)) * rates[0] + max(0, int(output_tokens)) * rates[1]
 
 
 _int_or_zero = int_or_zero
+
+
 def _json_clone(v: Any) -> Any:
     return json.loads(json.dumps(v, ensure_ascii=True, default=str))
+
+
 _or_models.__dict__.update({"_cache": {}, "_cached_at": 0.0})

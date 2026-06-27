@@ -86,7 +86,10 @@ def run_command(args: argparse.Namespace) -> None:
 
 
 def build_market_report(
-    *, entity: str, sosovalue_evidence: Path | None, sodex_evidence: Path | None,
+    *,
+    entity: str,
+    sosovalue_evidence: Path | None,
+    sodex_evidence: Path | None,
 ) -> dict[str, Any]:
     soso_rows, soso_read_stats = read_jsonl_with_stats(sosovalue_evidence)
     sodex_rows, sodex_read_stats = read_jsonl_with_stats(sodex_evidence)
@@ -152,7 +155,10 @@ def build_market_report(
         preflight=preflight,
     )
     decision_support = _market_decision_support(
-        entity=entity_upper, signal=signal, missing=missing, preflight=preflight,
+        entity=entity_upper,
+        signal=signal,
+        missing=missing,
+        preflight=preflight,
     )
     return {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -304,10 +310,7 @@ def market_report_html(report: dict[str, Any]) -> str:
         causality=esc(signal.get("causality")),
         stance=esc(decision.get("stance")),
         next_actions="".join(
-
-                f"<li>{esc(item)}</li>"
-                for item in list(decision.get("next_actions") or [])
-
+            f"<li>{esc(item)}</li>" for item in list(decision.get("next_actions") or [])
         ),
         not_a_trade_signal=esc(decision.get("not_a_trade_signal")),
         news_items="".join(

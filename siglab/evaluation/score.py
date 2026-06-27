@@ -46,17 +46,21 @@ def _bounded(value: float, *, lower: float, upper: float) -> float:
 
 
 def summarize_window_results(
-    *, window_results: list[dict[str, Any]], asset_breadth: int,
+    *,
+    window_results: list[dict[str, Any]],
+    asset_breadth: int,
 ) -> dict[str, Any]:
     """Aggregate per-window backtest results into a single summary dict."""
     sharpe = np.array([row["stats"]["sharpe"] for row in window_results], dtype=float)
     total_return = np.array(
-        [row["stats"]["total_return"] for row in window_results], dtype=float,
+        [row["stats"]["total_return"] for row in window_results],
+        dtype=float,
     )
     cagr = np.array([row["stats"]["cagr"] for row in window_results], dtype=float)
     calmar = np.array([row["stats"]["calmar"] for row in window_results], dtype=float)
     drawdown = np.array(
-        [row["stats"]["max_drawdown"] for row in window_results], dtype=float,
+        [row["stats"]["max_drawdown"] for row in window_results],
+        dtype=float,
     )
     liquidation_count = sum(1 for row in window_results if row["liquidated"])
     profitable_window_pct: float = np.nan

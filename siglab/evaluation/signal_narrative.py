@@ -237,7 +237,8 @@ def _narrative_regime_context(regime: dict) -> str:
         worst = str(entry.get("worst_label", "?"))
         best_row: dict[str, Any] = next((r for r in rows if r.get("label") == best), {})
         worst_row: dict[str, Any] = next(
-            (r for r in rows if r.get("label") == worst), {},
+            (r for r in rows if r.get("label") == worst),
+            {},
         )
         total_trades_best = best_row.get("trade_count", 0)
         win_rate_best = best_row.get("win_rate")

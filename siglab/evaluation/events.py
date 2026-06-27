@@ -110,10 +110,8 @@ def detect_pt_roll_events(
         if not exited:
             continue
         exited_due_to_expiry = any(
-
-                bool(expired_or_untradable.iloc[index].get(label, False))
-                for label in exited
-
+            bool(expired_or_untradable.iloc[index].get(label, False))
+            for label in exited
         )
         exited_due_to_roll = any(
             bool(inside_roll_window.iloc[index].get(label, False)) for label in exited

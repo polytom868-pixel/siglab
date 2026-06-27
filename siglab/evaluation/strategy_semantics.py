@@ -166,14 +166,10 @@ def inferred_trade_style(spec: dict[str, Any]) -> str:
     if any(token in joined for token in ("pullback", "rsi")):
         return "pullback"
     if any(
-
-            token in joined
-            for token in ("reversion", "mean reversion", "residual", "bollinger", "z_")
-
+        token in joined
+        for token in ("reversion", "mean reversion", "residual", "bollinger", "z_")
     ):
         return "reversion"
-    if any(
-        token in joined for token in ("momentum", "trend", "continuation", "macd")
-    ):
+    if any(token in joined for token in ("momentum", "trend", "continuation", "macd")):
         return "continuation"
     return "hybrid"

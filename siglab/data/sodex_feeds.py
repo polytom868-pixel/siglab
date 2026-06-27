@@ -121,7 +121,9 @@ class SoDEXFeeds:
         cache_key = self._kline_cache_key(symbol, interval, limit, start_time, end_time)
         if not skip_cache:
             cached = self.lake.latest_frame(
-                "sodex_klines", cache_key, max_age_hours=self._klines_cache_ttl_hours,
+                "sodex_klines",
+                cache_key,
+                max_age_hours=self._klines_cache_ttl_hours,
             )
             if cached is not None and (not cached.empty):
                 return cached
@@ -174,7 +176,9 @@ class SoDEXFeeds:
 
     @staticmethod
     def _klines_to_frame(
-        rows: list[dict[str, Any]], *, interval: str | None = None,
+        rows: list[dict[str, Any]],
+        *,
+        interval: str | None = None,
     ) -> pd.DataFrame:
         if not rows:
             return SoDEXFeeds._empty_klines_frame()
@@ -215,7 +219,9 @@ class SoDEXFeeds:
         namespace, cache_key = cache_path
         if not skip_cache:
             cached = self.lake.latest_json(
-                namespace, cache_key, max_age_hours=ttl_hours,
+                namespace,
+                cache_key,
+                max_age_hours=ttl_hours,
             )
             if cached is not None:
                 return list(cached)
@@ -237,7 +243,10 @@ class SoDEXFeeds:
         )
 
     async def fetch_tickers(
-        self, *, symbol: str | None = None, skip_cache: bool = False,
+        self,
+        *,
+        symbol: str | None = None,
+        skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch 24-hour ticker statistics."""
         cache_key = f"tickers_{symbol}" if symbol else "tickers_all"
@@ -250,7 +259,10 @@ class SoDEXFeeds:
         )
 
     async def fetch_mark_prices(
-        self, *, symbol: str | None = None, skip_cache: bool = False,
+        self,
+        *,
+        symbol: str | None = None,
+        skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch current mark prices, index prices, and funding rates."""
         cache_key = f"mark_prices_{symbol}" if symbol else "mark_prices_all"
@@ -263,7 +275,10 @@ class SoDEXFeeds:
         )
 
     async def fetch_book_tickers(
-        self, *, symbol: str | None = None, skip_cache: bool = False,
+        self,
+        *,
+        symbol: str | None = None,
+        skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch best bid/ask for perp symbols."""
         cache_key = f"book_tickers_{symbol}" if symbol else "book_tickers_all"
@@ -276,7 +291,11 @@ class SoDEXFeeds:
         )
 
     async def fetch_orderbook(
-        self, symbol: str, limit: int = 100, *, skip_cache: bool = False,
+        self,
+        symbol: str,
+        limit: int = 100,
+        *,
+        skip_cache: bool = False,
     ) -> dict[str, Any]:
         """Fetch order book depth for a perp symbol."""
         if not symbol or not symbol.strip():
@@ -302,7 +321,11 @@ class SoDEXFeeds:
         return result
 
     async def fetch_trades(
-        self, symbol: str, limit: int = 100, *, skip_cache: bool = False,
+        self,
+        symbol: str,
+        limit: int = 100,
+        *,
+        skip_cache: bool = False,
     ) -> list[dict[str, Any]]:
         """Fetch recent trades for a perp symbol."""
         if not symbol or not symbol.strip():

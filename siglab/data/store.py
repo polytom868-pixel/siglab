@@ -25,10 +25,17 @@ class ParquetLake:
         return target
 
     def latest_frame(
-        self, namespace: str, key: str, *, max_age_hours: float | None = None,
+        self,
+        namespace: str,
+        key: str,
+        *,
+        max_age_hours: float | None = None,
     ) -> pd.DataFrame | None:
         latest = self._latest_path(
-            namespace, key, ".parquet", max_age_hours=max_age_hours,
+            namespace,
+            key,
+            ".parquet",
+            max_age_hours=max_age_hours,
         )
         if latest is None:
             return None
@@ -42,7 +49,11 @@ class ParquetLake:
         return target
 
     def latest_json(
-        self, namespace: str, key: str, *, max_age_hours: float | None = None,
+        self,
+        namespace: str,
+        key: str,
+        *,
+        max_age_hours: float | None = None,
     ) -> Any | None:
         latest = self._latest_path(namespace, key, ".json", max_age_hours=max_age_hours)
         if latest is None:

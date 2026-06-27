@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 from collections.abc import Callable
+import httpx
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -152,7 +153,8 @@ class NavSidebar(Static):
         items: list[ListItem] = []
         for idx, label, _screen_id in NAV_ITEMS:
             item = ListItem(
-                Static(f"  {idx}  {label}", classes="nav-item"), id=f"nav-{_screen_id}",
+                Static(f"  {idx}  {label}", classes="nav-item"),
+                id=f"nav-{_screen_id}",
             )
             items.append(item)
         return items
@@ -240,7 +242,7 @@ class SigLabTUI(App[None]):
         try:
             await self.api_client.get_health()
             self.api_connected = True
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             self.api_connected = False
             self.log.debug(f"API connection check failed: {exc}")
 

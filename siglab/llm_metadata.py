@@ -39,7 +39,10 @@ def infer_llm_provider(model: str | None) -> str | None:
 
 
 def resolve_llm_thinking_mode(
-    settings: SiglabConfig, *, provider: str | None = None, override: str | None = None,
+    settings: SiglabConfig,
+    *,
+    provider: str | None = None,
+    override: str | None = None,
 ) -> str:
     if override is not None:
         return str(override).strip().lower()
@@ -67,7 +70,9 @@ def resolve_llm_model(
         settings,
     )
     thinking_type = resolve_llm_thinking_mode(
-        settings, provider=resolved_provider, override=thinking_override,
+        settings,
+        provider=resolved_provider,
+        override=thinking_override,
     )
     if resolved_provider == "deepseek":
         model = str(getattr(settings, "deepseek_model", "deepseek-reasoner"))
@@ -106,7 +111,9 @@ def resolve_llm_model(
 
 
 def default_llm_model_display(
-    settings: SiglabConfig, *, provider: str | None = None,
+    settings: SiglabConfig,
+    *,
+    provider: str | None = None,
 ) -> str:
     resolved_provider = normalize_llm_provider(provider) or resolve_llm_provider(
         settings,
@@ -139,7 +146,9 @@ def default_llm_model_display(
 
 
 def resolve_llm_api_key(
-    settings: SiglabConfig, *, provider: str | None = None,
+    settings: SiglabConfig,
+    *,
+    provider: str | None = None,
 ) -> str | None:
     resolved_provider = normalize_llm_provider(provider) or resolve_llm_provider(
         settings,

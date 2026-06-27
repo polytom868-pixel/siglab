@@ -26,13 +26,18 @@ class _MarketDataProvider(Protocol):
 
 class _AncestryStore(Protocol):
     def best(
-        self, track: str, run_session_id: str | None = ...,
+        self,
+        track: str,
+        run_session_id: str | None = ...,
     ) -> dict[str, Any] | None: ...
 
     def experiment_detail(self, spec_hash: str) -> dict[str, Any] | None: ...
 
     def dashboard_rows(
-        self, track: str = ..., family: str = ..., run_session_id: str | None = ...,
+        self,
+        track: str = ...,
+        family: str = ...,
+        run_session_id: str | None = ...,
     ) -> list[dict[str, Any]]: ...
 
     def recent(self, track: str, limit: int = ...) -> list[dict[str, Any]]: ...
@@ -96,7 +101,9 @@ def read_jsonl_with_stats(
 
 
 def latest_record(
-    rows: list[dict[str, Any]], *, required_value: str | None = None,
+    rows: list[dict[str, Any]],
+    *,
+    required_value: str | None = None,
 ) -> dict[str, Any] | None:
     rows = [row for row in rows if _record_has_required_value(row, required_value)]
     if not rows:
@@ -159,18 +166,24 @@ def sosovalue_currency_id(rows: list[dict[str, Any]], symbol: str) -> int | None
             return int(row["currencyId"])
         if str(row.get("fullName") or "").strip().lower() == needle:
             return int(row["currencyId"])
+    return None
 
 
 def deployment_eligible(
-    *, summary: dict[str, Any], trial_context: dict[str, Any] | None,
+    *,
+    summary: dict[str, Any],
+    trial_context: dict[str, Any] | None,
 ) -> bool:
     return not deployment_ineligible_reasons(
-        summary=summary, trial_context=trial_context,
+        summary=summary,
+        trial_context=trial_context,
     )
 
 
 def deployment_ineligible_reasons(
-    *, summary: dict[str, Any], trial_context: dict[str, Any] | None,
+    *,
+    summary: dict[str, Any],
+    trial_context: dict[str, Any] | None,
 ) -> list[str]:
     summary = dict(summary or {})
     trial_context = dict(trial_context or {})
@@ -235,8 +248,7 @@ def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
         parent_exists = parent.exists()
         parent_writable = bool(parent_exists and os.access(parent, os.W_OK))
         file_writable = bool(
-            (not nonce_path.exists()
-            and parent_writable)
+            (not nonce_path.exists() and parent_writable)
             or os.access(nonce_path, os.W_OK),
         )
         parseable = True
@@ -351,14 +363,16 @@ def parse_sodex_enum(value: str, aliases: dict[str, int], field_name: str) -> in
         [*aliases.keys(), *[str(v) for v in sorted(set(aliases.values()))]],
     )
     print(
-        f"--{field_name.replace('_', '-')} must be one of: {accepted}", file=sys.stderr,
+        f"--{field_name.replace('_', '-')} must be one of: {accepted}",
+        file=sys.stderr,
     )
     raise SystemExit(1)
 
 
 def require_sosovalue_config(settings: SiglabConfig) -> Path:
     config_path = resolve_path_from_root(
-        settings.sosovalue_config_path, root_dir=settings.root_dir,
+        settings.sosovalue_config_path,
+        root_dir=settings.root_dir,
     )
     if not config_path.exists():
         print(
@@ -371,7 +385,9 @@ def require_sosovalue_config(settings: SiglabConfig) -> Path:
 
 
 def display_deployment_record(
-    *, settings: SiglabConfig, record: dict[str, Any],
+    *,
+    settings: SiglabConfig,
+    record: dict[str, Any],
 ) -> dict[str, Any]:
     normalized = dict(record)
     for key in [
@@ -382,7 +398,8 @@ def display_deployment_record(
         "config_path",
     ]:
         normalized[key] = display_path_static(
-            normalized.get(key), root_dir=settings.root_dir,
+            normalized.get(key),
+            root_dir=settings.root_dir,
         )
     return normalized
 
@@ -452,7 +469,10 @@ def minimal_research_summary(
 
 
 def incumbent_detail(
-    *, ancestry: _AncestryStore, track: str, run_session_id: str | None = None,
+    *,
+    ancestry: _AncestryStore,
+    track: str,
+    run_session_id: str | None = None,
 ) -> dict[str, Any] | None:
     best = ancestry.best(track, run_session_id=run_session_id)
     if best is None:
@@ -480,7 +500,9 @@ def base_spec_payload_for_family(
     )
 
     family_rows = ancestry.dashboard_rows(
-        track=track, family=family, run_session_id=run_session_id,
+        track=track,
+        family=family,
+        run_session_id=run_session_id,
     )
     if family_rows:
         family_rows.sort(
@@ -523,7 +545,8 @@ def pick_deterministic_parent(
     )
     seed_order = list(seed_specs)
     min_count = min(
-        (family_counts.get(seed.family, 0) for seed in seed_order), default=0,
+        (family_counts.get(seed.family, 0) for seed in seed_order),
+        default=0,
     )
     least_used = [
         seed for seed in seed_order if family_counts.get(seed.family, 0) == min_count
@@ -548,7 +571,9 @@ def spec_trade_style(spec: dict[str, Any]) -> str:
 
 
 def write_artifact(
-    settings: SiglabConfig, track: str, evaluation: dict[str, Any],
+    settings: SiglabConfig,
+    track: str,
+    evaluation: dict[str, Any],
 ) -> Path:
     from siglab.io_utils import write_json
 
@@ -561,7 +586,8 @@ def write_artifact(
 
 
 def parse_family_scope(
-    family: str | None, families: str | None,
+    family: str | None,
+    families: str | None,
 ) -> str | list[str] | None:
     if family and families:
         print("Use either --family or --families, not both", file=sys.stderr)
@@ -596,7 +622,9 @@ def _format_optional_number(value: float | str | None) -> str:
 
 
 def external_research_from_llm_trace(
-    *, llm_trace: dict[str, Any] | None, web_researcher: _ResearchProvider,
+    *,
+    llm_trace: dict[str, Any] | None,
+    web_researcher: _ResearchProvider,
 ) -> dict[str, Any]:
     payload = tool_only_external_research(web_researcher=web_researcher)
     trace = dict((llm_trace or {}).get("trace") or {})
@@ -676,7 +704,9 @@ def write_json_and_maybe_print(
 
 
 def display_paths(
-    values: str | Path | list[str | Path] | None, *, root_dir: Path | None,
+    values: str | Path | list[str | Path] | None,
+    *,
+    root_dir: Path | None,
 ) -> list[str | None]:
     from siglab.path_utils import display_path as _dp
 

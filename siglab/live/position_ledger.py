@@ -6,7 +6,9 @@ from typing import cast
 
 
 def compute_funding_cost(
-    quantity: float, mark_price: float, funding_rate: float,
+    quantity: float,
+    mark_price: float,
+    funding_rate: float,
 ) -> float:
     """Compute funding cost for a position."""
     position_value = abs(quantity) * mark_price
@@ -35,7 +37,11 @@ def compute_trade_pnl(
 
 
 def update_position(
-    side: str, quantity: float, fill_price: float, prior_qty: float, prior_entry: float,
+    side: str,
+    quantity: float,
+    fill_price: float,
+    prior_qty: float,
+    prior_entry: float,
 ) -> tuple[float, float]:
     """Return (new_qty, new_entry) after applying a fill."""
     if side == "BUY":
@@ -75,7 +81,10 @@ def calculate_fill_price(
 
 
 def compute_avg_entry(
-    prior_qty: float, prior_entry: float, add_qty: float, add_price: float,
+    prior_qty: float,
+    prior_entry: float,
+    add_qty: float,
+    add_price: float,
 ) -> float:
     """Compute the new average entry price after adding to an existing position."""
     new_qty = prior_qty + add_qty

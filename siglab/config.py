@@ -183,7 +183,8 @@ def load_settings() -> SiglabConfig:
         bai_reflector_model=_get("BAI_REFLECTOR_MODEL", "deepseek-v4-flash"),
         bai_fallback_fast_model=_get("BAI_FALLBACK_FAST_MODEL", "kimi-k2.5"),
         bai_fallback_reasoning_model=_get(
-            "BAI_FALLBACK_REASONING_MODEL", "deepseek-v4-pro",
+            "BAI_FALLBACK_REASONING_MODEL",
+            "deepseek-v4-pro",
         ),
         bai_context_tokens=int(_get("BAI_CONTEXT_TOKENS", "70000")),
         bai_max_call_credits=float(bai_max_call_credits_raw)

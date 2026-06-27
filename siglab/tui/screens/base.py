@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 from collections.abc import Coroutine
+import httpx
 
 from rich.text import Text
 from textual.binding import Binding
@@ -14,6 +15,7 @@ from textual.widgets import Input, Static
 
 from siglab.tui.formatting import BORDER_DIM, TEXT_PRIMARY, friendly_error, safe_query
 from siglab.tui.loading import LoadingIndicator
+import contextlib
 
 
 def render_header(result: Text, text: str, width: int = 50) -> None:
@@ -50,7 +52,10 @@ class BaseScreen(Screen[None]):
     _search_list_id: ClassVar[str] = ""
 
     def __init__(
-        self, *, api_client: TuiApiClient | None = None, **kwargs: Any,
+        self,
+        *,
+        api_client: TuiApiClient | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         if api_client is not None:
@@ -66,7 +71,8 @@ class BaseScreen(Screen[None]):
     def on_mount(self) -> None:
         """Start auto-refresh timer and trigger initial data load."""
         self._refresh_timer = self.set_interval(
-            self._refresh_interval, self._refresh_all,
+            self._refresh_interval,
+            self._refresh_all,
         )
         self.call_after_refresh(self._refresh_all)
 
@@ -75,10 +81,8 @@ class BaseScreen(Screen[None]):
         if hasattr(self, "_refresh_timer"):
             self._refresh_timer.stop()
         if self._owns_api and self._api is not None:
-            try:
+            with contextlib.suppress(AttributeError, TypeError):
                 await self._api.close()
-            except (AttributeError, TypeError):
-                pass
 
     async def _refresh_all(self) -> None:
         """Fetch all data with loading state management."""
@@ -88,10 +92,8 @@ class BaseScreen(Screen[None]):
             await self._fetch_data()
         except Exception as exc:
             self._update_status_error(friendly_error(exc))
-            try:
+            with contextlib.suppress(AttributeError, TypeError):
                 self.notify(friendly_error(exc), severity="error")
-            except (AttributeError, TypeError):
-                pass
             logger.warning("%s refresh failed: %s", self.__class__.__name__, exc)
         finally:
             self.is_loading = False
@@ -101,7 +103,9 @@ class BaseScreen(Screen[None]):
         """Override in subclass to fetch screen data."""
 
     async def _fetch_multiple(
-        self, *fetch_fns: Coroutine[Any, Any, None], label: str = "data",
+        self,
+        *fetch_fns: Coroutine[Any, Any, None],
+        label: str = "data",
     ) -> int:
         """Run multiple fetch coroutines with per-function error handling."""
         successes = 0
@@ -109,10 +113,9 @@ class BaseScreen(Screen[None]):
             try:
                 await fn
                 successes += 1
-            except Exception as exc:
+            except (httpx.HTTPError, OSError, ValueError, RuntimeError) as exc:
                 logger.debug("%s sub-fetch failed: %s", label, exc)
         return successes
-
     def _set_loading(self, loading: bool) -> None:
         if not self._loading_widget_id:
             return

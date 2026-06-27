@@ -184,22 +184,18 @@ def aggregate_provider_metrics_artifacts(
         "providers": dict(
             sorted(
                 _count(
-
-                        snapshot.get("provider")
-                        for snapshot in snapshots
-                        if snapshot.get("provider")
-
+                    snapshot.get("provider")
+                    for snapshot in snapshots
+                    if snapshot.get("provider")
                 ).items(),
             ),
         ),
         "models": dict(
             sorted(
                 _count(
-
-                        snapshot.get("model")
-                        for snapshot in snapshots
-                        if snapshot.get("model")
-
+                    snapshot.get("model")
+                    for snapshot in snapshots
+                    if snapshot.get("model")
                 ).items(),
             ),
         ),
@@ -248,6 +244,7 @@ def _last_number(rows: list[dict[str, Any]], key: str) -> float | None:
         value = _float_or_none(row.get(key))
         if value is not None:
             return value
+    return None
 
 
 def _last_value(rows: list[dict[str, Any]], key: str) -> Any:
@@ -255,6 +252,7 @@ def _last_value(rows: list[dict[str, Any]], key: str) -> Any:
         value = row.get(key)
         if value is not None:
             return value
+    return None
 
 
 def _count(values: Iterable[Any]) -> dict[str, int]:

@@ -74,14 +74,19 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
         self.dry_run = bool(dry_run)
 
     def new_order_request(
-        self, *, symbol_id: int, orders: list[OrderedDict[str, Any]],
+        self,
+        *,
+        symbol_id: int,
+        orders: list[OrderedDict[str, Any]],
     ) -> SoDEXSignedRequest:
         if self.account_id is None:
             raise SoDEXNotReadyError(
                 "SoDEX account_id is required to build new-order request",
             )
         body = perps_new_order_body(
-            account_id=self.account_id, symbol_id=symbol_id, orders=orders,
+            account_id=self.account_id,
+            symbol_id=symbol_id,
+            orders=orders,
         )
         return SoDEXSignedRequest(
             method="POST",
@@ -92,7 +97,11 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
         )
 
     def update_leverage_request(
-        self, *, symbol_id: int, leverage: int, margin_mode: int,
+        self,
+        *,
+        symbol_id: int,
+        leverage: int,
+        margin_mode: int,
     ) -> SoDEXSignedRequest:
         if self.account_id is None:
             raise SoDEXNotReadyError(
@@ -112,7 +121,9 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
         )
 
     def cancel_order_request(
-        self, *, cancels: list[OrderedDict[str, Any]],
+        self,
+        *,
+        cancels: list[OrderedDict[str, Any]],
     ) -> SoDEXSignedRequest:
         if self.account_id is None:
             raise SoDEXNotReadyError(
@@ -127,7 +138,9 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
         )
 
     def schedule_cancel_request(
-        self, *, scheduled_timestamp: int | None = None,
+        self,
+        *,
+        scheduled_timestamp: int | None = None,
     ) -> SoDEXSignedRequest:
         if self.account_id is None:
             raise SoDEXNotReadyError(
@@ -137,14 +150,18 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
             method="POST",
             path="/trade/orders/schedule-cancel",
             body=perps_schedule_cancel_body(
-                account_id=self.account_id, scheduled_timestamp=scheduled_timestamp,
+                account_id=self.account_id,
+                scheduled_timestamp=scheduled_timestamp,
             ),
             domain="futures",
             weight=1,
         )
 
     def update_margin_request(
-        self, *, symbol_id: int, amount: str,
+        self,
+        *,
+        symbol_id: int,
+        amount: str,
     ) -> SoDEXSignedRequest:
         if self.account_id is None:
             raise SoDEXNotReadyError(
@@ -154,7 +171,9 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
             method="POST",
             path="/trade/margin",
             body=perps_update_margin_body(
-                account_id=self.account_id, symbol_id=symbol_id, amount=amount,
+                account_id=self.account_id,
+                symbol_id=symbol_id,
+                amount=amount,
             ),
             domain="futures",
             weight=1,
@@ -191,7 +210,9 @@ class SoDEXSignedPerpsClient(SoDEXPublicPerpsClient):
             "body": canonical_json(http_body),
             "signing_payload": canonical_json(request.body),
             "headers": build_signed_headers(
-                api_key_name=self.api_key_name, signature=signature, nonce=nonce,
+                api_key_name=self.api_key_name,
+                signature=signature,
+                nonce=nonce,
             ),
             "signature_input": signature_input,
             "weight": request.weight,

@@ -166,13 +166,16 @@ def _align_cs(frame: pd.DataFrame, *, symbols: list[str]) -> pd.DataFrame:
 
 
 def _align_cs_comp(
-    components: dict[str, pd.DataFrame], *, symbols: list[str],
+    components: dict[str, pd.DataFrame],
+    *,
+    symbols: list[str],
 ) -> dict[str, pd.DataFrame]:
     return {n: _align_cs(f, symbols=symbols) for n, f in components.items()}
 
 
 def _mask_ff(
-    ff: dict[str, pd.DataFrame], eligible: pd.DataFrame,
+    ff: dict[str, pd.DataFrame],
+    eligible: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
     return {n: f.where(eligible.reindex_like(f).fillna(False)) for n, f in ff.items()}
 
@@ -358,7 +361,10 @@ def _bptp(
 
 
 def _ppp(
-    *, family: str, params: dict[str, Any], defaults: dict[str, Any],
+    *,
+    family: str,
+    params: dict[str, Any],
+    defaults: dict[str, Any],
 ) -> dict[str, Any]:
     gt = float(params.get("gross_target", defaults.get("gross_target", 1.0)))
     mgc = 1.0 if family == "perp_pair_trade_unlevered" else 3.0
@@ -373,7 +379,8 @@ def _ppp(
     eas = max(
         0.0,
         min(
-            1.5, float(params.get("entry_abs_score", params.get("min_abs_score", ead))),
+            1.5,
+            float(params.get("entry_abs_score", params.get("min_abs_score", ead))),
         ),
     )
     exd = defaults.get("exit_abs_score", max(0.0, eas * 0.5))
@@ -397,7 +404,8 @@ def _ppp(
             3.0,
             float(
                 params.get(
-                    "signal_leverage_scale", defaults.get("signal_leverage_scale", 0.75),
+                    "signal_leverage_scale",
+                    defaults.get("signal_leverage_scale", 0.75),
                 ),
             ),
         ),
@@ -437,7 +445,10 @@ def _rpp(
 
 
 def _gmff(
-    frame: pd.DataFrame, *, minimum: float | None = None, maximum: float | None = None,
+    frame: pd.DataFrame,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
 ) -> pd.Series:
     num = frame.apply(pd.to_numeric, errors="coerce")
     if minimum is None and maximum is None:
@@ -535,7 +546,11 @@ def _prf(prices: pd.DataFrame, funding: pd.DataFrame) -> dict[str, pd.DataFrame]
 
 
 def _pair_rf(
-    *, prices: pd.DataFrame, funding: pd.DataFrame, a1: str, a2: str,
+    *,
+    prices: pd.DataFrame,
+    funding: pd.DataFrame,
+    a1: str,
+    a2: str,
 ) -> dict[str, pd.DataFrame]:
     p1 = prices[a1].replace([np.inf, -np.inf], np.nan)
     p2 = prices[a2].replace([np.inf, -np.inf], np.nan)
@@ -579,7 +594,9 @@ def _ppt_mf(provider, markets, histories):
         return _ffill_wow(
             pd.concat(
                 [
-                    pd.to_numeric(histories[label][column], errors="coerce").rename(label)
+                    pd.to_numeric(histories[label][column], errors="coerce").rename(
+                        label
+                    )
                     for label in labels
                 ],
                 axis=1,
@@ -728,7 +745,9 @@ def _lrf(
 
 
 async def compile_spec(
-    settings: SiglabConfig, provider: MarketDataProvider, spec: SignalSpec,
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
 ) -> CompiledChild:
     fs = load_family_spec(settings.root_dir, spec.track, spec.family)
     d = fs.get("defaults") or {}
@@ -755,7 +774,10 @@ async def compile_spec(
             interval=spec.universe.interval,
         )
         raw_frames = _pair_rf(
-            prices=bundle["prices"], funding=bundle["funding"], a1=a1, a2=a2,
+            prices=bundle["prices"],
+            funding=bundle["funding"],
+            a1=a1,
+            a2=a2,
         )
         _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
         pp = _ppp(family=spec.family, params=spec.params, defaults=d)
@@ -814,7 +836,8 @@ async def compile_spec(
         )
     if spec.track == "trend_signals" and ep in _PERF_PROFILES:
         symbols = await provider.discover_perp_symbols(
-            spec.universe.basis_groups, limit=spec.universe.max_symbols,
+            spec.universe.basis_groups,
+            limit=spec.universe.max_symbols,
         )
         bundle = await provider.fetch_perp_bundle(
             symbols=symbols,
@@ -876,7 +899,8 @@ async def compile_spec(
         )
     if spec.family == "basis_spread":
         symbols = await provider.discover_perp_symbols(
-            spec.universe.basis_groups, limit=spec.universe.max_symbols,
+            spec.universe.basis_groups,
+            limit=spec.universe.max_symbols,
         )
         bundle = await provider.fetch_perp_bundle(
             symbols=symbols,
@@ -898,11 +922,13 @@ async def compile_spec(
         )
         sp, sf = convert_to_spot(bundle["prices"])
         prices = pd.concat(
-            [sp.add_suffix("_SPOT"), bundle["prices"].add_suffix("_PERP")], axis=1,
+            [sp.add_suffix("_SPOT"), bundle["prices"].add_suffix("_PERP")],
+            axis=1,
         ).sort_index()
         funding = (
             pd.concat(
-                [sf.add_suffix("_SPOT"), bundle["funding"].add_suffix("_PERP")], axis=1,
+                [sf.add_suffix("_SPOT"), bundle["funding"].add_suffix("_PERP")],
+                axis=1,
             )
             .sort_index()
             .reindex(prices.index)
@@ -940,10 +966,12 @@ async def compile_spec(
         )
     if spec.family == "stable_pt_ladder":
         markets = await provider.discover_stable_pt_markets(
-            spec.universe, limit=spec.universe.max_symbols,
+            spec.universe,
+            limit=spec.universe.max_symbols,
         )
         histories = await provider.fetch_pt_histories(
-            markets, lookback_days=spec.universe.lookback_days,
+            markets,
+            lookback_days=spec.universe.lookback_days,
         )
         if not histories:
             raise ValueError("No stable PT histories available for this spec")
@@ -1028,10 +1056,12 @@ async def compile_spec(
         )
     if spec.family == "pt_yield_rotation":
         markets = await provider.discover_pt_markets(
-            spec.universe, limit=spec.universe.max_symbols,
+            spec.universe,
+            limit=spec.universe.max_symbols,
         )
         histories = await provider.fetch_pt_histories(
-            markets, lookback_days=spec.universe.lookback_days,
+            markets,
+            lookback_days=spec.universe.lookback_days,
         )
         if not histories:
             raise ValueError("No PT histories available for this spec")
@@ -1163,10 +1193,12 @@ async def compile_spec(
         )
     if spec.family == "lending_carry_rotation":
         markets = await provider.discover_lending_markets(
-            spec.universe, limit=spec.universe.max_symbols,
+            spec.universe,
+            limit=spec.universe.max_symbols,
         )
         lb = await provider.fetch_lending_bundle(
-            markets, lookback_days=spec.universe.lookback_days,
+            markets,
+            lookback_days=spec.universe.lookback_days,
         )
         if lb["prices"].empty:
             raise ValueError("No lending histories available for this spec")
@@ -1204,11 +1236,15 @@ async def compile_spec(
         lh: list[str] = []
         src = lb["source"]
         if hm == "perp":
-            m2hs = {label: s for label, s in lb["hedge_symbols"].items() if s and s != "USD"}
+            m2hs = {
+                label: s for label, s in lb["hedge_symbols"].items() if s and s != "USD"
+            }
             lh = sorted(set(m2hs.values()))
             if lh:
                 hb = await provider.fetch_perp_bundle(
-                    symbols=lh, lookback_days=spec.universe.lookback_days, interval="1h",
+                    symbols=lh,
+                    lookback_days=spec.universe.lookback_days,
+                    interval="1h",
                 )
                 hp = hb["prices"].reindex(lp.index).ffill().add_suffix("_PERP")
                 hf = (

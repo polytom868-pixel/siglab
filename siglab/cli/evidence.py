@@ -71,7 +71,8 @@ async def run_evidence_build(args: argparse.Namespace) -> None:
         etf_rows, news_rows, currency_news_rows = await asyncio.gather(
             client.etf_historical_inflow(etf_type=str(args.etf_type)),
             client.featured_news_pages(
-                max_pages=int(args.news_pages), page_size=int(args.news_page_size),
+                max_pages=int(args.news_pages),
+                page_size=int(args.news_page_size),
             ),
             client.featured_news_by_currency_pages(
                 max_pages=int(args.news_pages),
@@ -91,7 +92,9 @@ async def run_evidence_build(args: argparse.Namespace) -> None:
             evidence_path=f"sosovalue/etf/{args.etf_type}",
         ),
         *news_evidence(
-            news_rows, observed_at=observed_at, evidence_path="sosovalue/news/featured",
+            news_rows,
+            observed_at=observed_at,
+            evidence_path="sosovalue/news/featured",
         ),
         *news_evidence(
             currency_news_rows,
@@ -111,13 +114,16 @@ async def run_evidence_build(args: argparse.Namespace) -> None:
         else output.with_suffix(".summary.json")
     )
     summary = store.write_summary(
-        summary_output, max_day_gap=1, top_links=int(args.summary_top_links),
+        summary_output,
+        max_day_gap=1,
+        top_links=int(args.summary_top_links),
     )
     print_json(
         {
             "output": display_paths([output], root_dir=settings.root_dir)[0],
             "summary_output": display_paths(
-                [summary_output], root_dir=settings.root_dir,
+                [summary_output],
+                root_dir=settings.root_dir,
             )[0],
             "records_appended": appended,
             "cross_module_links": len(links),
@@ -139,7 +145,8 @@ def run_evidence_map(args: argparse.Namespace) -> None:
     settings = load_settings()
     if args.evidence:
         evidence_path = resolve_path_from_root(
-            args.evidence, root_dir=settings.root_dir,
+            args.evidence,
+            root_dir=settings.root_dir,
         )
         store = EvidenceStore(evidence_path)
         summary_path = evidence_path.with_suffix(".summary.json")

@@ -43,7 +43,9 @@ def convert_to_spot(prices: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def run_backtest(
-    prices: pd.DataFrame, target_weights: pd.DataFrame, config: BacktestConfig,
+    prices: pd.DataFrame,
+    target_weights: pd.DataFrame,
+    config: BacktestConfig,
 ) -> BacktestResult:
     """Run a single backtest given prices and target weights."""
     prices = prices.sort_index().astype(float)
@@ -85,7 +87,8 @@ def run_backtest(
         funding = funding.reindex(columns=prices.columns, fill_value=0.0)
         funding_amounts = funding.mul(weights.shift(1).fillna(0.0)).sum(axis=1)
         metrics_by_period["funding_amount"] = funding_amounts.where(
-            funding_settlement_mask, 0.0,
+            funding_settlement_mask,
+            0.0,
         )
     else:
         metrics_by_period["funding_amount"] = 0.0

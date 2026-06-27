@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import httpx
 import sys
 from typing import Any, ClassVar
 from collections.abc import Sequence
@@ -39,6 +40,7 @@ from siglab.tui.loading import LoadingIndicator
 from siglab.tui.screens.base import BaseScreen
 from siglab.tui.widgets.base import FilterableListWidget
 from siglab.tui.widgets.sparkline import ohlc_summary, sparkline_text
+import contextlib
 
 logger = logging.getLogger(__name__)
 DEMO_STEPS: list[dict[str, Any]] = [
@@ -100,7 +102,8 @@ def _kind_icon(kind: str) -> str:
 
 def _kind_style(kind: str) -> str:
     return {"source": INFO_BLUE, "entity": ACCENT_GREEN, "module": WARNING_YELLOW}.get(
-        kind, TEXT_SECONDARY,
+        kind,
+        TEXT_SECONDARY,
     )
 
 
@@ -116,7 +119,9 @@ class EvidenceGraphWidget(Static):
         self._filter_text = ""
 
     def update_graph(
-        self, nodes: Sequence[dict[str, Any]], edges: Sequence[dict[str, Any]],
+        self,
+        nodes: Sequence[dict[str, Any]],
+        edges: Sequence[dict[str, Any]],
     ) -> None:
         self._graph_nodes = tuple(nodes)
         self._edges = tuple(edges)
@@ -169,7 +174,8 @@ class EvidenceGraphWidget(Static):
                 cn = em.get(n.get("id", ""), [])
                 ln = Text()
                 ln.append(
-                    f"  {'└──' if i == len(sn) - 1 else '├──'} ", style=TEXT_MUTED,
+                    f"  {'└──' if i == len(sn) - 1 else '├──'} ",
+                    style=TEXT_MUTED,
                 )
                 ln.append(f"{lb}", style=st)
                 ln.append(f"  ({n.get('count', 0)})", style=TEXT_MUTED)
@@ -182,7 +188,8 @@ class EvidenceGraphWidget(Static):
             ls.append(Text(""))
         sm = Text()
         sm.append(
-            f"  {len(nodes)}/{len(self._graph_nodes)} nodes", style=TEXT_SECONDARY,
+            f"  {len(nodes)}/{len(self._graph_nodes)} nodes",
+            style=TEXT_SECONDARY,
         )
         sm.append(f"  .  {len(self._edges)} edges", style=TEXT_SECONDARY)
         ls.append(sm)
@@ -351,7 +358,8 @@ class DemoFlowWidget(Static):
             Text("  \u27f3 Running... (Esc to cancel)", style=WARNING_YELLOW)
             if self._running
             else Text(
-                "  Enter: run step  .  n/p: next/prev  .  a: run all", style=TEXT_MUTED,
+                "  Enter: run step  .  n/p: next/prev  .  a: run all",
+                style=TEXT_MUTED,
             ),
         )
         r = Text("\n")
@@ -363,9 +371,17 @@ class DemoFlowWidget(Static):
 
 
 class EvidenceScreen(BaseScreen):
-    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = (
-        [*BaseScreen.BINDINGS, Binding("tab", "switch_pane", "Switch Pane", show=True), Binding("enter", "run_step", "Run Step", show=True), Binding("n", "next_step", "Next Step", show=True), Binding("p", "prev_step", "Prev Step", show=True), Binding("a", "run_all", "Run All", show=True), Binding("f", "filter_source", "Sources", show=True), Binding("e", "filter_entity", "Entities", show=True), Binding("ctrl+l", "filter_clear", "Clear", show=False)]
-    )
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+        *BaseScreen.BINDINGS,
+        Binding("tab", "switch_pane", "Switch Pane", show=True),
+        Binding("enter", "run_step", "Run Step", show=True),
+        Binding("n", "next_step", "Next Step", show=True),
+        Binding("p", "prev_step", "Prev Step", show=True),
+        Binding("a", "run_all", "Run All", show=True),
+        Binding("f", "filter_source", "Sources", show=True),
+        Binding("e", "filter_entity", "Entities", show=True),
+        Binding("ctrl+l", "filter_clear", "Clear", show=False),
+    ]
     api_connected: reactive[bool] = reactive(False)
     graph_loading: reactive[bool] = reactive(False)
     demo_running: reactive[bool] = reactive(False)
@@ -385,7 +401,8 @@ class EvidenceScreen(BaseScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="evidence-layout"):
             yield Input(
-                placeholder="Filter by source, entity, or type...", id="evidence-filter",
+                placeholder="Filter by source, entity, or type...",
+                id="evidence-filter",
             )
             with Horizontal(id="evidence-main"):
                 with Vertical(id="evidence-graph-pane"):
@@ -408,12 +425,13 @@ class EvidenceScreen(BaseScreen):
             nds, eds = d.get("nodes", []), d.get("edges", [])
             self.api_connected = True
             self.query_one("#evidence-graph", EvidenceGraphWidget).update_graph(
-                nds, eds,
+                nds,
+                eds,
             )
             self.query_one("#edge-detail", EdgeDetailWidget).update_edges(eds)
             self._graph_nodes, self._edges = nds, eds
             self._update_status()
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             self.api_connected = False
             logger.debug("Evidence graph refresh failed: %s", exc)
             self._update_status_error(friendly_error(exc))
@@ -485,7 +503,7 @@ class EvidenceScreen(BaseScreen):
                 },
             )
             return rc
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             d.set_step_result(sn, {"returncode": -1, "stdout": "", "stderr": str(exc)})
             logger.debug("Demo step %s failed: %s", sn, exc)
             return -1
@@ -581,6 +599,7 @@ class SymbolListWidget(FilterableListWidget[SymbolEntry]):
     def get_selected_symbol(self) -> str | None:
         if self.symbols and 0 <= self.selected_index < len(self.symbols):
             return self.symbols[self.selected_index].name
+        return None
 
 
 class KlinesChartWidget(Static):
@@ -608,9 +627,7 @@ class KlinesChartWidget(Static):
         if not self.candles:
             r.append("  Loading chart data...", style=TEXT_MUTED)
             return r
-        cs = (
-            self._closes_cache or closes_from_klines(self.candles)
-        )
+        cs = self._closes_cache or closes_from_klines(self.candles)
         r.append("  ")
         r.append_text(sparkline_text(cs, width=max(20, min(80, len(cs)))))
         r.append("\n\n  ")
@@ -630,7 +647,8 @@ class TickerTableWidget(Static):
             return Text("  No data available", style=TEXT_MUTED)
         ls = Text()
         ls.append(
-            "  SYMBOL          PRICE          24h CHG      VOLUME\n", style=TEXT_MUTED,
+            "  SYMBOL          PRICE          24h CHG      VOLUME\n",
+            style=TEXT_MUTED,
         )
         ls.append("  " + "-" * 60 + "\n", style=BORDER_DIM)
         for t in self.tickers[:20]:
@@ -663,10 +681,8 @@ class OrderBookWidget(Static):
         r.append("  " + "-" * 23 + "|" + "-" * 23 + "\n", style=BORDER_DIM)
         sz = []
         for x in [*self.bids[:ORDERBOOK_LIMIT], *self.asks[:ORDERBOOK_LIMIT]]:
-            try:
+            with contextlib.suppress(ValueError, IndexError):
                 sz.append(float(x[1]) if len(x) > 1 else 0)
-            except (ValueError, IndexError):
-                pass
         mx = max(sz) if sz else 1.0
         bw = 10
         for i in range(min(max(len(self.bids), len(self.asks)), ORDERBOOK_LIMIT)):
@@ -707,9 +723,10 @@ class OrderBookWidget(Static):
 
 
 class MarketScreen(BaseScreen):
-    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = (
-        [*BaseScreen.BINDINGS, Binding("enter", "select_symbol", "Select", show=False)]
-    )
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+        *BaseScreen.BINDINGS,
+        Binding("enter", "select_symbol", "Select", show=False),
+    ]
     current_symbol: reactive[str] = reactive(DEFAULT_SYMBOL)
     _loading_widget_id: ClassVar[str] = "#market-loading"
     _status_widget_id: ClassVar[str] = "#market-status"
@@ -760,7 +777,10 @@ class MarketScreen(BaseScreen):
                 reverse=True,
             )
             safe_query(
-                self, "#symbol-list", SymbolListWidget, lambda w: w.set_symbols(es),
+                self,
+                "#symbol-list",
+                SymbolListWidget,
+                lambda w: w.set_symbols(es),
             )
             safe_query(
                 self,
@@ -773,7 +793,9 @@ class MarketScreen(BaseScreen):
         if self._api is None:
             return
         d = await self._api.get_market_klines(
-            self.current_symbol, DEFAULT_INTERVAL, KLINES_LIMIT,
+            self.current_symbol,
+            DEFAULT_INTERVAL,
+            KLINES_LIMIT,
         )
         ks = d.get("klines", [])
         safe_query(

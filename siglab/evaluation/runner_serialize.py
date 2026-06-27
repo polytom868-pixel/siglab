@@ -23,7 +23,10 @@ def _policy_summary_spec(policy: dict[str, Any]) -> dict[str, Any]:
 
 
 def _unique_float_values(
-    values: list[float], *, low: float, high: float,
+    values: list[float],
+    *,
+    low: float,
+    high: float,
 ) -> list[float]:
     cleaned: list[float] = []
     seen: set[float] = set()
@@ -61,7 +64,8 @@ def _serialize_metrics_frame(frame: pd.DataFrame, digits: int = 8) -> dict[str, 
     if "fee_amount" not in normalized.columns:
         if "cost" in normalized.columns:
             normalized["fee_amount"] = pd.to_numeric(
-                normalized["cost"], errors="coerce",
+                normalized["cost"],
+                errors="coerce",
             ).fillna(0.0)
         else:
             normalized["fee_amount"] = 0.0
@@ -82,7 +86,10 @@ def _serialize_metrics_frame(frame: pd.DataFrame, digits: int = 8) -> dict[str, 
 
 
 def _serialize_weight_changes(
-    frame: pd.DataFrame, *, digits: int = 6, epsilon: float = 1e-09,
+    frame: pd.DataFrame,
+    *,
+    digits: int = 6,
+    epsilon: float = 1e-09,
 ) -> dict[str, Any]:
     changes: list[dict[str, Any]] = []
     previous: dict[str, float] | None = None
@@ -158,7 +165,9 @@ def _serialize_canonical_run(
         "metrics_by_period": _serialize_metrics_frame(result.metrics_by_period),
         "target_weights": _serialize_weight_changes(target_weights),
         "trades": _serialize_trades(
-            result.trades, regime_state=regime_state, target_weights=target_weights,
+            result.trades,
+            regime_state=regime_state,
+            target_weights=target_weights,
         ),
         "trade_count": len(result.trades),
         "trade_episodes": trade_episodes,
@@ -171,7 +180,8 @@ def _serialize_canonical_run(
 
 
 def _serialize_window_ranges(
-    full_index: pd.Index, windows: list[dict[str, Any]],
+    full_index: pd.Index,
+    windows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     serialized: list[dict[str, Any]] = []
     if len(full_index) == 0:

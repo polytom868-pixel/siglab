@@ -6,6 +6,7 @@ import logging
 import signal
 from pathlib import Path
 from typing import Any
+import contextlib
 
 logger = logging.getLogger(__name__)
 KILL_FILE = Path("/tmp/siglab.KILL")
@@ -24,10 +25,8 @@ def _sigusr1_handler(signum: int, _frame: Any | None) -> None:
 
 
 def _install_signal_handler() -> None:
-    try:
+    with contextlib.suppress(ValueError, AttributeError):
         signal.signal(signal.SIGUSR1, _sigusr1_handler)
-    except (ValueError, AttributeError):
-        pass
 
 
 _install_signal_handler()
@@ -47,7 +46,8 @@ def check_daily_loss(equity: float, start_equity: float) -> bool:
 
 
 def check_kill_switch(
-    equity: float | None = None, start_equity: float | None = None,
+    equity: float | None = None,
+    start_equity: float | None = None,
 ) -> tuple[bool, str]:
     """Combined kill-switch check: file-trigger + signal + daily loss."""
     global _kill_triggered
@@ -69,7 +69,5 @@ def reset_kill_switch() -> None:
     global _kill_triggered
     _kill_triggered = False
     if KILL_FILE.exists():
-        try:
+        with contextlib.suppress(OSError):
             KILL_FILE.unlink()
-        except OSError:
-            pass

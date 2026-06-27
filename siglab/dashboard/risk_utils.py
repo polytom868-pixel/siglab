@@ -74,7 +74,9 @@ def empty_risk_response() -> dict[str, Any]:
 
 
 def compute_risk_metrics(
-    sessions_dir: Path, *, periods_per_year: int = 365,
+    sessions_dir: Path,
+    *,
+    periods_per_year: int = 365,
 ) -> dict[str, Any]:
     """Compute full risk metrics from session data."""
     curves = load_equity_curves(sessions_dir)

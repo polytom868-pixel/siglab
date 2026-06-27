@@ -24,7 +24,10 @@ def percentile(values: list[float], percentile: int) -> float | None:
 
 
 def safe_float(
-    value: float | str | None, *, digits: int = 8, default: float | None = None,
+    value: float | str | None,
+    *,
+    digits: int = 8,
+    default: float | None = None,
 ) -> float | None:
     """Convert value to float safely. Returns default on failure, None, or NaN."""
     if value is None:
@@ -97,13 +100,17 @@ async def run_with_backoff(
             import logging
 
             logging.getLogger(__name__).exception(
-                "run_with_backoff attempt %d/%d failed, retrying", attempt, max_retries,
+                "run_with_backoff attempt %d/%d failed, retrying",
+                attempt,
+                max_retries,
             )
             await asyncio.sleep(backoff_s * 2 ** (attempt - 1))
 
 
 async def async_limiter_call(
-    callable: Callable[[], Awaitable[Any]], *, rate_limit: int = 20,
+    callable: Callable[[], Awaitable[Any]],
+    *,
+    rate_limit: int = 20,
 ) -> Any:
     import asyncio
 

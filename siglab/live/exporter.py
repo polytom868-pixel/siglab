@@ -134,7 +134,8 @@ class LiveDeploymentManager:
                 f"Deployment refused — {len(gate_reasons)} gate(s) failed: {'; '.join(gate_reasons)}",
             )
         resolved_config_path = resolve_path_from_root(
-            config_path, root_dir=self.settings.root_dir,
+            config_path,
+            root_dir=self.settings.root_dir,
         )
         self._preflight_deploy_boundary(
             resolved_config_path=resolved_config_path,
@@ -224,7 +225,10 @@ class LiveDeploymentManager:
             )
 
     async def _finalizer_notes(
-        self, detail: dict[str, Any], *, llm_finalize: bool,
+        self,
+        detail: dict[str, Any],
+        *,
+        llm_finalize: bool,
     ) -> dict[str, Any]:
         spec = dict(detail.get("spec") or {})
         summary = dict(detail.get("summary") or {})
@@ -332,7 +336,8 @@ class LiveDeploymentManager:
         _ensure_package_tree(package_dir=package_dir, root_dir=self.settings.root_dir)
         class_name = _strategy_class_name(strategy_name)
         module_path = _module_path_from_root(
-            package_dir=package_dir, root_dir=self.settings.root_dir,
+            package_dir=package_dir,
+            root_dir=self.settings.root_dir,
         )
         strategy_py = f'from __future__ import annotations\nfrom pathlib import Path\nfrom siglab.live.runtime import DirectionalPerpsSigLabStrategy\n\nclass {class_name}(DirectionalPerpsSigLabStrategy):\n """{_escape_docstring(llm_notes.get("strategy_doc") or "Generated SigLab live strategy")}"""\n SPEC_PATH = Path(__file__).with_name("live_spec.json")'
         manifest = f"""schema_version: "0.1" entrypoint: "{module_path}.strategy.{class_name}" permissions: policy: | (wallet.id == 'FORMAT_WALLET_ID') AND ( (action.type == 'sodex_perps_order') OR (action.type == 'sodex_perps_cancel') ) adapters: - name: "LEDGER" capabilities: ["ledger.read", "ledger.write", "strategy.transactions"] - name: "SODEX_PERPS" capabilities: ["market.read", "perps.symbols", "perps.klines", "perps.state", "order.execute", "order.cancel", "position.manage"]"""
@@ -346,7 +351,9 @@ class LiveDeploymentManager:
 
 def _strategy_name(detail: dict[str, Any]) -> str:
     family = re.sub(
-        "[^a-z0-9]+", "_", str(detail.get("family") or "strategy").lower(),
+        "[^a-z0-9]+",
+        "_",
+        str(detail.get("family") or "strategy").lower(),
     ).strip("_")
     return f"siglab_{family}_{detail['spec_hash']}"
 
