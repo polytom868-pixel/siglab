@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import pandas as pd
@@ -787,6 +787,26 @@ def _lrf(
     }
 
 
+class _CompileCtx(NamedTuple):
+    """Compiler context — loaded once per compilation, shared across handlers."""
+    spec: SignalSpec
+    fs: dict
+    d: dict
+    fw: dict
+    caps: Any
+    ep: Any
+    da: Any
+    ps: Any
+    fspec: dict
+    a: dict
+
+    def param_int(self, key: str, fallback: int) -> int:
+        return int(self.spec.params.get(key, self.d.get(key, fallback)))
+
+    def param_float(self, key: str, fallback: float) -> float:
+        return float(self.spec.params.get(key, self.d.get(key, fallback)))
+
+
 def _load_compiler_context(settings: SiglabConfig, spec: SignalSpec):
     fs = load_family_spec(settings.root_dir, spec.track, spec.family)
     d = fs.get("defaults") or {}
@@ -797,7 +817,7 @@ def _load_compiler_context(settings: SiglabConfig, spec: SignalSpec):
     ps = family_policy_schema(fs)
     fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
     a = fspec.get("aliases") or {}
-    return fs, d, fw, caps, ep, da, ps, fspec, a
+    return _CompileCtx(spec, fs, d, fw, caps, ep, da, ps, fspec, a)
 def _build_compiled_child(
     *,
     prices: pd.DataFrame,
@@ -806,11 +826,7 @@ def _build_compiled_child(
     signal_score: pd.DataFrame | None = None,
     signal_components: dict[str, pd.DataFrame] | None = None,
     regime_gate_mask: pd.Series | None = None,
-    spec: SignalSpec,
-    caps: Any,
-    ep: Any,
-    da: Any,
-    ps: Any,
+    ctx: _CompileCtx,
     source: str,
     bundle_as_of: Any,
     asset_breadth: int,
@@ -830,8 +846,8 @@ def _build_compiled_child(
     if regime_gate_mask is not None:
         kwargs["regime_gate_mask"] = regime_gate_mask
     kwargs["metadata"] = _bsm(
-        spec, capabilities=caps, execution_profile=ep, diagnostic_adapter=da,
-        policy_schema=ps, features=spec.features, feature_hash=_fh(spec.features),
+        ctx.spec, capabilities=ctx.caps, execution_profile=ctx.ep, diagnostic_adapter=ctx.da,
+        policy_schema=ctx.ps, features=ctx.spec.features, feature_hash=_fh(ctx.spec.features),
         source=source, bundle_as_of=bundle_as_of, asset_breadth=asset_breadth,
         prices=prices_for_meta if prices_for_meta is not None else prices,
         rg_meta=rg_meta, **extra_meta,
@@ -841,13 +857,11 @@ def _build_compiled_child(
 
 
 
-
 async def _compile_pair_trade(
-    settings: SiglabConfig,
+    ctx: _CompileCtx,
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     rs = [str(s).upper() for s in spec.universe.basis_groups[:2]]
     symbols = await provider.discover_perp_symbols(rs, limit=2)
     od = [s for s in rs if s in symbols]
@@ -868,8 +882,8 @@ async def _compile_pair_trade(
         a1=a1,
         a2=a2,
     )
-    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
-    pp = _ppp(family=spec.family, params=spec.params, defaults=d)
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, ctx.a, ctx.fw)
+    pp = _ppp(family=spec.family, params=spec.params, defaults=ctx.d)
     positions = _bptp(
         score,
         a1=a1,
@@ -893,11 +907,7 @@ async def _compile_pair_trade(
         signal_score=score,
         signal_components=sc,
         regime_gate_mask=rgm,
-        spec=spec,
-        caps=caps,
-        ep=ep,
-        da=da,
-        ps=ps,
+        ctx=ctx,
         source=bundle["source"],
         bundle_as_of=bundle.get("bundle_as_of"),
         asset_breadth=len(od),
@@ -922,11 +932,10 @@ async def _compile_pair_trade(
 
 
 async def _compile_ranked_perf(
-    settings: SiglabConfig,
+    ctx: _CompileCtx,
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     symbols = await provider.discover_perp_symbols(
         spec.universe.basis_groups,
         limit=spec.universe.max_symbols,
@@ -937,15 +946,15 @@ async def _compile_ranked_perf(
         interval=spec.universe.interval,
     )
     raw_frames = _prf(bundle["prices"], bundle["funding"])
-    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, ctx.a, ctx.fw)
     score = _align_cs(score, symbols=symbols)
     sc = _align_cs_comp(sc, symbols=symbols)
-    rgm, rgm_meta = _rrg(spec.regime_gates, aliases=a, raw_frames=raw_frames)
+    rgm, rgm_meta = _rrg(spec.regime_gates, aliases=ctx.a, raw_frames=raw_frames)
     led = True
-    sed = ep != "ranked_directional"
+    sed = ctx.ep != "ranked_directional"
     policy = _rpp(
         params=spec.params,
-        defaults=d,
+        defaults=ctx.d,
         long_enabled_default=led,
         short_enabled_default=sed,
     )
@@ -955,9 +964,9 @@ async def _compile_ranked_perf(
         short_count=policy["short_count"] if policy["short_enabled"] else 0,
         gross_target=policy["gross_target"],
         max_asset_weight=spec.risk.max_asset_weight,
-        require_positive_longs=ep == "ranked_directional",
+        require_positive_longs=ctx.ep == "ranked_directional",
         min_abs_score=policy["min_abs_score"],
-        require_both_sides=ep in {"basket_neutral_spread", "ranked_carry"},
+        require_both_sides=ctx.ep in {"basket_neutral_spread", "ranked_carry"},
         regime_gate_mask=rgm,
     )
     return _build_compiled_child(
@@ -967,11 +976,7 @@ async def _compile_ranked_perf(
         signal_score=score,
         signal_components=sc,
         regime_gate_mask=rgm,
-        spec=spec,
-        caps=caps,
-        ep=ep,
-        da=da,
-        ps=ps,
+        ctx=ctx,
         source=bundle["source"],
         bundle_as_of=bundle.get("bundle_as_of"),
         asset_breadth=len(symbols),
@@ -987,11 +992,10 @@ async def _compile_ranked_perf(
 
 
 async def _compile_basis_spread(
-    settings: SiglabConfig,
+    ctx: _CompileCtx,
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     symbols = await provider.discover_perp_symbols(
         spec.universe.basis_groups,
         limit=spec.universe.max_symbols,
@@ -1002,15 +1006,11 @@ async def _compile_basis_spread(
         interval=spec.universe.interval,
     )
     raw_frames = _prf(bundle["prices"], bundle["funding"])
-    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, ctx.a, ctx.fw)
     pair_positions = _bpp(
         score,
-        selection_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 2)),
-        ),
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 1.0)),
-        ),
+        selection_count=ctx.param_int("selection_count", 2),
+        gross_target=ctx.param_float("gross_target", 1.0),
         max_asset_weight=spec.risk.max_asset_weight,
         regime_gate_mask=rgm,
     )
@@ -1034,31 +1034,22 @@ async def _compile_basis_spread(
         signal_score=score,
         signal_components=sc,
         regime_gate_mask=rgm,
-        spec=spec,
-        caps=caps,
-        ep=ep,
-        da=da,
-        ps=ps,
+        ctx=ctx,
         source=bundle["source"],
         bundle_as_of=bundle.get("bundle_as_of"),
         asset_breadth=len(symbols),
         rg_meta=rgm_meta,
         symbols=symbols,
-        selection_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 2)),
-        ),
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 1.0)),
-        ),
+        selection_count=ctx.param_int("selection_count", 2),
+        gross_target=ctx.param_float("gross_target", 1.0),
     )
 
 
 async def _compile_stable_pt(
-    settings: SiglabConfig,
+    ctx: _CompileCtx,
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     markets = await provider.discover_stable_pt_markets(
         spec.universe,
         limit=spec.universe.max_symbols,
@@ -1077,7 +1068,7 @@ async def _compile_stable_pt(
         total_tvl=ttl,
         dte=dte,
     )
-    ff, score, _, _, _ = _ssp(raw_frames, spec, a, fw)
+    ff, score, _, _, _ = _ssp(raw_frames, spec, ctx.a, ctx.fw)
     pt_state = classify_pt_market_state(
         prices=prices,
         days_to_expiry=dte,
@@ -1088,18 +1079,14 @@ async def _compile_stable_pt(
     )
     ff = _mask_ff(ff, pt_state["eligible"])
     score = _ensure_elig(
-        cast(pd.DataFrame, _ws(ff, spec.features, fw, return_components=False)),
+        cast(pd.DataFrame, _ws(ff, spec.features, ctx.fw, return_components=False)),
         pt_state["eligible"],
     )
     positions = _brp(
         score,
-        long_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 3)),
-        ),
+        long_count=ctx.param_int("selection_count", 3),
         short_count=0,
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 0.9)),
-        ),
+        gross_target=ctx.param_float("gross_target", 0.9),
         max_asset_weight=spec.risk.max_asset_weight,
         require_positive_longs=True,
     )
@@ -1115,11 +1102,7 @@ async def _compile_stable_pt(
         prices=prices,
         target_positions=_reindex_ffill_fillna(positions, prices.index),
         funding_rates=funding,
-        spec=spec,
-        caps=caps,
-        ep=ep,
-        da=da,
-        ps=ps,
+        ctx=ctx,
         source="pendle_public",
         bundle_as_of=prices.index.max().isoformat()
         if not prices.empty
@@ -1127,12 +1110,8 @@ async def _compile_stable_pt(
         asset_breadth=len(prices.columns),
         rg_meta={},
         markets=list(prices.columns),
-        selection_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 3)),
-        ),
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 0.9)),
-        ),
+        selection_count=ctx.param_int("selection_count", 3),
+        gross_target=ctx.param_float("gross_target", 0.9),
         **_pt_lm(
             spec=spec,
             prices=prices,
@@ -1146,11 +1125,10 @@ async def _compile_stable_pt(
 
 
 async def _compile_pt_yield(
-    settings: SiglabConfig,
+    ctx: _CompileCtx,
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     markets = await provider.discover_pt_markets(
         spec.universe,
         limit=spec.universe.max_symbols,
@@ -1169,7 +1147,7 @@ async def _compile_pt_yield(
         total_tvl=ttl,
         dte=dte,
     )
-    ff, score, _, _, _ = _ssp(raw_frames, spec, a, fw)
+    ff, score, _, _, _ = _ssp(raw_frames, spec, ctx.a, ctx.fw)
     pt_state = classify_pt_market_state(
         prices=prices,
         days_to_expiry=dte,
@@ -1180,18 +1158,14 @@ async def _compile_pt_yield(
     )
     ff = _mask_ff(ff, pt_state["eligible"])
     score = _ensure_elig(
-        cast(pd.DataFrame, _ws(ff, spec.features, fw, return_components=False)),
+        cast(pd.DataFrame, _ws(ff, spec.features, ctx.fw, return_components=False)),
         pt_state["eligible"],
     )
     pt_positions = _brp(
         score,
-        long_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 2)),
-        ),
+        long_count=ctx.param_int("selection_count", 2),
         short_count=0,
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 0.8)),
-        ),
+        gross_target=ctx.param_float("gross_target", 0.8),
         max_asset_weight=spec.risk.max_asset_weight,
         require_positive_longs=True,
     )
@@ -1205,8 +1179,8 @@ async def _compile_pt_yield(
     funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
     cp = prices.copy()
     cpos = _reindex_ffill_fillna(pt_positions, prices.index)
-    hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
-    hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
+    hm = str(spec.params.get("hedge_mode", ctx.d.get("hedge_mode", "none"))).lower()
+    hr = ctx.param_float("hedge_ratio", 1.0)
     hsym: list[str] = []
     src = "pendle_public"
     if hm == "perp":
@@ -1228,11 +1202,7 @@ async def _compile_pt_yield(
         prices=cp,
         target_positions=cpos,
         funding_rates=funding,
-        spec=spec,
-        caps=caps,
-        ep=ep,
-        da=da,
-        ps=ps,
+        ctx=ctx,
         source=src,
         bundle_as_of=prices.index.max().isoformat()
         if not prices.empty
@@ -1243,12 +1213,8 @@ async def _compile_pt_yield(
         hedge_mode=hm,
         hedge_ratio=hr,
         hedge_symbols=hsym,
-        selection_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 2)),
-        ),
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 0.8)),
-        ),
+        selection_count=ctx.param_int("selection_count", 2),
+        gross_target=ctx.param_float("gross_target", 0.8),
         **_pt_lm(
             spec=spec,
             prices=prices,
@@ -1262,11 +1228,10 @@ async def _compile_pt_yield(
 
 
 async def _compile_lending_carry(
-    settings: SiglabConfig,
+    ctx: _CompileCtx,
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     markets = await provider.discover_lending_markets(
         spec.universe,
         limit=spec.universe.max_symbols,
@@ -1289,16 +1254,12 @@ async def _compile_lending_carry(
         borrow_apr=lb["borrow_apr"],
         borrow_tvl_usd=lb["borrow_tvl_usd"],
     )
-    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, a, fw)
+    _, score, sc, rgm, rgm_meta = _ssp(raw_frames, spec, ctx.a, ctx.fw)
     lpos = _brp(
         score,
-        long_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 2)),
-        ),
+        long_count=ctx.param_int("selection_count", 2),
         short_count=0,
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 0.8)),
-        ),
+        gross_target=ctx.param_float("gross_target", 0.8),
         max_asset_weight=spec.risk.max_asset_weight,
         require_positive_longs=True,
         regime_gate_mask=rgm,
@@ -1306,8 +1267,8 @@ async def _compile_lending_carry(
     funding = pd.DataFrame(0.0, index=lp.index, columns=lp.columns)
     cp = lp.copy()
     cpos = _reindex_ffill_fillna(lpos, lp.index)
-    hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
-    hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
+    hm = str(spec.params.get("hedge_mode", ctx.d.get("hedge_mode", "none"))).lower()
+    hr = ctx.param_float("hedge_ratio", 1.0)
     lh: list[str] = []
     src = lb["source"]
     if hm == "perp":
@@ -1328,11 +1289,7 @@ async def _compile_lending_carry(
         signal_score=score,
         signal_components=sc,
         regime_gate_mask=rgm,
-        spec=spec,
-        caps=caps,
-        ep=ep,
-        da=da,
-        ps=ps,
+        ctx=ctx,
         source=src,
         bundle_as_of=lb.get("bundle_as_of"),
         asset_breadth=len(lp.columns),
@@ -1341,12 +1298,8 @@ async def _compile_lending_carry(
         hedge_mode=hm,
         hedge_ratio=hr,
         hedge_symbols=lh,
-        selection_count=int(
-            spec.params.get("selection_count", d.get("selection_count", 2)),
-        ),
-        gross_target=float(
-            spec.params.get("gross_target", d.get("gross_target", 0.8)),
-        ),
+        selection_count=ctx.param_int("selection_count", 2),
+        gross_target=ctx.param_float("gross_target", 0.8),
     )
 
 
@@ -1367,8 +1320,9 @@ async def compile_spec(
 ) -> CompiledChild:
     if spec.family not in _FAMILY_COMPILERS:
         raise ValueError(f"Unsupported spec family: {spec.family}")
+    ctx = _load_compiler_context(settings, spec)
     compiler = _FAMILY_COMPILERS[spec.family]
-    return await compiler(settings, provider, spec)
+    return await compiler(ctx, provider, spec)
 
 
 # backward compat aliases for tests

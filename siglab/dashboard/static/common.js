@@ -432,253 +432,35 @@ document.addEventListener("click", (event) => {
   }
 });
 
-/* ─── Command Palette (Cmd+K) ─── */
-(() => {
-  const dialog = document.getElementById("commandPalette");
-  const input = document.getElementById("commandPaletteInput");
-  const results = document.getElementById("commandPaletteResults");
-  if (!dialog || !input || !results) return;
+/* ─── Global Keyboard Shortcuts ─── */
+document.addEventListener("keydown", (e) => {
+  // Don't handle shortcuts when in an input
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
 
-  let activeIndex = -1;
-  let searchTimeout = null;
-
-  function openPalette() {
-    dialog.showModal();
-    input.value = "";
-    results.innerHTML = '<div class="command-palette-empty">Type to search...</div>';
-    activeIndex = -1;
-    requestAnimationFrame(() => input.focus());
+  // R = Refresh
+  if (e.key === "r" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    const refreshBtn = document.getElementById("refreshButton");
+    if (refreshBtn) refreshBtn.click();
   }
 
-  function closePalette() {
-    dialog.close();
-    input.value = "";
-  }
-
-  function renderResults(items) {
-    if (!items.length) {
-      results.innerHTML = '<div class="command-palette-empty">No results found</div>';
-      return;
-    }
-    results.innerHTML = items.map((item, i) => `
-      <div class="command-palette-item${i === activeIndex ? ' active' : ''}"
-           data-url="${item.url}" data-type="${item.type}" data-index="${i}">
-        <span class="command-palette-item-icon">${item.icon}</span>
-        <div class="command-palette-item-content">
-          <div class="command-palette-item-title">${escapeHtml(item.title)}</div>
-          <div class="command-palette-item-subtitle">${escapeHtml(item.subtitle)}</div>
-        </div>
-        <span class="command-palette-item-type">${item.type}</span>
-      </div>
-    `).join("");
-  }
-
-  async function search(query) {
-    if (!query.trim()) {
-      results.innerHTML = '<div class="command-palette-empty">Type to search...</div>';
-      return;
-    }
-    try {
-      const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`);
-      const data = await resp.json();
-      activeIndex = data.results.length > 0 ? 0 : -1;
-      renderResults(data.results);
-    } catch {
-      results.innerHTML = '<div class="command-palette-empty">Search failed</div>';
-    }
-  }
-
-  function navigateResults(direction) {
-    const items = results.querySelectorAll(".command-palette-item");
-    if (!items.length) return;
-    items[activeIndex]?.classList.remove("active");
-    activeIndex = (activeIndex + direction + items.length) % items.length;
-    items[activeIndex]?.classList.add("active");
-    items[activeIndex]?.scrollIntoView({ block: "nearest" });
-  }
-
-  function selectResult() {
-    const item = results.querySelectorAll(".command-palette-item")[activeIndex];
-    if (!item) return;
-    const url = item.dataset.url;
-    const type = item.dataset.type;
-    if (type === "action" && url === "#") {
-      // Handle special actions
-      const title = item.querySelector(".command-palette-item-title")?.textContent;
-      if (title === "Refresh Data") {
-        window.location.reload();
-      } else if (title === "Toggle Theme") {
-        document.getElementById("themeToggle")?.click();
-      } else if (title === "Help & Documentation") {
-        document.getElementById("helpModal")?.showModal();
-      }
-    } else if (url && url !== "#") {
-      // Export actions open in new tab
-      if (url.includes("/api/export/")) {
-        window.open(url, "_blank");
-      } else {
-        window.location.href = url;
-      }
-    }
-    closePalette();
-  }
-
-  // Keyboard shortcut: Cmd+K or Ctrl+K
-  document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+  // 1-7 = Focus ops panels (only on ops page)
+  if (e.key >= "1" && e.key <= "7" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const panels = document.querySelectorAll(".ops-panel");
+    const index = parseInt(e.key, 10) - 1;
+    if (panels[index]) {
       e.preventDefault();
-      if (dialog.open) {
-        closePalette();
-      } else {
-        openPalette();
-      }
+      panels[index].scrollIntoView({ behavior: "smooth", block: "start" });
+      panels[index].focus();
     }
-    if (e.key === "Escape" && dialog.open) {
-      e.preventDefault();
-      closePalette();
-    }
-  });
-
-  // Additional keyboard shortcuts (only when command palette is closed)
-  document.addEventListener("keydown", (e) => {
-    // Don't handle shortcuts when palette is open or in an input
-    if (dialog.open) return;
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-
-    // R = Refresh
-    if (e.key === "r" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      const refreshBtn = document.getElementById("refreshButton");
-      if (refreshBtn) refreshBtn.click();
-    }
-
-    // / = Open command palette (alternative to Cmd+K)
-    if (e.key === "/") {
-      e.preventDefault();
-      openPalette();
-    }
-
-    // 1-7 = Focus ops panels (only on ops page)
-    if (e.key >= "1" && e.key <= "7" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      const panels = document.querySelectorAll(".ops-panel");
-      const index = parseInt(e.key, 10) - 1;
-      if (panels[index]) {
-        e.preventDefault();
-        panels[index].scrollIntoView({ behavior: "smooth", block: "start" });
-        panels[index].focus();
-      }
-    }
-
-    // Escape = Go back (if not in dialog)
-    if (e.key === "Escape") {
-      const backLink = document.getElementById("backLink");
-      if (backLink) {
-        e.preventDefault();
-        backLink.click();
-      }
-    }
-  });
-
-  // Click on trigger button
-  const trigger = document.getElementById("commandPaletteTrigger");
-  if (trigger) {
-    trigger.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (dialog.open) {
-        closePalette();
-      } else {
-        openPalette();
-      }
-    });
   }
 
-  // Input handling
-  input.addEventListener("input", () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => search(input.value), 150);
-  });
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowDown") {
+  // Escape = Go back (if not in dialog)
+  if (e.key === "Escape") {
+    const backLink = document.getElementById("backLink");
+    if (backLink) {
       e.preventDefault();
-      navigateResults(1);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      navigateResults(-1);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      selectResult();
+      backLink.click();
     }
-  });
-
-  // Click on result
-  results.addEventListener("click", (e) => {
-    const item = e.target.closest(".command-palette-item");
-    if (item) {
-      activeIndex = parseInt(item.dataset.index, 10);
-      selectResult();
-    }
-  });
-
-  // Click on backdrop to close
-  dialog.addEventListener("click", (e) => {
-    if (e.target === dialog || e.target.classList.contains("command-palette-backdrop")) {
-      closePalette();
-    }
-  });
-})();
-
-/* ─── Help Modal (?) ─── */
-(() => {
-  const helpDialog = document.getElementById("helpModal");
-  const helpClose = document.getElementById("helpModalClose");
-  if (!helpDialog || !helpClose) return;
-
-  function openHelp() {
-    helpDialog.showModal();
   }
-
-  function closeHelp() {
-    helpDialog.close();
-  }
-
-  // Keyboard shortcut: ? or H (when not in input)
-  document.addEventListener("keydown", (e) => {
-    if (helpDialog.open) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeHelp();
-      }
-      return;
-    }
-    // Don't handle shortcuts when in an input
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-
-    if (e.key === "?" || (e.key === "h" && !e.metaKey && !e.ctrlKey && !e.altKey)) {
-      e.preventDefault();
-      openHelp();
-    }
-  });
-
-  // Close button
-  helpClose.addEventListener("click", closeHelp);
-
-  // Help trigger button in navbar
-  const helpTrigger = document.getElementById("helpTrigger");
-  if (helpTrigger) {
-    helpTrigger.addEventListener("click", () => {
-      if (helpDialog.open) {
-        closeHelp();
-      } else {
-        openHelp();
-      }
-    });
-  }
-
-  // Click on backdrop to close
-  helpDialog.addEventListener("click", (e) => {
-    if (e.target === helpDialog || e.target.classList.contains("help-modal-backdrop")) {
-      closeHelp();
-    }
-  });
-})();
+});

@@ -14,7 +14,6 @@ from collections.abc import Callable
 
 from siglab.config import SiglabConfig, load_settings
 from siglab.utils import resolve_path_from_root, safe_float
-from siglab.config import SignalSpec
 from siglab.telemetry import (
     build_telemetry_payload,
     provider_metric_paths_for_telemetry,

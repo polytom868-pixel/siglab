@@ -9,7 +9,6 @@ from typing import Any
 
 from siglab.live.paper_client import SoDEXPaperPerpsClient
 from siglab.utils import (
-    BreachReport,
     CircuitBreakerState,
     check_concentration,
     compute_position_size,

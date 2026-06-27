@@ -4,10 +4,8 @@ import json
 import logging
 import math
 import os
-import sqlite3
 import time
 from siglab.config import _DEFAULT_PORT
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -103,7 +101,7 @@ class DashboardState:
         return "unknown" if self.config is None else resolve_llm_provider(self.config)
 
     def _lm(self) -> str:
-        return "unknown" if self.config is None else default_llm_model_display(self.config, provider=self._lp())
+        return "unknown" if self.config is None else default_llm_model_display(self.config)
 
     def _dp(self, value: str | Path | None) -> str | None:
         return (

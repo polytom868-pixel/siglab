@@ -29,7 +29,7 @@ from siglab.data.feeds import (
     perps_order_item,
     validate_account_id,
 )
-from siglab.utils import compute_composite_score, compute_position_size, CircuitBreakerState
+from siglab.utils import compute_position_size, CircuitBreakerState
 from siglab.config import SignalSpec
 import contextlib
 
