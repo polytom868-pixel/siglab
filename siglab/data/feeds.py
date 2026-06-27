@@ -1333,7 +1333,6 @@ class SoSoValueClient:
                 hit_rate * 100.0,
                 len(self._response_cache),
             )
-        await super().close()
 
     async def etf_historical_inflow(
         self,

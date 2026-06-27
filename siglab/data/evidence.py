@@ -195,15 +195,15 @@ def etf_inflow_evidence(
                 timestamp=date,
                 entity=etf_type,
                 module="ETF",
-                relation=relation,
-                value=row.get(relation),
+                relation=relation_name,
+                value=row.get(api_key),
                 confidence=0.95,
                 evidence_path=evidence_path,
                 attributes={attr_key: row.get(attr_key)},
             )
-            for relation, attr_key in [
-                ("totalNetInflow", "totalValueTraded"),
-                ("totalNetAssets", "cumNetInflow"),
+            for relation_name, api_key, attr_key in [
+                ("total_net_inflow", "totalNetInflow", "totalValueTraded"),
+                ("total_net_assets", "totalNetAssets", "cumNetInflow"),
             ]
         ]
     return _collect_evidence(api_rows, _extract)
