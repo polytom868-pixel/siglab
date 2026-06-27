@@ -1,3 +1,5 @@
+> **DEPRECATED**: The Textual TUI application has been removed. This document is retained for historical reference only.
+
 # SigLab TUI Application
 
 ## Purpose

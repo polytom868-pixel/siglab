@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,24 +42,7 @@ class DeploymentRecord:
     metadata: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "spec_hash": self.spec_hash,
-            "strategy_name": self.strategy_name,
-            "strategy_dir": self.strategy_dir,
-            "spec_path": self.spec_path,
-            "manifest_path": self.manifest_path,
-            "readme_path": self.readme_path,
-            "job_name": self.job_name,
-            "interval_seconds": self.interval_seconds,
-            "wallet_label": self.wallet_label,
-            "config_path": self.config_path,
-            "scheduled": self.scheduled,
-            "dry_run": self.dry_run,
-            "llm_finalized": self.llm_finalized,
-            "support_status": self.support_status,
-            "support_reason": self.support_reason,
-            "metadata": self.metadata,
-        }
+        return asdict(self)
 
 
 def deployment_readiness(detail: dict[str, Any]) -> dict[str, Any]:

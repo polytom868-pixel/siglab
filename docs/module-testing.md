@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The SigLab test suite ensures quality and catches regressions across the entire codebase. It validates correctness of numerical computations (evaluator, risk, backtesting), data persistence (sessions, evidence, lineage), external integrations (SoSoValue, SoDEX), terminal UI rendering, and cross-module workflows. Tests serve as executable specifications — each test doubles as documentation of expected behavior.
+The SigLab test suite ensures quality and catches regressions across the entire codebase. It validates correctness of numerical computations (evaluator, risk, backtesting), data persistence (sessions, evidence, lineage), external integrations (SoSoValue, SoDEX), and cross-module workflows. Tests serve as executable specifications — each test doubles as documentation of expected behavior.
 
 ## Architecture
 
@@ -13,8 +13,8 @@ Tests are organized into five distinct categories:
 | **Unit** | Most `test_*.py` files | Test individual modules in isolation with mocked dependencies |
 | **Integration** | `test_e2e_integration.py`, `test_dashboard_*.py` | Cross-module flows spanning multiple subsystems |
 | **Golden-file** | `test_golden_evaluator.py`, `golden/` | Byte-reproducible regression tests for the evaluator pipeline |
-| **TUI (mock)** | `test_tui_*.py` (except `test_tui_tmux_hardening.py`) | Test TUI screens and widgets via mock app contexts |
-| **TUI (tmux)** | `test_tui_tmux_hardening.py` | Deterministic tmux-based end-to-end TUI tests |
+| (removed) | TUI tests have been removed |
+|
 
 All tests run under pytest with `pytest-asyncio` for async support and `pytest-timeout` for bounded execution.
 

@@ -7,7 +7,7 @@ import os
 import tempfile
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -206,14 +206,7 @@ class PaperPosition:
     accumulated_funding: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "symbol": self.symbol,
-            "quantity": self.quantity,
-            "entry_price": self.entry_price,
-            "realized_pnl": self.realized_pnl,
-            "unrealized_pnl": self.unrealized_pnl,
-            "accumulated_funding": self.accumulated_funding,
-        }
+        return asdict(self)
 
     @classmethod
     def from_dict(cls: type[PaperPosition], data: dict[str, Any]) -> PaperPosition:

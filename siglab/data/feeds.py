@@ -2055,14 +2055,6 @@ class SoDEXFormatError(SoDEXError):
     """SoDEX returned a malformed response envelope."""
 
 
-@dataclass
-class _Metrics:
-    latencies_ms: list[float] = field(default_factory=list)
-    attempts: int = 0
-    successes: int = 0
-    retries: int = 0
-    rate_limits: int = 0
-    transport_failures: int = 0
 
 
 class SoDEXPublicPerpsClient:
@@ -2080,7 +2072,7 @@ class SoDEXPublicPerpsClient:
         self.retries = max(0, int(retries))
         self._client = client
         self._owns_client = client is None
-        self._metrics: dict[str, _Metrics] = {}
+        self._metrics: dict[str, _EndpointMetrics] = {}
         self.weight_scheduler = weight_scheduler or SoDEXWeightScheduler()
 
     async def close(self) -> None:
@@ -2498,9 +2490,9 @@ class SoDEXPublicPerpsClient:
             raise SoDEXFormatError(f"{endpoint} data was not a list", payload=payload)
         return [dict(item) for item in data if isinstance(item, dict)]
 
-    def _metrics_for(self, endpoint: str) -> _Metrics:
+    def _metrics_for(self, endpoint: str) -> _EndpointMetrics:
         if endpoint not in self._metrics:
-            self._metrics[endpoint] = _Metrics()
+            self._metrics[endpoint] = _EndpointMetrics()
         return self._metrics[endpoint]
 
 

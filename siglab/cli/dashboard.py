@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 
 from siglab.cli.rich_utils import print_error, print_info, print_success
+from siglab.config import _DEFAULT_PORT
 
-_DEFAULT_PORT = int(os.environ.get("PORT", "8080"))
 
 
 def add_subparser(

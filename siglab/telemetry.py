@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from collections.abc import Iterable
@@ -25,18 +25,7 @@ class EmpiricalEstimate:
     calibration_error_known: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "sample_count": self.sample_count,
-            "p50_latency_ms": self.p50_latency_ms,
-            "p95_latency_ms": self.p95_latency_ms,
-            "mean_prompt_tokens": self.mean_prompt_tokens,
-            "mean_completion_tokens": self.mean_completion_tokens,
-            "mean_total_tokens": self.mean_total_tokens,
-            "retry_rate": self.retry_rate,
-            "failure_rate": self.failure_rate,
-            "confidence": self.confidence,
-            "calibration_error_known": self.calibration_error_known,
-        }
+        return asdict(self)
 
 
 def estimate_from_provider_snapshots(

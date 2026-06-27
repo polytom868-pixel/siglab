@@ -7,7 +7,7 @@ Paper trading provides a simulated perpetual futures trading environment that us
 - **Strategy validation** — test trading strategies against real market conditions before committing capital
 - **Promotion pipeline** — paper sessions that meet performance thresholds become eligible for live trading promotion
 - **Reconciliation** — compare paper PnL against backtest results to detect simulation-to-reality drift
-- **TUI-driven workflow** — interactive order entry, position monitoring, and PnL charting from the terminal
+- **CLI-driven workflow** — order entry, position monitoring, and PnL reporting from the CLI
 
 Paper trading is the critical bridge between backtesting and live execution in the SigLab research-to-action pipeline.
 
@@ -22,7 +22,6 @@ Paper trading is the critical bridge between backtesting and live execution in t
 | `SoDEXPaperPerpsClient` | `siglab/live/paper_client.py` | Paper trading engine — order management, fill simulation, funding, persistence |
 | `SoDEXFeeds` | `siglab/data/sodex_feeds.py` | Real-time market data provider (klines, mark prices, funding rates) |
 | `ReconciliationEngine` | `siglab/live/reconciliation.py` | Backtest vs paper PnL divergence comparison |
-| `PaperScreen` | `siglab/tui/screens/paper.py` | Textual TUI screen for interactive paper trading |
 
 ### Data Flow
 
@@ -31,8 +30,8 @@ SoDEXFeeds ──klines/funding──▶ SoDEXPaperPerpsClient
                                      │
                      ┌───────────────┼───────────────┐
                      ▼               ▼               ▼
-              .npy session      CLI commands     TUI PaperScreen
-              persistence       (paper-*)        (live updates)
+              .npy session      CLI commands
+              persistence       (paper-*)
 ```
 
 ### Session Storage

@@ -1,3 +1,5 @@
+> **NOTE**: The risk guardian module, TUI risk screen, and WebSocket risk streaming have been removed. Core risk computation functions remain in `siglab/utils.py`. This document is retained for historical reference.
+
 # Risk Guardian Module
 
 ## Purpose

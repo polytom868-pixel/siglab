@@ -11,6 +11,9 @@ import pandas as pd
 from siglab.utils import short_hash
 
 
+_DEFAULT_PORT = int(os.environ.get("PORT", "8080"))
+
+
 # ---------------------------------------------------------------------------
 # Track registry — constants + helpers (formerly siglab.track_registry)
 # ---------------------------------------------------------------------------

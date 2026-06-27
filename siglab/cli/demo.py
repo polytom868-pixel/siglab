@@ -63,111 +63,6 @@ def run_demo_run(args: argparse.Namespace) -> None:
             "environment": preflight.get("signed_path", {}).get("environment"),
             "live_write_allowed": preflight.get("live_write_allowed"),
         }
-        manifest = _build_demo_manifest(settings)
-        manifest_summary = {
-            "readiness": manifest.get("readiness"),
-            "unsafe_claims": manifest.get("unsafe_claims"),
-            "artifact_count": len(manifest.get("artifacts", {}) or {}),
-        }
-        evidence_dir = settings.artifact_dir / "evidence"
-        sosovalue_path: Path | None = evidence_dir / "sosovalue.jsonl"
-        sodex_ws_path: Path = evidence_dir / "sodex_ws.jsonl"
-        _evidence_errors: list[str] = []
-
-        def _gen_evidence() -> tuple[Path | None, Path | None]:
-            import asyncio
-
-            from siglab.data.evidence import (
-                EvidenceStore,
-                etf_inflow_evidence,
-                news_evidence,
-                sodex_quote_evidence,
-            )
-            from siglab.data.feeds import SoDEXPublicPerpsClient, SoSoValueClient
-            observed_at = datetime.now(UTC).isoformat()
-            ssv_path: Path | None = None
-            sodex_rest_path: Path | None = None
-
-            async def _fetch() -> None:
-                nonlocal ssv_path, sodex_rest_path
-                # Clean up old evidence files before writing new ones
-                for p in evidence_dir.glob("sosovalue_evidence*.jsonl"):
-                    p.unlink()
-                for p in evidence_dir.glob("sodex_rest_evidence*.jsonl"):
-                    p.unlink()
-                for p in evidence_dir.glob("sodex_ws_evidence.jsonl"):
-                    p.unlink()
-                # Remove canonical files so EvidenceStore starts fresh
-                for name in ("sosovalue.jsonl", "sodex_rest.jsonl", "sodex_ws.jsonl"):
-                    p = evidence_dir / name
-                    if p.exists():
-                        p.unlink()
-                ssv_path = evidence_dir / "sosovalue.jsonl"
-                sodex_rest_path = evidence_dir / "sodex_rest.jsonl"
-                # SoSoValue ETF + news
-                if settings.sosovalue_api_key_override:
-                    try:
-                        ssv_client = SoSoValueClient(
-                            api_key=settings.sosovalue_api_key_override,
-                        )
-                        etf_rows, news_rows = await asyncio.gather(
-                            ssv_client.etf_historical_inflow(),
-                            ssv_client.featured_news_by_currency(page_size=10),
-                            return_exceptions=True,
-                        )
-                        ssv_store = EvidenceStore(ssv_path)
-                        if isinstance(etf_rows, list):
-                            ssv_store.append_many(
-                                etf_inflow_evidence(
-                                    etf_rows,
-                                    etf_type="us-btc-spot",
-                                    observed_at=observed_at,
-                                    evidence_path=str(ssv_path),
-                                ),
-                            )
-                        if isinstance(news_rows, list):
-                            ssv_store.append_many(
-                                news_evidence(
-                                    news_rows,
-                                    observed_at=observed_at,
-                                    evidence_path=str(ssv_path),
-                                ),
-                            )
-                        await ssv_client.close()
-                    except Exception as exc:
-                        _evidence_errors.append(f"sosovalue: {exc}")
-                # SoDEX rest tickers
-                try:
-                    sdx_client = SoDEXPublicPerpsClient()
-                    sodex_records = await sodex_quote_evidence(
-                        sdx_client,
-                        observed_at=observed_at,
-                        evidence_path=str(sodex_rest_path),
-                    )
-                    sodex_store = EvidenceStore(sodex_rest_path)
-                    sodex_store.append_many(sodex_records)
-                    await sdx_client.close()
-                except Exception as exc:
-                    _evidence_errors.append(f"sodex: {exc}")
-
-            asyncio.run(_fetch())
-            return (
-                ssv_path if ssv_path and ssv_path.exists() else sosovalue_path,
-                sodex_rest_path if sodex_rest_path and sodex_rest_path.exists() else sodex_ws_path,
-            )
-
-        sosovalue_path, sodex_path = _gen_evidence()
-        market = build_market_report(
-            entity="BTC",
-            sosovalue_evidence=sosovalue_path,
-            sodex_evidence=sodex_path,
-        )
-        market_summary = {
-            "entity": market.get("entity"),
-            "status": market.get("status"),
-            "warnings": market.get("warnings"),
-            "as_of": market.get("as_of"),
-        }
         trace_paths = trace_paths_for_telemetry(
             settings=settings,
             track="all",
@@ -183,6 +78,52 @@ def run_demo_run(args: argparse.Namespace) -> None:
             provider_metric_paths=provider_metric_paths,
             evidence_paths=evidence_paths,
         )
+        manifest = _build_demo_manifest(
+            settings,
+            preflight=preflight,
+            trace_paths=trace_paths,
+            provider_metric_paths=provider_metric_paths,
+            evidence_paths=evidence_paths,
+            telemetry=telemetry,
+        )
+        manifest_summary = {
+            "readiness": manifest.get("readiness"),
+            "unsafe_claims": manifest.get("unsafe_claims"),
+            "artifact_count": len(manifest.get("artifacts", {}) or {}),
+        }
+        evidence_dir = settings.artifact_dir / "evidence"
+        sosovalue_path: Path | None = evidence_dir / "sosovalue.jsonl"
+        sodex_ws_path: Path = evidence_dir / "sodex_ws.jsonl"
+        _evidence_errors: list[str] = []
+
+        import asyncio
+        from siglab.cli.evidence import _collect_evidence
+        evidence_result = asyncio.run(
+            _collect_evidence(settings, evidence_dir)
+        )
+        _evidence_errors = evidence_result["errors"]
+        sosovalue_path = (
+            evidence_result["ssv_path"]
+            if evidence_result["ssv_path"] and evidence_result["ssv_path"].exists()
+            else evidence_dir / "sosovalue.jsonl"
+        )
+        sodex_path = (
+            evidence_result["sodex_path"]
+            if evidence_result["sodex_path"] and evidence_result["sodex_path"].exists()
+            else evidence_dir / "sodex_ws.jsonl"
+        )
+
+        market = build_market_report(
+            entity="BTC",
+            sosovalue_evidence=sosovalue_path,
+            sodex_evidence=sodex_path,
+        )
+        market_summary = {
+            "entity": market.get("entity"),
+            "status": market.get("status"),
+            "warnings": market.get("warnings"),
+            "as_of": market.get("as_of"),
+        }
         telemetry_summary = {
             "trace_count": telemetry.get("trace_count"),
             "tool_invocation_count": telemetry.get("tool_invocation_count"),
@@ -297,26 +238,39 @@ def run_demo_manifest(args: argparse.Namespace) -> None:
         )
 
 
-def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
+def _build_demo_manifest(
+    settings: SiglabConfig,
+    *,
+    preflight: dict[str, Any] | None = None,
+    trace_paths: Any | None = None,
+    provider_metric_paths: Any | None = None,
+    evidence_paths: Any | None = None,
+    telemetry: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if preflight is None:
+        preflight = sodex_preflight_report()
+    if trace_paths is None:
+        trace_paths = trace_paths_for_telemetry(
+            settings=settings,
+            track="all",
+            run_session_id=None,
+        )
+    if provider_metric_paths is None:
+        provider_metric_paths = provider_metric_paths_for_telemetry(
+            settings=settings,
+            run_session_id=None,
+        )
+    if evidence_paths is None:
+        evidence_paths = evidence_paths_for_telemetry(settings)
+    if telemetry is None:
+        telemetry = build_telemetry_payload(
+            trace_paths=trace_paths,
+            provider_metric_paths=provider_metric_paths,
+            evidence_paths=evidence_paths,
+        )
     runs_dir = settings.artifact_dir
     evidence_dir = runs_dir / "evidence"
     market_report_path = runs_dir / "market_report_latest.json"
-    preflight = sodex_preflight_report()
-    trace_paths = trace_paths_for_telemetry(
-        settings=settings,
-        track="all",
-        run_session_id=None,
-    )
-    provider_metric_paths = provider_metric_paths_for_telemetry(
-        settings=settings,
-        run_session_id=None,
-    )
-    evidence_paths = evidence_paths_for_telemetry(settings)
-    telemetry = build_telemetry_payload(
-        trace_paths=trace_paths,
-        provider_metric_paths=provider_metric_paths,
-        evidence_paths=evidence_paths,
-    )
     artifacts = {
         "sosovalue_evidence": str(evidence_dir / "sosovalue.jsonl")
         if (evidence_dir / "sosovalue.jsonl").exists()

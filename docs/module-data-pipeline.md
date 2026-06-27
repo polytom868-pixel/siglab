@@ -2,10 +2,10 @@
 
 ## Purpose
 
-The data pipeline fetches market data from external APIs (SoDEX and SoSoValue), caches it locally in Parquet/JSON files via `ParquetLake`, normalizes it into pandas DataFrames, and exposes it through a FastAPI dashboard and WebSocket server for the TUI/CLI consumers.
+The data pipeline fetches market data from external APIs (SoDEX and SoSoValue), caches it locally in Parquet/JSON files via `ParquetLake`, normalizes it into pandas DataFrames, and exposes it through a FastAPI dashboard for CLI consumers.
 
 ```
-External APIs → Client Layer → Feeds Layer → ParquetLake (cache) → Dashboard REST/WS → TUI/CLI
+External APIs → Client Layer → Feeds Layer → ParquetLake (cache) → Dashboard REST → CLI
 ```
 
 ---
@@ -57,9 +57,8 @@ External APIs → Client Layer → Feeds Layer → ParquetLake (cache) → Dashb
           ┌──────────────┼──────────────┐
           ▼              ▼              ▼
 ┌──────────────┐ ┌──────────────┐ ┌───────────────────┐
-│ Dashboard    │ │ EvidenceStore│ │ TUI / CLI         │
-│ FastAPI      │ │ (JSONL)      │ │ (live/runtime.py) │
-│ REST + WS    │ │              │ │                   │
+│ FastAPI      │ │ (JSONL)      │ │ CLI / Live         │
+│ REST         │ │              │ │ (live/runtime.py) │
 └──────────────┘ └──────────────┘ └───────────────────┘
 ```
 

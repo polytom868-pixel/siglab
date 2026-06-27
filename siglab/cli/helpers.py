@@ -13,7 +13,7 @@ from typing import Any, Protocol, cast
 from collections.abc import Callable
 
 from siglab.config import SiglabConfig, load_settings
-from siglab.utils import resolve_path_from_root
+from siglab.utils import resolve_path_from_root, safe_float
 from siglab.config import SignalSpec
 from siglab.telemetry import (
     build_telemetry_payload,
@@ -57,11 +57,6 @@ def latest_path(directory: Path, pattern: str) -> Path | None:
     """Find the most recently modified file matching a glob pattern."""
     matches = sorted(directory.glob(pattern), key=lambda item: item.stat().st_mtime)
     return matches[-1] if matches else None
-
-
-def read_jsonl(path: Path | None) -> list[dict[str, Any]]:
-    rows, _stats = read_jsonl_with_stats(path)
-    return rows
 
 
 def read_jsonl_with_stats(
@@ -123,12 +118,11 @@ def _record_has_required_value(row: dict[str, Any], required_value: str | None) 
     if _record_timestamp(row) is None:
         return False
     if required_value == "numeric":
-        return float_or_none(row.get("value")) is not None
+        return safe_float(row.get("value")) is not None
     if required_value == "quote":
         attrs = dict(row.get("attributes") or {})
         return bool(attrs.get("bid") or row.get("value")) and bool(attrs.get("ask"))
     return True
-
 
 def _record_sort_key(row: dict[str, Any]) -> tuple[int, float, str]:
     timestamp = _record_timestamp(row)
@@ -151,12 +145,6 @@ def _record_timestamp(row: dict[str, Any]) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed
-
-
-def float_or_none(value: float | str | None) -> float | None:
-    from siglab.utils import safe_float
-
-    return safe_float(value)
 
 
 def load_json_if_exists(path: Path | None) -> dict[str, Any] | None:
@@ -744,7 +732,7 @@ def _market_signal_summary(
     latest_news: list[dict[str, Any]],
     preflight: dict[str, Any],
 ) -> dict[str, Any]:
-    flow_value = float_or_none((latest_flow or {}).get("value"))
+    flow_value = safe_float((latest_flow or {}).get("value"))
     if flow_value is None:
         flow_bias = "unknown"
     elif flow_value > 0:
@@ -761,7 +749,7 @@ def _market_signal_summary(
         "flow_direction": flow_bias,
         "flow_value": flow_value,
         "flow_timestamp": (latest_flow or {}).get("timestamp"),
-        "net_assets": float_or_none((latest_assets or {}).get("value")),
+        "net_assets": safe_float((latest_assets or {}).get("value")),
         "quote_bid": bid,
         "quote_ask": ask,
         "news_titles": [str(row.get("value") or "")[:180] for row in latest_news],

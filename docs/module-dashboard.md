@@ -2,11 +2,10 @@
 
 ## Purpose
 
-The SigLab Dashboard provides a consolidated interface for monitoring experiments, risk metrics, market data, and operational status. It exposes three surfaces:
+The SigLab Dashboard provides a consolidated interface for monitoring experiments, risk metrics, market data, and operational status.
 
-- **FastAPI REST API** (`routes.py`) — health, config, ops-board, evidence graph, skill report, risk metrics, and SoDEX market data endpoints. Runs on port **3100** by default.
-- **FastAPI WebSocket** (`ws.py`) — real-time streaming of klines, tickers, positions, and risk scores.
-- **Legacy HTTP server** (`server.py`) — a `ThreadingHTTPServer`-based dashboard with static file serving and experiment/run/ops API endpoints. Runs on port **8765** by default. Includes a richer `DashboardApp` class that powers experiment detail views, run summaries, ops payloads, skill value reports, and live deployment.
+- **FastAPI REST API** (`routes.py`) — health, config, ops-board, evidence graph, skill report, and SoDEX market data endpoints. WebSocket streaming has been removed.
+- **Legacy HTTP server** (`server.py`) — a `ThreadingHTTPServer`-based dashboard with static file serving and experiment/run/ops API endpoints.
 
 ---
 
@@ -18,7 +17,7 @@ The SigLab Dashboard provides a consolidated interface for monitoring experiment
 
 - **Lifespan manager** (`lifespan`): initializes `DashboardState` on startup — loads `SiglabConfig` (falls back to a minimal config on failure) and opens a `LineageStore` connection.
 - **CORS middleware**: `allow_origins=["*"]` — fully permissive.
-- **Two routers**: the REST API router (`routes.router`) and the WebSocket router (`ws.router`).
+- **Router**: the REST API router (`routes.router`). WebSocket router has been removed.
 
 The module-level `app = create_app()` is the ASGI entrypoint referenced by `uvicorn`.
 
@@ -27,7 +26,7 @@ The module-level `app = create_app()` is the ASGI entrypoint referenced by `uvic
 | File | Prefix | Purpose |
 |------|--------|---------|
 | `routes.py` | `/health`, `/config`, `/ops-board`, `/evidence-graph`, `/skill-report`, `/risk`, `/market/*` | REST endpoints |
-| `ws.py` | `/ws` | WebSocket streaming |
+| (removed) | WebSocket streaming endpoint has been removed |
 | `server.py` | `/api/*`, `/` (static) | Legacy HTTP server with experiment/run/ops APIs and static HTML. Runs on port **8765** by default with its own experiment detail, run summary, ops payload, skill report, and live deployment endpoints. |
 
 ### State Management
@@ -39,7 +38,6 @@ class DashboardState:
     config: SiglabConfig | None          # Loaded configuration
     lineage: LineageStore | None         # SQLite-backed experiment lineage
     start_time: float                    # Epoch time for uptime calculation
-    ws_manager: WebSocketManager         # Active WebSocket connection manager
     _sodex_feeds: Any | None      # Lazy-initialized market data client
 ```
 
