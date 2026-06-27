@@ -29,6 +29,7 @@ def main() -> None:
 
     _demo_mod.add_subparser(subparsers)
     _market_mod.add_subparser(subparsers)
+    _market_mod.telemetry_add_subparser(subparsers)
     _dashboard_mod.add_subparser(subparsers)
     _sodex_mod.add_subparser(subparsers)
     _operator_mod.add_subparser(subparsers)
@@ -46,6 +47,9 @@ def main() -> None:
     if args.command == "market-report":
         _market_mod.run_command(args)
         return
+    if args.command == "telemetry-report":
+        _market_mod.telemetry_run_command(args)
+        return
     if args.command == "dashboard":
         _dashboard_mod.run_dashboard(args)
         return
@@ -60,5 +64,3 @@ def main() -> None:
         return
 
 
-if __name__ == "__main__":
-    main()

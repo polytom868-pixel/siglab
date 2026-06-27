@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from siglab.track_registry import resolve_track
+from siglab.config import resolve_track
 
 logger = logging.getLogger(__name__)
 

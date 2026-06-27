@@ -20,8 +20,8 @@ import pandas as pd
 
 from siglab.config import SiglabConfig
 from siglab.data.store import ParquetLake
-from siglab.schemas import AssetUniverse, SignalSpec
-from siglab.track_registry import resolve_track
+from siglab.config import AssetUniverse, SignalSpec
+from siglab.config import resolve_track
 from siglab.utils import dget, percentile as _percentile
 from siglab.utils import safe_float as _safe_float
 from siglab.utils import short_hash
@@ -1333,8 +1333,7 @@ class SoSoValueClient:
                 hit_rate * 100.0,
                 len(self._response_cache),
             )
-        if self._owns_client and self._client is not None:
-            await self._client.aclose()
+        await super().close()
 
     async def etf_historical_inflow(
         self,

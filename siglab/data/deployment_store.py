@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from siglab.track_registry import resolve_track
+from siglab.config import resolve_track
 from siglab.utils import feature_hash
 
 

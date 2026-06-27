@@ -35,8 +35,8 @@ from siglab.llm.llm import (
     infer_llm_provider,
     resolve_llm_provider,
 )
-from siglab.path_utils import display_path, resolve_path_from_root
-from siglab.track_registry import canonical_track_name, resolve_track, track_label
+from siglab.utils import display_path, resolve_path_from_root
+from siglab.config import canonical_track_name, resolve_track, track_label
 from siglab.utils import _now_iso, dget
 
 logger = logging.getLogger(__name__)
@@ -45,18 +45,6 @@ logger = logging.getLogger(__name__)
 class _LS(Protocol):
     def dashboard_rows(self) -> list[dict[str, Any]]: ...
 
-
-def _ts(request: Request) -> Jinja2Templates | dict[str, str]:
-    t = request.app.state.dashboard.templates
-    return t if t is not None else {"error": "templates not configured"}
-
-
-def _st(request: Request) -> Any:
-    return request.app.state.dashboard
-
-
-def _ifn(value: object) -> bool:
-    return isinstance(value, (int, float)) and math.isfinite(float(value))
 
 
 
@@ -243,11 +231,7 @@ class DashboardState:
         return "unknown" if self.config is None else resolve_llm_provider(self.config)
 
     def _lm(self) -> str:
-        return (
-            "unknown"
-            if self.config is None
-            else default_llm_model_display(self.config, provider=self._lp())
-        )
+        return "unknown" if self.config is None else default_llm_model_display(self.config, provider=self._lp())
 
     def _dp(self, value: str | Path | None) -> str | None:
         return (
@@ -272,65 +256,59 @@ class DashboardState:
             normalized[key] = self._dp(normalized.get(key))
         return normalized
 
-    def _lj(self, value: str | Path | None) -> dict[str, Any] | None:
-        if not value:
-            return None
-        path = Path(value).expanduser()
-        if not path.is_absolute() and self.config is not None:
-            path = (self.config.root_dir / path).resolve()
-        cached = self._json_cache.get(str(path))
-        if cached is not None:
-            return cast(dict[str, Any] | None, cached)
-        payload: dict[str, Any] | None = load_json_path(path)
-        self._json_cache[str(path)] = payload
-        return payload
-
     def _dbp(self) -> Path | None:
         return None if self.config is None else self.config.ancestry_db_path
 
-    def _ns(
-        self,
-        *,
-        stage_name: str,
-        payload: dict[str, Any] | None,
-        trace_path: str | Path | None,
-    ) -> dict[str, Any] | None:
-        if not isinstance(payload, dict):
-            return None
-        trace = payload.get("claude_trace", {}) or {}
-        if not trace:
-            for key in ("attempts", "planner_attempts", "repair_attempts"):
-                attempts = list(payload.get(key) or [])
-                for attempt in reversed(attempts):
-                    attempt_trace = (attempt or {}).get("claude_trace", {}) or {}
-                    if attempt_trace:
-                        trace = attempt_trace
-                        break
-                if trace:
-                    break
-        if not trace and (not payload.get("error")):
-            return None
-        tool_calls = []
-        for call in list(trace.get("tool_calls") or []):
-            normalized_call = {**(call or {})}
-            normalized_call.setdefault("stage", stage_name)
-            tool_calls.append(normalized_call)
-        model = trace.get("model")
-        return {
-            "stage": str(payload.get("stage") or stage_name),
-            "trace_path": self._dp(trace_path),
-            "provider": trace.get("provider") or infer_llm_provider(model),
-            "model": model,
-            "thinking_mode": trace.get("thinking_mode"),
-            "tool_rounds_used": trace.get("tool_rounds_used", 0),
-            "tool_count_available": trace.get("tool_count_available", 0),
-            "tool_calls": tool_calls,
-            "final_content_preview": trace.get("final_content_preview"),
-            "response_finish_reason": trace.get("response_finish_reason"),
-            "error": payload.get("error") or trace.get("error"),
-        }
-
     def _rss(self, research_summary: dict[str, Any]) -> list[dict[str, Any]]:
+        def _load_trace(
+            trace_path: str | Path | None, stage_name: str
+        ) -> dict[str, Any] | None:
+            if not trace_path:
+                return None
+            path = Path(trace_path).expanduser()
+            if not path.is_absolute() and self.config is not None:
+                path = (self.config.root_dir / path).resolve()
+            cached = self._json_cache.get(str(path))
+            if cached is not None:
+                payload = cast(dict[str, Any] | None, cached)
+            else:
+                payload = load_json_path(path)
+                self._json_cache[str(path)] = payload
+            if not isinstance(payload, dict):
+                return None
+            trace = payload.get("claude_trace", {}) or {}
+            if not trace:
+                for key in ("attempts", "planner_attempts", "repair_attempts"):
+                    attempts = list(payload.get(key) or [])
+                    for attempt in reversed(attempts):
+                        attempt_trace = (attempt or {}).get("claude_trace", {}) or {}
+                        if attempt_trace:
+                            trace = attempt_trace
+                            break
+                    if trace:
+                        break
+            if not trace and (not payload.get("error")):
+                return None
+            tool_calls = []
+            for call in list(trace.get("tool_calls") or []):
+                normalized_call = {**(call or {})}
+                normalized_call.setdefault("stage", stage_name)
+                tool_calls.append(normalized_call)
+            model = trace.get("model")
+            return {
+                "stage": str(payload.get("stage") or stage_name),
+                "trace_path": self._dp(trace_path),
+                "provider": trace.get("provider") or infer_llm_provider(model),
+                "model": model,
+                "thinking_mode": trace.get("thinking_mode"),
+                "tool_rounds_used": trace.get("tool_rounds_used", 0),
+                "tool_count_available": trace.get("tool_count_available", 0),
+                "tool_calls": tool_calls,
+                "final_content_preview": trace.get("final_content_preview"),
+                "response_finish_reason": trace.get("response_finish_reason"),
+                "error": payload.get("error") or trace.get("error"),
+            }
+
         stages: list[dict[str, Any]] = []
         workspace = research_summary.get("workspace", {}) or {}
         for stage_name, path_key in (
@@ -339,11 +317,7 @@ class DashboardState:
             ("reflector", "reflector_trace_path"),
         ):
             trace_path = workspace.get(path_key)
-            stage = self._ns(
-                stage_name=stage_name,
-                payload=self._lj(trace_path),
-                trace_path=trace_path,
-            )
+            stage = _load_trace(trace_path, stage_name)
             if stage is not None:
                 stages.append(stage)
         if stages:
@@ -563,31 +537,7 @@ class DashboardState:
         self._experiments_cache.clear()
         self._experiments_cache_ts = 0.0
 
-    def _ae(
-        self,
-        experiment: dict[str, Any] | None,
-        *,
-        include_artifact: bool = False,
-    ) -> dict[str, Any]:
-        exp = experiment if isinstance(experiment, dict) else {}
-        spec = exp.get("spec", {}) or {}
-        summary = exp.get("summary", {}) or {}
-        research_summary = exp.get("research_summary", {}) or {}
-        raw_artifact_path = exp.get("artifact_path")
-        artifact = (exp.get("artifact") or {}) if include_artifact else {}
-        if not artifact and raw_artifact_path and (self.config is not None):
-            artifact_path = resolve_path_from_root(
-                raw_artifact_path,
-                root_dir=self.config.root_dir,
-            )
-            if artifact_path.exists():
-                try:
-                    artifact = dict(json.loads(artifact_path.read_text()))
-                except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-                    artifact = {}
-        compiled_metadata = (
-            artifact.get("compiled_metadata") or artifact.get("compiledMetadata") or {}
-        )
+    def _enrich_summary_fields(self, summary: dict[str, Any], artifact: dict[str, Any]) -> None:
         median_cagr = summary.get("median_cagr")
         if "median_cagr" not in summary or not (
             isinstance(median_cagr, (int, float)) and math.isfinite(float(median_cagr))
@@ -630,6 +580,33 @@ class DashboardState:
                 "liquidated",
             ):
                 summary[f"audit_{k}"] = None
+
+    def _ae(
+        self,
+        experiment: dict[str, Any] | None,
+        *,
+        include_artifact: bool = False,
+    ) -> dict[str, Any]:
+        exp = experiment if isinstance(experiment, dict) else {}
+        spec = exp.get("spec", {}) or {}
+        summary = exp.get("summary", {}) or {}
+        research_summary = exp.get("research_summary", {}) or {}
+        raw_artifact_path = exp.get("artifact_path")
+        artifact = (exp.get("artifact") or {}) if include_artifact else {}
+        if not artifact and raw_artifact_path and (self.config is not None):
+            artifact_path = resolve_path_from_root(
+                raw_artifact_path,
+                root_dir=self.config.root_dir,
+            )
+            if artifact_path.exists():
+                try:
+                    artifact = dict(json.loads(artifact_path.read_text()))
+                except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                    artifact = {}
+        compiled_metadata = (
+            artifact.get("compiled_metadata") or artifact.get("compiledMetadata") or {}
+        )
+        self._enrich_summary_fields(summary, artifact)
         bias_controls = compiled_metadata.get("bias_controls", {}) or {}
         params = spec.get("params", {}) or {}
         tool_trace = research_summary.get("llm_tool_trace", {}) or {}
@@ -1080,9 +1057,6 @@ class DashboardState:
             else "expired",
             "payload": payload,
         }
-
-    _load_artifact = _loa
-
     def _soa(self, artifacts: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
         def _payload(name: str) -> dict[str, Any]:
             entry = artifacts.get(name) or {}

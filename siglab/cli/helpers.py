@@ -13,8 +13,13 @@ from typing import Any, Protocol, cast
 from collections.abc import Callable
 
 from siglab.config import SiglabConfig, load_settings
-from siglab.path_utils import resolve_path_from_root
-from siglab.schemas import SignalSpec
+from siglab.utils import resolve_path_from_root
+from siglab.config import SignalSpec
+from siglab.telemetry import (
+    build_telemetry_payload,
+    provider_metric_paths_for_telemetry,
+    trace_paths_for_telemetry,
+)
 
 
 class _ResearchProvider(Protocol):
@@ -374,7 +379,7 @@ def display_deployment_record(
 
 def display_path_static(value: str | Path | None, root_dir: Path) -> str:
     """Resolve a path for display, relative to root_dir if possible."""
-    from siglab.path_utils import display_path as _dp
+    from siglab.utils import display_path as _dp
 
     return cast(str, _dp(value, root_dir=root_dir))
 
@@ -552,14 +557,14 @@ def display_paths(
     *,
     root_dir: Path | None,
 ) -> list[str | None]:
-    from siglab.path_utils import display_path as _dp
+    from siglab.utils import display_path as _dp
 
     if values is None:
         return []
     if not isinstance(values, list):
         return [_dp(values, root_dir=root_dir)]
     return [_dp(item, root_dir=root_dir) for item in values]
-from siglab.cli.rich_utils import print_json
+from siglab.cli.rich_utils import get_console, make_table, print_json
 
 
 def add_subparser(
@@ -879,3 +884,68 @@ def _record_sort_key_internal(row: dict[str, Any]) -> tuple[int, float, str]:
     if timestamp is None:
         return (0, 0.0, str(row.get("evidence_path") or ""))
     return (1, timestamp.timestamp(), str(row.get("evidence_path") or ""))
+
+
+def telemetry_add_subparser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    parser = subparsers.add_parser(
+        "telemetry-report",
+        help="Aggregate empirical LLM/tool telemetry from run trace artifacts.",
+    )
+    parser.add_argument("--track", default="all")
+    parser.add_argument("--run-session-id", default=None)
+    parser.add_argument("--json", action="store_true")
+
+
+def telemetry_run_command(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    trace_paths = trace_paths_for_telemetry(
+        settings=settings,
+        track=str(args.track or "all"),
+        run_session_id=args.run_session_id,
+    )
+    provider_metric_paths = provider_metric_paths_for_telemetry(
+        settings=settings,
+        run_session_id=args.run_session_id,
+    )
+    payload = build_telemetry_payload(
+        trace_paths=trace_paths,
+        provider_metric_paths=provider_metric_paths,
+    )
+    if getattr(args, "json", False):
+        print_json(payload)
+    else:
+        import json as _json
+
+        table = make_table(title="Telemetry Report")
+        table.add_column("Metric", style="label", no_wrap=True)
+        table.add_column("Value")
+        table.add_row("trace_count", str(payload["trace_count"]))
+        table.add_row(
+            "stage_counts",
+            _json.dumps(payload["stage_counts"], sort_keys=True),
+        )
+        table.add_row(
+            "provider_counts",
+            _json.dumps(payload["provider_counts"], sort_keys=True),
+        )
+        table.add_row(
+            "model_counts",
+            _json.dumps(payload["model_counts"], sort_keys=True),
+        )
+        table.add_row("tool_invocation_count", str(payload["tool_invocation_count"]))
+        table.add_row(
+            "tool_counts",
+            _json.dumps(payload["tool_counts"], sort_keys=True),
+        )
+        table.add_row(
+            "tool_latency_ms",
+            _json.dumps(payload["tool_latency_ms"], sort_keys=True),
+        )
+        table.add_row(
+            "provider_metrics_status",
+            str(payload["provider_metrics_status"]),
+        )
+        table.add_row("confidence", str(payload["confidence"]))
+        get_console().print(table)

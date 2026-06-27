@@ -39,20 +39,8 @@ def _mpsigs(frame: pd.DataFrame, *, eps_: float = 1e-09) -> pd.Series:
     return pd.Series(result, index=frame.index, dtype=object)
 
 
-def _eassets(
-    row: pd.Series,
-    *,
-    eps_: float = 1e-09,
-) -> tuple[list[str], list[str], list[str]]:
-    c = pd.to_numeric(row, errors="coerce").fillna(0.0)
-    active = list(c.index[c.abs() > eps_])
-    longs = list(c.index[c > eps_])
-    shorts = list(c.index[c < -eps_])
-    return (active, longs, shorts)
 
 
-def _rdl(row: pd.Series, *, eps_: float = 1e-09) -> str:
-    return _rdl_np(row.to_numpy(dtype=float, na_value=np.nan), list(row.index), eps_=eps_)
 
 
 def _rdl_np(values: np.ndarray, cols: list[str], eps_: float = 1e-09) -> str:
@@ -81,12 +69,7 @@ def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
     csig: tuple[tuple[str, int], ...] = ()
     sts: pd.Timestamp | None = None
     pts: pd.Timestamp | None = None
-
-    def _addep(
-        es: pd.Timestamp,
-        ee: pd.Timestamp,
-        sig: tuple[tuple[str, int], ...],
-    ) -> None:
+    def _addep(es: pd.Timestamp, ee: pd.Timestamp, sig: tuple[tuple[str, int], ...]) -> None:
         if not sig:
             return
         et = tw.loc[es:ee]
@@ -94,32 +77,24 @@ def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
             return
         er_ = pd.to_numeric(r.loc[es:ee], errors="coerce").dropna()
         sr = et.iloc[0]
-        aa, la, sa = _eassets(sr)
+        c = pd.to_numeric(sr, errors="coerce").fillna(0.0)
+        aa = list(c.index[c.abs() > 1e-09])
+        la = list(c.index[c > 1e-09])
+        sa = list(c.index[c < -1e-09])
         ge = pd.to_numeric(et.abs().sum(axis=1), errors="coerce").fillna(0.0)
         ne = pd.to_numeric(et.sum(axis=1), errors="coerce").fillna(0.0)
-        aac = (
-            et.abs().gt(1e-09).sum(axis=1).astype(float)
-            if not et.empty
-            else pd.Series(dtype=float)
-        )
-        eps.append(
-            {
-                "direction": _rdl(sr),
-                "start_timestamp": es.isoformat(),
-                "end_timestamp": ee.isoformat(),
-                "bars": int(er_.shape[0]),
-                "total_return": _sf(
-                    cast(Any, (1.0 + er_).prod()) - 1.0 if not er_.empty else 0.0,
-                ),
-                "active_assets": aa,
-                "long_assets": la,
-                "short_assets": sa,
-                "active_asset_count": _sf(aac.median()),
-                "gross_exposure": _sf(ge.median()),
-                "net_exposure": _sf(ne.median()),
-            },
-        )
-
+        aac = et.abs().gt(1e-09).sum(axis=1).astype(float) if not et.empty else pd.Series(dtype=float)
+        eps.append({
+            "direction": _rdl_np(sr.to_numpy(dtype=float, na_value=np.nan), list(sr.index), eps_=1e-09),
+            "start_timestamp": es.isoformat(),
+            "end_timestamp": ee.isoformat(),
+            "bars": int(er_.shape[0]),
+            "total_return": _sf(cast(Any, (1.0 + er_).prod()) - 1.0 if not er_.empty else 0.0),
+            "active_assets": aa, "long_assets": la, "short_assets": sa,
+            "active_asset_count": _sf(aac.median()),
+            "gross_exposure": _sf(ge.median()),
+            "net_exposure": _sf(ne.median()),
+        })
     for tr, sig in sigs.items():
         ts: pd.Timestamp | None = cast(pd.Timestamp | None, tr)
         if not csig and sig:
@@ -137,13 +112,18 @@ def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
 
 
 def _episode_stats(matched: list[dict[str, Any]], returns: list[float]) -> dict[str, Any]:
+    cnt: dict[str, int] = {}
+    for e in matched:
+        d = e.get("direction", "")
+        if d:
+            cnt[d] = cnt.get(d, 0) + 1
     return {
         "trade_count": len(matched),
         "win_rate": _sf(
             sum(1 for v in returns if v > 0.0) / len(returns) if returns else None,
         ),
         "median_return": _sf(float(np.median(returns))) if returns else None,
-        "direction_counts": _edc(matched),
+        "direction_counts": cnt,
     }
 
 
@@ -167,26 +147,12 @@ def _hpb(tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
             for e in matched
             if e.get("total_return") is not None
         ]
-        rows.append(
-            {
-                "label": label,
-                **(_episode_stats(matched, rb)),
-                "median_bars": _sf(float(np.median([int(e["bars"]) for e in matched])))
-                if matched
-                else None,
-            },
-        )
+        rows.append({
+            "label": label,
+            **(_episode_stats(matched, rb)),
+            "median_bars": _sf(float(np.median([int(e["bars"]) for e in matched]))) if matched else None,
+        })
     return rows
-
-
-def _edc(te: list[dict[str, Any]]) -> dict[str, int]:
-    cnt: dict[str, int] = {}
-    for e in te:
-        d = e.get("direction", "")
-        if d:
-            cnt[d] = cnt.get(d, 0) + 1
-    return cnt
-
 
 def _sps(
     *,

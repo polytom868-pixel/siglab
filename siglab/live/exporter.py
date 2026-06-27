@@ -12,8 +12,8 @@ from siglab.config import SiglabConfig
 from siglab.data.deployment_store import DeploymentStore as LineageStore
 from siglab.evaluation.events import evaluate_gates
 from siglab.llm import ClaudeClient, LLMProviderError
-from siglab.path_utils import resolve_path_from_root
-from siglab.track_registry import track_label
+from siglab.utils import resolve_path_from_root
+from siglab.config import track_label
 
 SUPPORTED_DIRECTIONAL_FAMILIES = {
     "perp_multi_asset_decision",

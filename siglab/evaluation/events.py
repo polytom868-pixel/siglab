@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import pandas as pd
 
-from siglab.track_registry import resolve_track
+from siglab.config import resolve_track
 
 __all__ = [
     "classify_pt_market_state",

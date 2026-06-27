@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from siglab.track_registry import storage_track_name
+from siglab.config import storage_track_name
 
 _OPS = (
     "pct_change",

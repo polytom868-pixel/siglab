@@ -16,7 +16,7 @@ from siglab.cli.helpers import (
 )
 from siglab.cli.helpers import build_market_report
 from siglab.cli.rich_utils import print_json, print_success
-from siglab.cli.telemetry import (
+from siglab.telemetry import (
     build_telemetry_payload,
     provider_metric_paths_for_telemetry,
     trace_paths_for_telemetry,
@@ -24,7 +24,7 @@ from siglab.cli.telemetry import (
 from siglab.config import SiglabConfig, load_settings
 
 from siglab.utils import write_json
-from siglab.path_utils import resolve_path_from_root
+from siglab.utils import resolve_path_from_root
 
 
 def add_subparser(
@@ -210,7 +210,7 @@ def run_demo_manifest(args: argparse.Namespace) -> None:
 
 def _build_demo_manifest(settings: SiglabConfig) -> dict[str, Any]:
     runs_dir = settings.artifact_dir
-    from siglab.cli.telemetry import provider_metric_paths_for_telemetry
+    from siglab.telemetry import provider_metric_paths_for_telemetry
 
     provider_metric_paths = provider_metric_paths_for_telemetry(
         settings=settings,
