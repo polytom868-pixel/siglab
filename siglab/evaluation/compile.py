@@ -596,7 +596,7 @@ def _pt_rf(
 def _ppt_mf(provider: MarketDataProvider, markets, histories: dict[str, pd.DataFrame]):
     labels = list(histories)
 
-    def _mf(column):
+    def _mf(column: str) -> pd.DataFrame:
         return _ffill_wow(
             pd.concat(
                 [

@@ -1008,6 +1008,21 @@ def _paet(
     return {"winners": [_pl(e) for e in winners], "losers": [_pl(e) for e in losers]}
 
 
+def _fraction_while_flat(
+    sem2d: np.ndarray[tuple[int, int], np.dtype[np.bool_]],
+    fm1: object,
+) -> float | None:
+    """Mean of any-axis-1 per row, restricted to rows where fm1 is True."""
+    if hasattr(fm1, "to_numpy"):
+        fm1_arr: np.ndarray = fm1.to_numpy()  # type: ignore[attr-defined]
+    else:
+        fm1_arr = np.asarray(fm1)
+    if not bool(fm1_arr.any()):
+        return None
+    mask = fm1_arr.astype(bool)
+    any_per_row = cast(np.ndarray, sem2d.any(axis=1))
+    return float(any_per_row[mask].mean())
+
 def _pgd(
     *,
     signal_score: pd.DataFrame | None,
@@ -1154,7 +1169,7 @@ def _pgd(
         ),
         "position_flip_rate": _sf(pfr),
         "entry_signal_while_flat_fraction": _sf(
-            float(np.asarray(sem2d).any(axis=1)[np.asarray(fm1)].mean()) if bool(fm1.any()) else None,
+            _fraction_while_flat(sem2d, fm1),
         ),
         "score_alignment_when_active": aaf,
         "median_active_asset_count": _sf(mav),
