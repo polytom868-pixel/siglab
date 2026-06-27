@@ -1278,7 +1278,7 @@ class SoSoValueClient:
         pool_timeout_s: float = 3.0,
         retries: int = 2,
         max_concurrency: int = 8,
-        conservative_rate_limit_per_minute: int = 20,
+        conservative_rate_limit_per_minute: int = 10,
         verify: ssl.SSLContext | str | bool | None = None,
         client: httpx.AsyncClient | None = None,
         cache_enabled: bool = True,
