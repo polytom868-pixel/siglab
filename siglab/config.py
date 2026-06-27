@@ -33,7 +33,6 @@ class SiglabConfig:
     ancestry_db_path: Path
     sosovalue_api_key_override: str | None
     sosovalue_base_url: str = "https://openapi.sosovalue.com"
-    sosovalue_api_tier: str = "free"
     sosovalue_timeout_s: float = 30.0
     sosovalue_retries: int = 2
     claude_timeout_s: float = 300.0
@@ -41,7 +40,6 @@ class SiglabConfig:
     llm_provider: str = "openai"
     optuna_trials: int = 20
     memory_scope: str = "session_local"
-    use_historical_seeds: bool = False
     claude_max_tool_rounds: int = 25
     openmodel_api_key: str | None = None
     openmodel_base_url: str = "https://api.openmodel.ai/v1"
@@ -113,7 +111,6 @@ def load_settings() -> SiglabConfig:
         ancestry_db_path=root_dir / "siglab.db",
         sosovalue_api_key_override=_get("SOSOVALUE_API_KEY"),
         sosovalue_base_url=_get("SOSOVALUE_BASE_URL", "https://openapi.sosovalue.com"),
-        sosovalue_api_tier=_get("SOSOVALUE_API_TIER", "free"),
         sosovalue_timeout_s=float(_get("SOSOVALUE_TIMEOUT_S", "30")),
         sosovalue_retries=int(_get("SOSOVALUE_RETRIES", "2")),
         claude_timeout_s=float(_get("CLAUDE_TIMEOUT_S", "300")),
@@ -125,7 +122,6 @@ def load_settings() -> SiglabConfig:
         population_size=int(_get("SIGLAB_POPULATION_SIZE", "4")),
         optuna_trials=int(_get("SIGLAB_OPTUNA_TRIALS", "20")),
         memory_scope=_get("SIGLAB_MEMORY_SCOPE", "session_local"),
-        use_historical_seeds=_get_bool("SIGLAB_USE_HISTORICAL_SEEDS", default=False),
         tavily_api_key=_get("TAVILY_API_KEY"),
         tavily_base_url=_get("TAVILY_BASE_URL", "https://api.tavily.com"),
         tavily_max_results=int(_get("TAVILY_MAX_RESULTS", "5")),
