@@ -27,8 +27,17 @@ class LoadingIndicator(Static):
         self._spinner_idx: int = 0
 
     def on_mount(self) -> None:
-        """Start the spinner timer."""
+        """Start the spinner timer paused; resume only while loading."""
         self._timer = self.set_interval(0.1, self._tick_spinner)
+        # Start paused to avoid needless repaints when widget is idle.
+        if self._timer is not None and not self.loading:
+            self._timer.pause()
+
+    def on_unmount(self) -> None:
+        """Stop the spinner timer to release the interval on widget teardown."""
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
 
     def watch_loading(self, loading: bool) -> None:
         """Pause the spinner interval while idle to avoid needless repaints."""

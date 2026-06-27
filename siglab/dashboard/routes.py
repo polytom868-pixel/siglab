@@ -270,6 +270,8 @@ class DashboardState:
     templates: Jinja2Templates | None = None
     ws_manager: Any = None
     start_time: float = 0.0
+    repo: Any = None
+    enricher: Any = None
     _json_cache: dict[str, Any] = field(default_factory=dict)
     _experiments_cache: dict[str, Any] = field(default_factory=dict)
     _experiments_cache_ts: float = 0.0
@@ -595,15 +597,16 @@ class DashboardState:
 
     def _ae(
         self,
-        experiment: dict[str, Any],
+        experiment: dict[str, Any] | None,
         *,
         include_artifact: bool = False,
     ) -> dict[str, Any]:
-        spec = {**experiment.get("spec", {})}
-        summary = {**experiment.get("summary", {})}
-        research_summary = {**experiment.get("research_summary", {})}
-        raw_artifact_path = experiment.get("artifact_path")
-        artifact = {**experiment.get("artifact", {})} if include_artifact else {}
+        exp = experiment if isinstance(experiment, dict) else {}
+        spec = {**exp.get("spec", {})}
+        summary = {**exp.get("summary", {})}
+        research_summary = {**exp.get("research_summary", {})}
+        raw_artifact_path = exp.get("artifact_path")
+        artifact = {**(exp.get("artifact") or {})} if include_artifact else {}
         if not artifact and raw_artifact_path and (self.config is not None):
             artifact_path = resolve_path_from_root(
                 raw_artifact_path,
@@ -1118,11 +1121,16 @@ class DashboardState:
 
     _load_artifact = _loa
 
-    def _soa(self, artifacts: dict[str, dict[str, Any]]) -> dict[str, Any]:
-        demo = {**artifacts["demo_manifest"].get("payload", {})}
-        telemetry = {**artifacts["telemetry"].get("payload", {})}
-        market = {**artifacts["market_report"].get("payload", {})}
-        preflight = {**artifacts["sodex_preflight"].get("payload", {})}
+    def _soa(self, artifacts: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
+        def _payload(name: str) -> dict[str, Any]:
+            entry = artifacts.get(name) or {}
+            if not isinstance(entry, dict):
+                return {}
+            return dict(entry.get("payload") or {})
+        demo = _payload("demo_manifest")
+        telemetry = _payload("telemetry")
+        market = _payload("market_report")
+        preflight = _payload("sodex_preflight")
         readiness = {**demo.get("readiness", {})}
         decision_support = {**market.get("decision_support", {})}
         signal_summary = {**market.get("signal_summary", {})}
@@ -1459,10 +1467,13 @@ async def api_experiment_deploy(request: Request, spec_hash: str) -> dict[str, A
         body = await request.json()
     except (json.JSONDecodeError, TypeError, ValueError):
         body = {}
-    return await request.app.state.dashboard.deploy_experiment(
-        spec_hash=spec_hash,
-        payload=body,
-    )
+    try:
+        return await request.app.state.dashboard.deploy_experiment(
+            spec_hash=spec_hash,
+            payload=body,
+        )
+    except (ValueError, LookupError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.get("/api/search")
@@ -2541,6 +2552,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.start_time = time.time()
     _template_dir = Path(__file__).resolve().parent / "templates"
     state.templates = Jinja2Templates(directory=str(_template_dir))
+    try:
+        from siglab.dashboard.experiment_repo import ExperimentRepo
+        from siglab.dashboard.experiment_enricher import ExperimentEnricher
+        state.repo = ExperimentRepo()
+        state.repo.config = state.config
+        state.enricher = ExperimentEnricher(state.config, state.repo)
+    except Exception:
+        logger.exception("Failed to create ExperimentRepo/Enricher, running without them")
     _env = state.templates.env
 
     def _fmt_num(value: float | str | None, decimals: int = 2) -> str:
@@ -2617,11 +2636,8 @@ def create_app() -> FastAPI:
 
     @app.get("/runs/{run_id:path}")
     async def serve_run_page(run_id: str, request: Request):
-        return request.app.state.dashboard.templates.TemplateResponse(
-            request,
-            "run.html",
-            {"request": request, "run_id": run_id},
-        )
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/?run_id={run_id}", status_code=307)
 
     @app.get("/experiments/{spec_hash:path}")
     async def serve_experiment_page(spec_hash: str, request: Request):

@@ -92,7 +92,7 @@ class BaseScreen(Screen[None]):
             await self._fetch_data()
         except Exception as exc:
             self._update_status_error(friendly_error(exc))
-            with contextlib.suppress(AttributeError, TypeError):
+            with contextlib.suppress(Exception):
                 self.notify(friendly_error(exc), severity="error")
             logger.warning("%s refresh failed: %s", self.__class__.__name__, exc)
         finally:

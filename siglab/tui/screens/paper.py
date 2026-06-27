@@ -529,11 +529,12 @@ class PaperScreen(BaseScreen):
                     f"Order {od.get('order_id', '?')[:8]}... {params['side']} {params['quantity']} {params['symbol']}",
                 ),
             )
-            self.notify(
-                f"Order placed: {params['side']} {params['quantity']} {params['symbol']}",
-                severity="information",
-                timeout=3,
-            )
+            with contextlib.suppress(Exception):
+                self.notify(
+                    f"Order placed: {params['side']} {params['quantity']} {params['symbol']}",
+                    severity="information",
+                    timeout=3,
+                )
             await self._refresh_all()
         except (httpx.HTTPError, OSError, ValueError) as exc:
             safe_query(
