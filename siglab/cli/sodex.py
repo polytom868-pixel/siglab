@@ -21,12 +21,10 @@ from siglab.cli.rich_utils import (
 from siglab.config import load_settings
 from siglab.data import EvidenceStore, sodex_ws_evidence
 from siglab.live.sodex_client import SoDEXSignedPerpsClient
-from siglab.live.sodex_signing import (
+from siglab.live.sodex_client import (
     build_signature_input,
     canonical_json,
     http_body_from_action_payload,
-    perps_cancel_item,
-    perps_order_item,
 )
 from siglab.live.sodex_ws import SoDEXWebSocketClient, SoDEXWebSocketError
 from siglab.path_utils import resolve_path_from_root

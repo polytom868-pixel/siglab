@@ -26,18 +26,16 @@ from siglab.live.position_ledger import (
 from siglab.utils import dget
 from siglab.evaluation.compile import compile_spec
 from siglab.live.sodex_client import (
-    SoDEXSignedPerpsClient,
-    SoDEXTransportError,
-    SoDEXUpstreamError,
-)
-from siglab.live.sodex_signing import (
     SoDEXNonceManager,
     SoDEXPrivateKeySigner,
+    SoDEXSignedPerpsClient,
     SoDEXSigner,
+    SoDEXTransportError,
+    SoDEXUpstreamError,
     perps_order_item,
     validate_account_id,
 )
-from siglab.risk.guardian import CircuitBreakerState, compute_position_size
+from siglab.dashboard.risk_utils import compute_composite_score, compute_position_size, CircuitBreakerState
 from siglab.schemas import SignalSpec
 import contextlib
 
@@ -893,12 +891,10 @@ class SoDEXExecutionAdapter:
             or {}
         )
 
-    def setup(self) -> dict[str, Any]:
-        if self.client is not None:
-            return self.dependency_report()
+    def _read_signing_config(self) -> dict[str, Any]:
         sg = self.config.get("sodex_signing") or {}
         akn = sg.get("api_key_name") or self.config.get("sodex_api_key_name")
-        aid_r = (
+        aid = (
             sg.get("accountID")
             or sg.get("account_id")
             or self.config.get("sodex_account_id")
@@ -907,6 +903,27 @@ class SoDEXExecutionAdapter:
         nsp = sg.get("nonce_store_path") or self.config.get("sodex_nonce_store_path")
         pk = sg.get("private_key") or self.config.get("sodex_private_key")
         signer: SoDEXSigner | None = sg.get("signer")
+        return {
+            "sg": sg,
+            "akn": akn,
+            "aid": aid,
+            "env": env,
+            "nsp": nsp,
+            "pk": pk,
+            "signer": signer,
+        }
+
+    def setup(self) -> dict[str, Any]:
+        if self.client is not None:
+            return self.dependency_report()
+        cfg = self._read_signing_config()
+        sg = cfg["sg"]
+        akn = cfg["akn"]
+        aid_r = cfg["aid"]
+        env = cfg["env"]
+        nsp = cfg["nsp"]
+        pk = cfg["pk"]
+        signer = cfg["signer"]
         if signer is None and pk:
             signer = SoDEXPrivateKeySigner(private_key=pk, environment=env)
         if not (bool(akn) and aid_r is not None and signer is not None):
@@ -1008,16 +1025,13 @@ class SoDEXExecutionAdapter:
 
     def dependency_report(self) -> dict[str, Any]:
         c = self.client
-        sg = self.config.get("sodex_signing") or {}
-        akn = sg.get("api_key_name") or self.config.get("sodex_api_key_name")
-        aid = (
-            sg.get("accountID")
-            or sg.get("account_id")
-            or self.config.get("sodex_account_id")
-        )
-        env = sg.get("environment") or self.config.get("sodex_environment") or "testnet"
-        ns = sg.get("nonce_store_path") or self.config.get("sodex_nonce_store_path")
-        signer = sg.get("signer")
+        cfg = self._read_signing_config()
+        sg = cfg["sg"]
+        akn = cfg["akn"]
+        aid = cfg["aid"]
+        env = cfg["env"]
+        ns = cfg["nsp"]
+        signer = cfg["signer"]
         req = {
             "get_user_state": bool(
                 getattr(c, "get_user_state", None)

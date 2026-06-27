@@ -535,7 +535,7 @@ def _gf(s: pd.Series) -> pd.DataFrame:
 
 def _pgrf(prices: pd.DataFrame, funding: pd.DataFrame) -> dict[str, pd.DataFrame]:
     prices = prices.sort_index()
-    funding = funding.reindex(prices.index).ffill().fillna(0.0)
+    funding = _reindex_ffill_fillna(funding, prices.index)
     r1h = prices.pct_change()
     return {
         "market_price_mean": _gf(prices.mean(axis=1)),
@@ -686,6 +686,47 @@ def _hb(frame: pd.DataFrame) -> dict[str, str | None]:
         "history_start": frame.index.min().isoformat(),
         "history_end": frame.index.max().isoformat(),
     }
+
+
+def _reindex_ffill_fillna(frame: pd.DataFrame, target_index: pd.Index) -> pd.DataFrame:
+    return frame.reindex(target_index).ffill().fillna(0.0)
+
+
+async def _apply_hedge(
+    *,
+    cpos: pd.DataFrame,
+    prices: pd.DataFrame,
+    funding: pd.DataFrame,
+    m2hs: dict[str, str],
+    hedge_symbols: list[str],
+    hr: float,
+    src: str,
+    provider: MarketDataProvider,
+    lookback_days: int,
+    interval: str = "1h",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, str]:
+    hb = await provider.fetch_perp_bundle(
+        symbols=hedge_symbols,
+        lookback_days=lookback_days,
+        interval=interval,
+    )
+    hp = hb["prices"].reindex(prices.index).ffill().add_suffix("_PERP")
+    hf = (
+        _reindex_ffill_fillna(hb["funding"], prices.index)
+        .add_suffix("_PERP")
+    )
+    hpos = _bpt_hp(cpos, m2hs=m2hs, hedge_symbols=hedge_symbols, hr=hr)
+    cp = pd.concat([prices, hp], axis=1).sort_index()
+    cpos = _reindex_ffill_fillna(
+        pd.concat([cpos, hpos], axis=1), cp.index,
+    )
+    funding = _reindex_ffill_fillna(
+        pd.concat([funding, hf], axis=1), cp.index,
+    )
+    src = f"{src}+{hb['source']}"
+    return cp, cpos, funding, src
+
+
 
 
 def _pt_lm(
@@ -931,19 +972,17 @@ async def compile_spec(
             [sp.add_suffix("_SPOT"), bundle["prices"].add_suffix("_PERP")],
             axis=1,
         ).sort_index()
-        funding = (
+        funding = _reindex_ffill_fillna(
             pd.concat(
                 [sf.add_suffix("_SPOT"), bundle["funding"].add_suffix("_PERP")],
                 axis=1,
             )
-            .sort_index()
-            .reindex(prices.index)
-            .ffill()
-            .fillna(0.0)
+            .sort_index(),
+            prices.index,
         )
         return CompiledChild(
             prices=prices,
-            target_positions=pair_positions.reindex(prices.index).ffill().fillna(0.0),
+            target_positions=_reindex_ffill_fillna(pair_positions, prices.index),
             funding_rates=funding,
             signal_score=score,
             signal_components=sc,
@@ -1025,7 +1064,7 @@ async def compile_spec(
         funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         return CompiledChild(
             prices=prices,
-            target_positions=positions.reindex(prices.index).ffill().fillna(0.0),
+            target_positions=_reindex_ffill_fillna(positions, prices.index),
             funding_rates=funding,
             metadata=_bsm(
                 spec,
@@ -1114,7 +1153,7 @@ async def compile_spec(
         )
         funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         cp = prices.copy()
-        cpos = pt_positions.reindex(prices.index).ffill().fillna(0.0)
+        cpos = _reindex_ffill_fillna(pt_positions, prices.index)
         hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
         hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
         hsym: list[str] = []
@@ -1129,34 +1168,11 @@ async def compile_spec(
             }
             hsym = sorted(set(m2hs.values()))
             if hsym:
-                hb = await provider.fetch_perp_bundle(
-                    symbols=hsym,
-                    lookback_days=spec.universe.lookback_days,
-                    interval="1h",
+                cp, cpos, funding, src = await _apply_hedge(
+                    cpos=cpos, prices=prices, funding=funding,
+                    m2hs=m2hs, hedge_symbols=hsym, hr=hr, src=src,
+                    provider=provider, lookback_days=spec.universe.lookback_days,
                 )
-                hp = hb["prices"].reindex(prices.index).ffill().add_suffix("_PERP")
-                hf = (
-                    hb["funding"]
-                    .reindex(prices.index)
-                    .ffill()
-                    .fillna(0.0)
-                    .add_suffix("_PERP")
-                )
-                hpos = _bpt_hp(cpos, m2hs=m2hs, hedge_symbols=hsym, hr=hr)
-                cp = pd.concat([prices, hp], axis=1).sort_index()
-                cpos = (
-                    pd.concat([cpos, hpos], axis=1)
-                    .reindex(cp.index)
-                    .ffill()
-                    .fillna(0.0)
-                )
-                funding = (
-                    pd.concat([funding, hf], axis=1)
-                    .reindex(cp.index)
-                    .ffill()
-                    .fillna(0.0)
-                )
-                src = f"pendle_public+{hb['source']}"
         return CompiledChild(
             prices=cp,
             target_positions=cpos,
@@ -1236,7 +1252,7 @@ async def compile_spec(
         )
         funding = pd.DataFrame(0.0, index=lp.index, columns=lp.columns)
         cp = lp.copy()
-        cpos = lpos.reindex(lp.index).ffill().fillna(0.0)
+        cpos = _reindex_ffill_fillna(lpos, lp.index)
         hm = str(spec.params.get("hedge_mode", d.get("hedge_mode", "none"))).lower()
         hr = float(spec.params.get("hedge_ratio", d.get("hedge_ratio", 1.0)))
         lh: list[str] = []
@@ -1247,34 +1263,11 @@ async def compile_spec(
             }
             lh = sorted(set(m2hs.values()))
             if lh:
-                hb = await provider.fetch_perp_bundle(
-                    symbols=lh,
-                    lookback_days=spec.universe.lookback_days,
-                    interval="1h",
+                cp, cpos, funding, src = await _apply_hedge(
+                    cpos=cpos, prices=lp, funding=funding,
+                    m2hs=m2hs, hedge_symbols=lh, hr=hr, src=src,
+                    provider=provider, lookback_days=spec.universe.lookback_days,
                 )
-                hp = hb["prices"].reindex(lp.index).ffill().add_suffix("_PERP")
-                hf = (
-                    hb["funding"]
-                    .reindex(lp.index)
-                    .ffill()
-                    .fillna(0.0)
-                    .add_suffix("_PERP")
-                )
-                hpos = _bpt_hp(cpos, m2hs=m2hs, hedge_symbols=lh, hr=hr)
-                cp = pd.concat([lp, hp], axis=1).sort_index()
-                cpos = (
-                    pd.concat([cpos, hpos], axis=1)
-                    .reindex(cp.index)
-                    .ffill()
-                    .fillna(0.0)
-                )
-                funding = (
-                    pd.concat([funding, hf], axis=1)
-                    .reindex(cp.index)
-                    .ffill()
-                    .fillna(0.0)
-                )
-                src = f"{src}+{hb['source']}"
         return CompiledChild(
             prices=cp,
             target_positions=cpos,
@@ -1313,29 +1306,3 @@ async def compile_spec(
 # backward compat aliases for tests
 _align_cross_sectional_components = _align_cs_comp
 _align_cross_sectional_frame = _align_cs
-_build_lending_price_frames = _blpf
-_build_pair_positions = _bpp
-_build_pair_trade_positions = _bptp
-_build_pt_hedge_positions = _bpt_hp
-_build_ranked_positions = _brp
-_build_shared_metadata = _bsm
-_cross_sectional_zscore = _cs_z
-_ensure_single_eligible_scores = _ensure_elig
-_ffill_within_observed_window = _ffill_wow
-_gate_mask_from_frame = _gmff
-_history_bounds = _hb
-_lending_raw_frames = _lrf
-_mask_feature_frames = _mask_ff
-_pair_policy_parameters = _ppp
-_pair_raw_frames = _pair_rf
-_perp_global_raw_frames = _pgrf
-_perp_raw_frames = _prf
-_prepare_pt_market_frames = _ppt_mf
-_pt_lifecycle_metadata = _pt_lm
-_pt_raw_frames = _pt_rf
-_ranked_policy_parameters = _rpp
-_resolve_gate_mask = _rgm
-_resolve_regime_gates = _rrg
-_shared_scoring_pipeline = _ssp
-_time_series_zscore = _ts_z
-_weighted_scoring = _ws

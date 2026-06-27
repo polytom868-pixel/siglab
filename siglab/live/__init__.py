@@ -18,25 +18,23 @@ from siglab.live.promotion import (
 from siglab.live.reconciliation import ReconciliationEngine
 from siglab.live.paper_client import DirectionalPerpsSigLabStrategy
 from siglab.live.sodex_client import (
-    SoDEXError,
-    SoDEXFormatError,
-    SoDEXPublicPerpsClient,
-    SoDEXRateLimitError,
-    SoDEXSignedPerpsClient,
-    SoDEXTransportError,
-    SoDEXUpstreamError,
-)
-from siglab.live.sodex_signing import (
     SUPPORTED_SODEX_SIGNED_ACTIONS,
     UNSUPPORTED_SODEX_SIGNED_ACTIONS,
     SoDEXConfigError,
+    SoDEXError,
+    SoDEXFormatError,
     SoDEXNonceError,
     SoDEXNonceManager,
     SoDEXNotReadyError,
     SoDEXPrivateKeySigner,
+    SoDEXPublicPerpsClient,
+    SoDEXRateLimitError,
+    SoDEXSignedPerpsClient,
     SoDEXSignedRequest,
     SoDEXSigner,
     SoDEXSigningError,
+    SoDEXTransportError,
+    SoDEXUpstreamError,
     build_eip712_domain,
     build_exchange_action_typed_data,
     build_signature_input,

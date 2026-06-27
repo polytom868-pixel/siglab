@@ -32,15 +32,16 @@
   reason: SigLab uses this as the ETF proxy backbone for market features.
 
 - doc_module: ETF
+  doc_module: ETF
   endpoint: POST /openapi/v2/etf/currentEtfDataMetrics
-  siglab_wrapper: SoSoValueClient.etf_current_metrics
-  tested: true
-  cached: true
-  retried: true
-  rate_limited: true
+  siglab_wrapper: null
+  tested: false
+  cached: false
+  retried: false
+  rate_limited: false
   used_by_strategy: false
-  status: IMPLEMENTED
-  reason: Official current docs expose current daily ETF metrics.
+  status: DEPRECATED
+  reason: Wrapper removed; endpoint unused.
 
 - doc_module: ETF
   endpoint: GET /etfs/{ticker}/history

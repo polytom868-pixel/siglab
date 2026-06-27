@@ -157,6 +157,28 @@ def _narrative_drawdown_analysis(drawdown: dict) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def _format_trade_group(title: str, trades: list[dict]) -> str:
+    lines = [title]
+    for i, trade in enumerate(trades[:3], 1):
+        ret = trade.get("total_return")
+        direction = trade.get("direction", "?")
+        bars = trade.get("bars")
+        entry_score = trade.get("entry_score")
+        features = list(trade.get("entry_feature_contributors") or [])
+        line = (
+            f"  {i}. {direction} | return: {_fmt(ret)} | bars: {_fmt(bars)}"
+            if bars is not None
+            else f"  {i}. {direction} | return: {_fmt(ret)}"
+        )
+        if entry_score is not None:
+            line += f" | entry score: {_fmt(entry_score)}"
+        if features:
+            top_feat = features[0].get("feature", "?")
+            line += f" | top feature: {top_feat}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _narrative_exemplar_trades(trades: dict) -> str:
     if not trades:
         return "=== Exemplar Trades ===\nNo exemplar trade data available."
@@ -164,45 +186,11 @@ def _narrative_exemplar_trades(trades: dict) -> str:
     losers = list(trades.get("losers") or [])
     lines = ["=== Exemplar Trades ==="]
     if winners:
-        lines.append("Best trades:")
-        for i, trade in enumerate(winners[:3], 1):
-            ret = trade.get("total_return")
-            direction = trade.get("direction", "?")
-            bars = trade.get("bars")
-            entry_score = trade.get("entry_score")
-            features = list(trade.get("entry_feature_contributors") or [])
-            line = (
-                f"  {i}. {direction} | return: {_fmt(ret)} | bars: {_fmt(bars)}"
-                if bars is not None
-                else f"  {i}. {direction} | return: {_fmt(ret)}"
-            )
-            if entry_score is not None:
-                line += f" | entry score: {_fmt(entry_score)}"
-            if features:
-                top_feat = features[0].get("feature", "?")
-                line += f" | top feature: {top_feat}"
-            lines.append(line)
+        lines.append(_format_trade_group("Best trades:", winners))
     else:
         lines.append("No winning trades identified.")
     if losers:
-        lines.append("Worst trades:")
-        for i, trade in enumerate(losers[:3], 1):
-            ret = trade.get("total_return")
-            direction = trade.get("direction", "?")
-            bars = trade.get("bars")
-            entry_score = trade.get("entry_score")
-            features = list(trade.get("entry_feature_contributors") or [])
-            line = (
-                f"  {i}. {direction} | return: {_fmt(ret)} | bars: {_fmt(bars)}"
-                if bars is not None
-                else f"  {i}. {direction} | return: {_fmt(ret)}"
-            )
-            if entry_score is not None:
-                line += f" | entry score: {_fmt(entry_score)}"
-            if features:
-                top_feat = features[0].get("feature", "?")
-                line += f" | top feature: {top_feat}"
-            lines.append(line)
+        lines.append(_format_trade_group("Worst trades:", losers))
     else:
         lines.append("No losing trades identified.")
     trade_count = len(winners) + len(losers)
@@ -255,8 +243,6 @@ def _narrative_regime_context(regime: dict) -> str:
 
 
 def _narrative_gate_diagnostics(gates: dict) -> str:
-    if isinstance(gates, list):
-        return "=== Gate Diagnostics ===\nNo gate diagnostics available."
     gate_data = dict(gates) if isinstance(gates, dict) else {}
     if not gate_data:
         return "=== Gate Diagnostics ===\nNo gate diagnostics available."

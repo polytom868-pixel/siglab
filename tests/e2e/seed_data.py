@@ -13,7 +13,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from siglab.dashboard.dashboard_state import DashboardState
+from siglab.dashboard.routes import DashboardState
 
 # ---------------------------------------------------------------------------
 # Helpers

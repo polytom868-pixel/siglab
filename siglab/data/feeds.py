@@ -1350,28 +1350,6 @@ class SoSoValueClient:
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
 
-    async def etf_current_metrics(
-        self,
-        *,
-        etf_type: str = "us-btc-spot",
-    ) -> dict[str, Any]:
-        spec = SoSoValueRequestSpec(
-            name="etf.current_metrics",
-            method="POST",
-            base_url=self.endpoints.etf_base_url,
-            path="/openapi/v2/etf/currentEtfDataMetrics",
-            json_body={"type": etf_type},
-            ttl_s=300.0,
-        )
-        payload = await self.request(spec)
-        data = payload.get("data")
-        if not isinstance(data, dict):
-            raise SoSoValueApiError(
-                "etf.current_metrics data was not an object",
-                payload=data,
-            )
-        self._validate_etf_current_metrics(data)
-        return dict(data)
 
     async def listed_currencies(self) -> list[dict[str, Any]]:
         spec = SoSoValueRequestSpec(
@@ -1864,62 +1842,6 @@ class SoSoValueClient:
             for f in missing:
                 row.setdefault(f, None)
 
-    def _validate_etf_current_metrics(self, data: dict[str, Any]) -> None:
-        for agg in (
-            "totalNetAssets",
-            "totalNetAssetsPercentage",
-            "dailyNetInflow",
-            "cumNetInflow",
-            "dailyTotalValueTraded",
-            "totalTokenHoldings",
-        ):
-            value = data.get(agg)
-            if not isinstance(value, dict):
-                if value is not None:
-                    logger.warning(
-                        "etf.current_metrics aggregate `%s` was not an object; defaulting to None",
-                        agg,
-                    )
-                data[agg] = None
-            else:
-                self._fill_optional_fields(
-                    value,
-                    ("value", "lastUpdateDate", "status"),
-                    f"etf.current_metrics aggregate `{agg}`",
-                )
-        rows = data.get("list")
-        if not isinstance(rows, list) or not rows:
-            raise SoSoValueApiError(
-                "etf.current_metrics returned no ETF rows",
-                payload=data,
-            )
-        row_optional = (
-            "id",
-            "institute",
-            "netAssets",
-            "netAssetsPercentage",
-            "dailyNetInflow",
-            "cumNetInflow",
-            "dailyValueTraded",
-            "fee",
-            "discountPremiumRate",
-        )
-        for idx, row in enumerate(rows):
-            if not isinstance(row, dict):
-                raise SoSoValueApiError(
-                    f"etf.current_metrics row {idx} was not an object",
-                    payload=row,
-                )
-            if "ticker" not in row:
-                raise SoSoValueApiError(
-                    f"etf.current_metrics row {idx} missing identity field: ticker",
-                    payload=row,
-                )
-            self._fill_optional_fields(
-                row,
-                row_optional,
-                f"etf.current_metrics row {idx}",
-            )
 
     def _endpoint_metrics(self, name: str) -> _EndpointMetrics:
         metrics = self._metrics.get(name)

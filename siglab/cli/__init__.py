@@ -25,19 +25,15 @@ def main() -> None:
     from siglab.cli import demo as _demo_mod
     from siglab.cli import market as _market_mod
     from siglab.cli import operator as _operator_mod
-    from siglab.cli import paper as _paper_mod
     from siglab.cli import sodex as _sodex_mod
 
     _demo_mod.add_subparser(subparsers)
     _market_mod.add_subparser(subparsers)
     _dashboard_mod.add_subparser(subparsers)
     _sodex_mod.add_subparser(subparsers)
-    _paper_mod.add_subparser(subparsers)
     _operator_mod.add_subparser(subparsers)
     from siglab.cli import evidence as _evidence_mod
     _evidence_mod.add_subparser(subparsers)
-    tui_p = subparsers.add_parser("tui", help="Launch the SigLab Terminal UI.")
-    tui_p.set_defaults(_handler="tui")
     args = parser.parse_args()
     from siglab.cli.rich_utils import init_console
 
@@ -66,23 +62,6 @@ def main() -> None:
         return
     if args.command == "sodex-ws-probe":
         asyncio.run(_sodex_mod.run_sodex_ws_probe(args))
-        return
-    if args.command == "sodex-preview":
-        _sodex_mod.run_sodex_preview(args)
-        return
-    if args.command == "paper-start":
-        asyncio.run(_paper_mod.run_paper_start(args))
-        return
-    if args.command == "paper-status":
-        asyncio.run(_paper_mod.run_paper_status(args))
-        return
-    if args.command == "paper-promote":
-        asyncio.run(_paper_mod.run_paper_promote(args))
-        return
-    if args.command == "tui":
-        from siglab.tui.__main__ import main as _tui_main
-
-        _tui_main()
         return
     if args.command == "operator":
         asyncio.run(_operator_mod.run_operator(args))

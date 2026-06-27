@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+import functools
 from typing import Any, cast
-from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -43,7 +43,18 @@ _NUM_RE = re.compile(r"^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$")
 _ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+def _validate_guard(f):
+    @functools.wraps(f)
+    def wrapper(self, *args, validate_only=False, **kwargs):
+        if validate_only:
+            return pd.DataFrame()
+        return f(self, *args, validate_only=validate_only, **kwargs)
+    return wrapper
+
+
 def load_feature_spec(
+
+
     root_dir: Path,
     *,
     track: str,
@@ -207,17 +218,19 @@ def _split(text: str) -> list[str]:
 
 
 def _make_rolling_op(attr: str):
+    @_validate_guard
     def op(args, *, validate_only):
         f, w = _efi(args)
-        return pd.DataFrame() if validate_only else getattr(f.rolling(w), attr)()
+        return getattr(f.rolling(w), attr)()
 
     return op
 
 
 def _make_frame_periods_op(func: str):
+    @_validate_guard
     def op(args, *, validate_only):
         f, p = _efi(args)
-        return pd.DataFrame() if validate_only else getattr(f, func)(p)
+        return getattr(f, func)(p)
 
     return op
 
@@ -294,31 +307,29 @@ def _eka(
     )
 
 
+@_validate_guard
 def _op_rolling_zscore(args, *, validate_only):
     f, w = _efi(args)
-    if validate_only:
-        return pd.DataFrame()
     m = f.rolling(w).mean()
     s = f.rolling(w).std().replace(0.0, np.nan)
     return f.sub(m).div(s).replace([np.inf, -np.inf], np.nan)
 
 
+@_validate_guard
 def _op_rolling_corr(args, *, validate_only):
     left, r, w = _e2fi(args)
-    return pd.DataFrame() if validate_only else left.rolling(w).corr(r)
+    return left.rolling(w).corr(r)
 
 
+@_validate_guard
 def _op_rolling_autocorr(args, *, validate_only):
     f, lag, w = _ef2i(args)
-    if validate_only:
-        return pd.DataFrame()
     return f.rolling(w).corr(f.shift(lag))
 
 
+@_validate_guard
 def _op_rolling_beta(args, *, validate_only):
     left, r, w = _e2fi(args)
-    if validate_only:
-        return pd.DataFrame()
     return (
         left.rolling(w)
         .cov(r)
@@ -327,20 +338,18 @@ def _op_rolling_beta(args, *, validate_only):
     )
 
 
+@_validate_guard
 def _op_rolling_hurst(args, *, validate_only):
     f, w = _efi(args)
-    if validate_only:
-        return pd.DataFrame()
     out = pd.DataFrame(index=f.index, columns=f.columns, dtype=float)
     for c in f.columns:
         out[c] = f[c].astype(float).rolling(w, min_periods=w).apply(_hurst, raw=True)
     return out
 
 
+@_validate_guard
 def _op_mean_reversion_halflife(args, *, validate_only):
     f, w = _efi(args)
-    if validate_only:
-        return pd.DataFrame()
     lagged = f.shift(1)
     delta = f.diff()
     beta = (
@@ -354,28 +363,23 @@ def _op_mean_reversion_halflife(args, *, validate_only):
     )
 
 
+@_validate_guard
 def _op_kalman_beta(args, *, validate_only):
     left, r, pn, on = _eka(args)
-    return (
-        pd.DataFrame()
-        if validate_only
-        else _kbf(left, r, process_noise=pn, observation_noise=on)
-    )
+    return _kbf(left, r, process_noise=pn, observation_noise=on)
 
 
+@_validate_guard
 def _op_kalman_residual(args, *, validate_only):
     left, r, pn, on = _eka(args)
-    if validate_only:
-        return pd.DataFrame()
     beta = _kbf(left, r, process_noise=pn, observation_noise=on)
     al, ar = left.align(r, join="outer")
     return al.sub(beta.mul(ar))
 
 
+@_validate_guard
 def _op_rsi(args, *, validate_only):
     f, w = _efi(args)
-    if validate_only:
-        return pd.DataFrame()
     d = f.diff()
     gains = d.clip(lower=0.0)
     losses = (-d).clip(lower=0.0)
@@ -387,30 +391,25 @@ def _op_rsi(args, *, validate_only):
     rsi = rsi.where(al > 0.0, 100.0)
     return rsi.where(~((ag <= 0.0) & (al <= 0.0)), 50.0)
 
-
+@_validate_guard
 def _op_sign_flip_prob(args, *, validate_only):
     f, w = _efi(args)
-    return (
-        pd.DataFrame()
-        if validate_only
-        else f.apply(np.sign).diff().ne(0).astype(float).rolling(w).mean()
-    )
+    return f.apply(np.sign).diff().ne(0).astype(float).rolling(w).mean()
 
 
+@_validate_guard
 def _op_abs(args, *, validate_only):
     f = _ef(args, expected=1)
-    return pd.DataFrame() if validate_only else f.abs()
+    return f.abs()
 
 
+@_validate_guard
 def _op_log(args, *, validate_only):
     f = _ef(args, expected=1)
-    return (
-        pd.DataFrame()
-        if validate_only
-        else cast(pd.DataFrame, np.log(f.where(f > 0.0)))
-    )
+    return cast(pd.DataFrame, np.log(f.where(f > 0.0)))
 
 
+@_validate_guard
 def _op_clip(args, *, validate_only):
     f = _ef(args[:1], expected=1)
     if (
@@ -419,31 +418,30 @@ def _op_clip(args, *, validate_only):
         or not isinstance(args[2], float)
     ):
         raise ValueError("clip expects frame, low, high")
-    return pd.DataFrame() if validate_only else f.clip(lower=args[1], upper=args[2])
+    return f.clip(lower=args[1], upper=args[2])
 
 
+@_validate_guard
 def _op_sub(args, *, validate_only):
     if len(args) != 2:
         raise ValueError("sub expects 2 arguments")
-    return (
-        pd.DataFrame()
-        if validate_only
-        else _bin(args[0], args[1], lambda a, b: a.sub(b, fill_value=0.0))
-    )
+    return _bin(args[0], args[1], lambda a, b: a.sub(b, fill_value=0.0))
 
 
+@_validate_guard
 def _op_mul(args, *, validate_only):
     if len(args) != 2:
         raise ValueError("mul expects 2 arguments")
-    return (
-        pd.DataFrame() if validate_only else _bin(args[0], args[1], lambda a, b: a * b)
-    )
+    return _bin(args[0], args[1], lambda a, b: a * b)
 
 
+@_validate_guard
 def _op_div(args, *, validate_only):
     if len(args) != 2:
         raise ValueError("div expects 2 arguments")
-    return pd.DataFrame() if validate_only else _bin(args[0], args[1], _sdiv)
+    return _bin(args[0], args[1], _sdiv)
+
+
 
 
 _OP_REG = dict[str, Any](
@@ -477,9 +475,10 @@ _OP_REG = dict[str, Any](
 )
 
 
+@_validate_guard
 def _op_ema(args, *, validate_only):
     f, s = _efi(args)
-    return pd.DataFrame() if validate_only else f.ewm(span=s, adjust=False).mean()
+    return f.ewm(span=s, adjust=False).mean()
 
 
 _OP_REG["ema"] = _op_ema
@@ -629,25 +628,3 @@ def _kbf(
     return out
 
 
-# backward compat aliases for tests
-_aligned_frame_pair = _afp
-_aligned_pair = _ap
-_broadcast_single_column_frame = _bcast
-_expect_frame = _ef
-_expect_frame_and_int = _efi
-_expect_frame_and_two_ints = _ef2i
-_expect_kalman_args = _eka
-_expect_two_frames_and_int = _e2fi
-_hurst_exponent = _hurst
-_op_pct_change = _OP_REG["pct_change"]
-_op_diff = _OP_REG["diff"]
-_op_rolling_mean = _OP_REG["rolling_mean"]
-_op_rolling_sum = _OP_REG["rolling_sum"]
-_op_rolling_std = _OP_REG["rolling_std"]
-_op_rolling_min = _OP_REG["rolling_min"]
-_op_rolling_max = _OP_REG["rolling_max"]
-_op_rolling_skew = _OP_REG["rolling_skew"]
-_op_rolling_kurt = _OP_REG["rolling_kurt"]
-_parse_call = _parse
-_safe_div = _sdiv
-_split_args = _split

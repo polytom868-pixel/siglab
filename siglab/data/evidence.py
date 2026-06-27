@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,22 @@ class EvidenceStore:
         return summary
 
 
+def _collect_evidence(
+    rows: Iterable[Any],
+    extractor: Callable[[Any], EvidenceRecord | list[EvidenceRecord] | None],
+) -> list[EvidenceRecord]:
+    records: list[EvidenceRecord] = []
+    for item in rows:
+        result = extractor(item)
+        if result is None:
+            continue
+        if isinstance(result, list):
+            records.extend(result)
+        else:
+            records.append(result)
+    return records
+
+
 def etf_inflow_evidence(
     api_rows: Iterable[dict[str, Any]],
     *,
@@ -168,30 +184,29 @@ def etf_inflow_evidence(
     observed_at: str,
     evidence_path: str,
 ) -> list[EvidenceRecord]:
-    records: list[EvidenceRecord] = []
-    for row in api_rows:
+    def _extract(row: dict[str, Any]) -> list[EvidenceRecord]:
         date = str(row.get("date") or "")
         if not date:
-            continue
-        for relation, attr_key in [
-            ("totalNetInflow", "totalValueTraded"),
-            ("totalNetAssets", "cumNetInflow"),
-        ]:
-            records.append(
-                EvidenceRecord(
-                    source="sosovalue.etf_historical_inflow",
-                    observed_at=observed_at,
-                    timestamp=date,
-                    entity=etf_type,
-                    module="ETF",
-                    relation=relation,
-                    value=row.get(relation),
-                    confidence=0.95,
-                    evidence_path=evidence_path,
-                    attributes={attr_key: row.get(attr_key)},
-                ),
+            return []
+        return [
+            EvidenceRecord(
+                source="sosovalue.etf_historical_inflow",
+                observed_at=observed_at,
+                timestamp=date,
+                entity=etf_type,
+                module="ETF",
+                relation=relation,
+                value=row.get(relation),
+                confidence=0.95,
+                evidence_path=evidence_path,
+                attributes={attr_key: row.get(attr_key)},
             )
-    return records
+            for relation, attr_key in [
+                ("totalNetInflow", "totalValueTraded"),
+                ("totalNetAssets", "cumNetInflow"),
+            ]
+        ]
+    return _collect_evidence(api_rows, _extract)
 
 
 def news_evidence(
@@ -203,8 +218,7 @@ def news_evidence(
     default_entity: str = "market",
     source: str = "sosovalue.featured_news",
 ) -> list[EvidenceRecord]:
-    records: list[EvidenceRecord] = []
-    for row in rows:
+    def _extract(row: dict[str, Any]) -> EvidenceRecord | None:
         content = _preferred_multilingual_content(row.get("multilanguageContent"))
         title = str(
             _first_of(row, ("title", "headline"))
@@ -213,7 +227,7 @@ def news_evidence(
             or "",
         ).strip()
         if not title:
-            continue
+            return None
         matched = row.get("matchedCurrencies")
         entity = str(
             _first_of(row, ("currencyName", "symbol", "currencySymbol"))
@@ -224,29 +238,27 @@ def news_evidence(
             row,
             ("publishTime", "publishedAt", "createdAt", "createTime", "releaseTime"),
         )
-        records.append(
-            EvidenceRecord(
-                source=source,
-                observed_at=observed_at,
-                timestamp=str(timestamp) if timestamp is not None else None,
-                entity=entity,
-                module=module,
-                relation="news_mention",
-                value=title,
-                confidence=0.75,
-                evidence_path=evidence_path,
-                attributes={
-                    "id": row.get("id"),
-                    "url": _first_of(row, ("url", "link", "sourceLink")),
-                    "summary": _first_of(row, ("summary", "description"))
-                    or content.get("content"),
-                    "author": row.get("author"),
-                    "category": row.get("category"),
-                    "matchedCurrencies": matched if isinstance(matched, list) else [],
-                },
-            ),
+        return EvidenceRecord(
+            source=source,
+            observed_at=observed_at,
+            timestamp=str(timestamp) if timestamp is not None else None,
+            entity=entity,
+            module=module,
+            relation="news_mention",
+            value=title,
+            confidence=0.75,
+            evidence_path=evidence_path,
+            attributes={
+                "id": row.get("id"),
+                "url": _first_of(row, ("url", "link", "sourceLink")),
+                "summary": _first_of(row, ("summary", "description"))
+                or content.get("content"),
+                "author": row.get("author"),
+                "category": row.get("category"),
+                "matchedCurrencies": matched if isinstance(matched, list) else [],
+            },
         )
-    return records
+    return _collect_evidence(rows, _extract)
 
 
 def sodex_ws_evidence(
@@ -259,10 +271,10 @@ def sodex_ws_evidence(
     update_type = str(update.get("type") or "")
     data = update.get("data")
     rows = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
-    records: list[EvidenceRecord] = []
-    for row in rows:
+
+    def _extract(row: dict[str, Any]) -> EvidenceRecord | None:
         if not isinstance(row, dict):
-            continue
+            return None
         symbol = str(_first_of(row, ("symbol", "s", "pair")) or channel or "sodex")
         timestamp = _first_of(row, ("T", "time", "closeTime", "blockTime"))
         bid = _first_of(row, ("bidPx", "bid", "b"))
@@ -271,27 +283,25 @@ def sodex_ws_evidence(
             _first_of(row, ("lastPx", "markPrice", "bidPx", "bid", "b", "p"))
             or update_type
         )
-        records.append(
-            EvidenceRecord(
-                source="sodex.websocket",
-                observed_at=observed_at,
-                timestamp=str(timestamp) if timestamp is not None else observed_at,
-                entity=symbol,
-                module="SoDEX",
-                relation=f"websocket_{channel or 'update'}",
-                value=trade_value,
-                confidence=0.8,
-                evidence_path=evidence_path,
-                attributes={
-                    "channel": channel,
-                    "type": update_type,
-                    "bid": bid,
-                    "ask": ask,
-                    "raw_keys": sorted(row.keys()),
-                },
-            ),
+        return EvidenceRecord(
+            source="sodex.websocket",
+            observed_at=observed_at,
+            timestamp=str(timestamp) if timestamp is not None else observed_at,
+            entity=symbol,
+            module="SoDEX",
+            relation=f"websocket_{channel or 'update'}",
+            value=trade_value,
+            confidence=0.8,
+            evidence_path=evidence_path,
+            attributes={
+                "channel": channel,
+                "type": update_type,
+                "bid": bid,
+                "ask": ask,
+                "raw_keys": sorted(row.keys()),
+            },
         )
-    return records
+    return _collect_evidence(rows, _extract)
 
 
 def link_feed_events_to_etf_flows(

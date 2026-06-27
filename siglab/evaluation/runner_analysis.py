@@ -98,29 +98,7 @@ def _eassets(
 
 
 def _rdl(row: pd.Series, *, eps_: float = 1e-09) -> str:
-    c = pd.to_numeric(row, errors="coerce").fillna(0.0)
-    active, longs, shorts = _eassets(c, eps_=eps_)
-    if not active:
-        return "flat"
-    if (
-        len(c.index) >= 2
-        and len(active) == 2
-        and (set(active) == set(map(str, c.index[:2])))
-    ):
-        fst, snd = float(c.iloc[0]), float(c.iloc[1])
-        if fst > eps_ and snd < -eps_:
-            return "long_asset_1_short_asset_2"
-        if fst < -eps_ and snd > eps_:
-            return "short_asset_1_long_asset_2"
-    gross = float(c.abs().sum())
-    net = float(c.sum())
-    if longs and shorts and gross > 0.0 and abs(net) <= gross * 0.2:
-        return "market_neutral"
-    if net > eps_ or (longs and not shorts):
-        return "net_long"
-    if net < -eps_ or (shorts and not longs):
-        return "net_short"
-    return "mixed"
+    return _rdl_np(row.to_numpy(dtype=float, na_value=np.nan), list(row.index), eps_=eps_)
 
 
 def _rdl_np(values: np.ndarray, cols: list[str], eps_: float = 1e-09) -> str:
@@ -214,6 +192,17 @@ def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
     return eps
 
 
+def _episode_stats(matched: list[dict[str, Any]], returns: list[float]) -> dict[str, Any]:
+    return {
+        "trade_count": len(matched),
+        "win_rate": _sf(
+            sum(1 for v in returns if v > 0.0) / len(returns) if returns else None,
+        ),
+        "median_return": _sf(float(np.median(returns))) if returns else None,
+        "direction_counts": _edc(matched),
+    }
+
+
 def _hpb(tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
     eps = _ppeps(tw=tw, r=r)
     specs = [
@@ -237,15 +226,10 @@ def _hpb(tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
         rows.append(
             {
                 "label": label,
-                "trade_count": len(matched),
+                **(_episode_stats(matched, rb)),
                 "median_bars": _sf(float(np.median([int(e["bars"]) for e in matched])))
                 if matched
                 else None,
-                "median_return": _sf(float(np.median(rb))) if rb else None,
-                "win_rate": _sf(sum(1 for v in rb if v > 0.0) / len(rb))
-                if rb
-                else None,
-                "direction_counts": _edc(matched),
             },
         )
     return rows
@@ -670,18 +654,9 @@ def _trp(te: list[dict[str, Any]]) -> dict[str, Any]:
             rows.append(
                 {
                     "label": lbl,
-                    "trade_count": len(matched),
-                    "win_rate": _sf(
-                        sum(1 for v in returns if v > 0.0) / len(returns)
-                        if returns
-                        else None,
-                    ),
+                    **(_episode_stats(matched, returns)),
                     "avg_return": _sf(sum(returns) / len(returns) if returns else None),
-                    "median_return": _sf(
-                        float(np.median(returns)) if returns else None,
-                    ),
                     "median_hold_bars": _sf(float(np.median(bars)) if bars else None),
-                    "direction_counts": _edc(matched),
                 },
             )
         rows.sort(
@@ -856,16 +831,11 @@ def _ewts(
     dc = _edc(matched)
     dd = max(dc.items(), key=lambda x: x[1])[0] if dc else None
     return {
-        "trade_count": len(matched),
+        **(_episode_stats(matched, returns)),
         "entries_per_day": _sf(len(matched) / days),
-        "win_rate": _sf(
-            sum(1 for v in returns if v > 0.0) / len(returns) if returns else None,
-        ),
         "avg_return": _sf(sum(returns) / len(returns) if returns else None),
-        "median_return": _sf(float(np.median(returns)) if returns else None),
         "median_hold_bars": _sf(float(np.median(bars)) if bars else None),
         "dominant_direction": dd,
-        "direction_counts": dc,
     }
 
 

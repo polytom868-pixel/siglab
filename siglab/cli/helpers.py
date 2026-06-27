@@ -208,7 +208,7 @@ def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
         SODEX_ENDPOINT_WEIGHTS,
         SODEX_WEIGHT_BUDGET_PER_MINUTE,
     )
-    from siglab.live.sodex_signing import (
+    from siglab.live.sodex_client import (
         SUPPORTED_SODEX_SIGNED_ACTIONS,
         UNSUPPORTED_SODEX_SIGNED_ACTIONS,
     )

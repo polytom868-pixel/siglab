@@ -247,16 +247,6 @@ function runWaitingMessage(run) {
   };
 }
 
-function runStatusClass(status) {
-  if (status === "deployd" || status === "pass") {
-    return "status-pass";
-  }
-  if (status === "running" || status === "starting") {
-    return "status-pending";
-  }
-  return "status-fail";
-}
-
 function collectFamilies(payload) {
   const familySet = new Set(payload?.summary?.families || []);
   (payload?.experiments || [])

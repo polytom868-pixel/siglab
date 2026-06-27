@@ -41,17 +41,12 @@ class SiglabConfig:
     claude_timeout_s: float = 300.0
     population_size: int = 4
     llm_provider: str = "openai"
-    optuna_trials: int = 20
     memory_scope: str = "session_local"
     claude_max_tool_rounds: int = 25
     openmodel_api_key: str | None = None
     openmodel_base_url: str = "https://api.openmodel.ai/v1"
     openmodel_model: str = "deepseek-v4-flash"
     tracks: tuple[str, ...] = CANONICAL_TRACKS
-    tavily_api_key: str | None = None
-    tavily_base_url: str = "https://api.tavily.com"
-    tavily_max_results: int = 5
-    web_explore_results_per_query: int = 2
 
     def ensure_runtime_directories(self) -> None:
         self.data_lake_dir.mkdir(parents=True, exist_ok=True)
@@ -84,11 +79,6 @@ def load_settings() -> SiglabConfig:
     def _get(name: str, default: str | None = None) -> str | None:
         return os.getenv(name) or env_values.get(name) or default
 
-    def _get_bool(name: str, default: bool = False) -> bool:
-        raw = _get(name)
-        if raw is None:
-            return default
-        return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
     config_value = _get("SOSOVALUE_CONFIG_PATH")
     strategy_export_value = _get(
@@ -133,10 +123,4 @@ def load_settings() -> SiglabConfig:
         openmodel_base_url=_get("OPENMODEL_BASE_URL", "https://api.openmodel.ai/v1"),
         openmodel_model=_get("OPENMODEL_MODEL", "deepseek-v4-flash"),
         population_size=int(_get("SIGLAB_POPULATION_SIZE", "4")),
-        optuna_trials=int(_get("SIGLAB_OPTUNA_TRIALS", "20")),
-        memory_scope=_get("SIGLAB_MEMORY_SCOPE", "session_local"),
-        tavily_api_key=_get("TAVILY_API_KEY"),
-        tavily_base_url=_get("TAVILY_BASE_URL", "https://api.tavily.com"),
-        tavily_max_results=int(_get("TAVILY_MAX_RESULTS", "5")),
-        web_explore_results_per_query=int(_get("WEB_EXPLORE_RESULTS_PER_QUERY", "2")),
     )
