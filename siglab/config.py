@@ -207,6 +207,7 @@ def load_settings() -> SiglabConfig:
         openmodel_api_key=_get("OPENMODEL_API_KEY"),
         openmodel_base_url=_get("OPENMODEL_BASE_URL", "https://api.openmodel.ai"),
         openmodel_model=_get("OPENMODEL_MODEL", "deepseek-v4-flash"),
+        memory_scope=_get("SIGLAB_MEMORY_SCOPE", default="session_local"),
         population_size=int(_get("SIGLAB_POPULATION_SIZE", "4")),
     )
 

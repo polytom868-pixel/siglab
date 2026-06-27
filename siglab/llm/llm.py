@@ -45,11 +45,13 @@ class ClaudeTool:
     name: str
     description: str
     params: dict[str, Any]
+    handler: ToolHandler | None = None
 
-    def __init__(self, name: str, description: str, params: dict[str, Any] | None = None, *, parameters: dict[str, Any] | None = None) -> None:
+    def __init__(self, name: str, description: str, params: dict[str, Any] | None = None, *, handler: ToolHandler | None = None, parameters: dict[str, Any] | None = None) -> None:
         self.name = name
         self.description = description
         self.params = params if params is not None else (parameters or {})
+        self.handler = handler
 
     def canonical(self) -> dict[str, Any]:
         return {
@@ -620,9 +622,16 @@ class ClaudeClient:
         if tool is None:
             result = f"Unknown tool: {name}"
             trace_entry["error"] = result
+        elif tool.handler is None:
+            result = f"No handler registered for tool: {name}"
+            trace_entry["error"] = result
         else:
             try:
-                result = tool
+                handler = tool.handler
+                if asyncio.iscoroutinefunction(handler):
+                    result = await handler(args)
+                else:
+                    result = handler(args)
             except Exception as exc:
                 result = f"Tool error: {exc}"
                 trace_entry["error"] = str(exc)

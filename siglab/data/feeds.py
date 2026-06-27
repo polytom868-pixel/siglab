@@ -466,8 +466,8 @@ class MarketDataProvider:
             summary["etf_inflow"] = [
                 {
                     "date": r.get("date"),
-                    "total_net_inflow": r.get("total_net_inflow"),
-                    "total_net_assets": r.get("total_net_assets"),
+                    "total_net_inflow": r.get("totalNetInflow"),
+                    "total_net_assets": r.get("totalNetAssets"),
                 }
                 for r in sosovalue_etf[:10]
             ]
@@ -1287,7 +1287,7 @@ class SoSoValueClient:
         connect_timeout_s: float = 3.0,
         write_timeout_s: float = 5.0,
         pool_timeout_s: float = 3.0,
-        retries: int = 2,
+        retries: int = 4,
         max_concurrency: int = 8,
         conservative_rate_limit_per_minute: int = 10,
         verify: ssl.SSLContext | str | bool | None = None,
@@ -1390,6 +1390,25 @@ class SoSoValueClient:
                 str(int(value)) for value in category_list
             )
         return params
+
+    async def featured_news(
+        self,
+        page_num: int = 1,
+        page_size: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Fetch featured news articles from SoSoValue.
+
+        Args:
+            page_num: Page number (1-indexed).
+            page_size: Items per page.
+
+        Returns:
+            List of news article rows.
+        """
+        return await self._fetch_featured_news_page(
+            page_num=page_num,
+            page_size=page_size,
+        )
 
     async def _fetch_featured_news_page(
         self,
@@ -1648,8 +1667,6 @@ class SoSoValueClient:
                 or "SoSoValue API returned a non-zero code",
             )
             raise SoSoValueApiError(message, status_code=status_code, payload=payload)
-        if "data" in payload:
-            self._validate_data_shape(payload.get("data"), spec)
         return payload
 
     def _rows_from_data(
@@ -1709,34 +1726,7 @@ class SoSoValueClient:
                 self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
         return rows
 
-    def _validate_data_shape(self, data: object, spec: SoSoValueRequestSpec) -> None:
-        if isinstance(data, dict) and isinstance(data.get("list"), list):
-            lst = data["list"]
-        elif isinstance(data, list):
-            lst = data
-        elif data is None or data == "" or isinstance(data, dict):
-            return
-        else:
-            raise SoSoValueApiError(
-                f"{spec.name} data had unsupported shape",
-                payload=data,
-            )
-        if spec.require_non_empty and (not lst):
-            raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
-        if spec.identity_fields or spec.required_fields:
-            optional = tuple(
-                f for f in spec.required_fields if f not in spec.identity_fields
-            )
-            for idx, row in enumerate(lst):
-                if not isinstance(row, dict):
-                    continue
-                missing_id = [f for f in spec.identity_fields if f not in row]
-                if missing_id:
-                    raise SoSoValueApiError(
-                        f"{spec.name} row {idx} missing identity fields: {', '.join(missing_id)}",
-                        payload=row,
-                    )
-                self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
+
 
     def metrics_snapshot(self) -> dict[str, Any]:
         endpoints: dict[str, Any] = {}

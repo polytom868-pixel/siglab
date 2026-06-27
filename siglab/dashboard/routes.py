@@ -225,8 +225,9 @@ class DashboardState:
     _experiments_cache_ts: float = 0.0
     _EXPERIMENTS_CACHE_TTL: float = 30.0
     _ops_cache: dict[str, Any] | None = None
+    _ops_cache_ts: float = 0.0
+    _OPS_CACHE_TTL: float = 30.0
     _runs_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
-
     def _lp(self) -> str:
         return "unknown" if self.config is None else resolve_llm_provider(self.config)
 
@@ -533,6 +534,7 @@ class DashboardState:
 
     def _invalidate_caches(self) -> None:
         self._ops_cache = None
+        self._ops_cache_ts = 0.0
         self._runs_cache.clear()
         self._experiments_cache.clear()
         self._experiments_cache_ts = 0.0
@@ -1127,7 +1129,8 @@ class DashboardState:
         }
 
     def ops_payload(self) -> dict[str, Any]:
-        if self._ops_cache is not None:
+        now = time.perf_counter()
+        if self._ops_cache is not None and (now - self._ops_cache_ts) < self._OPS_CACHE_TTL:
             return self._ops_cache
         artifacts = {
             "demo_manifest": self._loa("runs/demo_manifest_latest.json"),
@@ -1152,6 +1155,7 @@ class DashboardState:
             "summary": self._soa(artifacts),
         }
         self._ops_cache = result
+        self._ops_cache_ts = now
         return result
 
     def experiment_detail_payload(self, spec_hash: str) -> dict[str, Any] | None:

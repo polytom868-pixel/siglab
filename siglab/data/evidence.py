@@ -73,6 +73,7 @@ class EvidenceRecord:
     timestamp: str | None = None
     value: Any = None
     attributes: dict[str, Any] = field(default_factory=dict)
+    api_source: str | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.confidence <= 1.0:
@@ -158,55 +159,9 @@ class EvidenceStore:
             if line.strip()
         ]
 
-    def query(
-        self,
-        *,
-        entity: str | None = None,
-        module: str | None = None,
-        relation: str | None = None,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
-        rows = self.load()
-        if entity is not None:
-            needle = entity.lower()
-            rows = [row for row in rows if needle in str(row.get("entity", "")).lower()]
-        for field_name, value in (("module", module), ("relation", relation)):
-            if value is not None:
-                rows = [row for row in rows if str(row.get(field_name)) == value]
-        return rows[: max(0, int(limit))]
 
-    def linked_relations(self, *, max_day_gap: int = 1) -> list[dict[str, Any]]:
-        return link_feed_events_to_etf_flows(self.load(), max_day_gap=max_day_gap)
 
-    def summary(self, *, max_day_gap: int = 1, top_links: int = 10) -> dict[str, Any]:
-        rows = self.load()
-        return summarize_evidence(
-            rows,
-            self.linked_relations(max_day_gap=max_day_gap),
-            top_links=top_links,
-        )
 
-    def write_summary(
-        self,
-        path: Path,
-        *,
-        max_day_gap: int = 1,
-        top_links: int = 10,
-    ) -> dict[str, Any]:
-        summary = self.summary(max_day_gap=max_day_gap, top_links=top_links)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                summary,
-                ensure_ascii=True,
-                indent=2,
-                sort_keys=True,
-                default=str,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        return summary
 
 
 def _collect_evidence(
@@ -248,6 +203,7 @@ def etf_inflow_evidence(
                 confidence=0.95,
                 evidence_path=evidence_path,
                 attributes={attr_key: row.get(attr_key)},
+                api_source=api_key,
             )
             for relation_name, api_key, attr_key in [
                 ("total_net_inflow", "totalNetInflow", "totalValueTraded"),
@@ -707,7 +663,14 @@ def _record_day(value: object) -> date | None:
 
 
 def write_evidence_graph_html(summary_path: Path, output_path: Path) -> Path:
-    """Render an evidence summary JSON file as a standalone HTML graph."""
+    """Render an evidence summary JSON file as a standalone HTML graph.
+
+    NOTE: This function is currently dead code (never called).
+    It expects summary_path to contain a JSON list of dicts with keys
+    ('symbol', 'signal', 'source', 'confidence'), but the upstream
+    writer (summarize_evidence) produces a JSON dict, not a list.
+    Fix the caller or this function before reactivating.
+    """
     try:
         with open(summary_path) as f:
             records: list[dict[str, Any]] = json.load(f)
