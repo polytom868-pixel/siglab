@@ -1,0 +1,739 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-06-27T23:30:00Z",
+  "api_base_urls": {
+    "openapi_v1": "https://openapi.sosovalue.com/openapi/v1",
+    "openapi_v2": "https://openapi.sosovalue.com",
+    "news_api": "https://openapi.sosovalue.com"
+  },
+  "auth": {
+    "type": "header",
+    "header_name": "x-soso-api-key",
+    "value_format": "SOSO-<hex>"
+  },
+  "common_response_fields": {
+    "code": {"type": "integer", "description": "0 = success, non-zero = error", "required": true},
+    "msg": {"type": ["string", "null"], "description": "Error message when code != 0", "required": false},
+    "traceId": {"type": ["string", "null"], "description": "Trace ID for debugging", "required": false},
+    "tid": {"type": "string", "description": "Telemetry ID", "required": false},
+    "data": {"type": ["object", "array", "null"], "description": "Response payload", "required": false}
+  },
+  "endpoints": {
+    "POST /openapi/v1/data/default/coin/list": {
+      "description": "List all available coins/currencies tracked by SoSoValue",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v1",
+      "status": "IMPLEMENTED",
+      "siglab_wrapper": "SoSoValueClient.listed_currencies",
+      "request": {
+        "body": {"type": "object", "properties": {}},
+        "params": {}
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer", "required": true},
+            "msg": {"type": ["string", "null"], "required": false},
+            "traceId": {"type": ["string", "null"], "required": false},
+            "data": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "currencyName": {"type": "string", "description": "Short symbol like 'btc', 'eth', 'usdt'"},
+                  "fullName": {"type": "string", "description": "Full name like 'Bitcoin', 'Ethereum'"},
+                  "currencyId": {"type": "integer", "description": "Numeric ID (snowflake), e.g. 1673723677362319866"}
+                }
+              }
+            }
+          }
+        }
+      },
+      "rate_limit": "Conservative (~10/min per key)"
+    },
+    "POST /openapi/v2/etf/historicalInflowChart": {
+      "description": "Historical ETF net inflow/outflow chart data (daily) for a given ETF type",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v2",
+      "status": "IMPLEMENTED",
+      "siglab_wrapper": "SoSoValueClient.etf_historical_inflow",
+      "request": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["us-btc-spot", "us-eth-spot", "hk-btc-spot", "hk-eth-spot"],
+              "description": "ETF type identifier",
+              "default": "us-btc-spot",
+              "required": true
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Number of records (default: ~300 max, returns all available if unset or 0)",
+              "required": false
+            }
+          }
+        },
+        "params": {}
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "msg": {"type": ["string", "null"]},
+            "traceId": {"type": ["string", "null"]},
+            "data": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": {"type": "string", "format": "YYYY-MM-DD", "required": true},
+                  "totalNetInflow": {"type": "number", "description": "Daily net inflow in USD (negative = outflow)", "required": true},
+                  "totalValueTraded": {"type": "number", "description": "Total trading volume in USD", "required": true},
+                  "totalNetAssets": {"type": "number", "description": "Total net assets in USD", "required": true},
+                  "cumNetInflow": {"type": "number", "description": "Cumulative net inflow since inception in USD", "required": true}
+                }
+              },
+              "nullable_when": "hk-btc-spot or hk-eth-spot (empty array = no data)"
+            }
+          }
+        }
+      }
+    },
+    "POST /openapi/v2/etf/currentEtfDataMetrics": {
+      "description": "Current ETF aggregate and per-fund metrics snapshot",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v2",
+      "status": "DEPRECATED (wrapper removed in code, but endpoint still works)",
+      "siglab_wrapper": "None (was etf_current_metrics, removed)",
+      "request": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["us-btc-spot"],
+              "description": "ETF type",
+              "required": true
+            }
+          }
+        },
+        "params": {}
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "msg": {"type": ["string", "null"]},
+            "traceId": {"type": ["string", "null"]},
+            "tid": {"type": "string"},
+            "data": {
+              "type": "object",
+              "properties": {
+                "totalNetAssets": {
+                  "type": "object",
+                  "properties": {
+                    "value": {"type": "string", "description": "Decimal string, e.g. '72818058131.4044391380000000'"},
+                    "lastUpdateDate": {"type": "string", "format": "YYYY-MM-DD"},
+                    "status": {"type": "string", "enum": ["1"], "description": "1 = available"}
+                  }
+                },
+                "totalNetAssetsPercentage": {
+                  "type": "object",
+                  "properties": {
+                    "value": {"type": "string"},
+                    "lastUpdateDate": {"type": "string"},
+                    "status": {"type": "string"}
+                  }
+                },
+                "dailyNetInflow": {
+                  "type": "object",
+                  "properties": {
+                    "value": {"type": "string"},
+                    "lastUpdateDate": {"type": "string"},
+                    "status": {"type": "string"}
+                  }
+                },
+                "cumNetInflow": {
+                  "type": "object",
+                  "properties": {
+                    "value": {"type": "string"},
+                    "lastUpdateDate": {"type": "string"},
+                    "status": {"type": "string"}
+                  }
+                },
+                "dailyTotalValueTraded": {
+                  "type": "object",
+                  "properties": {
+                    "value": {"type": "string"},
+                    "lastUpdateDate": {"type": "string"},
+                    "status": {"type": "string"}
+                  }
+                },
+                "totalTokenHoldings": {
+                  "type": "object",
+                  "properties": {
+                    "value": {"type": "string"},
+                    "lastUpdateDate": {"type": "string"},
+                    "status": {"type": "string"}
+                  }
+                },
+                "list": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {"type": "integer"},
+                      "ticker": {"type": "string", "description": "ETF ticker symbol e.g. IBIT, FBTC, GBTC"},
+                      "institute": {"type": "string", "description": "Issuer name e.g. BlackRock, Fidelity"},
+                      "fee": {"type": "object", "properties": {"value": {"type": "string"}, "lastUpdateDate": {"type": "string"}, "status": {"type": "string"}}},
+                      "netAssetsPercentage": {"type": "object", "properties": {"value": {"type": "string"}, "lastUpdateDate": {"type": "string"}, "status": {"type": "string"}}},
+                      "netAssets": {"type": "object", "properties": {"value": {"type": "string"}, "lastUpdateDate": {"type": "string"}, "status": {"type": "string"}}},
+                      "dailyNetInflow": {"type": "object", "properties": {"value": {"type": "string"}, "lastUpdateDate": {"type": "string"}, "status": {"type": "string"}}},
+                      "cumNetInflow": {"type": "object", "properties": {"value": {"type": "string"}, "lastUpdateDate": {"type": "string"}, "status": {"type": "string"}}},
+                      "dailyValueTraded": {"type": "object", "properties": {"value": {"type": "string"}, "lastUpdateDate": {"type": "string"}, "status": {"type": "string"}}},
+                      "discountPremiumRate": {"type": "object", "properties": {"value": {"type": "string"}, "lastUpdateDate": {"type": "string"}, "status": {"type": "string"}}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "GET /api/v1/news/featured": {
+      "description": "Get featured/popular news articles",
+      "auth": "x-soso-api-key header",
+      "base_url": "news_api",
+      "status": "IMPLEMENTED",
+      "siglab_wrapper": "SoSoValueClient.featured_news / featured_news_pages",
+      "request": {
+        "body": null,
+        "params": {
+          "pageNum": {"type": "integer", "required": true, "default": 1, "description": "Page number (1-indexed)"},
+          "pageSize": {"type": "integer", "required": true, "default": 10, "min": 1, "max": 100}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "msg": {"type": ["string", "null"]},
+            "traceId": {"type": ["string", "null"]},
+            "tid": {"type": "string"},
+            "data": {
+              "type": "object",
+              "properties": {
+                "pageNum": {"type": "integer"},
+                "pageSize": {"type": "integer"},
+                "totalPage": {"type": "integer", "description": "Total pages available"},
+                "total": {"type": "integer", "description": "Total article count"},
+                "lastSortValues": {"type": ["string", "null"]},
+                "currentField": {"type": ["string", "null"]},
+                "list": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/NewsArticle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "GET /api/v1/news/featured/currency": {
+      "description": "Get featured news filtered by currency ID",
+      "auth": "x-soso-api-key header",
+      "base_url": "news_api",
+      "status": "IMPLEMENTED",
+      "siglab_wrapper": "SoSoValueClient.featured_news_by_currency / featured_news_by_currency_pages",
+      "request": {
+        "body": null,
+        "params": {
+          "pageNum": {"type": "integer", "required": true, "default": 1},
+          "pageSize": {"type": "integer", "required": true, "default": 10, "min": 1, "max": 100},
+          "currencyId": {"type": "integer", "required": false, "description": "Filter by currency ID from coin/list"},
+          "categoryList": {"type": "string", "required": false, "description": "Comma-separated category IDs"}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "msg": {"type": ["string", "null"]},
+            "traceId": {"type": ["string", "null"]},
+            "tid": {"type": "string"},
+            "data": {
+              "type": "object",
+              "properties": {
+                "pageNum": {"type": "integer"},
+                "pageSize": {"type": "integer"},
+                "totalPage": {"type": "integer"},
+                "total": {"type": "integer"},
+                "lastSortValues": {"type": ["string", "null"]},
+                "currentField": {"type": ["string", "null"]},
+                "list": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/NewsArticle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "GET /openapi/v1/currencies/{currencyId}/market-snapshot": {
+      "description": "Get current market snapshot for a currency (price, market cap, supply, ATH etc.)",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v1",
+      "status": "NOT_IMPLEMENTED",
+      "siglab_wrapper": "None",
+      "request": {
+        "body": null,
+        "params": {},
+        "path_params": {
+          "currencyId": {"type": "integer", "required": true, "description": "Currency ID from coin/list"}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "message": {"type": "string", "description": "Success/error message"},
+            "details": {"type": ["object", "null"]},
+            "data": {
+              "type": "object",
+              "properties": {
+                "price": {"type": "number", "description": "Current price in USD"},
+                "change_pct_24h": {"type": "number", "description": "24h price change percentage"},
+                "turnover_24h": {"type": "number", "description": "24h trading volume in USD"},
+                "turnover_rate": {"type": "number", "description": "Turnover rate (volume/marketcap)"},
+                "high_24h": {"type": "number", "description": "24h high in USD"},
+                "low_24h": {"type": "number", "description": "24h low in USD"},
+                "marketcap": {"type": "number", "description": "Current market cap in USD"},
+                "fdv": {"type": "number", "description": "Fully diluted valuation in USD"},
+                "max_supply": {"type": "string", "description": "Maximum token supply"},
+                "total_supply": {"type": "string", "description": "Total token supply"},
+                "circulating_supply": {"type": "string", "description": "Circulating token supply"},
+                "ath": {"type": "number", "description": "All-time high price in USD"},
+                "ath_date": {"type": "string", "description": "ATH date (millisecond timestamp string)"},
+                "down_from_ath": {"type": "number", "description": "Percentage down from ATH (0.0-1.0)"},
+                "cycle_low": {"type": "number", "description": "Current cycle low in USD"},
+                "cycle_low_date": {"type": "string", "description": "Cycle low date (ms timestamp string)"},
+                "up_from_cycle_low": {"type": "number", "description": "Percentage up from cycle low (0.0-1.0)"},
+                "marketcap_rank": {"type": "integer", "description": "Market cap rank"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "GET /openapi/v1/currencies/{currencyId}/klines": {
+      "description": "Get OHLCV klines/candlestick data for a currency",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v1",
+      "status": "NOT_IMPLEMENTED",
+      "siglab_wrapper": "None",
+      "request": {
+        "body": null,
+        "params": {
+          "interval": {"type": "string", "required": true, "enum": ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1M"], "default": "1d"},
+          "limit": {"type": "integer", "required": false, "description": "Number of klines to return", "default": 500}
+        },
+        "path_params": {
+          "currencyId": {"type": "integer", "required": true, "description": "Currency ID from coin/list"}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "message": {"type": "string"},
+            "details": {"type": ["object", "null"]},
+            "data": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {"type": "string", "description": "Unix timestamp in milliseconds"},
+                  "open": {"type": "number", "description": "Open price"},
+                  "high": {"type": "number", "description": "High price"},
+                  "low": {"type": "number", "description": "Low price"},
+                  "close": {"type": "number", "description": "Close price"},
+                  "volume": {"type": "string", "description": "Volume in base currency"}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "GET /openapi/v1/etfs": {
+      "description": "Search/list individual ETFs by ticker and country code",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v1",
+      "status": "NOT_IMPLEMENTED",
+      "siglab_wrapper": "None",
+      "request": {
+        "body": null,
+        "params": {
+          "symbol": {"type": "string", "required": true, "description": "ETF ticker symbol e.g. IBIT"},
+          "country_code": {"type": "string", "required": true, "description": "Country code e.g. US"}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "msg": {"type": ["string", "null"]},
+            "traceId": {"type": ["string", "null"]},
+            "data": {"type": ["array", "null"]},
+            "tid": {"type": "string"}
+          }
+        }
+      }
+    },
+    "GET /openapi/v1/etfs/summary-history": {
+      "description": "Get ETF summary history data (requires symbol param)",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v1",
+      "status": "NOT_IMPLEMENTED",
+      "siglab_wrapper": "None",
+      "request": {
+        "body": null,
+        "params": {
+          "symbol": {"type": "string", "required": true, "description": "ETF type e.g. us-btc-spot"}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "msg": {"type": ["string", "null"]},
+            "data": {"type": ["array", "null"]}
+          }
+        }
+      }
+    },
+    "GET /openapi/v1/etfs/{ticker}/market-snapshot": {
+      "description": "Get market snapshot for a specific ETF ticker",
+      "auth": "x-soso-api-key header",
+      "base_url": "openapi_v1",
+      "status": "NOT_IMPLEMENTED",
+      "siglab_wrapper": "None",
+      "request": {
+        "body": null,
+        "params": {},
+        "path_params": {
+          "ticker": {"type": "string", "required": true, "description": "ETF ticker e.g. IBIT, FBTC"}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "msg": {"type": ["string", "null"]},
+            "data": {"type": ["object", "null"]}
+          }
+        }
+      }
+    },
+    "GET /api/v1/news/search": {
+      "description": "Search news articles by keyword",
+      "auth": "x-soso-api-key header",
+      "base_url": "news_api",
+      "status": "NOT_IMPLEMENTED",
+      "siglab_wrapper": "None",
+      "request": {
+        "body": null,
+        "params": {
+          "keyword": {"type": "string", "required": true, "description": "Search keyword"},
+          "pageNum": {"type": "integer", "required": true, "default": 1},
+          "pageSize": {"type": "integer", "required": true, "default": 10}
+        }
+      },
+      "response": {
+        "200": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "data": {
+              "type": "object",
+              "properties": {
+                "pageNum": {"type": "integer"},
+                "pageSize": {"type": "integer"},
+                "totalPage": {"type": "integer"},
+                "total": {"type": "integer"},
+                "list": {
+                  "type": "array",
+                  "items": {"$ref": "#/definitions/NewsArticle"}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "CONFIRMED_404 (deprecated/renamed)": {
+      "POST /openapi/v1/data/default/coin/ohlcv": "404 Not Found — endpoint removed or path changed",
+      "POST /openapi/v1/data/default/coin/detail": "404 Not Found — endpoint removed or path changed",
+      "POST /openapi/v1/data/default/coin/rank": "404 Not Found — endpoint removed or path changed",
+      "POST /openapi/v2/etf/latestInflow": "404 Not Found — endpoint removed or path changed",
+      "POST /openapi/v2/etf/latestInflowData": "404 Not Found — endpoint removed or path changed",
+      "GET /openapi/v1/btc-treasuries/company/list": "404 Not Found — endpoint removed or path changed"
+    }
+  },
+  "definitions": {
+    "NewsArticle": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "description": "Article ID (numeric string)"},
+        "sourceLink": {"type": "string", "format": "uri", "description": "URL to full article on SoSoValue"},
+        "releaseTime": {"type": "integer", "description": "Unix timestamp in milliseconds"},
+        "author": {"type": ["string", "null"], "description": "Source/author name e.g. PANews"},
+        "isBlueVerified": {"type": ["boolean", "null"]},
+        "verifiedType": {"type": ["string", "null"]},
+        "authorDescription": {"type": ["string", "null"]},
+        "authorAvatarUrl": {"type": ["string", "null"]},
+        "nickName": {"type": ["string", "null"]},
+        "mediaInfo": {"type": ["object", "null"]},
+        "category": {"type": "integer", "description": "News category ID"},
+        "matchedCurrencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "currencyName": {"type": "string"},
+              "currencyId": {"type": "integer"},
+              "symbol": {"type": "string"},
+              "currencySymbol": {"type": "string"}
+            }
+          },
+          "description": "Currencies matched/mentioned in this article"
+        },
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Article tags/keywords"
+        },
+        "multilanguageContent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "language": {"type": "string", "description": "Language code: 'en', 'zh-cn', 'zh-tw', 'ja', 'es', 'vi', 'pt', 'ru', 'tr', 'fr'"},
+              "title": {"type": "string", "description": "Article title in this language"},
+              "content": {"type": "string", "description": "Article body content in this language"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "blocked_modules": {
+    "SoSoValue Index": {
+      "endpoints": ["index list", "index constituents", "index market snapshot", "index klines"],
+      "siglab_status": "BLOCKED",
+      "reason": "API docs expose index endpoints; not yet implemented in SigLab wrapper"
+    },
+    "Crypto Stocks": {
+      "endpoints": ["stock list", "stock market snapshot", "stock market cap", "stock klines", "stock sectors"],
+      "siglab_status": "BLOCKED",
+      "reason": "API docs expose crypto stock endpoints; not yet implemented in SigLab wrapper"
+    },
+    "Fundraising": {
+      "endpoints": ["project list", "project detail"],
+      "siglab_status": "BLOCKED",
+      "reason": "API docs expose fundraising endpoints; not yet implemented in SigLab wrapper"
+    },
+    "Macro": {
+      "endpoints": ["macroeconomic events", "event history"],
+      "siglab_status": "BLOCKED",
+      "reason": "API docs expose macro endpoints; not yet implemented in SigLab wrapper"
+    },
+    "Analysis Charts": {
+      "endpoints": ["chart list", "chart data"],
+      "siglab_status": "BLOCKED",
+      "reason": "API docs expose analysis chart endpoints; not yet implemented in SigLab wrapper"
+    },
+    "Feeds (additional)": {
+      "endpoints": ["GET /news", "GET /news/hot"],
+      "siglab_status": "BLOCKED",
+      "reason": "Additional news feed endpoints from API docs"
+    }
+  },
+  "code_gaps": [
+    {
+      "gap": "currency_market_snapshot()",
+      "endpoint": "GET /openapi/v1/currencies/{currencyId}/market-snapshot",
+      "description": "Get live price, market cap, supply, ATH for any currency — currently not implemented in SigLab",
+      "impact": "SigLab relies entirely on SoDEX for pricing data; SoSoValue market snapshot is a free alternative/backup source",
+      "recommendation": "Add wrapper to SoSoValueClient, wire into research pipeline as fallback price source"
+    },
+    {
+      "gap": "currency_klines()",
+      "endpoint": "GET /openapi/v1/currencies/{currencyId}/klines",
+      "description": "OHLCV candlestick data for any currency — currently not implemented in SigLab",
+      "impact": "SigLab uses only SoDEX perp klines; SoSoValue klines cover spot markets for more currencies",
+      "recommendation": "Add wrapper to SoSoValueClient"
+    },
+    {
+      "gap": "etf_list()",
+      "endpoint": "GET /openapi/v1/etfs",
+      "description": "Search ETFs by ticker symbol + country code",
+      "impact": "Low — we pull ETF data via the aggregate historical inflow endpoint already",
+      "recommendation": "Low priority; add only if individual ETF lookup is needed"
+    },
+    {
+      "gap": "etf_current_metrics() (restore)",
+      "endpoint": "POST /openapi/v2/etf/currentEtfDataMetrics",
+      "description": "Aggregate ETF metrics + per-fund breakdown (net assets, inflows, discount/premium, fees) — was implemented, then the wrapper was removed",
+      "impact": "Provides per-fund details (IBIT vs FBTC) that historical inflow only gives in aggregate. Currently SigLab has no per-fund ETF granularity.",
+      "recommendation": "Evaluate restoring wrapper. Useful for strategy features like 'which ETFs have outflows'"
+    },
+    {
+      "gap": "etf_summary_history()",
+      "endpoint": "GET /openapi/v1/etfs/summary-history",
+      "description": "ETF summary history over time (daily aggregates maybe)",
+      "impact": "Low since historical inflow already provides daily data",
+      "recommendation": "Low priority"
+    },
+    {
+      "gap": "news_search()",
+      "endpoint": "GET /api/v1/news/search",
+      "description": "Search news by keyword — not used, but has high value for strategy research",
+      "impact": "Medium — keyword search would let strategies research specific topics (e.g. 'regulation')",
+      "recommendation": "Add wrapper if research pipeline needs targeted news queries"
+    },
+    {
+      "gap": "SoSoValue market snapshot not used as price fallback",
+      "description": "SigLab returns 0 data when SoDEX is down; SoSoValue market snapshot could serve as fallback price oracle for BTC/ETH",
+      "impact": "Medium — single source of price data (SoDEX) with no fallback",
+      "recommendation": "Wire SoSoValue market-snapshot as fallback price source in the evidence pipeline"
+    }
+  ],
+  "field_name_audit": [
+    {
+      "field": "currencyName",
+      "api": "currencyName",
+      "code": "currencyName",
+      "match": true,
+      "notes": "Used correctly in SoSoValueClient. Also accessed in evidence.py via _matched_currency_symbol which checks symbol/currencySymbol/name as fallbacks"
+    },
+    {
+      "field": "currencyId",
+      "api": "currencyId",
+      "code": "currencyId",
+      "match": true,
+      "notes": "Direct pass-through in all news param building; correct"
+    },
+    {
+      "field": "totalNetInflow / totalNetAssets / totalValueTraded / cumNetInflow",
+      "api": "totalNetInflow, totalNetAssets, totalValueTraded, cumNetInflow",
+      "code": "same in required_fields tuple",
+      "match": true,
+      "notes": "Field names match API response exactly; correct"
+    },
+    {
+      "field": "multilanguageContent",
+      "api": "multilanguageContent",
+      "code": "multilanguageContent",
+      "match": true,
+      "notes": "Accessed in evidence.py and feeds.py normalize; correct"
+    },
+    {
+      "field": "releaseTime",
+      "api": "releaseTime",
+      "code": "releaseTime in _first_of fallback chain",
+      "match": true,
+      "notes": "Evidence code checks publishTime, publishedAt, then releaseTime; correct fallback chain"
+    },
+    {
+      "field": "sourceLink",
+      "api": "sourceLink",
+      "code": "sourceLink used in normalize, url/link/sourceLink as fallbacks in evidence",
+      "match": true,
+      "notes": "Correct with adequate fallbacks"
+    },
+    {
+      "field": "matchedCurrencies",
+      "api": "matchedCurrencies",
+      "code": "matchedCurrencies used, with matched_currencies fallback in evidence",
+      "match": true,
+      "notes": "Correct with fallback to snake_case variant"
+    },
+    {
+      "field": "currentEtfDataMetrics value fields",
+      "api": "values are decimal strings in {key: {value, lastUpdateDate, status}} object format",
+      "code": "Wrapper was removed; code no longer reads these fields",
+      "match": "N/A (wrapper removed)",
+      "notes": "If wrapper is restored, note that ALL numeric fields come as decimal strings, not numbers — must parse with Decimal or float"
+    },
+    {
+      "field": "market-snapshot response",
+      "api": "Uses snake_case: change_pct_24h, turnover_24h, etc.",
+      "code": "N/A (endpoint not used in SigLab)",
+      "match": "N/A",
+      "notes": "Different convention from ETF endpoints (camelCase); SigLab would use snake_case fields if this endpoint is added"
+    },
+    {
+      "field": "klines response",
+      "api": "Returns timestamp as string millisecond timestamp, volume as string",
+      "code": "N/A (endpoint not used in SigLab)",
+      "match": "N/A",
+      "notes": "If implemented, timestamps must be parsed as ms integers, volume as float"
+    }
+  ],
+  "null_handling_audit": [
+    {
+      "field_path": "multilanguageContent",
+      "api_value": "array (may be empty) or can be null for some articles",
+      "code": "evidence.py handles this correctly: _preferred_multilingual_content returns {} if null/not-list. feeds.py normalize handles empty list."
+    },
+    {
+      "field_path": "author / nickName / mediaInfo / isBlueVerified",
+      "api_value": "null for many articles",
+      "code": "Passed through with .get() defaults; evidence.py explicitly sets .get('author') which returns None = null in JSON. Correct."
+    },
+    {
+      "field_path": "matchedCurrencies",
+      "api_value": "empty array [] when no currency match",
+      "code": "handled as list; checks isinstance(matched, list) before using. Correct."
+    },
+    {
+      "field_path": "tags",
+      "api_value": "array of strings or null",
+      "code": "list(row.get('tags') or []) — correct for null case."
+    },
+    {
+      "field_path": "data field in paginated news response",
+      "api_value": "object with 'list' array; list may be empty when currency has no news",
+      "code": "_rows_from_data handles dict with 'list' key correctly. Empty list returns []. Correct."
+    },
+    {
+      "field_path": "ETF historical inflow values",
+      "api_value": "Direct number values, large floats (can be negative)",
+      "code": "Used as-is; casting to float for display/metrics. Correct."
+    },
+    {
+      "field_path": "currentEtfDataMetrics nested values",
+      "api_value": "{value: string, lastUpdateDate: string, status: string} objects",
+      "code": "Wrapper removed. If restored: must extract string value and convert to number."
+    }
+  ]
+}
