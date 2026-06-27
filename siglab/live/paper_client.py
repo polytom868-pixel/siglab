@@ -25,7 +25,7 @@ from siglab.live.position_ledger import (
 )
 from siglab.utils import dget
 from siglab.evaluation.compile import compile_spec
-from siglab.live.sodex_client import (
+from siglab.data.feeds import (
     SoDEXNonceManager,
     SoDEXPrivateKeySigner,
     SoDEXSignedPerpsClient,
@@ -35,12 +35,12 @@ from siglab.live.sodex_client import (
     perps_order_item,
     validate_account_id,
 )
-from siglab.dashboard.risk_utils import compute_composite_score, compute_position_size, CircuitBreakerState
+from siglab.utils import compute_composite_score, compute_position_size, CircuitBreakerState
 from siglab.schemas import SignalSpec
 import contextlib
 
 if TYPE_CHECKING:
-    from siglab.data.sodex_feeds import SoDEXFeeds
+    from siglab.data.feeds import SoDEXFeeds
 logger = logging.getLogger(__name__)
 E = TypeVar("E", bound=Enum)
 FUNDING_INTERVAL_HOURS = 8

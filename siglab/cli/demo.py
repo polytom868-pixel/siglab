@@ -14,7 +14,7 @@ from siglab.cli.helpers import (
     load_json_if_exists,
     sodex_preflight_report,
 )
-from siglab.cli.market import build_market_report
+from siglab.cli.helpers import build_market_report
 from siglab.cli.rich_utils import print_json, print_success
 from siglab.cli.telemetry import (
     build_telemetry_payload,
@@ -22,7 +22,7 @@ from siglab.cli.telemetry import (
     trace_paths_for_telemetry,
 )
 from siglab.config import SiglabConfig, load_settings
-from siglab.evaluation.signal_narrative import build_signal_narrative
+
 from siglab.utils import write_json
 from siglab.path_utils import resolve_path_from_root
 
@@ -40,11 +40,7 @@ def add_subparser(
     run_parser.add_argument("--output", default=None)
     run_parser.add_argument("--html-output", default=None)
     run_parser.add_argument("--json", action="store_true")
-    run_parser.add_argument(
-        "--narrative",
-        action="store_true",
-        help="Include signal narrative from latest evaluation",
-    )
+
     manifest_parser = demo_subparsers.add_parser(
         "manifest",
         help="Index latest demo artifacts, telemetry, evidence, and live-boundary readiness.",
@@ -120,15 +116,7 @@ def run_demo_run(args: argparse.Namespace) -> None:
             "market_report": market_summary,
             "telemetry_report": telemetry_summary,
         }
-        if getattr(args, "narrative", False):
-            try:
-                narrative_text = build_signal_narrative({})
-            except Exception:
-                import logging
 
-                logging.getLogger(__name__).exception("Signal narrative build failed")
-                narrative_text = "[Narrative unavailable]"
-            payload["narrative"] = narrative_text
         output_path = (
             resolve_path_from_root(args.output, root_dir=settings.root_dir)
             if getattr(args, "output", None)

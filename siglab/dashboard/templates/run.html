@@ -18,8 +18,7 @@
     <label for="familyFilter">Family</label>
     <select id="familyFilter"
             aria-label="Filter by family"
-            x-model="$store.filter.family"
-            @change="htmx.trigger('#runSummaryCards', 'load'); htmx.trigger('#experimentsTable', 'load')">
+            x-model="$store.filter.family">
       <option value="all">All Families</option>
     </select>
     <label for="metricFilter">Metric</label>
@@ -31,25 +30,17 @@
       <input type="checkbox" id="autoRefresh" checked />
       Auto refresh
     </label>
-    <button id="refreshButton" type="button" aria-label="Refresh data"
-            @click="htmx.trigger('#runSummaryCards', 'load'); htmx.trigger('#experimentsTable', 'load')">Refresh</button>
-    <a class="button-link" aria-label="Return to run dashboard" href="/">Back to Runs</a>
+    <button id="refreshButton" type="button" aria-label="Refresh data">Refresh</button>
   </div>
 </header>
 
-<section class="summary-grid" id="runSummaryCards"
-         hx-get="/partials/run/summary?run_id={{ run_id or '' }}"
-         hx-trigger="load, every 30s"
-         hx-indicator=".skeleton-card">
+<section class="summary-grid" id="runSummaryCards">
 </section>
-
 <div id="familyPills" class="family-pills">
   <span id="familyGuideSubtitle" class="family-pills-label">Families</span>
-  <div id="familyGuideCards" class="family-pills-cards"
-       hx-get="/partials/run/family_pills?run_id={{ run_id or '' }}"
-       hx-trigger="load"></div>
+  <div id="familyGuideCards" class="family-pills-cards"></div>
   <button id="clearFamilyFilter" type="button" class="pill slate" aria-label="Show all families"
-          @click="$store.filter.family = 'all'; htmx.trigger('#experimentsTable', 'load')">Clear</button>
+          @click="$store.filter.family = 'all'">Clear</button>
 </div>
 
 <section class="panel chart-panel">
@@ -60,10 +51,7 @@
     </div>
   </div>
   <div class="chart-wrap">
-    <div id="improvementChart"
-         hx-get="/partials/run/improvement_chart?run_id={{ run_id or '' }}&metric={{ metric or 'aggregate_score' }}"
-         hx-trigger="load"
-         hx-indicator=".skeleton-chart">
+    <div id="improvementChart">
     </div>
     <div id="tooltip" class="tooltip hidden"></div>
   </div>
@@ -91,10 +79,8 @@
             <th>Created</th>
           </tr>
         </thead>
-        <tbody id="experimentsTable"
-               hx-get="/partials/run/experiment_table?run_id={{ run_id or '' }}&family={{ family or 'all' }}"
-               hx-trigger="load"
-               hx-indicator=".skeleton-card"></tbody>
+        <tbody id="experimentsTable">
+        </tbody>
       </table>
     </div>
   </div>
@@ -108,12 +94,9 @@
     </div>
     <div class="detail-content" id="detailContent">
       <p class="empty-state" id="detailPanelPlaceholder">Select an experiment to inspect it.</p>
-      <div id="detailPanel"
-           hx-trigger="none"
-           hx-indicator=".skeleton-card"></div>
+      <div id="detailPanel"></div>
     </div>
   </div>
-</section>
 {% endblock %}
 
 {% block scripts_extra %}

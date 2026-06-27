@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from siglab.live.paper_client import SoDEXPaperPerpsClient
-from siglab.dashboard.risk_utils import (
+from siglab.utils import (
     BreachReport,
     CircuitBreakerState,
     check_concentration,

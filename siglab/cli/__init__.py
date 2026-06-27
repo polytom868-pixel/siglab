@@ -23,7 +23,7 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
     from siglab.cli import dashboard as _dashboard_mod
     from siglab.cli import demo as _demo_mod
-    from siglab.cli import market as _market_mod
+    from siglab.cli import helpers as _market_mod
     from siglab.cli import operator as _operator_mod
     from siglab.cli import sodex as _sodex_mod
 
@@ -32,8 +32,6 @@ def main() -> None:
     _dashboard_mod.add_subparser(subparsers)
     _sodex_mod.add_subparser(subparsers)
     _operator_mod.add_subparser(subparsers)
-    from siglab.cli import evidence as _evidence_mod
-    _evidence_mod.add_subparser(subparsers)
     args = parser.parse_args()
     from siglab.cli.rich_utils import init_console
 
@@ -57,20 +55,8 @@ def main() -> None:
     if args.command == "sodex-preflight":
         _sodex_mod.run_sodex_preflight(args)
         return
-    if args.command == "valuechain-preflight":
-        asyncio.run(_sodex_mod.run_valuechain_preflight(args))
-        return
-    if args.command == "sodex-ws-probe":
-        asyncio.run(_sodex_mod.run_sodex_ws_probe(args))
-        return
     if args.command == "operator":
         asyncio.run(_operator_mod.run_operator(args))
-        return
-    if args.command == "evidence-build":
-        asyncio.run(_evidence_mod.run_evidence_build(args))
-        return
-    if args.command == "evidence-map":
-        _evidence_mod.run_evidence_map(args)
         return
 
 

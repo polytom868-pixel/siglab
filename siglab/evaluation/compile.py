@@ -787,11 +787,7 @@ def _lrf(
     }
 
 
-async def _compile_pair_trade(
-    settings: SiglabConfig,
-    provider: MarketDataProvider,
-    spec: SignalSpec,
-) -> CompiledChild:
+def _load_compiler_context(settings: SiglabConfig, spec: SignalSpec):
     fs = load_family_spec(settings.root_dir, spec.track, spec.family)
     d = fs.get("defaults") or {}
     fw = fs.get("feature_weights") or {}
@@ -801,6 +797,16 @@ async def _compile_pair_trade(
     ps = family_policy_schema(fs)
     fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
     a = fspec.get("aliases") or {}
+    return fs, d, fw, caps, ep, da, ps, fspec, a
+
+
+
+async def _compile_pair_trade(
+    settings: SiglabConfig,
+    provider: MarketDataProvider,
+    spec: SignalSpec,
+) -> CompiledChild:
+    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     rs = [str(s).upper() for s in spec.universe.basis_groups[:2]]
     symbols = await provider.discover_perp_symbols(rs, limit=2)
     od = [s for s in rs if s in symbols]
@@ -883,15 +889,7 @@ async def _compile_ranked_perf(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
-    d = fs.get("defaults") or {}
-    fw = fs.get("feature_weights") or {}
-    caps = family_capabilities(fs)
-    ep = family_execution_profile(fs)
-    da = family_diagnostic_adapter(fs)
-    ps = family_policy_schema(fs)
-    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
-    a = fspec.get("aliases") or {}
+    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     symbols = await provider.discover_perp_symbols(
         spec.universe.basis_groups,
         limit=spec.universe.max_symbols,
@@ -961,15 +959,7 @@ async def _compile_basis_spread(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
-    d = fs.get("defaults") or {}
-    fw = fs.get("feature_weights") or {}
-    caps = family_capabilities(fs)
-    ep = family_execution_profile(fs)
-    da = family_diagnostic_adapter(fs)
-    ps = family_policy_schema(fs)
-    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
-    a = fspec.get("aliases") or {}
+    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     symbols = await provider.discover_perp_symbols(
         spec.universe.basis_groups,
         limit=spec.universe.max_symbols,
@@ -1041,15 +1031,7 @@ async def _compile_stable_pt(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
-    d = fs.get("defaults") or {}
-    fw = fs.get("feature_weights") or {}
-    caps = family_capabilities(fs)
-    ep = family_execution_profile(fs)
-    da = family_diagnostic_adapter(fs)
-    ps = family_policy_schema(fs)
-    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
-    a = fspec.get("aliases") or {}
+    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     markets = await provider.discover_stable_pt_markets(
         spec.universe,
         limit=spec.universe.max_symbols,
@@ -1146,15 +1128,7 @@ async def _compile_pt_yield(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
-    d = fs.get("defaults") or {}
-    fw = fs.get("feature_weights") or {}
-    caps = family_capabilities(fs)
-    ep = family_execution_profile(fs)
-    da = family_diagnostic_adapter(fs)
-    ps = family_policy_schema(fs)
-    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
-    a = fspec.get("aliases") or {}
+    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     markets = await provider.discover_pt_markets(
         spec.universe,
         limit=spec.universe.max_symbols,
@@ -1275,15 +1249,7 @@ async def _compile_lending_carry(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
-    fs = load_family_spec(settings.root_dir, spec.track, spec.family)
-    d = fs.get("defaults") or {}
-    fw = fs.get("feature_weights") or {}
-    caps = family_capabilities(fs)
-    ep = family_execution_profile(fs)
-    da = family_diagnostic_adapter(fs)
-    ps = family_policy_schema(fs)
-    fspec = load_feature_spec(settings.root_dir, track=spec.track, family=spec.family)
-    a = fspec.get("aliases") or {}
+    fs, d, fw, caps, ep, da, ps, fspec, a = _load_compiler_context(settings, spec)
     markets = await provider.discover_lending_markets(
         spec.universe,
         limit=spec.universe.max_symbols,

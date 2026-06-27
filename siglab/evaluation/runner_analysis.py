@@ -13,75 +13,29 @@ def mean_pairwise_rolling_corr(returns: pd.DataFrame, *, window: int) -> pd.Seri
     cols = list(returns.columns)
     if not cols:
         return pd.Series(dtype=float)
-    if len(cols) == 1:
-        return pd.Series(1.0, index=returns.index, dtype=float)
     rows: list[pd.Series] = []
-    for li in range(len(cols)):
-        for ri in range(li + 1, len(cols)):
-            rows.append(returns.iloc[:, li].rolling(window).corr(returns.iloc[:, ri]))
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            rows.append(returns.iloc[:, i].rolling(window).corr(returns.iloc[:, j]))
     return pd.concat(rows, axis=1).mean(axis=1) if rows else pd.Series(dtype=float)
-
-
-def pre_audit_trade_episodes(cr: dict[str, Any]) -> list[dict[str, Any]]:
-    eps = cr.get("trade_episodes") or []
-    if not eps:
-        return []
-    vs = cr.get("visual_split", {}) or {}
-    ast = None
-    for w in vs.get("ranges") or []:
-        if str(w.get("kind") or "") == "audit_holdout":
-            ast = pd.Timestamp(w.get("start_timestamp"))
-            break
-    if ast is None:
-        return [e for e in eps if isinstance(e, dict)]
-    filt: list[dict[str, Any]] = []
-    for e in eps:
-        if not isinstance(e, dict):
-            continue
-        ets = e.get("end_timestamp") or e.get("start_timestamp")
-        if not ets:
-            continue
-        if pd.Timestamp(ets) >= ast:
-            continue
-        filt.append(e)
-    return filt
-
-
-def _svals(pld: dict[str, Any] | None, *, ei: int | None = None) -> list[float]:
-    vr = (pld or {}).get("values") or []
-    if ei is not None:
-        vr = vr[: max(0, min(len(vr), int(ei)))]
-    return [float(v) for v in vr if v is not None]
-
-
-def _sfp(pld: dict[str, Any] | None, *, ei: int | None = None) -> pd.Series:
-    iv = (pld or {}).get("index") or []
-    rv = (pld or {}).get("values") or []
-    lim = len(rv) if ei is None else max(0, min(len(rv), int(ei)))
-    if lim <= 0:
-        return pd.Series(dtype=float)
-    s = pd.Series(
-        pd.to_numeric(pd.Series(rv[:lim], dtype="float64"), errors="coerce").to_numpy(),
-        index=pd.to_datetime(iv[:lim], errors="coerce"),
-    )
-    s = s[~pd.isna(s.index)]
-    return s.sort_index()
 
 
 def _mpsigs(frame: pd.DataFrame, *, eps_: float = 1e-09) -> pd.Series:
     arr = frame.to_numpy(dtype=float, na_value=np.nan)
-    cols = list(frame.columns)
     result: list[tuple[tuple[str, int], ...]] = []
-    for i in range(len(arr)):
-        row = arr[i]
-        active = [
-            (cols[j], int(np.sign(row[j])))
-            for j in range(len(cols))
-            if not np.isnan(row[j]) and abs(row[j]) > eps_
-        ]
-        if active:
-            active.sort(key=lambda x: x[0])
-        result.append(tuple(active))
+    for row in arr:
+        masked = np.where(np.isfinite(row), row, 0.0)
+        pos = np.abs(masked) > eps_
+        if not pos.any():
+            result.append(())
+            continue
+        col_idx = np.where(pos)[0]
+        signs = np.sign(masked[pos]).astype(int)
+        cols = tuple(
+            (frame.columns[int(c)], int(s))
+            for c, s in zip(col_idx, signs)
+        )
+        result.append(cols)
     return pd.Series(result, index=frame.index, dtype=object)
 
 
@@ -91,9 +45,9 @@ def _eassets(
     eps_: float = 1e-09,
 ) -> tuple[list[str], list[str], list[str]]:
     c = pd.to_numeric(row, errors="coerce").fillna(0.0)
-    active = [str(k) for k, v in c.items() if abs(float(v)) > eps_]
-    longs = [str(k) for k, v in c.items() if float(v) > eps_]
-    shorts = [str(k) for k, v in c.items() if float(v) < -eps_]
+    active = list(c.index[c.abs() > eps_])
+    longs = list(c.index[c > eps_])
+    shorts = list(c.index[c < -eps_])
     return (active, longs, shorts)
 
 
@@ -103,30 +57,20 @@ def _rdl(row: pd.Series, *, eps_: float = 1e-09) -> str:
 
 def _rdl_np(values: np.ndarray, cols: list[str], eps_: float = 1e-09) -> str:
     vals = np.where(np.isfinite(values), values, 0.0)
-    am = np.abs(vals) > eps_
-    if not am.any():
+    pos = np.abs(vals) > eps_
+    if not pos.any():
         return "flat"
-    ai = np.where(am)[0]
-    li = ai[vals[ai] > eps_]
-    si = ai[vals[ai] < -eps_]
-    active = [cols[j] for j in ai]
-    longs = [cols[j] for j in li]
-    shorts = [cols[j] for j in si]
-    if len(cols) >= 2 and len(active) == 2 and set(active) == {cols[0], cols[1]}:
-        f, s = vals[0], vals[1]
-        if f > eps_ and s < -eps_:
-            return "long_asset_1_short_asset_2"
-        if f < -eps_ and s > eps_:
-            return "short_asset_1_long_asset_2"
-    gross = float(np.abs(vals).sum())
-    net = float(vals.sum())
-    if longs and shorts and gross > 0.0 and abs(net) <= gross * 0.2:
-        return "market_neutral"
-    if net > eps_ or (longs and not shorts):
-        return "net_long"
-    if net < -eps_ or (shorts and not longs):
-        return "net_short"
-    return "mixed"
+    active_cols = [cols[i] for i in range(len(cols)) if pos[i]]
+    active_signs = np.sign(vals[pos]).astype(int)
+    longs = sum(1 for s in active_signs if s > 0)
+    shorts = sum(1 for s in active_signs if s < 0)
+    if longs > 0 and shorts == 0:
+        return "long"
+    if shorts > 0 and longs == 0:
+        return "short"
+    if longs > 0 and shorts > 0:
+        return "mixed"
+    return "flat" if (longs == 0 and shorts == 0) else "mixed"
 
 
 def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
@@ -238,7 +182,7 @@ def _hpb(tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
 def _edc(te: list[dict[str, Any]]) -> dict[str, int]:
     cnt: dict[str, int] = {}
     for e in te:
-        d = str(e.get("direction") or "").strip()
+        d = e.get("direction", "")
         if d:
             cnt[d] = cnt.get(d, 0) + 1
     return cnt
@@ -375,153 +319,6 @@ def _prs(
     return state
 
 
-def _lts(
-    idx: pd.Index,
-    ts: str | float | pd.Timestamp | None,
-) -> pd.Timestamp | None:
-    if len(idx) == 0 or ts is None:
-        return None
-    t = pd.Timestamp(ts)
-    if isinstance(idx, pd.DatetimeIndex):
-        if idx.tz is None:
-            if t.tzinfo is not None:
-                t = t.tz_convert(None)
-        elif t.tzinfo is None:
-            t = t.tz_localize(idx.tz)
-        else:
-            t = t.tz_convert(idx.tz)
-    if t in idx:
-        return pd.Timestamp(t)
-    p = int(idx.searchsorted(t, side="right")) - 1
-    if p < 0:
-        return None
-    if p >= len(idx):
-        p = len(idx) - 1
-    return pd.Timestamp(idx[p])
-
-
-def _rbl(v: float | None, threshold: float | None, hi: str, lo: str) -> str | None:
-    return None if v is None or threshold is None else hi if v >= threshold else lo
-
-
-def _pair_regime_snapshot(
-    *,
-    regime_state: dict[str, Any],
-    timestamp: str | float | pd.Timestamp | None,
-    target_weights: pd.DataFrame | None,
-) -> dict[str, Any]:
-    if not regime_state.get("available"):
-        return {}
-    ats = _lts(regime_state["index"], timestamp)
-    if ats is None:
-        return {}
-    th = regime_state.get("thresholds", {}) or {}
-    mtv = _sf(regime_state["market_trend"].get(ats))
-    mvv = _sf(regime_state["market_volatility"].get(ats))
-    flv = _sf(regime_state["funding_level"].get(ats))
-    fdv = _sf(regime_state["funding_dispersion"].get(ats))
-    bv = _sf(regime_state["breadth"].get(ats))
-    cmv = _sf(regime_state["co_movement"].get(ats))
-    gev = _sf(regime_state["gross_exposure"].get(ats))
-    nev = _sf(regime_state["net_exposure"].get(ats))
-    aacv = _sf(regime_state["active_asset_count"].get(ats))
-    conc = _sf(regime_state["concentration"].get(ats))
-    pd_ = str(regime_state["position_direction"].get(ats) or "flat")
-    mvt = th.get("market_volatility_median")
-    flt = th.get("funding_level_median")
-    ft = th.get("funding_dispersion_median")
-    bt = th.get("breadth_median")
-    cmt = th.get("co_movement_median")
-    ct = th.get("concentration_median")
-    if target_weights is not None and not target_weights.empty:
-        er = target_weights.reindex(regime_state["index"]).ffill().fillna(0.0)
-        gev = _sf(er.abs().sum(axis=1).get(ats))
-        nev = _sf(er.sum(axis=1).get(ats))
-    snap: dict[str, Any] = {
-        "market_trend_label": _rbl(mtv, 0.0, "market_uptrend", "market_downtrend"),
-        "market_trend_24h": mtv,
-        "market_volatility_label": _rbl(mvv, mvt, "high_volatility", "low_volatility"),
-        "market_volatility_168h": mvv,
-        "funding_level_label": _rbl(flv, flt, "high_funding", "low_funding"),
-        "funding_level_72h": flv,
-        "funding_dispersion_label": _rbl(
-            fdv,
-            ft,
-            "funding_dispersed",
-            "funding_compressed",
-        ),
-        "funding_dispersion_72h": fdv,
-        "breadth_label": _rbl(bv, bt, "broad_participation", "weak_participation"),
-        "breadth_24h": bv,
-        "co_movement_label": _rbl(cmv, cmt, "high_co_movement", "low_co_movement"),
-        "co_movement_72h": cmv,
-        "concentration_label": _rbl(conc, ct, "concentrated", "diversified"),
-        "concentration": conc,
-        "position_direction": pd_,
-        "position_structure_label": pd_,
-        "gross_exposure": gev,
-        "net_exposure": nev,
-        "active_asset_count": aacv,
-    }
-    if "pair_volatility" in regime_state:
-        pvv = _sf(regime_state["pair_volatility"].get(ats))
-        pcv = _sf(regime_state["pair_correlation"].get(ats))
-        pdv = _sf(regime_state["pair_direction"].get(ats))
-        snap.update(
-            {
-                "pair_volatility_label": _rbl(
-                    pvv,
-                    th.get("pair_volatility_median"),
-                    "high_volatility",
-                    "low_volatility",
-                ),
-                "pair_volatility_72h": pvv,
-                "pair_correlation_label": _rbl(
-                    pcv,
-                    th.get("pair_correlation_median"),
-                    "high_correlation",
-                    "low_correlation",
-                ),
-                "pair_correlation_72h": pcv,
-                "pair_direction_label": _rbl(
-                    pdv,
-                    0.0,
-                    "asset_1_leading",
-                    "asset_2_leading",
-                ),
-                "pair_direction_24h": pdv,
-            },
-        )
-    return snap
-
-
-def _ptrwr(
-    *,
-    tw: pd.DataFrame,
-    r: pd.Series,
-    regime_state: dict[str, Any],
-) -> list[dict[str, Any]]:
-    eps = _ppeps(tw=tw, r=r)
-    ann: list[dict[str, Any]] = []
-    for e in eps:
-        ann.append(
-            {
-                **e,
-                "entry_regime": _pair_regime_snapshot(
-                    regime_state=regime_state,
-                    timestamp=e.get("start_timestamp"),
-                    target_weights=tw,
-                ),
-                "exit_regime": _pair_regime_snapshot(
-                    regime_state=regime_state,
-                    timestamp=e.get("end_timestamp"),
-                    target_weights=tw,
-                ),
-            },
-        )
-    return ann
-
-
 def _prd(
     *,
     prices: pd.DataFrame,
@@ -624,360 +421,6 @@ def _prd(
     }
 
 
-def _trp(te: list[dict[str, Any]]) -> dict[str, Any]:
-    if not te:
-        return {}
-    lks: list[str] = []
-    for e in te:
-        er = e.get("entry_regime", {}) or {}
-        lks.extend(k for k, v in er.items() if k.endswith("_label") and v)
-    dims = {k.removesuffix("_label"): k for k in sorted(set(lks))}
-    rp: dict[str, Any] = {}
-    for dim, lk in dims.items():
-        rows: list[dict[str, Any]] = []
-        by_label: dict[str, list[dict[str, Any]]] = {}
-        for e in te:
-            lbl = str(dget(e, "entry_regime", lk) or "").strip()
-            if lbl:
-                by_label.setdefault(lbl, []).append(e)
-        for lbl, matched in by_label.items():
-            returns = [
-                float(e["total_return"])
-                for e in matched
-                if e.get("total_return") is not None
-            ]
-            bars = [
-                float(e["bars"])
-                for e in matched
-                if _sf(e.get("bars"), default=None) is not None
-            ]
-            rows.append(
-                {
-                    "label": lbl,
-                    **(_episode_stats(matched, returns)),
-                    "avg_return": _sf(sum(returns) / len(returns) if returns else None),
-                    "median_hold_bars": _sf(float(np.median(bars)) if bars else None),
-                },
-            )
-        rows.sort(
-            key=lambda r: (
-                float(r.get("avg_return") or -1e9),
-                int(r.get("trade_count") or 0),
-            ),
-            reverse=True,
-        )
-        if rows:
-            rp[dim] = {
-                "rows": rows,
-                "best_label": rows[0]["label"],
-                "worst_label": min(
-                    rows,
-                    key=lambda r: float(r.get("avg_return") or 1e9),
-                )["label"],
-            }
-    return rp
-
-
-def _wrs(
-    *,
-    regime_state: dict[str, Any],
-    start_timestamp: pd.Timestamp,
-    end_timestamp: pd.Timestamp,
-) -> dict[str, Any]:
-    if not regime_state.get("available"):
-        return {}
-    iv = regime_state.get("index")
-    idx = pd.DatetimeIndex(iv if iv is not None else [])
-    if idx.empty:
-        return {}
-    mask = (idx >= start_timestamp) & (idx <= end_timestamp)
-    if not bool(mask.any()):
-        return {}
-
-    def _mv(s):
-        v = pd.to_numeric(s.loc[mask], errors="coerce").dropna()
-        return _sf(v.mean()) if not v.empty else None
-
-    th = regime_state.get("thresholds", {}) or {}
-    mt = _mv(regime_state["market_trend"])
-    mv_ = _mv(regime_state["market_volatility"])
-    fl = _mv(regime_state["funding_level"])
-    fdv = _mv(regime_state["funding_dispersion"])
-    br = _mv(regime_state["breadth"])
-    cm = _mv(regime_state["co_movement"])
-    conc = _mv(regime_state["concentration"])
-    ds = pd.Series(regime_state["position_direction"], index=idx).loc[mask]
-    dc = ds.value_counts().to_dict()
-    dpd = max(
-        (
-            (str(dir_label), int(c))
-            for dir_label, c in dc.items()
-            if str(dir_label) != "flat"
-        ),
-        key=lambda x: x[1],
-        default=(None, 0),
-    )[0]
-    pl: dict[str, Any] = {
-        "market_trend_label": "market_uptrend"
-        if mt is not None and mt >= 0.0
-        else "market_downtrend"
-        if mt is not None
-        else None,
-        "avg_market_trend_24h": mt,
-        "market_volatility_label": "high_volatility"
-        if mv_ is not None
-        and th.get("market_volatility_median") is not None
-        and mv_ >= float(th["market_volatility_median"])
-        else "low_volatility"
-        if mv_ is not None and th.get("market_volatility_median") is not None
-        else None,
-        "avg_market_volatility_168h": mv_,
-        "funding_level_label": "high_funding"
-        if fl is not None
-        and th.get("funding_level_median") is not None
-        and fl >= float(th["funding_level_median"])
-        else "low_funding"
-        if fl is not None and th.get("funding_level_median") is not None
-        else None,
-        "avg_funding_level_72h": fl,
-        "funding_dispersion_label": "funding_dispersed"
-        if fdv is not None
-        and th.get("funding_dispersion_median") is not None
-        and fdv >= float(th["funding_dispersion_median"])
-        else "funding_compressed"
-        if fdv is not None and th.get("funding_dispersion_median") is not None
-        else None,
-        "avg_funding_dispersion_72h": fdv,
-        "breadth_label": "broad_participation"
-        if br is not None
-        and th.get("breadth_median") is not None
-        and br >= float(th["breadth_median"])
-        else "weak_participation"
-        if br is not None and th.get("breadth_median") is not None
-        else None,
-        "avg_breadth_24h": br,
-        "co_movement_label": "high_co_movement"
-        if cm is not None
-        and th.get("co_movement_median") is not None
-        and cm >= float(th["co_movement_median"])
-        else "low_co_movement"
-        if cm is not None and th.get("co_movement_median") is not None
-        else None,
-        "avg_co_movement_72h": cm,
-        "concentration_label": "concentrated"
-        if conc is not None
-        and th.get("concentration_median") is not None
-        and conc >= float(th["concentration_median"])
-        else "diversified"
-        if conc is not None and th.get("concentration_median") is not None
-        else None,
-        "avg_concentration": conc,
-        "dominant_position_direction": dpd,
-        "position_direction_counts": dc,
-    }
-    if "pair_correlation" in regime_state:
-        pv = _mv(regime_state["pair_volatility"])
-        pc = _mv(regime_state["pair_correlation"])
-        pd_ = _mv(regime_state["pair_direction"])
-        pl.update(
-            {
-                "pair_volatility_label": "high_volatility"
-                if pv is not None
-                and th.get("pair_volatility_median") is not None
-                and pv >= float(th["pair_volatility_median"])
-                else "low_volatility"
-                if pv is not None and th.get("pair_volatility_median") is not None
-                else None,
-                "avg_pair_volatility_72h": pv,
-                "pair_correlation_label": "high_correlation"
-                if pc is not None
-                and th.get("pair_correlation_median") is not None
-                and pc >= float(th["pair_correlation_median"])
-                else "low_correlation"
-                if pc is not None and th.get("pair_correlation_median") is not None
-                else None,
-                "avg_pair_correlation_72h": pc,
-                "pair_direction_label": "asset_1_leading"
-                if pd_ is not None and pd_ >= 0.0
-                else "asset_2_leading"
-                if pd_ is not None
-                else None,
-                "avg_pair_direction_24h": pd_,
-            },
-        )
-    return pl
-
-
-def _ewts(
-    *,
-    te: list[dict[str, Any]],
-    sts: pd.Timestamp,
-    ets: pd.Timestamp,
-) -> dict[str, Any]:
-    matched: list[dict[str, Any]] = []
-    for e in te:
-        s = e.get("start_timestamp")
-        if s and sts <= pd.Timestamp(s) <= ets:
-            matched.append(e)
-    returns = [
-        float(e["total_return"]) for e in matched if e.get("total_return") is not None
-    ]
-    bars = [
-        float(e["bars"])
-        for e in matched
-        if _sf(e.get("bars"), default=None) is not None
-    ]
-    days = max(1.0, (ets - sts).total_seconds() / 86400.0)
-    dc = _edc(matched)
-    dd = max(dc.items(), key=lambda x: x[1])[0] if dc else None
-    return {
-        **(_episode_stats(matched, returns)),
-        "entries_per_day": _sf(len(matched) / days),
-        "avg_return": _sf(sum(returns) / len(returns) if returns else None),
-        "median_hold_bars": _sf(float(np.median(bars)) if bars else None),
-        "dominant_direction": dd,
-    }
-
-
-def _paesp(
-    *,
-    equity_curve: pd.Series,
-    te: list[dict[str, Any]],
-    regime_state: dict[str, Any],
-) -> dict[str, Any]:
-    c = pd.to_numeric(equity_curve, errors="coerce").dropna()
-    if c.shape[0] < 2:
-        return {}
-    dd = c.div(c.cummax()).sub(1.0)
-    pt = pd.Timestamp(c.idxmax())
-    tt = pd.Timestamp(dd.idxmin())
-    ds = pd.Timestamp(c.loc[:tt].idxmax())
-    pre = _ewts(te=te, sts=pd.Timestamp(c.index.min()), ets=pt)
-    post = _ewts(te=te, sts=pt, ets=pd.Timestamp(c.index.max()))
-    dw = _ewts(te=te, sts=ds, ets=tt)
-    dw["regime"] = _wrs(regime_state=regime_state, start_timestamp=ds, end_timestamp=tt)
-    return {
-        "peak_timestamp": pt.isoformat(),
-        "peak_equity": _sf(c.loc[pt]),
-        "max_drawdown_start": ds.isoformat(),
-        "max_drawdown_end": tt.isoformat(),
-        "max_drawdown": _sf(dd.loc[tt]),
-        "pre_peak": pre,
-        "post_peak": post,
-        "drawdown_window": dw,
-    }
-
-
-def _patbp(
-    *,
-    r: pd.Series,
-    te: list[dict[str, Any]],
-    regime_state: dict[str, Any],
-) -> dict[str, Any]:
-    c = pd.to_numeric(r, errors="coerce").dropna()
-    if c.empty:
-        return {}
-    dr = c.resample("1D").apply(lambda v: float((1.0 + v).prod() - 1.0))
-    if dr.shape[0] < 14:
-        return {}
-
-    def _wp(wd: int) -> dict[str, Any] | None:
-        if dr.shape[0] < wd:
-            return None
-        roll = (1.0 + dr.fillna(0.0)).rolling(wd).apply(np.prod, raw=True) - 1.0
-        roll = roll.dropna()
-        if roll.empty:
-            return None
-        be = roll.idxmax()
-        we = roll.idxmin()
-
-        def _smr(et: pd.Timestamp, label: str) -> dict[str, Any]:
-            el = int(cast(int, dr.index.get_loc(et)))
-            sl = max(0, el - wd + 1)
-            st = pd.Timestamp(dr.index[sl])
-            ts = _ewts(te=te, sts=st, ets=et)
-            ts["regime"] = _wrs(
-                regime_state=regime_state,
-                start_timestamp=st,
-                end_timestamp=et,
-            )
-            return {
-                "label": label,
-                "start_timestamp": st.isoformat(),
-                "end_timestamp": et.isoformat(),
-                "window_days": wd,
-                "total_return": _sf(float(cast(Any, roll.loc[et]))),
-                **ts,
-            }
-
-        return {
-            "window_days": wd,
-            "best_window": _smr(pd.Timestamp(cast(Any, be)), "best"),
-            "worst_window": _smr(pd.Timestamp(cast(Any, we)), "worst"),
-        }
-
-    ws = [p for p in (_wp(14), _wp(30)) if p]
-    return {"windows": ws} if ws else {}
-
-
-def _efeats(
-    *,
-    signal_components: dict[str, pd.DataFrame] | None,
-    timestamp: str | float | pd.Timestamp | None,
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for feat, frame in (signal_components or {}).items():
-        if frame is None or frame.empty:
-            continue
-        ats = _lts(frame.index, timestamp)
-        if ats is None:
-            continue
-        v = _sf(frame.iloc[:, 0].get(ats), default=None)
-        if v is None:
-            continue
-        rows.append({"feature": str(feat), "value": v, "abs_value": _sf(abs(v))})
-    rows.sort(key=lambda r: abs(float(r.get("value") or 0.0)), reverse=True)
-    return rows[:3]
-
-
-def _paet(
-    *,
-    te: list[dict[str, Any]],
-    signal_score: pd.DataFrame | None,
-    signal_components: dict[str, pd.DataFrame] | None,
-) -> dict[str, Any]:
-    if not te:
-        return {}
-    scored = [e for e in te if e.get("total_return") is not None]
-    if not scored:
-        return {}
-    winners = sorted(scored, key=lambda e: float(e["total_return"]), reverse=True)[:2]
-    losers = sorted(scored, key=lambda e: float(e["total_return"]))[:2]
-
-    def _pl(e: dict[str, Any]) -> dict[str, Any]:
-        ets = e.get("start_timestamp")
-        es = None
-        if signal_score is not None and not signal_score.empty and ets:
-            ats = _lts(signal_score.index, ets)
-            if ats is not None:
-                es = _sf(signal_score.iloc[:, 0].get(ats), default=None)
-        return {
-            "start_timestamp": ets,
-            "end_timestamp": e.get("end_timestamp"),
-            "direction": e.get("direction"),
-            "bars": _sf(e.get("bars"), default=None),
-            "total_return": _sf(e.get("total_return"), default=None),
-            "entry_score": es,
-            "entry_regime": e.get("entry_regime", {}) or {},
-            "entry_feature_contributors": _efeats(
-                signal_components=signal_components,
-                timestamp=ets,
-            ),
-        }
-
-    return {"winners": [_pl(e) for e in winners], "losers": [_pl(e) for e in losers]}
-
-
 def _fraction_while_flat(
     sem2d: np.ndarray[tuple[int, int], np.dtype[np.bool_]],
     fm1: object,
@@ -992,6 +435,7 @@ def _fraction_while_flat(
     mask = fm1_arr.astype(bool)
     any_per_row = cast(np.ndarray, sem2d.any(axis=1))
     return float(any_per_row[mask].mean())
+
 
 def _pgd(
     *,
@@ -1144,36 +588,3 @@ def _pgd(
         "regime_gates": rgs,
         "bottleneck_tags": bt,
     }
-
-
-def _pcfm(cm: dict[str, Any]) -> dict[str, Any]:
-    p: dict[str, Any] = {
-        "execution_profile": cm.get("execution_profile"),
-        "long_count": int(cm.get("long_count", 0) or 0),
-        "short_count": int(cm.get("short_count", 0) or 0),
-        "selection_count": int(cm.get("selection_count", 0) or 0),
-        "entry_abs_score": _sf(cm.get("entry_abs_score"), default=None),
-        "exit_abs_score": _sf(cm.get("exit_abs_score"), default=None),
-        "flip_abs_score": _sf(cm.get("flip_abs_score"), default=None),
-        "max_holding_bars": int(cm.get("max_holding_bars", 0) or 0),
-        "cooldown_bars": int(cm.get("cooldown_bars", 0) or 0),
-        "signal_leverage_scale": _sf(cm.get("signal_leverage_scale"), default=None),
-        "gross_target": _sf(cm.get("gross_target"), default=None),
-        "max_gross_target": _sf(cm.get("max_gross_target"), default=None),
-    }
-    sw = cm.get("pair_policy_sweep", {}) or {}
-    if sw:
-        p["policy_sweep"] = {
-            "applied": bool(sw.get("applied")),
-            "train_window_count": int(sw.get("train_window_count", 0) or 0),
-            "trial_count": int(sw.get("trial_count", 0) or 0),
-            "best_train_score": _sf(
-                dget(sw, "best_train_summary", "aggregate_score"),
-                default=None,
-            ),
-            "best_train_return": _sf(
-                dget(sw, "best_train_summary", "median_total_return"),
-                default=None,
-            ),
-        }
-    return p

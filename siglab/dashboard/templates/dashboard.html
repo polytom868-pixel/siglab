@@ -12,8 +12,7 @@
       <label for="trackFilter">Track</label>
       <select id="trackFilter"
               aria-label="Filter by track"
-              x-model="$store.filter.track"
-              @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
+              x-model="$store.filter.track">
         <option value="all">All Tracks</option>
         <option value="trend_signals">Directional Perps</option>
         <option value="yield_flows">Systematic Carry</option>
@@ -21,9 +20,7 @@
       <label for="familyFilter">Family</label>
       <select id="familyFilter"
               aria-label="Filter by family"
-              x-model="$store.filter.family"
-              @change="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">
-        <option value="all">All Families</option>
+              x-model="$store.filter.family">
       </select>
       <label for="metricFilter">Metric</label>
       <select id="metricFilter"
@@ -34,20 +31,15 @@
       <label class="checkbox">
         <input type="checkbox" id="autoRefresh" checked />
         Auto refresh
-      </label>
-      <button id="refreshButton" type="button" aria-label="Refresh data"
-              @click="htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Refresh</button>
+      <button id="refreshButton" type="button" aria-label="Refresh data">Refresh</button>
       <button id="resetFilters" type="button" class="button-link" aria-label="Reset all filters to default"
-              @click="$store.filter.track = 'all'; $store.filter.family = 'all'; $store.filter.metric = 'aggregate_score'; htmx.trigger('#summaryCards', 'load'); htmx.trigger('#runCards', 'load')">Reset</button>
+              @click="$store.filter.track = 'all'; $store.filter.family = 'all'; $store.filter.metric = 'aggregate_score'">Reset</button>
     </div>
   </div>
 </header>
 
 
-<section class="summary-grid" id="summaryCards"
-         hx-get="/partials/dashboard/summary"
-         hx-trigger="load, every 30s"
-         hx-indicator=".skeleton-card">
+<section class="summary-grid" id="summaryCards">
 </section>
 
 <section class="panel">
@@ -56,16 +48,11 @@
       <h2>Run Sessions</h2>
       <p>Each card is one run. The chart shows the selected metric in that run's own order, not mixed with other runs.</p>
     </div>
-  </div>
-  <div id="runCards" class="run-grid"
-       hx-get="/partials/dashboard/runs?track={{ track or 'all' }}&family={{ family or 'all' }}"
-       hx-trigger="load, every 30s"
-       hx-indicator=".skeleton-card">
+  <div id="runCards" class="run-grid">
     <div class="panel run-card"><div class="skeleton-card"></div></div>
     <div class="panel run-card"><div class="skeleton-card"></div></div>
     <div class="panel run-card"><div class="skeleton-card"></div></div>
   </div>
-</section>
 {% endblock %}
 
 {% block scripts_extra %}

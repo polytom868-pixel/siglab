@@ -1,4 +1,4 @@
-from siglab.data.sodex_rate_limit import SoDEXWeightLimitError, SoDEXWeightScheduler
+from siglab.data.feeds import SoDEXWeightLimitError, SoDEXWeightScheduler
 from siglab.live.exporter import LiveDeploymentManager, deployment_readiness
 from siglab.live.paper_client import (
     PaperClientError,
@@ -9,15 +9,8 @@ from siglab.live.paper_client import (
     PaperTimeInForce,
     SoDEXPaperPerpsClient,
 )
-from siglab.live.promotion import (
-    compute_composite_score,
-    compute_sub_scores,
-    extract_session_metrics,
-    promotion_eligible,
-)
-from siglab.live.reconciliation import ReconciliationEngine
 from siglab.live.paper_client import DirectionalPerpsSigLabStrategy
-from siglab.live.sodex_client import (
+from siglab.data.feeds import (
     SUPPORTED_SODEX_SIGNED_ACTIONS,
     UNSUPPORTED_SODEX_SIGNED_ACTIONS,
     SoDEXConfigError,
@@ -70,7 +63,6 @@ __all__ = [
     "PaperOrderType",
     "PaperSessionNotFoundError",
     "PaperTimeInForce",
-    "ReconciliationEngine",
     "SoDEXConfigError",
     "SoDEXError",
     "SoDEXFormatError",
@@ -100,10 +92,7 @@ __all__ = [
     "build_signature_input",
     "build_signed_headers",
     "canonical_json",
-    "compute_composite_score",
-    "compute_sub_scores",
     "deployment_readiness",
-    "extract_session_metrics",
     "payload_hash",
     "perps_cancel_item",
     "perps_cancel_order_body",
@@ -112,6 +101,5 @@ __all__ = [
     "perps_schedule_cancel_body",
     "perps_update_leverage_body",
     "perps_update_margin_body",
-    "promotion_eligible",
     "validate_account_id",
 ]

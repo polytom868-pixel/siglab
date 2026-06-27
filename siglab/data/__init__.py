@@ -6,17 +6,17 @@ from siglab.data.evidence import (
     sodex_ws_evidence,
     summarize_evidence,
 )
-from siglab.data.feeds import MarketDataProvider
-from siglab.data.sodex_client import (
+from siglab.data.feeds import (
+    MarketDataProvider,
     SoDEXError,
+    SoDEXFeeds,
     SoDEXFormatError,
     SoDEXPublicPerpsClient,
     SoDEXRateLimitError,
     SoDEXTransportError,
     SoDEXUpstreamError,
+    SoDEXWeightScheduler,
 )
-from siglab.data.sodex_feeds import SoDEXFeeds
-from siglab.data.sodex_rate_limit import SoDEXWeightScheduler
 from siglab.data.store import ParquetLake
 
 __all__ = [

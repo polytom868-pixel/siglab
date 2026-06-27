@@ -9,7 +9,7 @@ from typing import Any
 
 from siglab.cli.rich_utils import print_error, print_json
 from siglab.config import load_settings
-from siglab.data.sodex_feeds import SoDEXFeeds
+from siglab.data.feeds import SoDEXFeeds
 from siglab.data.store import ParquetLake
 from siglab.live.paper_client import SoDEXPaperPerpsClient
 from siglab.operator import OperatorPipeline
