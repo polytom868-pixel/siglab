@@ -26,7 +26,7 @@ def pre_audit_trade_episodes(cr: dict[str, Any]) -> list[dict[str, Any]]:
     eps = cr.get("trade_episodes") or []
     if not eps:
         return []
-    vs = {**cr.get("visual_split", {})}
+    vs = cr.get("visual_split", {}) or {}
     ast = None
     for w in vs.get("ranges") or []:
         if str(w.get("kind") or "") == "audit_holdout":
@@ -431,7 +431,7 @@ def _pair_regime_snapshot(
     ats = _lts(regime_state["index"], timestamp)
     if ats is None:
         return {}
-    th = {**regime_state.get("thresholds", {})}
+    th = regime_state.get("thresholds", {}) or {}
     mtv = _sf(regime_state["market_trend"].get(ats))
     mvv = _sf(regime_state["market_volatility"].get(ats))
     flv = _sf(regime_state["funding_level"].get(ats))
@@ -548,7 +548,7 @@ def _prd(
     rs = _prs(prices=prices, tw=tw, funding_rates=funding_rates)
     if not rs.get("available"):
         return {"available": False}
-    th = {**rs.get("thresholds", {})}
+    th = rs.get("thresholds", {}) or {}
 
     def _bs(label, mask, hi_label, lo_label):
         median_val = th.get(f"{label}_median")
@@ -645,7 +645,7 @@ def _trp(te: list[dict[str, Any]]) -> dict[str, Any]:
         return {}
     lks: list[str] = []
     for e in te:
-        er = {**e.get("entry_regime", {})}
+        er = e.get("entry_regime", {}) or {}
         lks.extend(k for k, v in er.items() if k.endswith("_label") and v)
     dims = {k.removesuffix("_label"): k for k in sorted(set(lks))}
     rp: dict[str, Any] = {}
@@ -723,7 +723,7 @@ def _wrs(
         v = pd.to_numeric(s.loc[mask], errors="coerce").dropna()
         return _sf(v.mean()) if not v.empty else None
 
-    th = {**regime_state.get("thresholds", {})}
+    th = regime_state.get("thresholds", {}) or {}
     mt = _mv(regime_state["market_trend"])
     mv_ = _mv(regime_state["market_volatility"])
     fl = _mv(regime_state["funding_level"])
@@ -998,7 +998,7 @@ def _paet(
             "bars": _sf(e.get("bars"), default=None),
             "total_return": _sf(e.get("total_return"), default=None),
             "entry_score": es,
-            "entry_regime": {**e.get("entry_regime", {})},
+            "entry_regime": e.get("entry_regime", {}) or {},
             "entry_feature_contributors": _efeats(
                 signal_components=signal_components,
                 timestamp=ets,
@@ -1193,7 +1193,7 @@ def _pcfm(cm: dict[str, Any]) -> dict[str, Any]:
         "gross_target": _sf(cm.get("gross_target"), default=None),
         "max_gross_target": _sf(cm.get("max_gross_target"), default=None),
     }
-    sw = {**cm.get("pair_policy_sweep", {})}
+    sw = cm.get("pair_policy_sweep", {}) or {}
     if sw:
         p["policy_sweep"] = {
             "applied": bool(sw.get("applied")),

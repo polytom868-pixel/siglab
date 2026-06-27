@@ -113,12 +113,12 @@ class ExperimentEnricher:
     ) -> dict[str, Any] | None:
         if not isinstance(payload, dict):
             return None
-        trace = {**payload.get("claude_trace", {})}
+        trace = payload.get("claude_trace", {}) or {}
         if not trace:
             for key in ("attempts", "planner_attempts", "repair_attempts"):
                 attempts = list(payload.get(key) or [])
                 for attempt in reversed(attempts):
-                    attempt_trace = {**(attempt or {}).get("claude_trace", {})}
+                    attempt_trace = (attempt or {}).get("claude_trace", {}) or {}
                     if attempt_trace:
                         trace = attempt_trace
                         break
@@ -152,7 +152,7 @@ class ExperimentEnricher:
     ) -> list[dict[str, Any]]:
         """Extract tool trace stages from a research summary dict."""
         stages: list[dict[str, Any]] = []
-        workspace = {**research_summary.get("workspace", {})}
+        workspace = research_summary.get("workspace", {}) or {}
         for stage_name, path_key in (
             ("planner", "planner_trace_path"),
             ("writer", "writer_trace_path"),
@@ -168,8 +168,8 @@ class ExperimentEnricher:
                 stages.append(stage)
         if stages:
             return stages
-        tool_trace = {**research_summary.get("llm_tool_trace", {})}
-        trace_core = {**tool_trace.get("trace", {})}
+        tool_trace = research_summary.get("llm_tool_trace", {}) or {}
+        trace_core = tool_trace.get("trace", {}) or {}
         if tool_trace or trace_core:
             legacy_calls = []
             for call in list(trace_core.get("tool_calls") or []):
@@ -280,11 +280,11 @@ class ExperimentEnricher:
         include_artifact: bool = False,
     ) -> dict[str, Any]:
         """Enrich a raw experiment row with computed metadata, traces, etc."""
-        spec = {**experiment.get("spec", {})}
-        summary = {**experiment.get("summary", {})}
-        research_summary = {**experiment.get("research_summary", {})}
+        spec = experiment.get("spec", {}) or {}
+        summary = experiment.get("summary", {}) or {}
+        research_summary = experiment.get("research_summary", {}) or {}
         raw_artifact_path = experiment.get("artifact_path")
-        artifact = {**experiment.get("artifact", {})} if include_artifact else {}
+        artifact = (experiment.get("artifact", {}) or {}) if include_artifact else {}
         if not artifact and raw_artifact_path and (self.config is not None):
             artifact_path = resolve_path_from_root(
                 raw_artifact_path,
@@ -344,9 +344,9 @@ class ExperimentEnricher:
                 "liquidated",
             ):
                 summary[f"audit_{k}"] = None
-        bias_controls = {**compiled_metadata.get("bias_controls", {})}
-        params = {**spec.get("params", {})}
-        tool_trace = {**research_summary.get("llm_tool_trace", {})}
+        bias_controls = compiled_metadata.get("bias_controls", {}) or {}
+        params = spec.get("params", {}) or {}
+        tool_trace = research_summary.get("llm_tool_trace", {}) or {}
         tool_trace_stages = self.research_stages(research_summary)
         aggregated_tool_calls: list[dict[str, Any]] = []
         for stage in tool_trace_stages:
@@ -367,7 +367,7 @@ class ExperimentEnricher:
         experiment["spec"] = spec
         experiment["summary"] = summary
         experiment["research_summary"] = research_summary
-        run_context = {**research_summary.get("run_context", {})}
+        run_context = research_summary.get("run_context", {}) or {}
         experiment["run_session_id"] = str(
             run_context.get("run_session_id")
             or f"legacy::{experiment.get('spec_hash')}",
@@ -433,7 +433,7 @@ class ExperimentEnricher:
         }
         experiment["tool_call_count"] = len(aggregated_tool_calls)
         experiment["skill_value_report"] = self.skill_value_report(aggregated_tool_calls)
-        lifecycle_policy = {**compiled_metadata.get("lifecycle_policy", {})}
+        lifecycle_policy = compiled_metadata.get("lifecycle_policy", {}) or {}
         experiment["roll_lifecycle"] = {
             "policy": lifecycle_policy,
             "roll_event_count": int(compiled_metadata.get("roll_event_count") or 0),
@@ -536,7 +536,7 @@ class ExperimentEnricher:
         """Add visual split information to a canonical run."""
         if not canonical_run or canonical_run.get("visual_split"):
             return canonical_run
-        equity_curve = {**canonical_run.get("equity_curve", {})}
+        equity_curve = canonical_run.get("equity_curve", {}) or {}
         timestamps = equity_curve.get("index") or []
         size = len(timestamps)
         if size < 2:
@@ -576,15 +576,15 @@ class ExperimentEnricher:
         artifacts: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
         """Build the ops summary from loaded artifacts."""
-        demo = {**dict(artifacts["demo_manifest"].get("payload") or {})}
-        telemetry = {**dict(artifacts["telemetry"].get("payload") or {})}
-        market = {**dict(artifacts["market_report"].get("payload") or {})}
-        preflight = {**dict(artifacts["sodex_preflight"].get("payload") or {})}
-        readiness = {**demo.get("readiness", {})}
-        decision_support = {**market.get("decision_support", {})}
-        signal_summary = {**market.get("signal_summary", {})}
-        signed_path = {**preflight.get("signed_path", {})}
-        provider_metrics = {**telemetry.get("provider_metrics", {})}
+        demo = dict(artifacts["demo_manifest"].get("payload") or {})
+        telemetry_m = dict(artifacts["telemetry"].get("payload") or {})
+        market = dict(artifacts["market_report"].get("payload") or {})
+        preflight = dict(artifacts["sodex_preflight"].get("payload") or {})
+        readiness = demo.get("readiness", {}) or {}
+        decision_support = market.get("decision_support", {}) or {}
+        signal_summary = market.get("signal_summary", {}) or {}
+        signed_path = preflight.get("signed_path", {}) or {}
+        provider_metrics = telemetry_m.get("provider_metrics", {}) or {}
         return {
             "buildathon": {
                 "sosovalue_flow": readiness.get("sosovalue_input_to_output"),

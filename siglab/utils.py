@@ -138,3 +138,14 @@ def _estimate_message_tokens(messages: Sequence[dict[str, Any]]) -> int:
 
     chars = len(_json.dumps(list(messages), ensure_ascii=True, default=str))
     return max(1, (chars + 3) // 4)
+
+
+def dget(d: dict | None, *keys: str, default: object = None) -> object:
+    """Safe nested dict access without intermediate copies."""
+    for k in keys:
+        if not isinstance(d, dict):
+            return default
+        d = d.get(k)
+        if d is None:
+            return default
+    return d

@@ -333,12 +333,12 @@ class DashboardState:
     ) -> dict[str, Any] | None:
         if not isinstance(payload, dict):
             return None
-        trace = {**payload.get("claude_trace", {})}
+        trace = payload.get("claude_trace", {}) or {}
         if not trace:
             for key in ("attempts", "planner_attempts", "repair_attempts"):
                 attempts = list(payload.get(key) or [])
                 for attempt in reversed(attempts):
-                    attempt_trace = {**(attempt or {}).get("claude_trace", {})}
+                    attempt_trace = (attempt or {}).get("claude_trace", {}) or {}
                     if attempt_trace:
                         trace = attempt_trace
                         break
@@ -368,7 +368,7 @@ class DashboardState:
 
     def _rss(self, research_summary: dict[str, Any]) -> list[dict[str, Any]]:
         stages: list[dict[str, Any]] = []
-        workspace = {**research_summary.get("workspace", {})}
+        workspace = research_summary.get("workspace", {}) or {}
         for stage_name, path_key in (
             ("planner", "planner_trace_path"),
             ("writer", "writer_trace_path"),
@@ -384,8 +384,8 @@ class DashboardState:
                 stages.append(stage)
         if stages:
             return stages
-        tool_trace = {**research_summary.get("llm_tool_trace", {})}
-        trace_core = {**tool_trace.get("trace", {})}
+        tool_trace = research_summary.get("llm_tool_trace", {}) or {}
+        trace_core = tool_trace.get("trace", {}) or {}
         if tool_trace or trace_core:
             legacy_calls = []
             for call in list(trace_core.get("tool_calls") or []):
@@ -600,11 +600,11 @@ class DashboardState:
         include_artifact: bool = False,
     ) -> dict[str, Any]:
         exp = experiment if isinstance(experiment, dict) else {}
-        spec = {**exp.get("spec", {})}
-        summary = {**exp.get("summary", {})}
-        research_summary = {**exp.get("research_summary", {})}
+        spec = exp.get("spec", {}) or {}
+        summary = exp.get("summary", {}) or {}
+        research_summary = exp.get("research_summary", {}) or {}
         raw_artifact_path = exp.get("artifact_path")
-        artifact = {**(exp.get("artifact") or {})} if include_artifact else {}
+        artifact = (exp.get("artifact") or {}) if include_artifact else {}
         if not artifact and raw_artifact_path and (self.config is not None):
             artifact_path = resolve_path_from_root(
                 raw_artifact_path,
@@ -661,9 +661,9 @@ class DashboardState:
                 "liquidated",
             ):
                 summary[f"audit_{k}"] = None
-        bias_controls = {**compiled_metadata.get("bias_controls", {})}
-        params = {**spec.get("params", {})}
-        tool_trace = {**research_summary.get("llm_tool_trace", {})}
+        bias_controls = compiled_metadata.get("bias_controls", {}) or {}
+        params = spec.get("params", {}) or {}
+        tool_trace = research_summary.get("llm_tool_trace", {}) or {}
         tool_trace_stages = self._rss(research_summary)
         aggregated_tool_calls: list[dict[str, Any]] = []
         for stage in tool_trace_stages:
@@ -684,7 +684,7 @@ class DashboardState:
         experiment["spec"] = spec
         experiment["summary"] = summary
         experiment["research_summary"] = research_summary
-        run_context = {**research_summary.get("run_context", {})}
+        run_context = research_summary.get("run_context", {}) or {}
         experiment["run_session_id"] = str(
             run_context.get("run_session_id")
             or f"legacy::{experiment.get('spec_hash')}",
@@ -751,7 +751,7 @@ class DashboardState:
         }
         experiment["tool_call_count"] = len(aggregated_tool_calls)
         experiment["skill_value_report"] = self._svr(aggregated_tool_calls)
-        lifecycle_policy = {**compiled_metadata.get("lifecycle_policy", {})}
+        lifecycle_policy = compiled_metadata.get("lifecycle_policy", {}) or {}
         experiment["roll_lifecycle"] = {
             "policy": lifecycle_policy,
             "roll_event_count": int(compiled_metadata.get("roll_event_count") or 0),
@@ -844,7 +844,7 @@ class DashboardState:
     def _ar(self, canonical_run: dict[str, Any]) -> dict[str, Any]:
         if not canonical_run or canonical_run.get("visual_split"):
             return canonical_run
-        equity_curve = {**canonical_run.get("equity_curve", {})}
+        equity_curve = canonical_run.get("equity_curve", {}) or {}
         timestamps = equity_curve.get("index") or []
         size = len(timestamps)
         if size < 2:
@@ -1129,11 +1129,11 @@ class DashboardState:
         telemetry = _payload("telemetry")
         market = _payload("market_report")
         preflight = _payload("sodex_preflight")
-        readiness = {**demo.get("readiness", {})}
-        decision_support = {**market.get("decision_support", {})}
-        signal_summary = {**market.get("signal_summary", {})}
-        signed_path = {**preflight.get("signed_path", {})}
-        provider_metrics = {**telemetry.get("provider_metrics", {})}
+        readiness = demo.get("readiness", {}) or {}
+        decision_support = market.get("decision_support", {}) or {}
+        signal_summary = market.get("signal_summary", {}) or {}
+        signed_path = preflight.get("signed_path", {}) or {}
+        provider_metrics = telemetry.get("provider_metrics", {}) or {}
         return {
             "buildathon": {
                 "sosovalue_flow": readiness.get("sosovalue_input_to_output"),
@@ -1245,9 +1245,9 @@ class DashboardState:
         detail = self._ed(spec_hash)
         if detail is None:
             return None
-        artifact = {**detail.get("artifact", {})}
+        artifact = detail.get("artifact", {}) or {}
         annotated = self._ae({**detail}, include_artifact=True)
-        canonical_run = self._ar({**artifact.get("canonical_run", {})})
+        canonical_run = self._ar(artifact.get("canonical_run", {}) or {})
         return {
             "generated_at": self._ni(),
             "experiment": {
@@ -1365,6 +1365,12 @@ def _soa_standalone(artifacts: dict[str, dict[str, Any]]) -> dict[str, Any]:
 
 
 _summarize_ops_artifacts = _soa_standalone
+def _tmpl(request: Request) -> Any:
+    """Resolve templates, returning the dict sentinel or the Jinja2Templates object."""
+    t = request.app.state.dashboard.templates
+    return t if isinstance(t, dict) else t
+
+
 router = APIRouter()
 SIGLAB_VERSION = "0.1.0"
 _DEFAULT_PORT = int(os.environ.get("PORT", "8080"))
@@ -2062,9 +2068,9 @@ async def market_orderbook(
 
 @router.get("/partials/dashboard/summary")
 async def partial_dashboard_summary(request: Request) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "partials/dashboard/_summary_cards.html",
         {"request": request, **request.app.state.dashboard.runs_payload()},
@@ -2077,11 +2083,11 @@ async def partial_dashboard_runs(
     track: str = "all",
     family: str = "all",
 ) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "partials/dashboard/_run_cards.html",
         {
@@ -2167,7 +2173,7 @@ _PARTIAL_OPS = {
 
 @router.get("/partials/ops/{name}")
 async def partial_ops_router(request: Request, name: str) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     handler = _PARTIAL_OPS.get(name)
     if handler is None:
@@ -2182,7 +2188,7 @@ async def partial_run_summary(
     track: str = "all",
     family: str = "all",
 ) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
@@ -2197,7 +2203,7 @@ async def partial_run_summary(
         if run_id
         else None
     )
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "partials/run/_run_summary.html",
         {
@@ -2216,7 +2222,7 @@ async def partial_run_family_pills(
     run_id: str = "",
     family: str = "all",
 ) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     families = sorted(
         request.app.state.dashboard.experiments_payload()
@@ -2224,7 +2230,7 @@ async def partial_run_family_pills(
         .get("families", [])
         or [],
     )
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "partials/run/_family_pills.html",
         {"request": request, "families": families, "family": family},
@@ -2239,7 +2245,7 @@ async def partial_run_improvement_chart(
     track: str = "all",
     family: str = "all",
 ) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
@@ -2249,7 +2255,7 @@ async def partial_run_improvement_chart(
     ).get("experiments", [])
     if run_id:
         experiments = [e for e in experiments if e.get("run_session_id") == run_id]
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "partials/run/_improvement_chart.html",
         {"request": request, "experiments": experiments, "metric": metric},
@@ -2263,7 +2269,7 @@ async def partial_run_experiment_table(
     track: str = "all",
     family: str = "all",
 ) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     _track = track if track and track != "all" else None
     _family = family if family and family != "all" else None
@@ -2275,7 +2281,7 @@ async def partial_run_experiment_table(
         experiments = [e for e in experiments if e.get("run_session_id") == run_id]
     if _family:
         experiments = [e for e in experiments if e.get("family") == _family]
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "partials/run/_experiment_table.html",
         {"request": request, "experiments": experiments},
@@ -2284,15 +2290,15 @@ async def partial_run_experiment_table(
 
 @router.get("/partials/run/detail_panel")
 async def partial_run_detail_panel(request: Request, spec_hash: str = "") -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     if not spec_hash:
-        return tmpl.TemplateResponse(
+        return _tmpl(request).TemplateResponse(
             request,
             "partials/run/_detail_panel.html",
             {"request": request, "experiment": {}},
         )
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "partials/run/_detail_panel.html",
         {
@@ -2433,7 +2439,7 @@ async def partial_experiment_router(
     name: str,
     spec_hash: str = "",
 ) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
     handler = _PARTIAL_EXP.get(name)
     if handler is None:
@@ -2443,9 +2449,9 @@ async def partial_experiment_router(
 
 @router.get("/templates/dashboard")
 async def template_dashboard(request: Request) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "dashboard.html",
         {"request": request, "track": "all", "family": "all"},
@@ -2454,9 +2460,9 @@ async def template_dashboard(request: Request) -> Any:
 
 @router.get("/templates/runs/{run_id:path}")
 async def template_run(request: Request, run_id: str = "") -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "run.html",
         {"request": request, "run_id": run_id, "track": "all", "family": "all"},
@@ -2465,9 +2471,9 @@ async def template_run(request: Request, run_id: str = "") -> Any:
 
 @router.get("/templates/experiments/{spec_hash:path}")
 async def template_experiment(request: Request, spec_hash: str = "") -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
-    return tmpl.TemplateResponse(
+    return _tmpl(request).TemplateResponse(
         request,
         "experiment.html",
         {"request": request, "spec_hash": spec_hash},
@@ -2476,9 +2482,9 @@ async def template_experiment(request: Request, spec_hash: str = "") -> Any:
 
 @router.get("/templates/ops")
 async def template_ops(request: Request) -> Any:
-    if isinstance(tmpl := request.app.state.dashboard.templates, dict):
+    if isinstance(tmpl := _tmpl(request), dict):
         return tmpl
-    return tmpl.TemplateResponse(request, "ops.html", {"request": request})
+    return _tmpl(request).TemplateResponse(request, "ops.html", {"request": request})
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
