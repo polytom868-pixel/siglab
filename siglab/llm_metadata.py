@@ -17,7 +17,7 @@ def resolve_llm_provider(settings: SiglabConfig) -> str:
     explicit = normalize_llm_provider(getattr(settings, "llm_provider", None))
     if explicit is not None:
         return explicit
-    if getattr(settings, "bai_api_key", None):
+    if getattr(settings, "openmodel_api_key", None):
         return "openai"
     return "openai"
 
@@ -41,10 +41,8 @@ def resolve_llm_model(
     provider: str | None = None,
     thinking_override: str | None = None,
 ) -> str:
-    return _normalize_bai_model(
-        str(
-            getattr(settings, "bai_model", "deepseek-v4-flash") or "deepseek-v4-flash",
-        ),
+    return str(
+        getattr(settings, "openmodel_model", "deepseek-v4-flash") or "deepseek-v4-flash",
     )
 
 
@@ -53,10 +51,8 @@ def default_llm_model_display(
     *,
     provider: str | None = None,
 ) -> str:
-    return _normalize_bai_model(
-        str(
-            getattr(settings, "bai_model", "deepseek-v4-flash") or "deepseek-v4-flash",
-        ),
+    return str(
+        getattr(settings, "openmodel_model", "deepseek-v4-flash") or "deepseek-v4-flash",
     )
 
 
@@ -65,17 +61,9 @@ def resolve_llm_api_key(
     *,
     provider: str | None = None,
 ) -> str | None:
-    return getattr(settings, "bai_api_key", None)
+    return getattr(settings, "openmodel_api_key", None)
 
 
 def resolve_llm_base_url(settings: SiglabConfig, *, provider: str | None = None) -> str:
-    return str(getattr(settings, "bai_base_url", "https://api.b.ai"))
+    return str(getattr(settings, "openmodel_base_url", "https://api.b.ai"))
 
-
-def _normalize_bai_model(model: str) -> str:
-    return (
-        model.strip()
-        .replace("claude-sonnet-4-6", "claude-sonnet-4.6")
-        .replace("claude-opus-4-7", "claude-opus-4.7")
-        .replace("claude-opus-4-6", "claude-opus-4.6")
-    )

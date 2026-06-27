@@ -36,40 +36,16 @@ class SiglabConfig:
     sosovalue_api_tier: str = "free"
     sosovalue_timeout_s: float = 30.0
     sosovalue_retries: int = 2
-    claude_api_key: str | None = None
-    claude_model: str = "claude-k2.5"
-    claude_base_url: str = "https://api.moonshot.ai/v1"
-    claude_max_tokens: int = 32768
-    claude_temperature: float = 1.0
-    claude_top_p: float = 0.95
     claude_timeout_s: float = 300.0
     population_size: int = 4
-    llm_provider: str = "claude"
+    llm_provider: str = "openai"
     optuna_trials: int = 20
     memory_scope: str = "session_local"
     use_historical_seeds: bool = False
-    claude_thinking: str | None = None
     claude_max_tool_rounds: int = 25
-    deepseek_api_key: str | None = None
-    deepseek_base_url: str = "https://api.deepseek.com"
-    deepseek_model: str = "deepseek-reasoner"
-    openrouter_api_key: str | None = None
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "openai/gpt-4.1-mini"
-    openrouter_reasoning_model: str | None = None
-    openrouter_fast_model: str | None = None
-    openrouter_http_referer: str | None = None
-    openrouter_title: str | None = None
-    bai_api_key: str | None = None
-    bai_base_url: str = "https://api.b.ai"
-    bai_model: str = "deepseek-v4-flash"
-    bai_planner_model: str = "deepseek-v4-flash"
-    bai_writer_model: str = "deepseek-v4-flash"
-    bai_reflector_model: str = "deepseek-v4-flash"
-    bai_fallback_fast_model: str = "kimi-k2.5"
-    bai_fallback_reasoning_model: str = "deepseek-v4-pro"
-    bai_context_tokens: int = 70000
-    bai_max_call_credits: float | None = None
+    openmodel_api_key: str | None = None
+    openmodel_base_url: str = "https://api.openmodel.ai/v1"
+    openmodel_model: str = "deepseek-v4-flash"
     tracks: tuple[str, ...] = CANONICAL_TRACKS
     tavily_api_key: str | None = None
     tavily_base_url: str = "https://api.tavily.com"
@@ -126,9 +102,7 @@ def load_settings() -> SiglabConfig:
     strategy_export_dir = Path(strategy_export_value).expanduser()
     if not strategy_export_dir.is_absolute():
         strategy_export_dir = (root_dir / strategy_export_dir).resolve()
-    explicit_provider = _get("LLM_PROVIDER", "openai").strip().lower()
-    llm_provider = "openai" if explicit_provider == "openai" else "openai"
-    bai_max_call_credits_raw = _get("BAI_MAX_CALL_CREDITS")
+    llm_provider = "openai"
     return SiglabConfig(
         root_dir=root_dir,
         sosovalue_config_path=config_path,
@@ -142,43 +116,12 @@ def load_settings() -> SiglabConfig:
         sosovalue_api_tier=_get("SOSOVALUE_API_TIER", "free"),
         sosovalue_timeout_s=float(_get("SOSOVALUE_TIMEOUT_S", "30")),
         sosovalue_retries=int(_get("SOSOVALUE_RETRIES", "2")),
-        claude_api_key=_get("CLAUDE_API_KEY"),
-        claude_model=_get("CLAUDE_MODEL", "claude-k2.5"),
-        claude_base_url=_get("CLAUDE_BASE_URL", "https://api.moonshot.ai/v1"),
-        claude_max_tokens=int(_get("CLAUDE_MAX_TOKENS", "32768")),
-        claude_temperature=float(_get("CLAUDE_TEMPERATURE", "1.0")),
-        claude_top_p=float(_get("CLAUDE_TOP_P", "0.95")),
         claude_timeout_s=float(_get("CLAUDE_TIMEOUT_S", "300")),
         llm_provider=llm_provider,
-        claude_thinking=_get("CLAUDE_THINKING"),
         claude_max_tool_rounds=int(_get("CLAUDE_MAX_TOOL_ROUNDS", "25")),
-        deepseek_api_key=_get("DEEPSEEK_API_KEY"),
-        deepseek_base_url=_get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        deepseek_model=_get("DEEPSEEK_MODEL", "deepseek-reasoner"),
-        openrouter_api_key=_get("OPENROUTER_API_KEY") or _get("OPENROUTER_KEY"),
-        openrouter_base_url=_get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-        openrouter_model=_get("OPENROUTER_MODEL", "openai/gpt-4.1-mini"),
-        openrouter_reasoning_model=_get("OPENROUTER_REASONING_MODEL"),
-        openrouter_fast_model=_get("OPENROUTER_FAST_MODEL"),
-        openrouter_http_referer=_get("OPENROUTER_HTTP_REFERER"),
-        openrouter_title=_get("OPENROUTER_TITLE"),
-        bai_api_key=_get("ANTHROPIC_AUTH_TOKEN") or _get("BAI_API_KEY"),
-        bai_base_url=_get("ANTHROPIC_BASE_URL", "https://api.b.ai"),
-        bai_model=_get("ANTHROPIC_MODEL", "deepseek-v4-flash"),
-        bai_planner_model=str(
-            _get("BAI_PLANNER_MODEL", _get("ANTHROPIC_MODEL", "deepseek-v4-flash")),
-        ),
-        bai_writer_model=_get("BAI_WRITER_MODEL", "deepseek-v4-flash"),
-        bai_reflector_model=_get("BAI_REFLECTOR_MODEL", "deepseek-v4-flash"),
-        bai_fallback_fast_model=_get("BAI_FALLBACK_FAST_MODEL", "kimi-k2.5"),
-        bai_fallback_reasoning_model=_get(
-            "BAI_FALLBACK_REASONING_MODEL",
-            "deepseek-v4-pro",
-        ),
-        bai_context_tokens=int(_get("BAI_CONTEXT_TOKENS", "70000")),
-        bai_max_call_credits=float(bai_max_call_credits_raw)
-        if bai_max_call_credits_raw is not None and bai_max_call_credits_raw != ""
-        else None,
+        openmodel_api_key=_get("OPENMODEL_API_KEY"),
+        openmodel_base_url=_get("OPENMODEL_BASE_URL", "https://api.openmodel.ai/v1"),
+        openmodel_model=_get("OPENMODEL_MODEL", "deepseek-v4-flash"),
         population_size=int(_get("SIGLAB_POPULATION_SIZE", "4")),
         optuna_trials=int(_get("SIGLAB_OPTUNA_TRIALS", "20")),
         memory_scope=_get("SIGLAB_MEMORY_SCOPE", "session_local"),

@@ -106,8 +106,8 @@ class LLMFormatError(LLMProviderError):
 class ClaudeClient:
     """OpenAI-compatible LLM client using the OpenAI SDK.
 
-    Reads api_key from env ``BAI_API_KEY`` and base_url from env
-    ``ANTHROPIC_BASE_URL``.  The model is always *deepseek-v4-flash*
+    Reads api_key from env ``OPENMODEL_API_KEY`` and base_url from env
+    ``OPENMODEL_BASE_URL``.  The model is always *deepseek-v4-flash*
     served via OpenModel AI.
     """
 
@@ -131,7 +131,7 @@ class ClaudeClient:
 
     @property
     def is_configured(self) -> bool:
-        return bool(getattr(self.settings, "bai_api_key", None))
+        return bool(getattr(self.settings, "openmodel_api_key", None))
 
     @property
     def provider_name(self) -> str:
@@ -141,9 +141,9 @@ class ClaudeClient:
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
-            api_key = str(getattr(self.settings, "bai_api_key", None) or "")
+            api_key = str(getattr(self.settings, "openmodel_api_key", None) or "")
             base_url = str(
-                getattr(self.settings, "bai_base_url", "https://api.b.ai")
+                getattr(self.settings, "openmodel_base_url", "https://api.b.ai")
             ).rstrip("/")
             self._client = AsyncOpenAI(
                 api_key=api_key,
@@ -633,48 +633,4 @@ _TOOL_EXHAUSTED_JSON = json.dumps({
 })
 
 
-# ── backward-compatible aliases ──────────────────────────────────
-BAI_CREDITS_PER_TOKEN: dict[str, tuple[float, float, float, float]] = {}
-_int_or_zero = lambda v: max(0, int(v)) if v is not None else 0
-_json_clone = lambda v: __import__("json").loads(__import__("json").dumps(v, ensure_ascii=True, default=str))
 
-
-
-def _percentile(values: list[float], p: float) -> float:
-    """Backward-compat percentile (no-op stub)."""
-    if not values:
-        return 0.0
-    idx = max(0, min(len(values) - 1, int(len(values) * p / 100.0)))
-    return sorted(values)[idx]
-
-
-# ── backward-compatible aliases for tests ────────────────────────
-def resolve_llm_provider(settings: object) -> str:
-    return "openai"
-
-def resolve_llm_api_key(settings: object, *, provider: str | None = None) -> str | None:
-    from siglab.config import SiglabConfig
-    if isinstance(settings, SiglabConfig):
-        return getattr(settings, "bai_api_key", None)
-    return None
-
-def resolve_llm_base_url(settings: object, *, provider: str | None = None) -> str:
-    from siglab.config import SiglabConfig
-    if isinstance(settings, SiglabConfig):
-        return str(getattr(settings, "bai_base_url", "https://api.openmodel.ai/v1"))
-    return "https://api.openmodel.ai/v1"
-
-def resolve_llm_model(
-    settings: object = None,
-    *,
-    provider: str | None = None,
-    thinking_override: str | None = None,
-) -> str:
-    return _OPENAI_MODEL
-
-ClaudeClient._parse_json = ClaudeClient._parse_j
-ClaudeClient._extract_choice = ClaudeClient._choice
-ClaudeClient._record_usage = lambda self, body: None
-ClaudeClient._compact_tool_payload = lambda self, payload: payload
-
-BAI_CREDITS_PER_TOKEN: dict[str, tuple[float, float, float, float]] = {}

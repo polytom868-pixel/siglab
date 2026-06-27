@@ -112,13 +112,11 @@ def _ctd(config: SiglabConfig) -> dict[str, Any]:
             "retries": config.sosovalue_retries,
             "api_key_configured": config.sosovalue_api_key_override is not None,
         },
-        "claude": {
-            "model": config.claude_model,
-            "base_url": config.claude_base_url,
-            "max_tokens": config.claude_max_tokens,
-            "temperature": config.claude_temperature,
+        "openai": {
+            "model": config.openmodel_model,
+            "base_url": config.openmodel_base_url,
             "timeout_s": config.claude_timeout_s,
-            "api_key_configured": config.claude_api_key is not None,
+            "api_key_configured": config.openmodel_api_key is not None,
         },
     }
 
@@ -1410,13 +1408,11 @@ async def get_config(request: Request) -> dict[str, Any]:
             "retries": c.sosovalue_retries,
             "api_key_configured": c.sosovalue_api_key_override is not None,
         },
-        "claude": {
-            "model": c.claude_model,
-            "base_url": c.claude_base_url,
-            "max_tokens": c.claude_max_tokens,
-            "temperature": c.claude_temperature,
+        "openai": {
+            "model": c.openmodel_model,
+            "base_url": c.openmodel_base_url,
             "timeout_s": c.claude_timeout_s,
-            "api_key_configured": c.claude_api_key is not None,
+            "api_key_configured": c.openmodel_api_key is not None,
         },
     }
 

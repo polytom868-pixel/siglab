@@ -1575,6 +1575,7 @@ class SoSoValueClient:
         headers = {
             "x-soso-api-key": str(self.api_key).strip(),
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         }
         url = self._url(spec.base_url, spec.path)
         try:
