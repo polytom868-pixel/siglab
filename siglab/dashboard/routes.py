@@ -1545,14 +1545,6 @@ def create_app() -> FastAPI:
             {"request": request},
         )
 
-    @app.get("/ops")
-    async def serve_ops(request: Request):
-        return request.app.state.dashboard.templates.TemplateResponse(
-            request,
-            "ops.html",
-            {"request": request},
-        )
-
     @app.get("/runs/{run_id:path}")
     async def serve_run_page(run_id: str, request: Request):
         from fastapi.responses import RedirectResponse

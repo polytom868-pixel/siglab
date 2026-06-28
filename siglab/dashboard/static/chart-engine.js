@@ -59,23 +59,6 @@ function renderChartLegend(container, items) {
     .join("");
 }
 
-function responsiveSvg(svgElement, drawCallback) {
-  if (!svgElement) return;
-  const resizeObserver = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      const width = entry.contentRect.width;
-      if (width > 0) {
-        drawCallback(width);
-      }
-    }
-  });
-  resizeObserver.observe(svgElement.parentElement || svgElement);
-  const parentWidth = (svgElement.parentElement || svgElement).clientWidth;
-  if (parentWidth > 0) {
-    drawCallback(parentWidth);
-  }
-  return resizeObserver;
-}
 
 
 
@@ -148,164 +131,7 @@ function pointMetricValue(point, metricKey) {
 
 /* ─── Dashboard Chart (moved from app.js) ─── */
 
-function renderChart(experiments) {
-  const svg = document.getElementById("chart");
-  if (!svg) return;
-  const tooltip = document.getElementById("tooltip");
-  if (tooltip) tooltip.classList.add("hidden");
-  svg.innerHTML = "";
 
-  if (experiments.length === 0) {
-    const selectedRun = selectedRunRow();
-    const message = selectedRun
-      ? "Awaiting first experiment."
-      : "No experiments recorded yet.";
-    svg.innerHTML = `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">${escapeHtml(message)}</text>`;
-    return;
-  }
-
-  const metricKey = selectedMetricKey();
-  const metricMeta = window.SigLabUi.METRIC_META[metricKey] || window.SigLabUi.METRIC_META.aggregate_score;
-  const container = svg.parentElement;
-  const width = Math.max(400, container?.clientWidth || 1200);
-  const height = 460;
-  const margin = { top: 24, right: 24, bottom: 48, left: 62 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-
-  const tracks = groupByTrack(experiments);
-  const values = experiments
-    .map((exp) => window.SigLabUi.metricValue(exp, metricKey))
-    .filter((value) => Number.isFinite(value));
-  if (!values.length) {
-    svg.innerHTML = `<text x="48" y="56" fill="#6b7f70" font-family="Inter, sans-serif">No finite values are available for ${escapeHtml(metricMeta.label)}.</text>`;
-    return;
-  }
-  let yMin = Math.min(...values);
-  let yMax = Math.max(...values);
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-  const yPadding = (yMax - yMin) * 0.12;
-  yMin -= yPadding;
-  yMax += yPadding;
-
-  const xMax = Math.max(...experiments.map((exp) => chartXValue(exp)), 1);
-  const xScale = (generation) =>
-    margin.left + ((generation - 1) / Math.max(xMax - 1, 1)) * plotWidth;
-  const yScale = (value) =>
-    margin.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight;
-
-  svg.appendChild(rectNode(0, 0, width, height, "transparent"));
-
-  for (let i = 0; i <= 5; i += 1) {
-    const value = yMin + ((yMax - yMin) * i) / 5;
-    const y = yScale(value);
-    svg.appendChild(lineNode(margin.left, y, width - margin.right, y, "rgba(255,255,255,0.04)", 1));
-    svg.appendChild(textNode(14, y + 4, metricMeta.formatter(value), "#6b7f70", "12"));
-  }
-
-  for (let i = 0; i <= Math.min(xMax - 1, 5); i += 1) {
-    const generation = 1 + Math.round((xMax - 1) * (i / Math.max(Math.min(xMax - 1, 5), 1)));
-    const x = xScale(generation);
-    svg.appendChild(lineNode(x, margin.top, x, height - margin.bottom, "rgba(255,255,255,0.02)", 1));
-    svg.appendChild(textNode(x - 8, height - 16, `${generation}`, "#6b7f70", "12"));
-  }
-
-  svg.appendChild(lineNode(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
-  svg.appendChild(lineNode(margin.left, margin.top, margin.left, height - margin.bottom, "rgba(255,255,255,0.08)", 1));
-
-  Object.entries(tracks).forEach(([track, rows]) => {
-    const color = window.SigLabUi.TRACK_COLORS[track] || "#4ade80";
-    let best = -Infinity;
-    const points = rows
-      .map((row) => {
-        const value = window.SigLabUi.metricValue(row, metricKey);
-        if (!Number.isFinite(value)) return null;
-        best = Math.max(best, value);
-        return `${xScale(chartXValue(row))},${yScale(best)}`;
-      })
-      .filter(Boolean);
-    if (!points.length) {
-      return;
-    }
-    const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    polyline.setAttribute("fill", "none");
-    polyline.setAttribute("stroke", color);
-    polyline.setAttribute("stroke-width", "2.5");
-    polyline.setAttribute("stroke-linecap", "round");
-    polyline.setAttribute("stroke-linejoin", "round");
-    polyline.setAttribute("points", points.join(" "));
-    svg.appendChild(polyline);
-
-    rows.forEach((row) => {
-      const value = window.SigLabUi.metricValue(row, metricKey);
-      if (!Number.isFinite(value)) {
-        return;
-      }
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", `${xScale(chartXValue(row))}`);
-      circle.setAttribute("cy", `${yScale(value)}`);
-      circle.setAttribute("r", row.deployd ? "9" : "5.5");
-      circle.setAttribute("fill", row.passed ? color : "rgba(255,255,255,0.12)");
-      circle.setAttribute("stroke", row.deployd ? "#fff" : "rgba(255,255,255,0.2)");
-      circle.setAttribute("stroke-width", row.deployd ? "2" : "1.2");
-      circle.setAttribute("aria-label", `${row.family} - ${metricMeta.formatter(window.SigLabUi.metricValue(row, metricKey))}`);
-      circle.style.cursor = "pointer";
-      circle.setAttribute("tabindex", "0");
-      circle.setAttribute("role", "button");
-      circle.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          circle.click();
-        }
-      });
-      circle.addEventListener("mouseenter", (event) => showTooltip(event, row, metricKey));
-      circle.addEventListener("mousemove", (event) => moveTooltip(event));
-      circle.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
-      circle.addEventListener("click", () => {
-        window.SigLabUi.state.selectedHash = row.spec_hash;
-        window.SigLabUi.renderTable(experiments);
-        window.SigLabUi.renderDetail(window.SigLabUi.state.selectedHash);
-      });
-      svg.appendChild(circle);
-    });
-  });
-
-  svg.appendChild(
-    textNode(
-      margin.left,
-      18,
-      `${metricMeta.label} by ${window.SigLabUi.state.selectedRunId ? "run order" : "generation"}`,
-      "#e2ebe5",
-      "14",
-      "600"
-    )
-  );
-}
-
-function showTooltip(event, row, metricKey) {
-  const tooltip = document.getElementById("tooltip");
-  const metricMeta = window.SigLabUi.METRIC_META[metricKey] || window.SigLabUi.METRIC_META.aggregate_score;
-  tooltip.innerHTML = `
-    <div class="meta">${escapeHtml(window.SigLabUi.TRACK_LABELS[row.track] || row.track)} &middot; ${escapeHtml(window.SigLabUi.runIterationLabel(row))} &middot; row ${escapeHtml(String(row.global_index || row.generation || "n/a"))}</div>
-    <strong>${escapeHtml(row.family)}</strong>
-    <div>${metricMeta.label}: ${escapeHtml(metricMeta.formatter(window.SigLabUi.window.SigLabUi.metricValue(row, metricKey)))}</div>
-    <div>Sharpe: ${escapeHtml(formatNumber(row.summary?.median_sharpe ?? 0, 3))}</div>
-    <div>CAGR: ${escapeHtml(formatPercent(row.summary?.median_cagr ?? 0))}</div>
-    <div>Selector Return: ${escapeHtml(formatPercent(row.summary?.median_total_return ?? 0))}</div>
-    <div>Pre-Audit Return: ${escapeHtml(formatPercent(row.summary?.pre_audit_canonical_total_return ?? 0))}</div>
-    <div>Validation / Audit: ${escapeHtml(window.SigLabUi.outOfSampleLabel(row.summary || {}))}</div>
-    <div>Tools: ${escapeHtml(String(row.tool_call_count || 0))}</div>
-    <div>Rolls: ${escapeHtml(String(row.roll_lifecycle?.roll_event_count || 0))}</div>
-    <div>Mode: ${escapeHtml(window.SigLabUi.modeCellLabel(row))}</div>
-    <div>Source: ${escapeHtml(row.source || "unknown")}</div>
-    <div class="${row.passed ? "status-pass" : "status-fail"}">${row.passed ? "Passed" : "Failed"}${row.deployd ? " / Deployed" : ""}</div>
-  `;
-  tooltip.classList.remove("hidden");
-  moveTooltip(event);
-}
 
 function moveTooltip(event, tooltipEl) {
   const tooltip = tooltipEl || document.getElementById("tooltip");
@@ -324,33 +150,8 @@ function moveTooltip(event, tooltipEl) {
   tooltip.style.top = `${top}px`;
 }
 
-function groupByTrack(experiments) {
-  return experiments.reduce((acc, experiment) => {
-    if (!acc[experiment.track]) acc[experiment.track] = [];
-    acc[experiment.track].push(experiment);
-    return acc;
-  }, {});
-}
 
-function bestExperiment(experiments, track, metricKey) {
-  const rows = experiments.filter(
-    (row) => row.track === track && Number.isFinite(window.SigLabUi.window.SigLabUi.metricValue(row, metricKey))
-  );
-  if (rows.length === 0) return null;
-  return rows.reduce((best, row) => {
-    if (!best) return row;
-    return window.SigLabUi.window.SigLabUi.metricValue(row, metricKey) > window.SigLabUi.window.SigLabUi.metricValue(best, metricKey)
-      ? row
-      : best;
-  }, null);
-}
 
-function chartXValue(row) {
-  if (window.SigLabUi.state.selectedRunId || window.SigLabUi.state.lockedRunId) {
-    return Number(row.run_position || row.run_iteration_number || row.generation || 1);
-  }
-  return Number(row.generation || 1);
-}
 
 
 
@@ -1019,17 +820,9 @@ function sumSeriesValues(series) {
   window.SigLabUi.lineNode = lineNode;
   window.SigLabUi.textNode = textNode;
   window.SigLabUi.renderChartLegend = renderChartLegend;
-  window.SigLabUi.responsiveSvg = responsiveSvg;
 
   window.SigLabUi.sparklineSvg = sparklineSvg;
   window.SigLabUi.pointMetricValue = pointMetricValue;
-
-  window.SigLabUi.renderChart = renderChart;
-  window.SigLabUi.showTooltip = showTooltip;
-  window.SigLabUi.moveTooltip = moveTooltip;
-  window.SigLabUi.groupByTrack = groupByTrack;
-  window.SigLabUi.bestExperiment = bestExperiment;
-  window.SigLabUi.chartXValue = chartXValue;
 
   window.SigLabUi.drawLineChart = drawLineChart;
   window.SigLabUi.renderHeatmap = renderHeatmap;

@@ -24,14 +24,13 @@
 
     <nav class="navbar" role="navigation">
       <a class="navbar-brand" href="/">
-        <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" loading="lazy" />
+        <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" />
         <span class="navbar-title">SoSoValue</span>
       </a>
       <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
       <div class="navbar-nav">
         <a class="navbar-link {% block nav_dashboard_active %}{% endblock %}" aria-label="View runs dashboard" href="/">Runs</a>
         {% block nav_extra_links %}{% endblock %}
-        <a class="navbar-link {% block nav_ops_active %}{% endblock %}" aria-label="View operations board" href="/ops">Ops</a>
       </div>
       <div class="navbar-status">
         <span class="status-dot"></span>
@@ -46,7 +45,6 @@
 
     <div id="errorToast" class="toast-error hidden" role="alert" aria-live="assertive"></div>
 
-    <script src="https://unpkg.com/alpinejs@3.13.3" defer></script>
 
     <script src="/constants.js"></script>
     <script src="/common.js"></script>
