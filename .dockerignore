@@ -1,9 +1,10 @@
 __pycache__/
 *.pyc
-.env*
 .git/
 .gitignore
 *.md
+!README.md
 tests/
 runs/
 data/cache/
+.env*
