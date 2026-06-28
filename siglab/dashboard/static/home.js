@@ -4,7 +4,6 @@ const HOME_STATE = {
   autoRefreshTimer: null,
   isRefreshing: false,
   lastUpdatedTimestamp: null,
-  _firstLoad: true,
 };
 
 const {
@@ -87,21 +86,6 @@ async function refresh() {
     }
     populateFamilyFilter(data.summary?.families || [], family, escapeHtml, familyCounts);
 
-    // Pre-populate filters from most recent run on first load
-    if (HOME_STATE._firstLoad && runs.length > 0 && track === "all" && family === "all") {
-      const mostRecent = runs[0];
-      const trackFilter = document.getElementById("trackFilter");
-      const familyFilter = document.getElementById("familyFilter");
-      if (trackFilter && mostRecent.track) {
-        trackFilter.value = mostRecent.track;
-      }
-      if (familyFilter && mostRecent.best_family) {
-        familyFilter.value = mostRecent.best_family;
-      }
-      HOME_STATE._firstLoad = false;
-    }
-
-    render();
   } catch (error) {
     if (error.name !== "AbortError") {
       showError(`Connection error: ${error.message}`);

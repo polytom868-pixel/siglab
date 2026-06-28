@@ -1485,8 +1485,9 @@ pre {
 }
 
 
-@media (prefers-color-scheme: light),
-       [data-theme="light"] {
+
+/* ─── Light theme (via OS preference or manual toggle) ─── */
+@media (prefers-color-scheme: light) {
   :root {
     --bg: #f4f7f5;
     --bg-subtle: #e8edea;
@@ -1503,16 +1504,41 @@ pre {
     --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.1);
     --glow-green: 0 0 80px rgba(74, 222, 128, 0.04);
   }
-
-  h1 {
-    color: var(--text);
+  h1 { color: var(--text); }
+  .navbar { background: rgba(255,255,255,0.85); border-bottom: 1px solid var(--border); }
+  @media (max-width: 1080px) {
+    .navbar-nav { background: var(--navbar-bg, rgba(255,255,255,0.95)); }
   }
+}
 
-  .navbar {
-    background: rgba(255, 255, 255, 0.85);
-    border-bottom: 1px solid var(--border);
+:root[data-theme="light"] {
+  --bg: #f4f7f5;
+  --bg-subtle: #e8edea;
+  --surface: #ffffff;
+  --surface-raised: #f9fbfa;
+  --surface-hover: #eef2ef;
+  --surface-glass: rgba(255, 255, 255, 0.82);
+  --text: #1a1d1b;
+  --text-secondary: #4a524d;
+  --muted: #7a8f7e;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-accent: rgba(74, 204, 130, 0.15);
+  --shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.1);
+  --glow-green: 0 0 80px rgba(74, 222, 128, 0.04);
+}
+
+:root[data-theme="light"] h1 { color: var(--text); }
+
+:root[data-theme="light"] .navbar {
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 1080px) {
+  :root[data-theme="light"] .navbar-nav {
+    background: var(--navbar-bg, rgba(255, 255, 255, 0.95));
   }
-
 }
 
 
