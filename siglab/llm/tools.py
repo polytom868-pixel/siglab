@@ -121,6 +121,7 @@ async def get_crypto_news(currency: str = "BTC", limit: int = 5) -> str:
         if not title:
             title = "Untitled"
         result.append(f"  - {title}")
+    return "\n".join(result)
 
 
 NEWS_TOOL = ResearchTool(
