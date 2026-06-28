@@ -1,4 +1,4 @@
 {
   "framework": "fastapi",
-  "installCommand": "pip install -r requirements-dashboard.txt"
+  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets"
 }

@@ -1,6 +1,10 @@
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# Ensure the project root is on sys.path so siglab/ is importable
+_root = str(Path(__file__).resolve().parent.parent)
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from siglab.dashboard.routes import app
 
