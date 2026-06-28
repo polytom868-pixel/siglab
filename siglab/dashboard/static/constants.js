@@ -4,13 +4,11 @@
 
 window.SigLabUi = window.SigLabUi || {};
 
-// Track labels
 window.SigLabUi.TRACK_LABELS = {
   trend_signals: "Directional Perps",
   yield_flows: "Systematic Carry",
 };
 
-// Metric metadata
 // formatters reference window.SigLabUi.formatNumber/formatPercent
 // which are set by common.js (loaded after this file)
 window.SigLabUi.METRIC_META = {
@@ -176,13 +174,11 @@ window.SigLabUi.FAMILY_GUIDE = {
   },
 };
 
-// Constants
 window.SigLabUi.DEFAULT_DISPLAY_CAPITAL_USD = 100000;
 window.SigLabUi.DISPLAY_CAPITAL_STORAGE_KEY = "siglab.displayCapitalUsd";
 window.SigLabUi.AUTO_REFRESH_INTERVAL_MS = 30000;
 window.SigLabUi.OPS_REFRESH_INTERVAL_MS = 60000;
 
-// API paths
 window.SigLabUi.API = {
   RUNS: "/api/runs",
   EXPERIMENTS: "/api/experiments",

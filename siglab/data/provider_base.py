@@ -54,7 +54,7 @@ class CircuitBreaker:
         return "open"
 
     def acquire(self, endpoint: str) -> None:
-        """Raise CircuitBreakerOpenError if circuit is open (non-blocking)."""
+        """Raise CircuitBreakerOpenError if circuit is open."""
         st = self.state(endpoint)
         if st == "open":
             remaining = self._open_until[endpoint] - time.monotonic()
@@ -81,7 +81,7 @@ class CircuitBreaker:
 
 
 class CircuitBreakerOpenError(RuntimeError):
-    """Raised when a request is blocked by an open circuit breaker."""
+    """Request blocked by an open circuit breaker."""
 
     def __init__(self, endpoint: str, remaining_s: float) -> None:
         super().__init__(
@@ -108,7 +108,6 @@ class DataProvider(ABC):
         base = min(2.0, 0.25 * 2**attempt)
         return base + random.uniform(0.0, base * 0.25)
 
-    # --- Metrics ---
 
     def _metrics_for(self, endpoint: str) -> _Metrics:
         if endpoint not in self._metrics_store:
@@ -160,14 +159,13 @@ class DataProvider(ABC):
             "endpoints": endpoints,
         }
 
-    # --- Lifecycle ---
 
     async def close(self) -> None:
         """Release resources. Subclasses with HTTP clients should override and call super()."""
 
 
 def _percentile(sorted_values: list[float], p: int) -> float | None:
-    """Compute the p-th percentile from a sorted list."""
+    """Percentile from a sorted list."""
     if not sorted_values:
         return None
     k = (p / 100.0) * (len(sorted_values) - 1)

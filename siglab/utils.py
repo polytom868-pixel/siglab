@@ -44,7 +44,6 @@ def safe_float(
 
 
 def int_or_zero(value: str | int | None) -> int:
-    """Convert value to non-negative int. Returns 0 on failure or negative."""
     if value is None:
         return 0
     try:
@@ -63,7 +62,6 @@ def feature_hash(features: list[str], length: int = 16) -> str:
 
 
 def short_hash(payload: str, length: int = 16) -> str:
-    """Truncated SHA-256 hex digest."""
     return _sha256(payload.encode("utf-8")).hexdigest()[:length]
 
 
@@ -299,7 +297,6 @@ STALE_THRESHOLD_SECONDS = 7 * 24 * 3600
 
 
 def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
-    """Load all .npy session files and extract equity curves."""
     npy_files = sorted(sessions_dir.glob("*.npy"))
     curves: list[tuple[str, np.ndarray]] = []
     for npy_file in npy_files:
@@ -327,7 +324,6 @@ def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
 
 
 def empty_risk_response() -> dict[str, Any]:
-    """Return an empty risk response with all fields set to None/empty."""
     return {
         "composite_score": None,
         "max_drawdown": None,
@@ -348,7 +344,6 @@ def compute_risk_metrics(
     *,
     periods_per_year: int = 365,
 ) -> dict[str, Any]:
-    """Compute full risk metrics from session data."""
     curves = load_equity_curves(sessions_dir)
     if not curves:
         return empty_risk_response()

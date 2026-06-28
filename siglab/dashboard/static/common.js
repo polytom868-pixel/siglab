@@ -422,7 +422,6 @@
   });
 })();
 
-/* ─── Mobile Hamburger Toggle ─── */
 document.addEventListener("click", (event) => {
   const toggle = document.getElementById("navbarToggle");
   const nav = document.querySelector(".navbar-nav");
@@ -432,7 +431,6 @@ document.addEventListener("click", (event) => {
   }
 });
 
-/* ─── Global Keyboard Shortcuts ─── */
 document.addEventListener("keydown", (e) => {
   // Don't handle shortcuts when in an input
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;

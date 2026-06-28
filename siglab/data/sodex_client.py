@@ -66,8 +66,7 @@ class SoDEXError(RuntimeError):
 
 
 class SoDEXWeightLimitError(SoDEXError):
-    """SoDEX weight budget exhausted or exceeded."""
-
+    pass
 
 @dataclass
 class SoDEXWeightMetrics:
@@ -161,26 +160,18 @@ class SoDEXWeightScheduler:
             await result
 
 
-# ============================================================
-# SoDEX error types
-# ============================================================
 
 class SoDEXRateLimitError(SoDEXError):
-    """SoDEX rejected the request due to rate limits."""
-
+    pass
 
 class SoDEXTransportError(SoDEXError):
-    """Network, DNS, TLS, timeout, or socket failure."""
-
+    pass
 
 class SoDEXUpstreamError(SoDEXError):
-    """SoDEX returned a non-success HTTP or business response."""
-
+    pass
 
 class SoDEXFormatError(SoDEXError):
-    """SoDEX returned a malformed response envelope."""
-
-
+    pass
 # ============================================================
 # SoDEX Public Perps Client (merged from data/sodex_client.py)
 # ============================================================
@@ -281,7 +272,6 @@ class SoDEXPublicPerpsClient(DataProvider):
             await asyncio.sleep(0.25 * 2**attempt)
         raise last_error or SoDEXTransportError(f"{endpoint} failed")
 
-    # --- Public data endpoints ---
 
     async def _list(
         self,

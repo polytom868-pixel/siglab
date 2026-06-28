@@ -1,4 +1,3 @@
-"""LLM tools for autonomous crypto research."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -7,14 +6,12 @@ from typing import Any
 
 @dataclass
 class ResearchTool:
-    """A tool the LLM can call for research."""
     name: str
     description: str
     parameters: dict[str, Any]  # JSON Schema format
-    handler: Callable[..., Awaitable[str]]  # Returns text summary
+    handler: Callable[..., Awaitable[str]]
 
 
-# Tool: Get ETF inflow data
 async def get_etf_flow(etf_type: str = "us-btc-spot") -> str:
     """Get latest ETF inflow/outflow data. etf_type: us-btc-spot or us-eth-spot."""
     from siglab.data.sosovalue_client import SoSoValueClient
@@ -54,9 +51,8 @@ ETF_FLOW_TOOL = ResearchTool(
 )
 
 
-# Tool: Get SoDEX market data
 async def get_market_data(symbol: str = "BTC-USD") -> str:
-    """Get current market data for a perpetual symbol from SoDEX."""
+
     from siglab.data.sodex_client import SoDEXPublicPerpsClient
 
     client = SoDEXPublicPerpsClient()
@@ -90,9 +86,8 @@ MARKET_DATA_TOOL = ResearchTool(
 )
 
 
-# Tool: Get SoSoValue news
 async def get_crypto_news(currency: str = "BTC", limit: int = 5) -> str:
-    """Get latest crypto news for a specific currency."""
+
     from siglab.data.sosovalue_client import SoSoValueClient
     from siglab.config import load_settings
 
@@ -139,9 +134,8 @@ NEWS_TOOL = ResearchTool(
 )
 
 
-# Tool: Get funding rate history
 async def get_funding_rate(symbol: str = "BTC-USD", days: int = 7) -> str:
-    """Get historical funding rate data for a perpetual symbol from SoDEX."""
+
     from siglab.data.sodex_client import SoDEXPublicPerpsClient
 
     client = SoDEXPublicPerpsClient()
@@ -182,9 +176,8 @@ FUNDING_RATE_TOOL = ResearchTool(
 )
 
 
-# Tool: Search crypto news
 async def search_crypto_news(keyword: str, page_size: int = 5) -> str:
-    """Search crypto news by keyword from SoSoValue."""
+
     from siglab.data.sosovalue_client import SoSoValueClient
     from siglab.config import load_settings
 
@@ -234,7 +227,6 @@ SEARCH_NEWS_TOOL = ResearchTool(
 )
 
 
-# All tools registry
 RESEARCH_TOOLS: list[ResearchTool] = [ETF_FLOW_TOOL, MARKET_DATA_TOOL, NEWS_TOOL, FUNDING_RATE_TOOL, SEARCH_NEWS_TOOL]
 
 

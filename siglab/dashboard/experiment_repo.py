@@ -1,5 +1,3 @@
-"""SQL and file I/O utilities for the dashboard."""
-
 from __future__ import annotations
 
 import json
@@ -18,7 +16,6 @@ def raw_experiments(
     track: str | None = None,
     family: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Query the ancestry DB and return raw experiment rows."""
     path = Path(db_path)
     if not path.exists():
         return []
@@ -73,13 +70,11 @@ def raw_experiments(
         pass
     return rows
 
-
 def raw_runs(
     db_path: str | Path,
     track: str | None = None,
     family: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Group raw experiments into run summaries."""
     rows = raw_experiments(db_path, track=track, family=family)
     runs_map: dict[str, dict[str, Any]] = {}
     for row in rows:

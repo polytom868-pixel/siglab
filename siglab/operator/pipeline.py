@@ -1,4 +1,3 @@
-"""OperatorPipeline — research-to-decision production pipeline."""
 
 from __future__ import annotations
 
@@ -21,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RiskReport:
-    """Outcome of a risk-check cycle."""
 
     passed: bool
     reasons: list[str] = field(default_factory=list)
@@ -30,7 +28,6 @@ class RiskReport:
 
 @dataclass
 class TradeSignal:
-    """A trade decision produced from evidence evaluation."""
 
     direction: str
     symbol: str
@@ -42,7 +39,6 @@ class TradeSignal:
 
 @dataclass
 class Position:
-    """A planned or executed position."""
 
     symbol: str
     side: str
@@ -69,7 +65,6 @@ class OperatorPipeline:
         self,
         evidence_records: list[dict[str, Any]],
     ) -> TradeSignal:
-        """Aggregate raw evidence records into a consensus trade signal."""
         if not evidence_records:
             return TradeSignal(
                 direction="HOLD",
@@ -93,7 +88,6 @@ class OperatorPipeline:
                 continue
             relation = str(record.get("relation", "")).strip().lower()
             value = str(record.get("value", "")).strip().lower()
-            # Infer signal direction from relation and value
             if "inflow" in relation or "buy" in relation or "positive" in relation:
                 signal_dir = "BUY"
             elif "outflow" in relation or "sell" in relation or "negative" in relation:
@@ -148,7 +142,6 @@ class OperatorPipeline:
         portfolio_value: float = 100000.0,
         allocation: dict[str, float] | None = None,
     ) -> RiskReport:
-        """Run risk checks before execution."""
         reasons: list[str] = []
         if signal.direction == "HOLD":
             return RiskReport(
@@ -205,7 +198,6 @@ class OperatorPipeline:
         *,
         mark_price: float | None = None,
     ) -> dict[str, Any]:
-        """Convert a trade signal into a paper order."""
         if signal.direction == "HOLD":
             return {"status": "noop", "reason": "HOLD signal — no order placed"}
         side = "BUY" if signal.direction == "BUY" else "SELL"

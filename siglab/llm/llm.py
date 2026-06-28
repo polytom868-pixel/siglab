@@ -522,7 +522,6 @@ class ClaudeClient:
             tool_calls = message.get("tool_calls") or []
 
             if not tool_calls or finish_reason == "stop":
-                # No more tool calls — this is the final answer
                 trace["tool_rounds_used"] = round_count
                 trace["final_content_preview"] = _compact_scalar(content[:2200])
                 trace["response_finish_reason"] = finish_reason
@@ -530,10 +529,8 @@ class ClaudeClient:
                     self.last_exchange["final_content"] = content
                 return content
 
-            # Append the assistant message with tool_calls to the conversation
             msgs.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
 
-            # Execute each tool call and append the result
             for tc in tool_calls:
                 tool_name = tc.get("function", {}).get("name", "")
                 tool_args_str = tc.get("function", {}).get("arguments", "{}")
@@ -557,7 +554,6 @@ class ClaudeClient:
 
             round_count += 1
 
-        # Fell through max rounds — return last partial content
         trace["tool_rounds_used"] = round_count
         trace["final_content_preview"] = _compact_scalar("(max rounds reached)")
         trace["response_finish_reason"] = "max_tool_rounds"

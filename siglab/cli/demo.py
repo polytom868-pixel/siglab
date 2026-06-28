@@ -1,5 +1,3 @@
-"""Demo subcommands: demo run, demo manifest."""
-
 from __future__ import annotations
 
 import argparse
@@ -30,7 +28,6 @@ from siglab.utils import resolve_path_from_root
 def add_subparser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    """Register nested demo subcommands: run, manifest."""
     demo_parser = subparsers.add_parser("demo", help="Demo commands: run, manifest")
     demo_subparsers = demo_parser.add_subparsers(dest="demo_command", required=True)
     run_parser = demo_subparsers.add_parser(
@@ -187,7 +184,6 @@ def run_demo_run(args: argparse.Namespace) -> None:
 
 
 def _demo_run_html(payload: dict[str, Any]) -> str:
-    """Minimal HTML page displaying the demo-run summary payload."""
     safe_title = html.escape(str(payload.get("summary", "SigLab Demo Run")))
     rows = ""
     for key, value in payload.items():

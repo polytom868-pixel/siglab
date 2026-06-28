@@ -1,5 +1,3 @@
-"""Shared utility functions for CLI subcommand modules."""
-
 from __future__ import annotations
 
 import logging
@@ -58,7 +56,6 @@ class _Mutator(Protocol):
 
 
 def latest_path(directory: Path, pattern: str) -> Path | None:
-    """Find the most recently modified file matching a glob pattern."""
     matches = sorted(directory.glob(pattern), key=lambda item: item.stat().st_mtime)
     return matches[-1] if matches else None
 
@@ -370,7 +367,6 @@ def display_deployment_record(
 
 
 def display_path_static(value: str | Path | None, root_dir: Path) -> str:
-    """Resolve a path for display, relative to root_dir if possible."""
     from siglab.utils import display_path as _dp
 
     return cast(str, _dp(value, root_dir=root_dir))
@@ -637,7 +633,6 @@ def build_market_report(
     etf_entity = f"us-{entity_upper.lower()}-spot"
     quote_entity = f"{entity_upper}-USD"
 
-    # Single pass through soso_rows: group records by (entity, relation)
     flow_rows: list[dict[str, Any]] = []
     assets_rows: list[dict[str, Any]] = []
     news_rows: list[dict[str, Any]] = []
@@ -661,7 +656,6 @@ def build_market_report(
         reverse=True,
     )[:5]
 
-    # Single pass through sodex_rows: collect bid and ask rows
     bid_rows: list[dict[str, Any]] = []
     ask_rows: list[dict[str, Any]] = []
     for row in sodex_rows:
@@ -886,7 +880,6 @@ def market_report_html(report: dict[str, Any]) -> str:
 
 
 def _record_sort_key_internal(row: dict[str, Any]) -> tuple[int, float, str]:
-    """Internal sort key for market report news rows."""
     timestamp = _record_timestamp(row)
     if timestamp is None:
         return (0, 0.0, str(row.get("evidence_path") or ""))

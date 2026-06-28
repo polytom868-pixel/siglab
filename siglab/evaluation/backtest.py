@@ -1,4 +1,3 @@
-"""Backtesting engine for research evaluation."""
 
 from __future__ import annotations
 
@@ -7,8 +6,8 @@ import math
 import pandas as pd
 
 
+
 def convert_to_spot(prices: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Convert perp prices to spot-equivalent with zero funding."""
     funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
     return (prices.copy(), funding)
 

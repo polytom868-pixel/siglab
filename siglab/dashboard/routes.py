@@ -1231,7 +1231,6 @@ async def api_search(
     dashboard = request.app.state.dashboard
     results: list[dict[str, Any]] = []
 
-    # Search runs
     runs_data = dashboard.runs_payload()
     for run in runs_data.get("runs", []):
         run_id = str(run.get("run_session_id", ""))
@@ -1252,7 +1251,6 @@ async def api_search(
                 }
             )
 
-    # Search experiments
     experiments_data = dashboard.experiments_payload()
     for exp in experiments_data.get("experiments", []):
         spec_hash = str(exp.get("spec_hash", ""))
@@ -1271,7 +1269,6 @@ async def api_search(
                 }
             )
 
-    # Search actions (static list)
     actions = [
         {
             "title": "View Ops Board",
@@ -1341,7 +1338,6 @@ async def api_search(
                 }
             )
 
-    # Limit results
     results = results[:limit]
 
     return {"results": results, "query": q, "count": len(results)}

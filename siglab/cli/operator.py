@@ -1,5 +1,3 @@
-"""Operator subcommand: run the OperatorPipeline from the CLI."""
-
 from __future__ import annotations
 
 import argparse

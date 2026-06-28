@@ -46,7 +46,6 @@ def compute_funding_cost(
     mark_price: float,
     funding_rate: float,
 ) -> float:
-    """Compute funding cost for a position."""
     position_value = abs(quantity) * mark_price
     if quantity > 0:
         return -position_value * funding_rate
@@ -60,7 +59,6 @@ def compute_trade_pnl(
     prior_entry: float,
     side: str,
 ) -> float:
-    """Compute realised PnL contribution of a single filled order."""
     if prior_position == 0:
         return 0.0
     if prior_position > 0 and side == "SELL":
@@ -79,7 +77,6 @@ def update_position(
     prior_qty: float,
     prior_entry: float,
 ) -> tuple[float, float]:
-    """Return (new_qty, new_entry) after applying a fill."""
     if side == "BUY":
         new_qty = prior_qty + quantity
     else:
@@ -104,7 +101,6 @@ def calculate_fill_price(
     limit_price: float,
     order_type: str = "LIMIT",
 ) -> tuple[float, bool]:
-    """Determine if a kline crosses the order and compute fill price."""
     if order_type == "MARKET":
         return (kline_close, True)
     if side == "BUY" and kline_low <= limit_price:
@@ -122,7 +118,6 @@ def compute_avg_entry(
     add_qty: float,
     add_price: float,
 ) -> float:
-    """Compute the new average entry price after adding to an existing position."""
     new_qty = prior_qty + add_qty
     if abs(new_qty) < 1e-12:
         return 0.0
@@ -931,7 +926,6 @@ class SoDEXPaperPerpsClient:
     _save_session_to_disk = _save_ss
 
 
-# Runtime classes
 StatusDict = dict[str, Any]
 StatusTuple = tuple[bool, str]
 

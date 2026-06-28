@@ -391,7 +391,7 @@ def _fraction_while_flat(
     sem2d: np.ndarray[tuple[int, int], np.dtype[np.bool_]],
     fm1: object,
 ) -> float | None:
-    """Mean of any-axis-1 per row, restricted to rows where fm1 is True."""
+
     if hasattr(fm1, "to_numpy"):
         fm1_arr: np.ndarray = fm1.to_numpy()  # type: ignore[attr-defined]
     else:

@@ -4,7 +4,6 @@
 window.SigLabUi = window.SigLabUi || {};
 
 ;(function chartEngine() {
-// Pull in dependencies from common.js / constants.js
 const { formatNumber, formatPercent, escapeHtml, formatDateTime, buildAxisTicks, sampleSeries, hasFiniteSeriesValues, metricSeries, formatAxisDateTime, selectedMetricKey } = window.SigLabUi;
 
 /* ─── SVG Helpers (moved from common.js) ─── */
@@ -1014,9 +1013,7 @@ function sumSeriesValues(series) {
 
 
 
-/* ─── Export to SigLabUi ─── */
 ;(function exportChartEngine() {
-  // SVG helpers
   window.SigLabUi.emptyChartText = emptyChartText;
   window.SigLabUi.rectNode = rectNode;
   window.SigLabUi.lineNode = lineNode;
@@ -1024,11 +1021,9 @@ function sumSeriesValues(series) {
   window.SigLabUi.renderChartLegend = renderChartLegend;
   window.SigLabUi.responsiveSvg = responsiveSvg;
 
-  // Sparkline
   window.SigLabUi.sparklineSvg = sparklineSvg;
   window.SigLabUi.pointMetricValue = pointMetricValue;
 
-  // Dashboard chart
   window.SigLabUi.renderChart = renderChart;
   window.SigLabUi.showTooltip = showTooltip;
   window.SigLabUi.moveTooltip = moveTooltip;
@@ -1036,7 +1031,6 @@ function sumSeriesValues(series) {
   window.SigLabUi.bestExperiment = bestExperiment;
   window.SigLabUi.chartXValue = chartXValue;
 
-  // Experiment charts
   window.SigLabUi.drawLineChart = drawLineChart;
   window.SigLabUi.renderHeatmap = renderHeatmap;
   window.SigLabUi.renderAssetActionCharts = renderAssetActionCharts;
@@ -1058,5 +1052,4 @@ function sumSeriesValues(series) {
   window.SigLabUi.sumSeriesValues = sumSeriesValues;
 })();
 
-// close outer IIFE
 })();

@@ -1,6 +1,5 @@
 
 :root {
-  /* ─── Surface colors ─── */
   --bg: #080c0a;
   --bg-subtle: #0d1210;
   --surface: #111916;
@@ -8,16 +7,13 @@
   --surface-hover: #1a2820;
   --surface-glass: rgba(18, 28, 22, 0.78);
 
-  /* ─── Text colors ─── */
   --text: #e2ebe5;
   --text-secondary: #a3b5a8;
   --muted: #7a8f7e;
 
-  /* ─── Border colors ─── */
   --border: rgba(255, 255, 255, 0.06);
   --border-accent: rgba(78, 204, 130, 0.12);
 
-  /* ─── Accent colors ─── */
   --green: #4ade80;
   --green-dim: #2dd469;
   --green-soft: rgba(74, 222, 128, 0.10);
@@ -30,7 +26,6 @@
   --trade-sell: #9fb4a5;
   --trade-cover: #60a5fa;
 
-  /* ─── Shadows ─── */
   --shadow: 0 4px 32px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.5);
   --glow-green: 0 0 80px rgba(74, 222, 128, 0.06);
@@ -56,7 +51,6 @@
   color: #fff;
 }
 
-/* ─── Custom Scrollbar ─── */
 
 .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -86,7 +80,6 @@ body::before {
   z-index: 0;
 }
 
-/* ─── Skip Link ─── */
 
 .skip-link {
   position: absolute;
@@ -106,7 +99,6 @@ body::before {
   top: 8px;
 }
 
-/* ─── Navbar ─── */
 
 .navbar {
   position: sticky;
@@ -231,7 +223,6 @@ body::before {
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* ─── Layout ─── */
 
 .page-shell {
   position: relative;
@@ -241,7 +232,6 @@ body::before {
   padding: 32px 28px 64px;
 }
 
-/* ─── Hero ─── */
 
 .hero {
   display: flex;
@@ -284,7 +274,6 @@ h2 {
   margin-bottom: 8px;
 }
 
-/* ─── Operator Board ─── */
 
 .ops-terminal {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -468,7 +457,6 @@ h2 {
   content: "⚠ ";
 }
 
-/* ─── Controls ─── */
 
 .hero-controls {
   display: flex;
@@ -502,7 +490,6 @@ label {
   color: var(--muted);
 }
 
-/* Shared form-widget base */
 button, .button-link, select, input[type="text"], input[type="number"] {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -615,7 +602,6 @@ input[type="checkbox"] {
   accent-color: var(--green);
 }
 
-/* ─── Panels ─── */
 
 .panel {
   background: var(--surface);
@@ -655,7 +641,6 @@ input[type="checkbox"] {
   width: 100%;
 }
 
-/* ─── Summary Cards ─── */
 
 .summary-grid,
 .content-grid {
@@ -744,7 +729,6 @@ input[type="checkbox"] {
   line-height: 1.5;
 }
 
-/* ─── Run Cards ─── */
 
 .run-grid {
   display: grid;
@@ -939,7 +923,6 @@ input[type="checkbox"] {
   margin-top: 6px;
 }
 
-/* ─── Family Guide ─── */
 
 
 .family-guide-grid {
@@ -990,7 +973,6 @@ input[type="checkbox"] {
   font-size: var(--type-label);
 }
 
-/* ─── Chart ─── */
 
 .chart-panel {
   margin-bottom: 20px;
@@ -1063,7 +1045,6 @@ input[type="checkbox"] {
   overflow: visible;
 }
 
-/* ─── Tooltip ─── */
 
 .tooltip {
   position: absolute;
@@ -1103,7 +1084,6 @@ input[type="checkbox"] {
   color: #fff;
 }
 
-/* ─── Table ─── */
 
 .table-wrap {
   max-height: 480px;
@@ -1155,7 +1135,6 @@ tbody tr.selected {
   border-left: 2px solid var(--green);
 }
 
-/* ─── Detail Panel ─── */
 
 .detail-panel {
   display: flex;
@@ -1202,7 +1181,6 @@ tbody tr.selected {
   font-weight: 400;
 }
 
-/* ─── Detail Hero Block ─── */
 
 .detail-hero-block {
   padding: 16px 20px;
@@ -1283,7 +1261,6 @@ tbody tr.selected {
   font-size: var(--type-label);
 }
 
-/* ─── Pills ─── */
 
 .pill-row {
   display: flex;
@@ -1323,7 +1300,6 @@ tbody tr.selected {
   border-color: var(--border);
 }
 
-/* ─── Mono / Code ─── */
 
 .mono {
   font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
@@ -1346,7 +1322,6 @@ pre {
   overflow: auto;
 }
 
-/* ─── Trace ─── */
 
 .trace-list {
   display: grid;
@@ -1392,7 +1367,6 @@ pre {
   margin-top: 12px;
 }
 
-/* ─── Experiment Page ─── */
 
 .experiment-grid {
   margin-bottom: 20px;
@@ -1468,7 +1442,6 @@ pre {
   border-radius: 2px;
 }
 
-/* ─── Heatmap ─── */
 
 .heatmap-shell {
   padding: 16px 20px 20px;
@@ -1496,7 +1469,6 @@ pre {
   min-width: 0;
 }
 
-/* ─── Status ─── */
 
 .status-pass,
 .status-fail,
@@ -1505,7 +1477,6 @@ pre {
 .status-fail { color: var(--fail); }
 .status-pending { color: var(--amber); }
 
-/* ─── Empty States ─── */
 
 .empty-state {
   color: var(--muted);
@@ -1513,7 +1484,6 @@ pre {
   padding: 8px 0;
 }
 
-/* ─── Skeleton Loaders ─── */
 
 @keyframes shimmer {
   0% { background-position: -400px 0; }
@@ -1564,7 +1534,6 @@ pre {
   }
 }
 
-/* ─── CLS Mitigation ─── */
 
 #summaryCards, #runCards, #experimentsTable, #detailContent,
 #experimentSummary, #experimentSnapshot, #deploymentPanel,
@@ -1592,7 +1561,6 @@ pre {
   will-change: transform; /* hint browser to composite these layers */
 }
 
-/* ─── Error Toast ─── */
 
 .toast-error {
   position: fixed;
@@ -1632,7 +1600,6 @@ pre {
 .toast-retry-btn:hover {
   background: rgba(255, 255, 255, 0.3);
 }
-/* ─── Responsive ─── */
 
 @media (max-width: 1080px) {
   .hero,
@@ -1707,7 +1674,6 @@ pre {
 
 }
 
-/* ─── Loading Indicator ─── */
 
 [data-loading="true"] {
   opacity: 0.7;
@@ -1718,7 +1684,6 @@ pre {
   display: inline-block;
 }
 
-/* ─── Light Mode ─── */
 
 @media (prefers-color-scheme: light),
        [data-theme="light"] {
@@ -1766,7 +1731,6 @@ pre {
   }
 }
 
-/* ─── Responsive SVG Charts ─── */
 
 .chart-wrap svg,
 .chart-wrap object {
@@ -1784,7 +1748,6 @@ pre {
 
 
 
-/* ─── Focus Visible ─── */
 
 /* Only show focus ring for keyboard users */
 :focus-visible {
@@ -1806,13 +1769,11 @@ tr[role="button"]:focus-visible,
   outline-offset: 2px;
 }
 
-/* Detail panel heading focus */
 .detail-block h3:focus {
   outline: none;
   color: var(--green);
 }
 
-/* ─── Print Styles ─── */
 @media print {
   .navbar, .navbar-status, .hero-controls,
   #refreshButton, .checkbox, button, .button-link,
@@ -1862,7 +1823,6 @@ tr[role="button"]:focus-visible,
   }
 }
 
-/* ─── Onboarding Banner ─── */
 
 .onboarding-banner {
   position: fixed;
@@ -1939,7 +1899,6 @@ tr[role="button"]:focus-visible,
   }
 }
 
-/* ─── Trade Table Pagination ─── */
 
 .pagination-controls {
   display: flex;

@@ -1,5 +1,3 @@
-"""Dashboard subcommands: dashboard-start."""
-
 from __future__ import annotations
 
 import argparse
@@ -66,7 +64,6 @@ def add_subparser(
 
 
 def run_dashboard_start(args: argparse.Namespace) -> None:
-    """Start the FastAPI dashboard server."""
     import uvicorn
 
     host = str(args.host)
@@ -88,7 +85,6 @@ def run_dashboard(args: argparse.Namespace) -> None:
 
 
 def run_dashboard_stop(args: argparse.Namespace) -> None:
-    """Stop the running FastAPI dashboard on the specified port."""
     import os as _os
     import signal as _signal
 

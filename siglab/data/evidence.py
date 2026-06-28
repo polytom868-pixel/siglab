@@ -115,7 +115,7 @@ class EvidenceStore:
                             obs_dt = datetime.fromisoformat(obs_raw)
                             obs_age = datetime.now(UTC) - obs_dt
                             if obs_age.days <= 180:
-                                continue  # stale live data, skip
+                                continue
                         else:
                             continue
                 except (ValueError, TypeError):

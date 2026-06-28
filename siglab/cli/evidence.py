@@ -1,4 +1,3 @@
-"""evidence-build subcommand: fetch SoSoValue + SoDEX evidence and write JSONL files."""
 from __future__ import annotations
 import argparse
 import asyncio
@@ -49,10 +48,6 @@ def run_evidence_build(args: argparse.Namespace) -> None:
 async def _collect_evidence(
     settings: SiglabConfig, output_dir: Path
 ) -> dict[str, Any]:
-    """Shared evidence collection: cleanup + fetch SoSoValue + SoDEX.
-
-    Returns dict with keys: observed_at, ssv_path, sodex_path, errors, written_paths.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
     for p in output_dir.glob("sosovalue_evidence*.jsonl"):
         p.unlink()
@@ -68,7 +63,6 @@ async def _collect_evidence(
     errors: list[str] = []
     written_paths: list[Path] = []
     ssv_path = output_dir / "sosovalue.jsonl"
-    # --- SoSoValue evidence ---
     ssv_store = EvidenceStore(ssv_path)
     if settings.sosovalue_api_key_override:
         try:
@@ -101,7 +95,6 @@ async def _collect_evidence(
             written_paths.append(ssv_path)
         except Exception as exc:
             errors.append(f"SoSoValue evidence failed: {exc}")
-    # --- SoDEX evidence ---
     sodex_path = output_dir / "sodex_rest.jsonl"
     sodex_store = EvidenceStore(sodex_path)
     sodex_succeeded = False

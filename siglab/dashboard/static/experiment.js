@@ -97,7 +97,6 @@ function renderScaledValues() {
   if (!run) return;
   const outcome = canonicalOutcomeDecomposition(run);
   const displayCapital = getDisplayCapitalUsd();
-  // Update outcome summary cards if present (indices 6-8: Price Outcome, Carry Outcome, Tx Cost)
   const outcomeCards = document.querySelectorAll(".summary-card");
   if (outcomeCards.length >= 9) {
     outcomeCards[6].querySelector(".value").textContent = outcome ? formatPercent(outcome.priceOutcome) : "n/a";
@@ -252,7 +251,6 @@ function validateDeploymentInput() {
     return "Wallet label must contain only letters, digits, and underscores.";
   }
 
-  // job_name: max 64 chars, alphanumeric + hyphens
   if (jobName.length > 64) {
     return "Job name must be at most 64 characters.";
   }
@@ -284,7 +282,6 @@ async function submitDeployment(specHash) {
     resultNode.textContent = "Promoting...";
   }
 
-  // Client-side input validation before building the payload
   const validationError = validateDeploymentInput();
   if (validationError) {
     if (resultNode) {
@@ -683,7 +680,6 @@ function initSectionPersistence() {
 
   const saved = loadSectionState();
 
-  // Restore saved state
   sections.forEach((section, i) => {
     const key = `section_${i}`;
     if (key in saved) {
@@ -691,7 +687,6 @@ function initSectionPersistence() {
     }
   });
 
-  // Save on toggle
   sections.forEach((section, i) => {
     section.addEventListener("toggle", () => {
       const state = loadSectionState();
@@ -701,7 +696,6 @@ function initSectionPersistence() {
   });
 }
 
-// Initialize on DOMContentLoaded
 document.addEventListener("DOMContentLoaded", initSectionPersistence);
 
 // ─── Keyboard Shortcut: E to toggle all sections ──────────────────
@@ -713,7 +707,6 @@ document.addEventListener("keydown", (e) => {
     if (!sections.length) return;
     const allOpen = Array.from(sections).every(s => s.open);
     sections.forEach(s => { s.open = !allOpen; });
-    // Save new state
     const state = {};
     sections.forEach((s, i) => { state[`section_${i}`] = s.open; });
     saveSectionState(state);
@@ -721,5 +714,4 @@ document.addEventListener("keydown", (e) => {
 });
 
 
-// close IIFE
 })();

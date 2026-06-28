@@ -125,7 +125,6 @@ class SoSoValueClient(DataProvider):
             await self._client.aclose()
         await super().close()
 
-    # --- Public API methods ---
 
     async def request(self, spec: SoSoValueRequestSpec) -> dict[str, Any]:
         if not self.is_configured:
@@ -150,11 +149,9 @@ class SoSoValueClient(DataProvider):
             started = time.perf_counter()
             try:
                 async with self._semaphore:
-                    # Check circuit breaker before the HTTP call
                     self._circuit_breaker.acquire(spec.name)
                     payload = await self._single_http_attempt(spec)
                 elapsed_ms = (time.perf_counter() - started) * 1000.0
-                # Record success
                 m2 = self._metrics_for(spec.name)
                 m2.latencies_ms.append(elapsed_ms)
                 m2.successes += 1
@@ -339,7 +336,6 @@ class SoSoValueClient(DataProvider):
         return rows
 
 
-    # --- ETF methods ---
 
     async def etf_historical_inflow(
         self,
@@ -366,7 +362,6 @@ class SoSoValueClient(DataProvider):
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
 
-    # --- Currency methods ---
 
     async def currency_market_snapshot(self, currency_id: int) -> dict[str, Any]:
         spec = SoSoValueRequestSpec(
@@ -378,7 +373,6 @@ class SoSoValueClient(DataProvider):
         )
         return await self.request(spec)
 
-    # --- ETF list/methods ---
 
     async def etf_list(
         self,
@@ -481,7 +475,6 @@ class SoSoValueClient(DataProvider):
         return self._rows_from_data(payload.get("data"), spec)
 
 
-    # --- Internal helpers ---
 
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:

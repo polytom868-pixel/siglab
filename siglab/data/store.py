@@ -103,7 +103,7 @@ class ParquetLake:
 
     @staticmethod
     def _prune_dir(target_dir: Path, max_age_hours: float) -> int:
-        """Remove stale ``.parquet`` / ``.json`` files under *target_dir*."""
+        """Remove stale .parquet / .json files under target_dir."""
         if not target_dir.is_dir():
             return 0
         cutoff = datetime.now(UTC) - timedelta(hours=max_age_hours)

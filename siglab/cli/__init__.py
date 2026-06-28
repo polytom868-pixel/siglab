@@ -1,5 +1,3 @@
-"""SigLab CLI package — modular subcommand modules."""
-
 from __future__ import annotations
 
 import argparse
@@ -11,7 +9,6 @@ _import_sigint = signal.signal(signal.SIGINT, lambda s, f: sys.exit(130))
 
 
 def main() -> None:
-    """Entry point: parse args, dispatch to subcommand handler."""
     signal.signal(signal.SIGINT, signal.default_int_handler)
     parser = argparse.ArgumentParser(prog="siglab")
     parser.add_argument(

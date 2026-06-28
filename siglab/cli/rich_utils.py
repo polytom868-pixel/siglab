@@ -1,5 +1,3 @@
-"""Rich formatting utilities for the SigLab CLI."""
-
 from __future__ import annotations
 
 import json
@@ -44,7 +42,6 @@ _console: Console | None = None
 
 
 def get_console() -> Console:
-    """Return the active console. Falls back to a default if not initialized."""
     global _console
     if _console is None:
         _console = make_console()
@@ -81,7 +78,6 @@ def make_table(
     border_style: str = "muted",
     row_styles: tuple[str, ...] = ("", "dim"),
 ) -> Table:
-    """Create a consistently styled Rich Table."""
     return Table(
         title=title,
         show_lines=show_lines,
@@ -109,22 +105,18 @@ def _print_styled(message: str, style: str, *, icon: bool = True) -> None:
 
 
 def print_success(message: str) -> None:
-    """Print a success message with green checkmark."""
     _print_styled(message, "success")
 
 
 def print_error(message: str) -> None:
-    """Print an error message with red cross."""
     _print_styled(message, "error")
 
 
 def print_warning(message: str) -> None:
-    """Print a warning message with yellow warning sign."""
     _print_styled(message, "warning")
 
 
 def print_info(message: str) -> None:
-    """Print an informational message with blue info sign."""
     _print_styled(message, "info")
 
 

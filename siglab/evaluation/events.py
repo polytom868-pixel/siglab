@@ -1,4 +1,3 @@
-"""PT (perpetual futures) market event analysis and gate evaluation."""
 
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ def classify_pt_market_state(
     min_days_to_expiry: int,
     max_days_to_expiry: int,
 ) -> dict[str, pd.DataFrame]:
-    """Classify each market into eligible, roll-window, or expired state."""
+
     availability = prices.notna()
     for frame in required_frames:
         availability = availability & frame.reindex_like(prices).notna()
@@ -60,7 +59,7 @@ def summarize_pt_universe(
     inside_roll_window: pd.DataFrame,
     expired_or_untradable: pd.DataFrame,
 ) -> dict[str, Any]:
-    """Summarize the PT market universe counts."""
+
     eligible_counts = eligible.sum(axis=1)
     dynamic_entries = [
         column
@@ -98,7 +97,7 @@ def detect_pt_roll_events(
     expired_or_untradable: pd.DataFrame,
     days_to_expiry: pd.DataFrame,
 ) -> list[dict[str, Any]]:
-    """Detect roll events where positions move from one contract to another."""
+
     events: list[dict[str, Any]] = []
     positive_positions = pt_positions.fillna(0.0).gt(0.0)
     for index in range(1, len(pt_positions.index)):
@@ -145,7 +144,7 @@ def detect_pt_roll_events(
 
 
 def evaluate_gates(track: str, summary: dict[str, Any]) -> tuple[bool, list[str]]:
-    """Evaluate all gates for a given track and evaluation summary."""
+
     track = cast(str, resolve_track(track))
     reasons: list[str] = []
     if int(summary.get("liquidation_count", 0)) > 0:

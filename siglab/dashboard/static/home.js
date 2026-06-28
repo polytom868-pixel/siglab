@@ -70,7 +70,6 @@ async function refresh() {
     HOME_STATE.payload = data;
     HOME_STATE.lastUpdatedTimestamp = Date.now();
     updateFreshnessIndicator();
-    // Compute family counts from runs
     const runs = data.runs || [];
     const familyCounts = {};
     for (const run of runs) {
@@ -252,5 +251,4 @@ function updateFreshnessIndicator() {
   el.className = "freshness-indicator" + (seconds > 30 ? " stale" : "");
 }
 
-// close IIFE
 })();

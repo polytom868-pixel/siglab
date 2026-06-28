@@ -314,7 +314,6 @@ def _count(values: Iterable[Any]) -> dict[str, int]:
 def evidence_paths_for_telemetry(
     settings: SiglabConfig,
 ) -> list[Path]:
-    """Find evidence JSONL files for telemetry."""
     base = settings.artifact_dir / "evidence"
     if not base.exists():
         return []
@@ -327,11 +326,8 @@ def evidence_paths_for_telemetry(
 def aggregate_evidence_telemetry(
     evidence_paths: Iterable[Path],
 ) -> dict[str, Any]:
-    """Aggregate evidence file stats for telemetry payload.
 
-    Returns evidence_count, evidence_sources, evidence_time (most recent
-    observed_at across all evidence files).
-    """
+
     evidence_count = 0
     evidence_sources: list[str] = []
     greatest_observed_at: str | None = None
