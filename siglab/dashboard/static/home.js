@@ -39,10 +39,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("trackFilter")?.addEventListener("change", () => refresh());
   document.getElementById("familyFilter")?.addEventListener("change", () => refresh());
   document.getElementById("metricFilter")?.addEventListener("change", () => render());
+  document.getElementById("resetFilters")?.addEventListener("click", () => {
+    document.getElementById("trackFilter").value = "all";
+    document.getElementById("familyFilter").value = "all";
+    document.getElementById("metricFilter").value = "aggregate_score";
+    refresh();
+  });
   document.getElementById("autoRefresh")?.addEventListener("change", () => toggleAutoRefresh(HOME_STATE, refresh));
   populateMetricFilter("metricFilter", null, document.getElementById("metricFilter")?.value);
   await refresh();
-  toggleAutoRefresh(HOME_STATE, refresh);
+  if (sessionStorage.getItem("siglab.onboarding.seen")) {
+    toggleAutoRefresh(HOME_STATE, refresh);
+  }
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !HOME_STATE.isRefreshing) {

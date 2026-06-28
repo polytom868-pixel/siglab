@@ -336,10 +336,10 @@
           <p>Use <strong>filters</strong> to narrow by track, family, or metric. Enable <strong>Auto refresh</strong> to check for new results automatically.</p>
         </div>
         <div class="onboarding-nav">
-          <button id="onboardingPrev" style="display:none">Back</button>
+          <button id="onboardingPrev" aria-label="Previous step" style="display:none">Back</button>
           <span id="onboardingStepIndicator">1 / 3</span>
-          <button id="onboardingNext">Next</button>
-          <button id="onboardingDismiss">Skip</button>
+          <button id="onboardingNext" aria-label="Next step">Next</button>
+          <button id="onboardingDismiss" aria-label="Dismiss onboarding">Skip</button>
         </div>
       </div>
     `;
@@ -359,13 +359,13 @@
 
     document.getElementById("onboardingNext").addEventListener("click", () => {
       if (currentStep < totalSteps) { currentStep++; updateStep(); }
-      else { banner.remove(); sessionStorage.setItem("siglab.onboarding.seen", "1"); }
+      else { banner.remove(); sessionStorage.setItem("siglab.onboarding.seen", "1"); document.getElementById("autoRefresh")?.dispatchEvent(new Event("change")); }
     });
     document.getElementById("onboardingPrev").addEventListener("click", () => {
       if (currentStep > 1) { currentStep--; updateStep(); }
     });
     document.getElementById("onboardingDismiss").addEventListener("click", () => {
-      banner.remove(); sessionStorage.setItem("siglab.onboarding.seen", "1");
+      banner.remove(); sessionStorage.setItem("siglab.onboarding.seen", "1"); document.getElementById("autoRefresh")?.dispatchEvent(new Event("change"));
     });
   }
 

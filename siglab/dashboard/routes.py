@@ -1560,6 +1560,39 @@ def create_app() -> FastAPI:
             {"request": request, "spec_hash": spec_hash},
         )
 
+    @app.exception_handler(404)
+    async def not_found(request: Request, exc):
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SigLab — Not Found</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <nav class="navbar" role="navigation">
+    <a class="navbar-brand" href="/">
+      <img src="/logo.svg" class="navbar-logo-svg" alt="SigLab" />
+      <span class="navbar-title">SigLab</span>
+    </a>
+    <div class="navbar-nav">
+      <a class="navbar-link" href="/">Signals</a>
+    </div>
+  </nav>
+  <div class="page-shell" style="text-align:center;padding-top:80px;">
+    <h1>Page Not Found</h1>
+    <p style="color:var(--muted);margin:16px 0 32px;">The page you requested does not exist.</p>
+    <a class="button-link" href="/">Back to Dashboard</a>
+  </div>
+</body>
+</html>""",
+            status_code=404,
+        )
+
+
     if _static_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(_static_dir)), name="static")
     return app
