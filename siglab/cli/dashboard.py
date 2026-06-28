@@ -71,7 +71,7 @@ def run_dashboard_start(args: argparse.Namespace) -> None:
     reload = bool(args.reload)
     print_info(f"Starting SigLab FastAPI dashboard on http://{host}:{port}")
     uvicorn.run(
-        "siglab.dashboard.app:app",
+        "siglab.dashboard.routes:app",
         host=host,
         port=port,
         reload=reload,

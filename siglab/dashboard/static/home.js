@@ -73,7 +73,7 @@ async function refresh() {
     const runs = data.runs || [];
     const familyCounts = {};
     for (const run of runs) {
-      const fam = run.family || "";
+      const fam = run.best_family || "";
       if (fam) familyCounts[fam] = (familyCounts[fam] || 0) + 1;
     }
     populateFamilyFilter(data.summary?.families || [], family, escapeHtml, familyCounts);
@@ -87,9 +87,9 @@ async function refresh() {
         trackFilter.value = mostRecent.track;
         window.Alpine?.store?.("filter") && (window.Alpine.store("filter").track = mostRecent.track);
       }
-      if (familyFilter && mostRecent.family) {
-        familyFilter.value = mostRecent.family;
-        window.Alpine?.store?.("filter") && (window.Alpine.store("filter").family = mostRecent.family);
+      if (familyFilter && mostRecent.best_family) {
+        familyFilter.value = mostRecent.best_family;
+        window.Alpine?.store?.("filter") && (window.Alpine.store("filter").family = mostRecent.best_family);
       }
       HOME_STATE._firstLoad = false;
     }
