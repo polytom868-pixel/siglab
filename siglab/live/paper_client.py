@@ -19,7 +19,7 @@ from siglab.config import load_settings
 from siglab.data import MarketDataProvider, ParquetLake
 from siglab.utils import dget
 from siglab.evaluation.compile import compile_spec
-from siglab.data.feeds import (
+from siglab.data.sodex_client import (
     SoDEXNonceManager,
     SoDEXPrivateKeySigner,
     SoDEXSignedPerpsClient,

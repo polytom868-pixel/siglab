@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+import time
+
+logger = logging.getLogger(__name__)
+
 import argparse
 import html
 import json
@@ -166,7 +171,7 @@ def sosovalue_currency_id(rows: list[dict[str, Any]], symbol: str) -> int | None
 
 def sodex_preflight_report(env: dict[str, str] | None = None) -> dict[str, Any]:
     """Check SoDEX signed-path prerequisites and return a readiness report."""
-    from siglab.data.feeds import (
+    from siglab.data.sodex_client import (
         SODEX_ENDPOINT_WEIGHTS,
         SODEX_WEIGHT_BUDGET_PER_MINUTE,
         SUPPORTED_SODEX_SIGNED_ACTIONS,
@@ -623,59 +628,56 @@ def build_market_report(
     sosovalue_evidence: Path | None,
     sodex_evidence: Path | None,
 ) -> dict[str, Any]:
+    _t0 = time.perf_counter()
     soso_rows, soso_read_stats = read_jsonl_with_stats(sosovalue_evidence)
     sodex_rows, sodex_read_stats = read_jsonl_with_stats(sodex_evidence)
+    _t1 = time.perf_counter()
+    logger.debug("build_market_report: read files in %.3fs", _t1 - _t0)
     entity_upper = entity.upper()
     etf_entity = f"us-{entity_upper.lower()}-spot"
     quote_entity = f"{entity_upper}-USD"
-    latest_flow = latest_record(
-        [
-            row
-            for row in soso_rows
-            if row.get("entity") == etf_entity
-            and row.get("relation") == "total_net_inflow"
-        ],
-        required_value="numeric",
-    )
-    latest_assets = latest_record(
-        [
-            row
-            for row in soso_rows
-            if row.get("entity") == etf_entity
-            and row.get("relation") == "total_net_assets"
-        ],
-        required_value="numeric",
-    )
-    news_rows = [
-        row
-        for row in soso_rows
-        if row.get("module") == "Feeds"
-        and str(row.get("entity") or "").upper() in {entity_upper, "MARKET"}
-    ]
+
+    # Single pass through soso_rows: group records by (entity, relation)
+    flow_rows: list[dict[str, Any]] = []
+    assets_rows: list[dict[str, Any]] = []
+    news_rows: list[dict[str, Any]] = []
+    for row in soso_rows:
+        row_entity = str(row.get("entity") or "")
+        row_relation = str(row.get("relation") or "")
+        if row_entity == etf_entity and row_relation == "total_net_inflow":
+            flow_rows.append(row)
+        if row_entity == etf_entity and row_relation == "total_net_assets":
+            assets_rows.append(row)
+        if row.get("module") == "Feeds" and row_entity.upper() in {entity_upper, "MARKET"}:
+            news_rows.append(row)
+    _t2 = time.perf_counter()
+    logger.debug("build_market_report: filtered soso_rows in %.3fs", _t2 - _t1)
+
+    latest_flow = latest_record(flow_rows, required_value="numeric")
+    latest_assets = latest_record(assets_rows, required_value="numeric")
     latest_news = sorted(
         [row for row in news_rows if str(row.get("value") or "").strip()],
         key=_record_sort_key_internal,
         reverse=True,
     )[:5]
-    bid_record = latest_record(
-        [
-            row
-            for row in sodex_rows
-            if str(row.get("entity") or "").upper() == quote_entity
-            and row.get("relation") == "bid_price"
-        ],
-        required_value="numeric",
-    )
-    ask_record = latest_record(
-        [
-            row
-            for row in sodex_rows
-            if str(row.get("entity") or "").upper() == quote_entity
-            and row.get("relation") == "ask_price"
-        ],
-        required_value="numeric",
-    )
+
+    # Single pass through sodex_rows: collect bid and ask rows
+    bid_rows: list[dict[str, Any]] = []
+    ask_rows: list[dict[str, Any]] = []
+    for row in sodex_rows:
+        if str(row.get("entity") or "").upper() == quote_entity:
+            if row.get("relation") == "bid_price":
+                bid_rows.append(row)
+            if row.get("relation") == "ask_price":
+                ask_rows.append(row)
+    bid_record = latest_record(bid_rows, required_value="numeric")
+    ask_record = latest_record(ask_rows, required_value="numeric")
+    _t3 = time.perf_counter()
+    logger.debug("build_market_report: filtered sodex_rows in %.3fs", _t3 - _t2)
+
     preflight = sodex_preflight_report()
+    _t4 = time.perf_counter()
+    logger.debug("build_market_report: sodex_preflight_report in %.3fs", _t4 - _t3)
     warnings = [
         "Evidence links are temporal/contextual and are not causal claims.",
         "Signed SoDEX execution is refused unless preflight reports live_write_allowed=true.",
@@ -703,6 +705,9 @@ def build_market_report(
         missing=missing,
         preflight=preflight,
     )
+    _t5 = time.perf_counter()
+    logger.debug("build_market_report: summary+decision in %.3fs", _t5 - _t4)
+    logger.debug("build_market_report: total %.3fs", _t5 - _t0)
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "entity": entity_upper,
@@ -715,6 +720,8 @@ def build_market_report(
             "latest_flow": latest_flow,
             "latest_assets": latest_assets,
             "latest_news": latest_news,
+        },
+        "sodex": {
             "evidence_path": str(sodex_evidence) if sodex_evidence else None,
             "latest_bid": bid_record,
             "latest_ask": ask_record,

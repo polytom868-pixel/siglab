@@ -11,8 +11,10 @@ from siglab.data.evidence import (
 )
 from siglab.data.feeds import (
     MarketDataProvider,
-    SoDEXError,
     SoDEXFeeds,
+)
+from siglab.data.sodex_client import (
+    SoDEXError,
     SoDEXFormatError,
     SoDEXPublicPerpsClient,
     SoDEXRateLimitError,
@@ -20,6 +22,7 @@ from siglab.data.feeds import (
     SoDEXUpstreamError,
     SoDEXWeightScheduler,
 )
+from siglab.data.sosovalue_client import SoSoValueClient
 from siglab.data.store import ParquetLake
 
 __all__ = [
@@ -35,6 +38,7 @@ __all__ = [
     "SoDEXTransportError",
     "SoDEXUpstreamError",
     "SoDEXWeightScheduler",
+    "SoSoValueClient",
     "etf_inflow_evidence",
     "news_evidence",
     "sodex_rest_evidence",

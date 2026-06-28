@@ -96,10 +96,34 @@ class EvidenceStore:
         }
 
     def append_many(self, records: Iterable[EvidenceRecord]) -> int:
-        rows = [record.to_dict() for record in records]
+        rows: list[dict[str, Any]] = []
+        seen = 0
+        for record in records:
+            seen += 1
+            row = record.to_dict()
+            # Skip stale evidence (>180 days old) unless it's intentional historical backfill
+            # (detected by both timestamp and observed_at being far in the past)
+            ts_raw = row.get("timestamp") or row.get("observed_at")
+            if ts_raw:
+                try:
+                    ts_dt = datetime.fromisoformat(ts_raw)
+                    ts_age = datetime.now(UTC) - ts_dt
+                    if ts_age.days > 180:
+                        # Allow through if observed_at is ALSO old — signals intentional backfill
+                        obs_raw = row.get("observed_at")
+                        if obs_raw:
+                            obs_dt = datetime.fromisoformat(obs_raw)
+                            obs_age = datetime.now(UTC) - obs_dt
+                            if obs_age.days <= 180:
+                                continue  # stale live data, skip
+                        else:
+                            continue
+                except (ValueError, TypeError):
+                    pass
+            rows.append(row)
         if not rows:
             self.last_append_stats = {
-                "records_seen": 0,
+                "records_seen": seen,
                 "records_appended": 0,
             }
             return 0
@@ -112,7 +136,7 @@ class EvidenceStore:
                     + "\n",
                 )
         self.last_append_stats = {
-            "records_seen": len(rows),
+            "records_seen": seen,
             "records_appended": len(rows),
         }
         return len(rows)
@@ -167,7 +191,7 @@ def etf_inflow_evidence(
                 module="ETF",
                 relation=relation_name,
                 value=row.get(api_key),
-                confidence=0.95,
+                confidence=_evidence_confidence(observed_at, base=0.95),
                 evidence_path=evidence_path,
                 attributes={attr_key: row.get(attr_key)},
                 api_source=api_key,
@@ -216,7 +240,7 @@ def news_evidence(
         return EvidenceRecord(
             source=source,
             observed_at=observed_at,
-            timestamp=str(timestamp) if timestamp is not None else None,
+            timestamp=str(timestamp) if timestamp is not None else observed_at,
             entity=entity,
             module=module,
             relation="news_mention",
@@ -318,9 +342,10 @@ def sodex_rest_evidence(
             timestamp=observed_at,
             entity=entity,
             module="SoDEX",
-            confidence=0.9,
+            confidence=_evidence_confidence(observed_at, base=0.9),
             evidence_path=evidence_path,
             attributes={"symbol": symbol},
+            api_source="sodex.rest.perps_market_tickers",
         )
         if last_price is not None:
             records.append(EvidenceRecord(**common, relation="mark_price", value=last_price))
@@ -554,6 +579,21 @@ def _coerce_float(value: object) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def _evidence_confidence(observed_at: str, base: float = 0.95) -> float:
+    """Calculate dynamic confidence based on data freshness.
+
+    Confidence decays linearly from *base* at ~0.01 per hour,
+    floored at 0.5 so evidence is never completely discounted.
+    """
+    try:
+        age_hours = (
+            (datetime.now(UTC) - datetime.fromisoformat(observed_at)).total_seconds() / 3600
+        )
+    except (ValueError, TypeError):
+        return base
+    return max(0.5, base - (age_hours * 0.01))
 
 
 def _preferred_multilingual_content(value: object) -> dict[str, Any]:

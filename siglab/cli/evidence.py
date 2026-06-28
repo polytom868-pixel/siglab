@@ -23,7 +23,8 @@ from siglab.data.evidence import (
     news_evidence,
     sodex_quote_evidence,
 )
-from siglab.data.feeds import SoDEXPublicPerpsClient, SoSoValueClient
+from siglab.data.feeds import SoDEXPublicPerpsClient
+from siglab.data.sosovalue_client import SoSoValueClient, SoSoValueEndpoints
 from siglab.utils import resolve_path_from_root
 
 
@@ -158,6 +159,26 @@ async def _collect_evidence(
                 written_paths.append(ssv_fallback_path)
         except Exception as exc:
             errors.append(f"SoDEX fallback (SoSoValue) failed: {exc}")
+    # Stale-data fallback: if all sources failed, load last-good evidence
+    if errors and not written_paths:
+        last_good_dir = output_dir / ".last_good"
+        for name in ("sosovalue.jsonl", "sodex_rest.jsonl"):
+            last_good = last_good_dir / name
+            if last_good.exists():
+                target = output_dir / name
+                import shutil
+                shutil.copy2(str(last_good), str(target))
+                written_paths.append(target)
+                logger.warning("stale_data_fallback loaded last-good %s -> %s", last_good, target)
+    # Preserve current successful results as last-good for future fallback
+    if written_paths:
+        last_good_dir = output_dir / ".last_good"
+        last_good_dir.mkdir(parents=True, exist_ok=True)
+        import shutil
+        for p in written_paths:
+            if p.exists() and p.suffix == ".jsonl":
+                dest = last_good_dir / p.name
+                shutil.copy2(str(p), str(dest))
     return {
         "observed_at": observed_at,
         "ssv_path": ssv_path,

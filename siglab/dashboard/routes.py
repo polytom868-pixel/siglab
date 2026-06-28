@@ -95,7 +95,8 @@ class DashboardState:
     _EXPERIMENTS_CACHE_TTL: float = 30.0
     _ops_cache: dict[str, Any] | None = None
     _ops_cache_ts: float = 0.0
-    _OPS_CACHE_TTL: float = 30.0
+    _runs_cache_ts: float = 0.0
+    _RUNS_CACHE_TTL: float = 30.0
     _runs_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
     def _lp(self) -> str:
         return "unknown" if self.config is None else resolve_llm_provider(self.config)
@@ -405,6 +406,7 @@ class DashboardState:
         self._ops_cache = None
         self._ops_cache_ts = 0.0
         self._runs_cache.clear()
+        self._runs_cache_ts = 0.0
         self._experiments_cache.clear()
         self._experiments_cache_ts = 0.0
 
@@ -766,8 +768,14 @@ class DashboardState:
         track: str | None = None,
         family: str | None = None,
     ) -> dict[str, Any]:
+        import time
+
         cache_key = f"{track}:{family}"
-        if cache_key in self._runs_cache:
+        now = time.monotonic()
+        if (
+            cache_key in self._runs_cache
+            and (now - self._runs_cache_ts) < self._RUNS_CACHE_TTL
+        ):
             return self._runs_cache[cache_key]
         experiments = self._aes(track=track, family=family)
         if (db_path := self._dbp()) is None:
@@ -777,7 +785,9 @@ class DashboardState:
                 "summary": {},
                 "runs": [],
             }
+            self._runs_cache.clear()
             self._runs_cache[cache_key] = result
+            self._runs_cache_ts = now
             return result
         runs = raw_runs(str(db_path), track=track, family=family)
         series_by_run: dict[str, list[dict[str, Any]]] = {}
@@ -868,7 +878,9 @@ class DashboardState:
             },
             "runs": annotated_runs,
         }
+        self._runs_cache.clear()
         self._runs_cache[cache_key] = result
+        self._runs_cache_ts = now
         return result
 
     def _loa(self, relative_path: str) -> dict[str, Any]:

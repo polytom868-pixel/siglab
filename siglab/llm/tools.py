@@ -17,7 +17,7 @@ class ResearchTool:
 # Tool: Get ETF inflow data
 async def get_etf_flow(etf_type: str = "us-btc-spot") -> str:
     """Get latest ETF inflow/outflow data. etf_type: us-btc-spot or us-eth-spot."""
-    from siglab.data.feeds import SoSoValueClient
+    from siglab.data.sosovalue_client import SoSoValueClient
     from siglab.config import load_settings
     settings = load_settings()
     key = settings.sosovalue_api_key_override
@@ -57,7 +57,7 @@ ETF_FLOW_TOOL = ResearchTool(
 # Tool: Get SoDEX market data
 async def get_market_data(symbol: str = "BTC-USD") -> str:
     """Get current market data for a perpetual symbol from SoDEX."""
-    from siglab.data.feeds import SoDEXPublicPerpsClient
+    from siglab.data.sodex_client import SoDEXPublicPerpsClient
 
     client = SoDEXPublicPerpsClient()
     tickers = await client.tickers()
@@ -93,7 +93,7 @@ MARKET_DATA_TOOL = ResearchTool(
 # Tool: Get SoSoValue news
 async def get_crypto_news(currency: str = "BTC", limit: int = 5) -> str:
     """Get latest crypto news for a specific currency."""
-    from siglab.data.feeds import SoSoValueClient
+    from siglab.data.sosovalue_client import SoSoValueClient
     from siglab.config import load_settings
 
     settings = load_settings()

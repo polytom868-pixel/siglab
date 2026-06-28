@@ -295,7 +295,7 @@ class ClaudeClient:
             except LLMRateLimitError:
                 self._rate_limits += 1
                 if attempt < 2:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(5)
                     continue
                 last_error = LLMQuotaError(
                     "Rate limited after retries", provider=self.provider_name
@@ -343,7 +343,7 @@ class ClaudeClient:
         *,
         system_prompt: str,
         user_prompt: str,
-        max_tokens: int | None = None,
+        max_tokens: int = 2000,
         timeout_s: float | None = None,
         json_mode: bool = True,
         thinking_override: str | None = None,
@@ -363,7 +363,7 @@ class ClaudeClient:
         *,
         system_prompt: str,
         messages: Sequence[dict[str, Any]],
-        max_tokens: int | None = None,
+        max_tokens: int = 2000,
         timeout_s: float | None = None,
         json_mode: bool = False,
         thinking_override: str | None = None,
@@ -409,7 +409,7 @@ class ClaudeClient:
         *,
         system_prompt: str,
         user_prompt: str,
-        max_tokens: int | None = None,
+        max_tokens: int = 2000,
         timeout_s: float | None = None,
         thinking_override: str | None = None,
         stage: str | None = None,
@@ -455,7 +455,7 @@ class ClaudeClient:
         *,
         user_prompt: str,
         system_prompt: str | None = "You are a crypto research assistant with access to real-time data tools. Use them to answer the user's questions factually.",
-        max_tokens: int | None = None,
+        max_tokens: int = 2000,
         timeout_s: float | None = None,
         max_tool_rounds: int = 5,
         stage: str | None = None,
