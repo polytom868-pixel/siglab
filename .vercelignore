@@ -9,9 +9,7 @@ sessions
 mutable
 challenges
 tracks
-local:
 .impeccable
 .agents
 .omc
 benchmarks
-live
