@@ -88,6 +88,8 @@ async def _collect_evidence(
                         evidence_path=str(ssv_path),
                     )
                 )
+            elif isinstance(news_rows, Exception):
+                logger.warning("News evidence fetch failed: %s", news_rows)
             await ssv_client.close()
             written_paths.append(ssv_path)
         except Exception as exc:

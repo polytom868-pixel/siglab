@@ -15,7 +15,7 @@ from siglab.llm.tools import (
     NEWS_TOOL,
     RESEARCH_TOOLS,
     ResearchTool,
-    tools_to_openai_schema,
+    tools_to_anthropic_format,
 )
 
 __all__ = [
@@ -33,6 +33,6 @@ __all__ = [
     "NEWS_TOOL",
     "RESEARCH_TOOLS",
     "ResearchTool",
-    "tools_to_openai_schema",
+    "tools_to_anthropic_format",
 ]
 

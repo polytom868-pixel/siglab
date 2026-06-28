@@ -32,8 +32,7 @@ async def get_etf_flow(etf_type: str = "us-btc-spot") -> str:
         f"Latest {etf_type} data:\n"
         f"  Date: {latest.get('date')}\n"
         f"  Net Flow: ${latest.get('totalNetInflow', 0):,.0f}\n"
-        f"  Net Assets: ${latest.get('totalNetAssets', 0):,.0f}\n"
-        f"  Total rows available: {len(rows)}"
+        f"  Net Assets: ${latest.get('totalNetAssets', 0):,.0f}"
     )
 
 
@@ -107,9 +106,21 @@ async def get_crypto_news(currency: str = "BTC", limit: int = 5) -> str:
         return "No news available"
     result = [f"Latest {limit} crypto news items:"]
     for row in rows[:limit]:
-        title = (row.get("multilanguageContent") or [{}])[0].get("title") or row.get("title") or "Untitled"
+        # Try multilanguageContent title first, then direct title, then content field, then first 80 chars
+        title = None
+        mlc = row.get("multilanguageContent") or []
+        if mlc and isinstance(mlc[0], dict):
+            title = mlc[0].get("title")
+        if not title:
+            title = row.get("title")
+        if not title:
+            title = row.get("content")
+        if not title:
+            content_text = str(row.get("content") or "")
+            title = content_text[:80] + "..." if len(content_text) > 80 else content_text
+        if not title:
+            title = "Untitled"
         result.append(f"  - {title}")
-    return "\n".join(result)
 
 
 NEWS_TOOL = ResearchTool(
@@ -131,16 +142,13 @@ NEWS_TOOL = ResearchTool(
 RESEARCH_TOOLS: list[ResearchTool] = [ETF_FLOW_TOOL, MARKET_DATA_TOOL, NEWS_TOOL]
 
 
-def tools_to_openai_schema(tools: list[ResearchTool]) -> list[dict]:
-    """Convert ResearchTool definitions to OpenAI tool calling format."""
+def tools_to_anthropic_format(tools: list[ResearchTool]) -> list[dict]:
+    """Convert ResearchTool definitions to Anthropic tool calling format."""
     return [
         {
-            "type": "function",
-            "function": {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
-            },
+            "name": t.name,
+            "description": t.description,
+            "input_schema": t.parameters,
         }
         for t in tools
     ]

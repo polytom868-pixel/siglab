@@ -90,33 +90,10 @@ class EvidenceRecord:
 class EvidenceStore:
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._seen_ids: set[str] | None = None
         self.last_append_stats: dict[str, int] = {
             "records_seen": 0,
             "records_appended": 0,
-            "duplicates_skipped": 0,
         }
-
-    def _load_seen_ids(self) -> set[str]:
-        if self._seen_ids is None:
-            self._seen_ids = {_evidence_id(row) for row in self.load()}
-        return self._seen_ids
-
-    def _is_duplicate(self, row: dict[str, Any], seen_ids: set[str]) -> bool:
-        evidence_id = _evidence_id(row)
-        if evidence_id in seen_ids:
-            return True
-        created_at = row.get("created_at")
-        if created_at and isinstance(created_at, str):
-            try:
-                ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                if (datetime.now(UTC) - ts).total_seconds() < 30:
-                    seen_ids.add(evidence_id)
-                    return False
-            except (ValueError, TypeError):
-                pass
-        seen_ids.add(evidence_id)
-        return False
 
     def append_many(self, records: Iterable[EvidenceRecord]) -> int:
         rows = [record.to_dict() for record in records]
@@ -124,31 +101,21 @@ class EvidenceStore:
             self.last_append_stats = {
                 "records_seen": 0,
                 "records_appended": 0,
-                "duplicates_skipped": 0,
             }
             return 0
-        seen_ids = self._load_seen_ids()
-        unique_rows: list[dict[str, Any]] = []
-        for row in rows:
-            evidence_id = _evidence_id(row)
-            if self._is_duplicate(row, seen_ids):
-                continue
-            row["evidence_id"] = evidence_id
-            unique_rows.append(row)
-        if unique_rows:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as handle:
-                for row in unique_rows:
-                    handle.write(
-                        json.dumps(row, ensure_ascii=True, sort_keys=True, default=str)
-                        + "\n",
-                    )
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as handle:
+            for row in rows:
+                row["evidence_id"] = _evidence_id(row)
+                handle.write(
+                    json.dumps(row, ensure_ascii=True, sort_keys=True, default=str)
+                    + "\n",
+                )
         self.last_append_stats = {
             "records_seen": len(rows),
-            "records_appended": len(unique_rows),
-            "duplicates_skipped": len(rows) - len(unique_rows),
+            "records_appended": len(rows),
         }
-        return len(unique_rows)
+        return len(rows)
 
     def load(self) -> list[dict[str, Any]]:
         if not self.path.exists():
@@ -326,6 +293,15 @@ def sodex_rest_evidence(
         volume/baseVolume, quoteVolume.
     """
     def _extract(row: dict[str, Any]) -> list[EvidenceRecord]:
+        # Skip zero-liquidity pairs (no price data at all)
+        if not any(
+            [
+                row.get("bidPx") or row.get("bidPrice"),
+                row.get("askPx") or row.get("askPrice"),
+                row.get("markPx") or row.get("markPrice"),
+            ]
+        ):
+            return []
         symbol = str(_first_of(row, ("symbol",)) or "unknown")
         entity = symbol.upper()
         last_price = _coerce_float(_first_of(row, ("lastPx", "lastPrice")))
@@ -363,22 +339,6 @@ def sodex_rest_evidence(
         if quote_volume is not None:
             records.append(
                 EvidenceRecord(**common, relation="quote_volume_24h", value=quote_volume)
-            )
-        # Consolidated quote record for market report consumption
-        if bid_price is not None or ask_price is not None:
-            quote_value = ask_price if ask_price is not None else bid_price
-            records.append(
-                EvidenceRecord(
-                    source="sodex.rest.perps_market_tickers",
-                    observed_at=observed_at,
-                    entity=entity,
-                    module="SoDEX",
-                    relation="quote",
-                    value=quote_value,
-                    confidence=0.9,
-                    evidence_path=evidence_path,
-                    attributes={"symbol": symbol, "bid": bid_price, "ask": ask_price},
-                )
             )
         return records
     return _collect_evidence(tickers, _extract)

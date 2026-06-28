@@ -7,9 +7,9 @@ import re
 import time
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
-
 import httpx
-from openai import AsyncOpenAI
+
+from anthropic import AsyncAnthropic, RateLimitError as AnthropicRateLimitError
 
 if TYPE_CHECKING:
     from siglab.config import SiglabConfig
@@ -76,7 +76,7 @@ class LLMFormatError(LLMProviderError):
 
 
 class ClaudeClient:
-    """OpenAI-compatible LLM client using the OpenAI SDK.
+    """Anthropic Messages API client using the Anthropic SDK.
 
     Reads api_key from env ``OPENMODEL_API_KEY`` and base_url from env
     ``OPENMODEL_BASE_URL``.  The model is always *deepseek-v4-flash*
@@ -87,7 +87,7 @@ class ClaudeClient:
         self.settings = settings
         self.last_trace: dict[str, Any] | None = None
         self.last_exchange: dict[str, Any] | None = None
-        self._client: AsyncOpenAI | None = None
+        self._client: AsyncAnthropic | None = None
         self._latencies_ms: list[float] = []
         self._retries = self._rate_limits = self._transport_failures = 0
         self._request_count = self._success_count = 0
@@ -107,17 +107,17 @@ class ClaudeClient:
 
     @property
     def provider_name(self) -> str:
-        return "openai"
+        return "anthropic"
 
     # ── transport ───────────────────────────────────────────────
 
-    def _get_client(self) -> AsyncOpenAI:
+    def _get_client(self) -> AsyncAnthropic:
         if self._client is None:
             api_key = str(self.settings.openmodel_api_key or "")
             base_url = str(
                 self.settings.openmodel_base_url
             ).rstrip("/")
-            self._client = AsyncOpenAI(
+            self._client = AsyncAnthropic(
                 api_key=api_key,
                 base_url=base_url,
                 max_retries=2,
@@ -134,20 +134,63 @@ class ClaudeClient:
         tools: list[dict[str, Any]] | None = None,
         response_format: dict[str, str] | None = None,
     ) -> dict[str, Any]:
+        # Convert OpenAI-format messages to Anthropic Messages API format
+        system_prompt = None
+        anthropic_messages: list[dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role", "")
+            if role == "system":
+                system_prompt = str(msg.get("content") or "")
+                continue
+            if role == "tool":
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": str(msg.get("tool_call_id", "")),
+                            "content": str(msg.get("content") or ""),
+                        }
+                    ],
+                })
+                continue
+            if role == "assistant" and msg.get("tool_calls"):
+                content_blocks: list[dict[str, Any]] = []
+                text_content = str(msg.get("content") or "")
+                if text_content:
+                    content_blocks.append({"type": "text", "text": text_content})
+                for tc in msg["tool_calls"]:
+                    raw_args = tc.get("function", {}).get("arguments", "{}")
+                    try:
+                        tc_input = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+                    except (json.JSONDecodeError, TypeError):
+                        tc_input = {}
+                    content_blocks.append({
+                        "type": "tool_use",
+                        "id": str(tc.get("id", "")),
+                        "name": str(tc.get("function", {}).get("name", "")),
+                        "input": tc_input,
+                    })
+                anthropic_messages.append({"role": "assistant", "content": content_blocks})
+                continue
+            anthropic_messages.append({"role": role, "content": str(msg.get("content") or "")})
+
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": anthropic_messages,
             "max_tokens": max_tokens or 4096,
         }
+        if system_prompt:
+            kwargs["system"] = system_prompt
         if tools:
             kwargs["tools"] = tools
-        if response_format:
-            kwargs["response_format"] = response_format
 
         started = time.perf_counter()
         self._request_count += 1
         try:
-            response = await self._get_client().chat.completions.create(**kwargs)
+            response = await self._get_client().messages.create(**kwargs)
+        except AnthropicRateLimitError as exc:
+            raise LLMRateLimitError(str(exc)[:200], provider=self.provider_name, status_code=429) from exc
         except Exception as exc:
             self._transport_failures += 1
             raise _map_openai_error(exc, self.provider_name) from exc
@@ -157,43 +200,33 @@ class ClaudeClient:
 
         usage = response.usage
         if usage is not None:
-            self._prompt_tokens += usage.prompt_tokens
-            self._completion_tokens += usage.completion_tokens
-            self._total_tokens += usage.total_tokens
+            self._prompt_tokens += usage.input_tokens
+            self._completion_tokens += usage.output_tokens
+            self._total_tokens += usage.input_tokens + usage.output_tokens
 
-        choice = response.choices[0] if response.choices else {}
-        message = choice.message if hasattr(choice, "message") else choice.get("message", {})
-        if not isinstance(message, dict):
-            message = {
-                "content": message.content or "",
-                "tool_calls": list(message.tool_calls) if message.tool_calls else [],
-                "role": message.role or "assistant",
-            }
-
-        text_content = str(message.get("content") or "")
-        raw_tool_calls = message.get("tool_calls") or []
+        text_content = ""
         tool_calls: list[dict[str, Any]] = []
-        for tc in raw_tool_calls:
-            if hasattr(tc, "id"):
+        for block in response.content:
+            if block.type == "text":
+                text_content += block.text
+            elif block.type == "tool_use":
                 tool_calls.append({
-                    "id": tc.id,
+                    "id": block.id,
                     "type": "function",
                     "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                })
-            else:
-                tool_calls.append({
-                    "id": tc.get("id", ""),
-                    "type": "function",
-                    "function": {
-                        "name": tc.get("function", {}).get("name", ""),
-                        "arguments": tc.get("function", {}).get("arguments", "{}"),
+                        "name": block.name,
+                        "arguments": json.dumps(block.input if isinstance(block.input, dict) else {}),
                     },
                 })
 
-        finish_reason = choice.finish_reason if hasattr(choice, "finish_reason") else choice.get("finish_reason", "stop")
+        # Map Anthropic stop_reason to OpenAI-compatible finish_reason
+        finish_reason_map = {
+            "end_turn": "stop",
+            "tool_use": "tool_calls",
+            "max_tokens": "length",
+            "stop_sequence": "stop",
+        }
+        finish_reason = finish_reason_map.get(response.stop_reason, response.stop_reason)
 
         message_dict: dict[str, Any] = {
             "role": "assistant",
@@ -201,6 +234,9 @@ class ClaudeClient:
         }
         if tool_calls:
             message_dict["tool_calls"] = tool_calls
+
+        input_tokens = usage.input_tokens if usage else 0
+        output_tokens = usage.output_tokens if usage else 0
 
         return {
             "id": response.id,
@@ -213,9 +249,9 @@ class ClaudeClient:
                 }
             ],
             "usage": {
-                "prompt_tokens": usage.prompt_tokens if usage else 0,
-                "completion_tokens": usage.completion_tokens if usage else 0,
-                "total_tokens": usage.total_tokens if usage else 0,
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
             },
             "_siglab_model_used": model,
         }
@@ -247,7 +283,7 @@ class ClaudeClient:
                     f"OpenAI transport failure: {exc}", provider=self.provider_name
                 )
                 if attempt < 2:
-                    await asyncio.sleep(0.5 * (attempt + 2))
+                    await asyncio.sleep(2 ** attempt)
                     continue
                 break
             except LLMAuthError as exc:
@@ -256,7 +292,7 @@ class ClaudeClient:
             except LLMRateLimitError:
                 self._rate_limits += 1
                 if attempt < 2:
-                    await asyncio.sleep(0.5 * (attempt + 2))
+                    await asyncio.sleep(2 ** attempt)
                     continue
                 last_error = LLMQuotaError(
                     "Rate limited after retries", provider=self.provider_name
@@ -310,13 +346,11 @@ class ClaudeClient:
         thinking_override: str | None = None,
         stage: str | None = None,
     ) -> dict[str, Any]:
-        ct = await self._tool_loop(
-            system_prompt=system_prompt,
+        ct = await self.complete_with_tools(
             user_prompt=user_prompt,
+            system_prompt=system_prompt,
             max_tokens=max_tokens,
             timeout_s=timeout_s,
-            json_mode=json_mode,
-            thinking_override=thinking_override,
             stage=stage,
         )
         return self._parse_j(ct)
@@ -430,9 +464,10 @@ class ClaudeClient:
             raise LLMConfigError(
                 "OpenAI API key is not configured", provider=self.provider_name
             )
-        from siglab.llm.tools import RESEARCH_TOOLS, tools_to_openai_schema
 
-        tool_defs = tools_to_openai_schema(RESEARCH_TOOLS)
+        from siglab.llm.tools import RESEARCH_TOOLS, tools_to_anthropic_format
+
+        tool_defs = tools_to_anthropic_format(RESEARCH_TOOLS)
         tool_map = {t.name: t for t in RESEARCH_TOOLS}
 
         msgs: list[dict[str, Any]] = [
@@ -518,56 +553,6 @@ class ClaudeClient:
         trace["response_finish_reason"] = "max_tool_rounds"
         return "Maximum tool rounds reached without final answer."
 
-
-    async def _tool_loop(
-        self,
-        *,
-        system_prompt: str,
-        user_prompt: str,
-        max_tokens: int | None,
-        timeout_s: float | None,
-        json_mode: bool,
-        thinking_override: str | None,
-        stage: str | None,
-    ) -> str:
-        if not self.is_configured:
-            raise LLMConfigError(
-                "OpenAI API key is not configured", provider=self.provider_name
-            )
-        self.last_exchange = {
-            "system_prompt": system_prompt,
-            "user_prompt": user_prompt,
-        }
-        msgs: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        trace: dict[str, Any] = {
-            "provider": self.provider_name,
-            "model": _OPENAI_MODEL,
-            "thinking_mode": "default",
-            "final_content_preview": None,
-        }
-        self.last_trace = trace
-        payload = self._build_pl(
-            messages=msgs,
-            max_tokens=max_tokens,
-            json_mode=json_mode,
-            thinking_override=thinking_override,
-            stage=stage,
-        )
-        body = await self._chat_comp(
-            payload=payload, timeout_s=timeout_s, stage=stage
-        )
-        trace["model"] = str(body.get("_siglab_model_used", _OPENAI_MODEL))
-        choice = self._choice(body)
-        ct = self._extract_ct(body)
-        trace["final_content_preview"] = _compact_scalar(ct[:2200])
-        trace["response_finish_reason"] = choice.get("finish_reason")
-        if self.last_exchange is not None:
-            self.last_exchange["final_content"] = ct
-        return ct
-
     def _build_pl(
         self,
         *,
@@ -625,8 +610,7 @@ def _compact_scalar(value: object, max_len: int = 200) -> str | None:
 
 
 
-
-SUPPORTED_LLM_PROVIDERS = frozenset({"openai"})
+SUPPORTED_LLM_PROVIDERS = frozenset({"anthropic", "openai"})
 
 
 def normalize_llm_provider(value: str | None) -> str | None:
@@ -635,11 +619,11 @@ def normalize_llm_provider(value: str | None) -> str | None:
 
 
 def resolve_llm_provider(settings: SiglabConfig) -> str:
-    return "openai"
+    return "anthropic"
 
 
 def infer_llm_provider(model: str | None) -> str | None:
-    return "openai"
+    return "anthropic"
 
 
 def resolve_llm_thinking_mode(

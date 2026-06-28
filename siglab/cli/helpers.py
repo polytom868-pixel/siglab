@@ -657,13 +657,23 @@ def build_market_report(
         key=_record_sort_key_internal,
         reverse=True,
     )[:5]
-    quote = latest_record(
+    bid_record = latest_record(
         [
             row
             for row in sodex_rows
             if str(row.get("entity") or "").upper() == quote_entity
+            and row.get("relation") == "bid_price"
         ],
-        required_value="quote",
+        required_value="numeric",
+    )
+    ask_record = latest_record(
+        [
+            row
+            for row in sodex_rows
+            if str(row.get("entity") or "").upper() == quote_entity
+            and row.get("relation") == "ask_price"
+        ],
+        required_value="numeric",
     )
     preflight = sodex_preflight_report()
     warnings = [
@@ -673,7 +683,7 @@ def build_market_report(
     missing: list[str] = []
     if latest_flow is None:
         missing.append("latest ETF flow evidence")
-    if quote is None:
+    if bid_record is None and ask_record is None:
         missing.append("latest SoDEX quote evidence")
     if not latest_news:
         missing.append("recent feed evidence")
@@ -682,7 +692,8 @@ def build_market_report(
         entity=entity_upper,
         latest_flow=latest_flow,
         latest_assets=latest_assets,
-        quote=quote,
+        bid_record=bid_record,
+        ask_record=ask_record,
         latest_news=latest_news,
         preflight=preflight,
     )
@@ -704,10 +715,9 @@ def build_market_report(
             "latest_flow": latest_flow,
             "latest_assets": latest_assets,
             "latest_news": latest_news,
-        },
-        "sodex": {
             "evidence_path": str(sodex_evidence) if sodex_evidence else None,
-            "latest_quote": quote,
+            "latest_bid": bid_record,
+            "latest_ask": ask_record,
             "preflight": preflight,
         },
         "warnings": warnings,
@@ -727,7 +737,8 @@ def _market_signal_summary(
     entity: str,
     latest_flow: dict[str, Any] | None,
     latest_assets: dict[str, Any] | None,
-    quote: dict[str, Any] | None,
+    bid_record: dict[str, Any] | None,
+    ask_record: dict[str, Any] | None,
     latest_news: list[dict[str, Any]],
     preflight: dict[str, Any],
 ) -> dict[str, Any]:
@@ -740,9 +751,9 @@ def _market_signal_summary(
         flow_bias = "ETF outflow"
     else:
         flow_bias = "flat ETF flow"
-    quote_attrs = dict((quote or {}).get("attributes") or {})
-    bid = quote_attrs.get("bid") or (quote or {}).get("value")
-    ask = quote_attrs.get("ask")
+    bid = safe_float((bid_record or {}).get("value"))
+    ask = safe_float((ask_record or {}).get("value"))
+    has_quote = bid is not None or ask is not None
     return {
         "headline": f"{entity}: {flow_bias}; SoDEX quote bid={(bid if bid is not None else 'missing')} ask={(ask if ask is not None else 'missing')}; news_items={len(latest_news)}; live_write_allowed={bool(preflight.get('live_write_allowed'))}",
         "flow_direction": flow_bias,
@@ -755,7 +766,7 @@ def _market_signal_summary(
         "operator_action": "review_only_signed_execution_blocked"
         if not preflight.get("live_write_allowed")
         else "review_before_any_live_order",
-        "confidence": "medium" if latest_flow and quote else "low",
+        "confidence": "medium" if latest_flow and has_quote else "low",
         "causality": "not_claimed",
     }
 

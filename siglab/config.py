@@ -4,10 +4,10 @@ import json
 import os
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Final, cast, overload
+from typing import TYPE_CHECKING, Any, Final, cast, overload
 
-import pandas as pd
-
+if TYPE_CHECKING:
+    import pandas as pd
 from siglab.utils import short_hash
 
 
