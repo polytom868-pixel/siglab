@@ -168,6 +168,7 @@ function renderSummary(runs) {
       value: summary.best_run_label
         ? `${summary.best_run_label} (${summary.best_aggregate_score != null ? formatNumber(summary.best_aggregate_score, 3) : "n/a"})`
         : "n/a",
+      valueClass: summary.best_run_label ? "" : "value-na",
       detail: summary.best_run_label
         ? `${summary.best_run_label} is the highest-scored session. ${bestExperimentDetail}`
         : bestExperimentDetail || "No candidate sessions scored yet.",

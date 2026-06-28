@@ -98,15 +98,20 @@ function renderScaledValues() {
   const displayCapital = getDisplayCapitalUsd();
   const outcomeCards = document.querySelectorAll(".summary-card");
   if (outcomeCards.length >= 9) {
-    outcomeCards[6].querySelector(".value").textContent = outcome ? formatPercent(outcome.priceOutcome) : "n/a";
+    const setValue = (index, text, real) => {
+      const el = outcomeCards[index].querySelector(".value");
+      el.textContent = text;
+      el.classList.toggle("value-na", !real);
+    };
+    setValue(6, outcome ? formatPercent(outcome.priceOutcome) : "n/a", !!outcome);
     outcomeCards[6].querySelector(".detail").textContent = outcome
       ? `Mark-to-market outcome... At ${formatUsd(displayCapital)}, about ${formatSignedUsd(outcome.priceOutcome * displayCapital)}.`
       : "...";
-    outcomeCards[7].querySelector(".value").textContent = outcome ? formatPercent(outcome.carryOutcome) : "n/a";
+    setValue(7, outcome ? formatPercent(outcome.carryOutcome) : "n/a", !!outcome);
     outcomeCards[7].querySelector(".detail").textContent = outcome
       ? `Funding carry outcome... At ${formatUsd(displayCapital)}, about ${formatSignedUsd(outcome.carryOutcome * displayCapital)}.`
       : "...";
-    outcomeCards[8].querySelector(".value").textContent = outcome ? formatSignedUsd(outcome.txCost) : "n/a";
+    setValue(8, outcome ? formatSignedUsd(outcome.txCost) : "n/a", !!outcome);
     outcomeCards[8].querySelector(".detail").textContent = outcome
       ? `Total transaction cost... At ${formatUsd(displayCapital)}, about ${formatSignedUsd(outcome.txCost * displayCapital)}.`
       : "...";
@@ -368,13 +373,16 @@ function renderSummary(experiment, run, seriesAvailable) {
 
   let html = cards
     .map(
-      (card) => `
+      (card) => {
+        const isNa = card.value === "n/a";
+        return `
         <article class="panel summary-card">
           <div class="label">${escapeHtml(card.label)}</div>
-          <div class="value">${escapeHtml(card.value)}</div>
+          <div class="value${isNa ? " value-na" : ""}">${escapeHtml(card.value)}</div>
           <div class="detail">${escapeHtml(card.detail)}</div>
         </article>
-      `
+      `;
+      }
     )
     .join("");
 
