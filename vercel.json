@@ -1,9 +1,9 @@
 {
-  "framework": "fastapi",
-  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets",
   "functions": {
     "api/index.py": {
+      "runtime": "python3.12",
       "includeFiles": "siglab/**"
     }
-  }
+  },
+  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets"
 }
