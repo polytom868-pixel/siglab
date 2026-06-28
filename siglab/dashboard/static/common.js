@@ -111,7 +111,7 @@
 
   function renderPolicySweepBlock(summary, family, options) {
     options = options || {};
-    const heading = options.heading || "Policy Sweep";
+    const heading = options.heading || "Policy Comparison";
     const winnerLabel = options.winnerLabel || "Realized Winner";
     if (!summary?.policy_sweep_comparison_available) {
       const pairFamily = String(family || "").startsWith("perp_pair_trade_");
@@ -142,7 +142,7 @@
           <div class="key">${escapeHtml(winnerLabel)}</div><div>${escapeHtml(summary.policy_sweep_realized_winner || "tie")}</div>
         </div>
         <p class="detail-copy">
-          Declared-better metrics: ${escapeHtml(joinOrNone(summary.policy_sweep_declared_better_metrics))}. Frozen-better metrics: ${escapeHtml(joinOrNone(summary.policy_sweep_frozen_better_metrics))}.
+          Better on unswept: ${escapeHtml(joinOrNone(summary.policy_sweep_declared_better_metrics))}. Better on swept: ${escapeHtml(joinOrNone(summary.policy_sweep_frozen_better_metrics))}.
         </p>
       </div>
     `;

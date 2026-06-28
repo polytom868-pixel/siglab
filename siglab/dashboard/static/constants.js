@@ -35,7 +35,7 @@ window.SigLabUi.METRIC_META = {
   pre_audit_canonical_total_return: {
     label: "Pre-Audit Return",
     formatter: (value) => (window.SigLabUi.formatPercent || ((v) => `${(Number(v) * 100).toFixed(2)}%`))(value),
-    description: "Canonical total return measured only up to the audit boundary.",
+    description: "Total return measured only up to the audit boundary.",
   },
   median_calmar: {
     label: "Median Calmar",

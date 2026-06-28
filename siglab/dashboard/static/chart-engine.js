@@ -77,7 +77,7 @@ function sparklineSvg(points, metricKey) {
     .map((point) => ({ ...point, metric: pointMetricValue(point, metricKey) }))
     .filter((point) => Number.isFinite(point.metric));
   if (!values.length) {
-    return `<svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline"><text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No finite values retained</text></svg>`;
+    return `<svg viewBox="0 0 360 110" role="img" aria-label="Sparkline chart" class="run-sparkline"><text x="14" y="24" fill="#6b7f70" font-family="Inter, sans-serif" font-size="11">No valid data available</text></svg>`;
   }
   const width = 360;
   const height = 110;
@@ -161,12 +161,12 @@ function drawLineChart(svg, tooltip, seriesList, options) {
   svg.innerHTML = "";
   const validSeries = seriesList.filter((series) => (series.index || []).length && (series.values || []).length);
   if (!validSeries.length) {
-    svg.innerHTML = emptyChartText("No time-series data retained for this chart.");
+    svg.innerHTML = emptyChartText("No time-series data available for this chart.");
     return;
   }
   const allValues = validSeries.flatMap((series) => (series.values || []).filter((value) => value !== null));
   if (!allValues.length) {
-    svg.innerHTML = emptyChartText("No finite values retained for this chart.");
+    svg.innerHTML = emptyChartText("No valid data available for this chart.");
     return;
   }
 
@@ -317,12 +317,12 @@ function renderHeatmap(run) {
   const container = document.getElementById("positionHeatmap");
   const timeline = run.target_weights;
   if (!timeline || !timeline.columns?.length || !timeline.index?.length) {
-    container.innerHTML = `<p class="empty-state">No retained weight timeline for this experiment.</p>`;
+    container.innerHTML = `<p class="empty-state">No weight timeline for this experiment.</p>`;
     return;
   }
   const tradableColumns = timeline.columns.filter((asset) => asset !== "GLOBAL");
   if (!tradableColumns.length) {
-    container.innerHTML = `<p class="empty-state">No retained tradable weight timeline for this experiment.</p>`;
+    container.innerHTML = `<p class="empty-state">No tradable weight timeline for this experiment.</p>`;
     return;
   }
 
@@ -489,7 +489,7 @@ function assetActionSvg(symbol, trades, widthOverride, container) {
   svg.setAttribute("class", "asset-action-svg");
 
   if (!timestamps.length || !prices.length) {
-    svg.appendChild(textNode(16, 24, `No retained prices for ${symbol}`, "#6b7f70", "11"));
+    svg.appendChild(textNode(16, 24, `No prices available for ${symbol}`, "#6b7f70", "11"));
     container.appendChild(svg);
     return;
   }
@@ -575,8 +575,8 @@ function renderTrades(trades) {
   const displayCapital = getDisplayCapitalUsd();
   subtitle.textContent =
     annotatedTrades.length > visible.length
-      ? `Showing page ${currentPage} of ${totalPages} (${annotatedTrades.length} trades) from the canonical run. Display notionals and units assume ${formatUsd(displayCapital)} starting capital. Actions reflect the post-trade position state.`
-      : `Showing ${annotatedTrades.length} trades from the canonical run. Display notionals and units assume ${formatUsd(displayCapital)} starting capital. Actions reflect the post-trade position state.`;
+      ? `Showing page ${currentPage} of ${totalPages} (${annotatedTrades.length} trades) from the full run. Display notionals and units assume ${formatUsd(displayCapital)} starting capital. Actions reflect the post-trade position state.`
+      : `Showing ${annotatedTrades.length} trades from the full run. Display notionals and units assume ${formatUsd(displayCapital)} starting capital. Actions reflect the post-trade position state.`;
 
   visible.forEach((trade) => {
     const row = document.createElement("tr");

@@ -69,9 +69,8 @@ function renderPage() {
       backLink.textContent = "Back to Dashboard";
     }
   }
-  document.title = `${experiment.family || "Experiment"} ${experiment.spec_hash || ""}`.trim();
-  document.getElementById("experimentTitle").textContent =
-    `${experiment.family || "Experiment"} ${experiment.spec_hash || ""}`.trim();
+  document.title = (experiment.family || "Experiment").trim();
+  document.getElementById("experimentTitle").textContent = (experiment.family || "Experiment").trim();
   document.getElementById("experimentSubtitle").textContent =
     `${TRACK_LABELS[experiment.track] || experiment.track || "Unknown Track"} • created ${formatDateTime(experiment.created_at)}`;
 
@@ -142,7 +141,7 @@ function renderMissing(message) {
 
 function renderUnavailable() {
   const message =
-    "This artifact predates full-series retention. Re-run the experiment to capture the equity curve and position timeline.";
+    "This experiment predates full-series retention. Re-run the experiment to capture the equity curve and position timeline.";
   document.getElementById("equityChart").innerHTML = emptyChartText(message);
   document.getElementById("metricsChart").innerHTML = emptyChartText(message);
   document.getElementById("metricsLegend").innerHTML = "";
@@ -168,8 +167,7 @@ function renderDeployment(experiment) {
           <div class="key">Dry Run</div><div>${deployment.dry_run ? "yes" : "no"}</div>
           <div class="key">Job</div><div>${escapeHtml(deployment.job_name || "n/a")}</div>
           <div class="key">Wallet</div><div>${escapeHtml(deployment.wallet_label || "n/a")}</div>
-          <div class="key">Spec</div><div class="mono">${escapeHtml(deployment.spec_path || "n/a")}</div>
-        </div>
+          <div class="key">Spec</div><div class="mono">${escapeHtml((deployment.spec_path || '').split('/').pop() || "n/a")}</div>
       </div>
     `
     : "";
@@ -352,7 +350,7 @@ function renderSummary(experiment, run, seriesAvailable) {
     {
       label: "Pre-Audit Return",
       value: formatPercent(summary.pre_audit_canonical_total_return ?? 0),
-      detail: "Canonical total return measured only up to the audit boundary.",
+      detail: "Total return measured only up to the audit boundary.",
     },
     {
       label: "Audit Return",
@@ -360,11 +358,11 @@ function renderSummary(experiment, run, seriesAvailable) {
       detail: "Final untouched out-of-sample total return on the audit slice.",
     },
     {
-      label: "Canonical Trades",
+      label: "Total Trades",
       value: `${tradeCount}`,
       detail: seriesAvailable
-        ? "Trade count on the full-run timeline retained for this experiment."
-        : "Full-run trade tape not retained for this historical artifact.",
+        ? "Trade count on the full-run timeline available for this experiment."
+        : "Full-run trade tape not available for this experiment.",
     },
   ];
 
@@ -416,15 +414,12 @@ function renderSnapshot(experiment, run, seriesAvailable, compiledMetadata) {
   snapshot.innerHTML = `
     <div class="detail-grid">
       <div class="detail-block">
-        <h3>Artifact</h3>
+        <h3>Run</h3>
         <div class="kv">
           <div class="key">Track</div><div>${escapeHtml(experiment.track_label || TRACK_LABELS[experiment.track] || experiment.track || "unknown")}</div>
           <div class="key">Source</div><div>${escapeHtml(experiment.source || compiledMetadata.source || "unknown")}</div>
-          <div class="key">Series</div><div>${seriesAvailable ? "retained" : "missing"}</div>
-          <div class="key">Timing</div><div>${escapeHtml(experiment.timing?.signal_timing || "unknown")}</div>
-          <div class="key">Bundle As Of</div><div>${escapeHtml(experiment.timing?.bundle_as_of || "n/a")}</div>
-          <div class="key">Artifact Path</div><div class="mono">${escapeHtml(experiment.artifact_path || "n/a")}</div>
-        </div>
+          <div class="key">Series</div><div>${seriesAvailable ? "available" : "missing"}</div>
+          <div class="key">File</div><div class="mono">${escapeHtml((experiment.artifact_path || '').split('/').pop() || "n/a")}</div>
       </div>
       <div class="detail-block">
         <h3>Evaluation Split</h3>
@@ -459,15 +454,15 @@ function renderEquityChart(run) {
   const equity = run.equity_curve || { index: [], values: [] };
   if (!hasFiniteSeriesValues(equity)) {
     document.getElementById("equitySubtitle").textContent =
-      "The retained canonical run for this experiment does not contain finite equity values.";
-    svg.innerHTML = emptyChartText("No finite equity values were retained for this run.");
+      "The full run for this experiment does not contain valid equity data.";
+    svg.innerHTML = emptyChartText("No equity data available for this run.");
     return;
   }
   const visualSplit = run.visual_split || { ranges: [], note: "" };
   document.getElementById("equitySubtitle").textContent =
     visualSplit.ranges?.length
       ? "Shaded green marks the selector zone, amber marks validation-only ranges when present, and rose marks the final audit slice."
-      : "Canonical full-run equity curve.";
+      : "Full-run equity curve.";
   drawLineChart(svg, tooltip, [
     {
       label: "Equity",
@@ -511,7 +506,7 @@ function renderMetricsChart(run) {
     !hasFiniteSeriesValues(marginHeadroom)
   ) {
     document.getElementById("metricsChart").innerHTML = emptyChartText(
-      "No finite run-metric values were retained for this run."
+      "No run-metric data available for this run."
     );
     renderChartLegend(document.getElementById("metricsLegend"), []);
     return;

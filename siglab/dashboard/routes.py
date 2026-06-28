@@ -1063,6 +1063,8 @@ class DashboardState:
         ):
             if key in positions:
                 detail[key] = positions[key]
+        detail.pop("research_summary", None)
+        detail.pop("tool_trace", None)
         return {"generated_at": self._ni(), "experiment": detail}
 
     def experiment_series_payload(self, spec_hash: str) -> dict[str, Any] | None:

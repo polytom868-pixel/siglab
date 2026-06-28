@@ -178,12 +178,7 @@ function renderRunCards(runs) {
     container.innerHTML = `
       <article class="waiting-card waiting-card-empty-state">
         <div class="waiting-card-title">No runs recorded yet</div>
-        <p class="waiting-card-copy">Runs will appear once an experiment evaluation finishes.</p>
-        <div class="waiting-card-command">
-          <code>python3 -m siglab run --track trend_signals --iterations 1</code>
-          <button class="waiting-card-copy-btn" onclick="navigator.clipboard.writeText('python3 -m siglab run --track trend_signals --iterations 1')" aria-label="Copy command">Copy</button>
-        </div>
-        <p class="waiting-card-copy">Or use the <strong>Operator</strong> pipeline to run an evidence-to-decision cycle.</p>
+        <p class="waiting-card-copy">Start an experiment run and it will appear here.</p>
       </article>
     `;
     return;
@@ -200,7 +195,7 @@ function renderRunCards(runs) {
           <div class="run-card-header">
             <div>
               <div class="run-card-track">${escapeHtml(TRACK_LABELS[run.track] || run.track || "Unknown Track")}</div>
-              <h3>${escapeHtml(run.run_label || run.run_session_id)}</h3>
+              <h3>${escapeHtml(run.run_label || "Unnamed run")}</h3>
               <p class="run-card-meta">
                 ${escapeHtml(run.runner_label || "unknown")} • ${escapeHtml(run.run_kind || "harness")}
                 ${run.benchmark_deck ? ` • ${escapeHtml(run.benchmark_deck)}` : ""}
@@ -212,16 +207,13 @@ function renderRunCards(runs) {
             </div>
           </div>
           <div class="run-card-chart">
-            <div class="run-card-chart-header">
-              <span>${escapeHtml(metricMeta.label)} in run order</span>
-              <span class="mono">${escapeHtml(run.best_spec_hash || "n/a")}</span>
-            </div>
+          <div class="run-card-chart-header">
+            <span>${escapeHtml(metricMeta.label)} in run order</span>
+          </div>
             ${seriesSvg}
           </div>
           <div class="run-card-stats">
-            <div><span class="key">Pass / Deployed</span><span>${escapeHtml(`${run.passed_count || 0} / ${run.deployd_count || 0}`)}</span></div>
             <div><span class="key">LLM / Burn-In</span><span>${escapeHtml(`${run.llm_experiment_count || 0} / ${run.deterministic_experiment_count || 0}`)}</span></div>
-            <div><span class="key">LLM</span><span>${escapeHtml(llmLabel)}</span></div>
             <div><span class="key">Best Score</span><span>${escapeHtml(formatNumber(run.best_aggregate_score, 3))}</span></div>
             <div><span class="key">Best Validation</span><span>${escapeHtml(formatPercent(run.best_validation_total_return))}</span></div>
             <div><span class="key">Best Pre-Audit</span><span>${escapeHtml(formatPercent(run.best_pre_audit_canonical_total_return))}</span></div>
