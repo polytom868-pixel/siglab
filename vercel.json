@@ -1,0 +1,12 @@
+{
+  "buildCommand": "pip install -r requirements.txt",
+  "outputDirectory": ".",
+  "installCommand": "pip install poetry && poetry export -f requirements.txt --without-hashes --output requirements.txt",
+  "framework": "fastapi",
+  "functions": {
+    "api/**/*.py": {
+      "memory": 512,
+      "maxDuration": 30
+    }
+  }
+}
