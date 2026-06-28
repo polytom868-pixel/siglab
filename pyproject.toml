@@ -49,5 +49,3 @@ dashboard = [
     "uvicorn>=0.48.0",
 ]
 
-[tool.vercel]
-entrypoint = "siglab.dashboard.routes:app"
