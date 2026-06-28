@@ -1,15 +1,18 @@
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Ensure the project source is importable in Vercel's Lambda environment
-_api_dir = Path(__file__).resolve().parent
-_root = _api_dir.parent
+# Just test if basic Python works
+from fastapi import FastAPI
 
-for p in [_api_dir, _root, Path("/var/task"), Path("/var/task/api")]:
-    sp = str(p)
-    if sp not in sys.path:
-        sys.path.insert(0, sp)
+app = FastAPI(title="SigLab Dashboard")
 
-from siglab.dashboard.routes import app
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": "0.1.0"}
+
+@app.get("/")
+async def root():
+    return {"message": "SigLab Dashboard API"}
 
 handler = app
