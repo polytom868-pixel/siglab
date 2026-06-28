@@ -1,4 +1,4 @@
 {
   "framework": "fastapi",
-  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets"
+  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets && pip install -e . --no-deps"
 }
