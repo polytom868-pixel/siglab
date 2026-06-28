@@ -12,7 +12,7 @@ from siglab.config import load_settings
 from siglab.data.feeds import SoDEXFeeds
 from siglab.data.store import ParquetLake
 from siglab.live.paper_client import SoDEXPaperPerpsClient
-from siglab.operator import OperatorPipeline
+from siglab.operator.pipeline import OperatorPipeline
 
 
 def add_subparser(

@@ -24,7 +24,7 @@ from fastapi import APIRouter, Request, Response
 from siglab.config import SiglabConfig, load_settings
 from siglab.data.deployment_store import DeploymentStore
 from siglab.utils import load_json_path
-from siglab.live import LiveDeploymentManager, deployment_readiness
+from siglab.live.exporter import LiveDeploymentManager, deployment_readiness
 from siglab.llm import ClaudeClient
 from siglab.llm.llm import (
     default_llm_model_display,
