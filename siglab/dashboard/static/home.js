@@ -94,11 +94,9 @@ async function refresh() {
       const familyFilter = document.getElementById("familyFilter");
       if (trackFilter && mostRecent.track) {
         trackFilter.value = mostRecent.track;
-        window.Alpine?.store?.("filter") && (window.Alpine.store("filter").track = mostRecent.track);
       }
       if (familyFilter && mostRecent.best_family) {
         familyFilter.value = mostRecent.best_family;
-        window.Alpine?.store?.("filter") && (window.Alpine.store("filter").family = mostRecent.best_family);
       }
       HOME_STATE._firstLoad = false;
     }

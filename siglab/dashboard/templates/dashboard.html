@@ -11,21 +11,18 @@
     <div class="hero-filters">
       <label for="trackFilter">Track</label>
       <select id="trackFilter"
-              aria-label="Filter by track"
-              x-model="$store.filter.track">
+              aria-label="Filter by track">
         <option value="all">All Tracks</option>
         <option value="trend_signals">Directional Perps</option>
         <option value="yield_flows">Systematic Carry</option>
       </select>
       <label for="familyFilter">Family</label>
       <select id="familyFilter"
-              aria-label="Filter by family"
-              x-model="$store.filter.family">
+              aria-label="Filter by family">
       </select>
       <label for="metricFilter">Metric</label>
       <select id="metricFilter"
-              aria-label="Select metric"
-              x-model="$store.filter.metric"></select>
+              aria-label="Select metric"></select>
     </div>
     <div class="hero-actions">
       <label class="checkbox">
