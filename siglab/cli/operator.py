@@ -49,7 +49,7 @@ async def run_operator(args: argparse.Namespace) -> None:
     lake = ParquetLake(settings.root_dir / "data" / "cache")
     feeds = SoDEXFeeds(lake=lake)
     paper_client = SoDEXPaperPerpsClient(feeds=feeds, sessions_dir=sessions_dir)
-    pipeline = OperatorPipeline(dry_run=dry_run, paper_client=paper_client)
+    pipeline = OperatorPipeline(dry_run=dry_run, paper_client=paper_client, evidence_dir=settings.root_dir / "runs" / "evidence")
     spec: dict[str, Any] = {}
     if args.spec:
         spec_path = Path(str(args.spec))

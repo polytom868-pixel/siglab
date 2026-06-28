@@ -853,11 +853,6 @@ input[type="checkbox"] {
   background: var(--surface-hover);
   border-color: var(--border-accent);
 }
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-bottom: 8px;
-}
-
 .waiting-card-copy {
   color: var(--text-secondary);
   font-size: var(--type-secondary);

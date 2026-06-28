@@ -85,6 +85,7 @@ async function refresh() {
       if (fam) familyCounts[fam] = (familyCounts[fam] || 0) + 1;
     }
     populateFamilyFilter(data.summary?.families || [], family, escapeHtml, familyCounts);
+    render();
 
   } catch (error) {
     if (error.name !== "AbortError") {
