@@ -28,6 +28,7 @@ const {
   showOnboarding,
   // Chart functions (from chart-engine.js)
   sparklineSvg,
+  pointMetricValue,
 } = window.SigLabUi;
 
 document.addEventListener("DOMContentLoaded", async () => {
