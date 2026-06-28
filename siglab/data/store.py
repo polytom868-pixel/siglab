@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +38,7 @@ class ParquetLake:
         )
         if latest is None:
             return None
+        import pandas as pd
         return pd.read_parquet(latest)
 
     def write_json(self, namespace: str, key: str, payload: object) -> Path:
