@@ -121,7 +121,7 @@ function renderScope(runs) {
   ].join(" / ");
   const scopeSummary = document.getElementById("scopeSummary");
   if (scopeSummary) {
-    scopeSummary.textContent = `Viewing ${scope}. ${runs.length} run${runs.length === 1 ? "" : "s"} in scope.`;
+    scopeSummary.textContent = `Showing ${scope}. ${runs.length} research session${runs.length === 1 ? "" : "s"}.`;
   }
 }
 
@@ -142,28 +142,28 @@ function renderSummary(runs) {
     : "";
   const cards = [
     {
-      label: "Visible Runs",
+      label: "Research Runs",
       value: `${summary.run_count || runs.length || 0}`,
-      detail: "Visible run sessions in the current scope.",
+      detail: "Active research sessions in the current scope.",
     },
     {
-      label: "Total Experiments",
+      label: "Signal Candidates",
       value: `${summary.experiment_count || 0}`,
-      detail: "Total recorded experiments across the visible runs.",
+      detail: "Signal variants evaluated across the visible sessions.",
     },
     {
-      label: "Deployed",
+      label: "Promoted",
       value: `${summary.deployd_count || 0}`,
-      detail: "Deployments recorded inside the visible run set — shows adoption.",
+      detail: "Candidates promoted for operator review.",
     },
     {
-      label: "Best Run + Score",
+      label: "Top Candidate",
       value: summary.best_run_label
         ? `${summary.best_run_label} (${summary.best_aggregate_score != null ? formatNumber(summary.best_aggregate_score, 3) : "n/a"})`
         : "n/a",
       detail: summary.best_run_label
-        ? `${summary.best_run_label} is the current strongest run by aggregate score. ${bestExperimentDetail}`
-        : bestExperimentDetail || "No scored runs are visible.",
+        ? `${summary.best_run_label} is the highest-scored session. ${bestExperimentDetail}`
+        : bestExperimentDetail || "No candidate sessions scored yet.",
     },
   ];
   renderSummaryCards(container, cards);
@@ -177,8 +177,8 @@ function renderRunCards(runs) {
   if (!runs.length) {
     container.innerHTML = `
       <article class="waiting-card waiting-card-empty-state">
-        <div class="waiting-card-title">No runs recorded yet</div>
-        <p class="waiting-card-copy">Start an experiment run and it will appear here.</p>
+        <div class="waiting-card-title">No research sessions found</div>
+        <p class="waiting-card-copy">Run <code>siglab demo run</code> from the CLI to start your first experiment, or adjust your track/family filters.</p>
       </article>
     `;
     return;

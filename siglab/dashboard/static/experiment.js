@@ -32,7 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindDisplayCapitalInput();
   const specHash = getSpecHash();
   if (!specHash) {
-    renderMissing("No experiment hash was found in the URL.");
+    renderMissing("No experiment identifier was found in the URL. Please navigate from the dashboard.");
     return;
   }
 
@@ -160,7 +160,7 @@ function renderDeployment(experiment) {
   const deploydMarkup = deployment
     ? `
       <div class="detail-block">
-        <h3>Latest Deployment</h3>
+        <h3>Latest Runner</h3>
         <div class="kv">
           <div class="key">Strategy</div><div>${escapeHtml(deployment.strategy_name || "n/a")}</div>
           <div class="key">Scheduled</div><div>${deployment.scheduled ? "yes" : "no"}</div>
@@ -196,13 +196,13 @@ function renderDeployment(experiment) {
           </label>
           <label class="checkbox">
             <input id="deploymentLive" type="checkbox" />
-            Live trading
+            Paper trading
           </label>
           <label class="checkbox">
             <input id="deploymentLlmFinalize" type="checkbox" />
-            Claude finalize notes
+            AI generate summary notes
           </label>
-          <button type="submit" aria-label="Deploy experiment">Deploy</button>
+          <button type="submit" aria-label="Register for scheduled execution">Schedule Runner</button>
         </div>
       </form>
       <div id="deploymentResult" class="detail-copy"></div>
@@ -277,7 +277,7 @@ async function submitDeployment(specHash) {
   const resultNode = document.getElementById("deploymentResult");
   if (resultNode) {
     resultNode.setAttribute("aria-live", "polite");
-    resultNode.textContent = "Promoting...";
+    resultNode.textContent = "Submitting...";
   }
 
   const validationError = validateDeploymentInput();
@@ -310,7 +310,7 @@ async function submitDeployment(specHash) {
     }
     const data = await response.json();
     if (resultNode) {
-      resultNode.textContent = `Deployed as ${data.deployment?.strategy_name || "generated strategy"}.`;
+      resultNode.textContent = `Strategy registered as ${data.deployment?.strategy_name || "generated name"}.`;
     }
     const refreshed = await apiFetch(`/api/experiments/${encodeURIComponent(specHash)}/series`);
     if (refreshed.ok) {
@@ -318,12 +318,12 @@ async function submitDeployment(specHash) {
       renderPage();
     } else {
       if (window.SigLabUi?.showError) {
-        window.SigLabUi.showError("Deploy succeeded but page refresh failed. Reload to see latest data.");
+        window.SigLabUi.showError("Registration succeeded but page refresh failed. Reload to see latest data.");
       }
     }
   } catch (error) {
     if (resultNode) {
-      resultNode.textContent = "Deployment failed. Please try again.";
+      resultNode.textContent = "Registration failed. Please try again.";
     }
   }
 }
@@ -335,7 +335,7 @@ function renderSummary(experiment, run, seriesAvailable) {
     {
       label: "Aggregate Score",
       value: formatNumber(summary.aggregate_score, 3),
-      detail: "Primary selection metric used for deployment.",
+      detail: "Primary evaluation metric for ranking strategy performance.",
     },
     {
       label: "Median Sharpe",

@@ -327,13 +327,13 @@
       <div class="onboarding-content">
         <h2>Welcome to SigLab</h2>
         <div class="onboarding-step" data-step="1">
-          <p><strong>Dashboard</strong> shows research experiments grouped by <strong>track</strong> (Directional Perps, Systematic Carry) and <strong>family</strong> (specific strategy templates).</p>
+          <p>SigLab discovers and evaluates on-chain trading signals. It fetches evidence from market data sources (SoSoValue ETF flows, news, currencies — SoDEX prices and funding rates), runs bounded research experiments, and surfaces the strongest candidates for operator review.</p>
         </div>
         <div class="onboarding-step" data-step="2" style="display:none">
-          <p>Click a <strong>run card</strong> to see its experiments, or a <strong>chart point</strong> to inspect an experiment's detail page.</p>
+          <p>Research is organized into <strong>tracks</strong> (Directional Perps, Systematic Carry) and <strong>families</strong> (specific strategy templates). Each <strong>run</strong> evaluates one configuration across multiple experiments.</p>
         </div>
         <div class="onboarding-step" data-step="3" style="display:none">
-          <p>Use the <strong>filter controls</strong> to narrow by track, family, or metric. Enable <strong>Auto refresh</strong> for live updates.</p>
+          <p>Use <strong>filters</strong> to narrow by track, family, or metric. Enable <strong>Auto refresh</strong> to check for new results automatically.</p>
         </div>
         <div class="onboarding-nav">
           <button id="onboardingPrev" style="display:none">Back</button>

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}SoSoValue SigLab Runs{% endblock %}
+{% block title %}SigLab — Signal Dashboard{% endblock %}
 {% block nav_dashboard_active %}active{% endblock %}
 
 {% block content %}
 <header class="hero">
   <div>
-    <h1>Run Dashboard</h1>
+    <h1>Signal Dashboard</h1>
   </div>
   <div class="hero-controls" role="search">
     <div class="hero-filters">
@@ -46,8 +46,8 @@
 <section class="panel">
   <div class="panel-header">
     <div>
-      <h2>Run Sessions</h2>
-      <p>Each card is one run. The chart shows the selected metric in that run's own order, not mixed with other runs.</p>
+      <h2>Research Sessions</h2>
+      <p>Each card shows one research session. The chart plots the selected metric chronologically within that session.</p>
     </div>
   <div id="runCards" class="run-grid">
     <div class="panel run-card"><div class="skeleton-card"></div></div>
