@@ -1,18 +1,24 @@
 """evidence-build subcommand: fetch SoSoValue + SoDEX evidence and write JSONL files."""
-
 from __future__ import annotations
-
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
+BTC_CURRENCY_ID = 1
+
+
 from siglab.config import SiglabConfig, load_settings
 from siglab.data.evidence import (
+    EvidenceRecord,
     EvidenceStore,
+    _coerce_float,
     etf_inflow_evidence,
     news_evidence,
     sodex_quote_evidence,
@@ -97,6 +103,7 @@ async def _collect_evidence(
     # --- SoDEX evidence ---
     sodex_path = output_dir / "sodex_rest.jsonl"
     sodex_store = EvidenceStore(sodex_path)
+    sodex_succeeded = False
     try:
         sdx_client = SoDEXPublicPerpsClient()
         sodex_records = await sodex_quote_evidence(
@@ -104,11 +111,53 @@ async def _collect_evidence(
             observed_at=observed_at,
             evidence_path=str(sodex_path),
         )
-        sodex_store.append_many(sodex_records)
         await sdx_client.close()
-        written_paths.append(sodex_path)
+        if sodex_records:
+            sodex_store.append_many(sodex_records)
+            written_paths.append(sodex_path)
+            sodex_succeeded = True
+        else:
+            logger.warning("SoDEX returned 0 records, falling back to SoSoValue market snapshot")
     except Exception as exc:
         errors.append(f"SoDEX evidence failed: {exc}")
+        logger.warning("SoDEX failed (%s), falling back to SoSoValue market snapshot", exc)
+    if not sodex_succeeded:
+        try:
+            ssv_fallback_path = output_dir / "sodex_fallback.jsonl"
+            ssv_fallback_store = EvidenceStore(ssv_fallback_path)
+            ssv_client = SoSoValueClient(api_key=settings.sosovalue_api_key_override)
+            snapshot = await ssv_client.currency_market_snapshot(BTC_CURRENCY_ID)
+            await ssv_client.close()
+            data = snapshot.get("data", snapshot) if isinstance(snapshot, dict) else snapshot
+            if isinstance(data, dict) and data.get("price") is not None:
+                entity = str(data.get("symbol", "BTC")).upper()
+                price = _coerce_float(data.get("price"))
+                price_change = _coerce_float(data.get("priceChangePercent24Hr") or data.get("priceChangePercent"))
+                market_cap = _coerce_float(data.get("marketCap") or data.get("market_cap"))
+                volume = _coerce_float(data.get("volume24Hr") or data.get("volume"))
+                records: list[EvidenceRecord] = []
+                common = dict(
+                    source="sosovalue.currency.market_snapshot",
+                    observed_at=observed_at,
+                    timestamp=observed_at,
+                    entity=entity,
+                    module="SoSoValue",
+                    confidence=0.8,
+                    evidence_path=str(ssv_fallback_path),
+                    attributes={"symbol": entity},
+                )
+                if price is not None:
+                    records.append(EvidenceRecord(**common, relation="mark_price", value=price))
+                if price_change is not None:
+                    records.append(EvidenceRecord(**common, relation="price_change_24h_pct", value=price_change))
+                if market_cap is not None:
+                    records.append(EvidenceRecord(**common, relation="market_cap", value=market_cap))
+                if volume is not None:
+                    records.append(EvidenceRecord(**common, relation="volume_24h", value=volume))
+                ssv_fallback_store.append_many(records)
+                written_paths.append(ssv_fallback_path)
+        except Exception as exc:
+            errors.append(f"SoDEX fallback (SoSoValue) failed: {exc}")
     return {
         "observed_at": observed_at,
         "ssv_path": ssv_path,

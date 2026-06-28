@@ -9,7 +9,6 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 import httpx
 
-from anthropic import AsyncAnthropic, RateLimitError as AnthropicRateLimitError
 
 if TYPE_CHECKING:
     from siglab.config import SiglabConfig
@@ -87,7 +86,7 @@ class ClaudeClient:
         self.settings = settings
         self.last_trace: dict[str, Any] | None = None
         self.last_exchange: dict[str, Any] | None = None
-        self._client: AsyncAnthropic | None = None
+        self._client: "AsyncAnthropic | None" = None
         self._latencies_ms: list[float] = []
         self._retries = self._rate_limits = self._transport_failures = 0
         self._request_count = self._success_count = 0
@@ -111,8 +110,10 @@ class ClaudeClient:
 
     # ── transport ───────────────────────────────────────────────
 
-    def _get_client(self) -> AsyncAnthropic:
+    def _get_client(self) -> "AsyncAnthropic":
         if self._client is None:
+            from anthropic import AsyncAnthropic, RateLimitError as AnthropicRateLimitError
+
             api_key = str(self.settings.openmodel_api_key or "")
             base_url = str(
                 self.settings.openmodel_base_url
@@ -184,6 +185,8 @@ class ClaudeClient:
             kwargs["system"] = system_prompt
         if tools:
             kwargs["tools"] = tools
+
+        from anthropic import RateLimitError as AnthropicRateLimitError
 
         started = time.perf_counter()
         self._request_count += 1

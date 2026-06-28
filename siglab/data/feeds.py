@@ -1384,6 +1384,44 @@ class SoSoValueClient:
         )
         return await self.request(spec)
 
+
+    async def etf_list(self, symbol: str = "", country_code: str = "") -> list[dict[str, Any]]:
+        """List ETFs by symbol/country."""
+        spec = SoSoValueRequestSpec(
+            name="etf.list",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path="/etfs",
+            params={"symbol": symbol, "country_code": country_code},
+            ttl_s=300.0,
+        )
+        payload = await self.request(spec)
+        return (payload or {}).get("data") or []
+
+    async def etf_summary_history(self, symbol: str, country_code: str = "") -> list[dict[str, Any]]:
+        """Get ETF summary history."""
+        spec = SoSoValueRequestSpec(
+            name="etf.summary_history",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path="/etfs/summary-history",
+            params={"symbol": symbol, "country_code": country_code},
+            ttl_s=300.0,
+        )
+        payload = await self.request(spec)
+        return (payload or {}).get("data") or []
+
+    async def etf_market_snapshot(self, ticker: str) -> dict[str, Any]:
+        """Get ETF market snapshot by ticker (IBIT, FBTC, etc.)."""
+        spec = SoSoValueRequestSpec(
+            name="etf.market_snapshot",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path=f"/etfs/{ticker}/market-snapshot",
+            ttl_s=300.0,
+        )
+        return await self.request(spec)
+
     async def currency_klines(
         self,
         currency_id: int,

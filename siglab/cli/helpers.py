@@ -743,6 +743,8 @@ def _market_signal_summary(
     preflight: dict[str, Any],
 ) -> dict[str, Any]:
     flow_value = safe_float((latest_flow or {}).get("value"))
+    if flow_value is not None:
+        flow_value = round(flow_value, 2)
     if flow_value is None:
         flow_bias = "unknown"
     elif flow_value > 0:
