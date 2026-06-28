@@ -11,7 +11,7 @@
   --text-secondary: #a3b5a8;
   --muted: #7a8f7e;
 
-  --border: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.10);
   --border-accent: rgba(78, 204, 130, 0.12);
 
   --green: #4ade80;
@@ -241,7 +241,6 @@ body::before {
   margin-bottom: 32px;
 }
 
-}
 
 .ops-grid {
   display: grid;
@@ -412,6 +411,12 @@ body::before {
   align-items: end;
 }
 
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -467,7 +472,6 @@ select:hover {
 
 select:focus,
 button:focus {
-  outline: none;
   border-color: var(--border-accent);
   box-shadow: 0 0 0 3px var(--green-soft);
 }
@@ -555,7 +559,7 @@ input[type="checkbox"] {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: end;
+  align-items: flex-start;
   padding: 18px 20px 14px;
   border-bottom: 1px solid var(--border);
 }
@@ -804,6 +808,7 @@ input[type="checkbox"] {
   color: #fff;
   font-size: var(--type-label);
   font-weight: 600;
+}
 
 .waiting-card-empty-state {
   max-width: 560px;
@@ -1302,6 +1307,12 @@ pre {
   color: var(--muted);
   font-size: var(--type-secondary);
   padding: 8px 0;
+}
+
+.value-na {
+  opacity: 0.45;
+  font-style: italic;
+  font-size: 0.85em;
 }
 
 

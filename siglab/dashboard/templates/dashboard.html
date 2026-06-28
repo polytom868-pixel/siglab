@@ -9,20 +9,26 @@
   </div>
   <div class="hero-controls" role="search">
     <div class="hero-filters">
-      <label for="trackFilter">Track</label>
-      <select id="trackFilter"
-              aria-label="Filter by track">
-        <option value="all">All Tracks</option>
-        <option value="trend_signals">Directional Perps</option>
-        <option value="yield_flows">Systematic Carry</option>
-      </select>
-      <label for="familyFilter">Family</label>
-      <select id="familyFilter"
-              aria-label="Filter by family">
-      </select>
-      <label for="metricFilter">Metric</label>
-      <select id="metricFilter"
-              aria-label="Select metric"></select>
+      <div class="filter-group">
+        <label for="trackFilter">Track</label>
+        <select id="trackFilter"
+                aria-label="Filter by track">
+          <option value="all">All Tracks</option>
+          <option value="trend_signals">Directional Perps</option>
+          <option value="yield_flows">Systematic Carry</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="familyFilter">Family</label>
+        <select id="familyFilter"
+                aria-label="Filter by family">
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="metricFilter">Metric</label>
+        <select id="metricFilter"
+                aria-label="Select metric"></select>
+      </div>
     </div>
     <div class="hero-actions">
       <label class="checkbox">
@@ -40,16 +46,15 @@
 </section>
 
 <section class="panel">
-  <div class="panel-header">
     <div>
       <h2>Research Sessions</h2>
-      <p>Each card shows one research session. The chart plots the selected metric chronologically within that session.</p>
+      <p>Each card shows one research session with its experiments, metrics, and sparkline trend.</p>
     </div>
-  <div id="runCards" class="run-grid">
-    <div class="panel run-card"><div class="skeleton-card"></div></div>
-    <div class="panel run-card"><div class="skeleton-card"></div></div>
-    <div class="panel run-card"><div class="skeleton-card"></div></div>
-  </div>
+    <div id="runCards" class="run-grid">
+      <div class="panel run-card"><div class="skeleton-card"></div></div>
+      <div class="panel run-card"><div class="skeleton-card"></div></div>
+      <div class="panel run-card"><div class="skeleton-card"></div></div>
+    </div>
 {% endblock %}
 
 {% block scripts_extra %}

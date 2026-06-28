@@ -51,25 +51,5 @@
     <script src="/chart-engine.js"></script>
     {% block scripts_extra %}{% endblock %}
 
-    <script>
-      document.addEventListener('alpine:init', () => {
-        Alpine.store('filter', {
-          track: 'all',
-          family: 'all',
-          metric: 'aggregate_score',
-        });
-        Alpine.store('selection', {
-          selectedHash: null,
-          selectedRunId: null,
-        });
-        Alpine.store('displayCapital', {
-          usd: 100000,
-        });
-        Alpine.store('refresh', {
-          lastUpdated: null,
-          isRefreshing: false,
-        });
-      });
-    </script>
   </body>
 </html>
