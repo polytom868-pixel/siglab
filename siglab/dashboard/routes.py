@@ -1562,7 +1562,10 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(404)
     async def not_found(request: Request, exc):
-        from fastapi.responses import HTMLResponse
+        from fastapi.responses import HTMLResponse, JSONResponse
+        path = request.url.path
+        if path.startswith("/api/") or "Accept" in request.headers and "json" in request.headers["Accept"]:
+            return JSONResponse(content={"detail": "Not Found"}, status_code=404)
         return HTMLResponse(
             content="""<!DOCTYPE html>
 <html lang="en">
@@ -1593,9 +1596,13 @@ def create_app() -> FastAPI:
         )
 
 
+
+
     if _static_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(_static_dir)), name="static")
     return app
+
+
 
 
 app = create_app()
