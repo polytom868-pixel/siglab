@@ -276,7 +276,7 @@ class ClaudeClient:
         last_error: LLMProviderError | None = None
         bp = dict(payload)
         model = str(bp.get("model", _OPENAI_MODEL))
-        for attempt in range(3):
+        for attempt in range(2):
             started = time.perf_counter()
             self._request_count += 1
             try:

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from siglab.live.paper_client import SoDEXPaperPerpsClient
@@ -50,17 +52,17 @@ class Position:
 
 
 class OperatorPipeline:
-    """Orchestrates the full research-to-decision pipeline."""
-
     def __init__(
         self,
         dry_run: bool,
         paper_client: SoDEXPaperPerpsClient | None = None,
+        evidence_dir: Path | None = None,
     ) -> None:
         if not isinstance(dry_run, bool):
             raise TypeError("dry_run must be a bool")
         self.dry_run = dry_run
         self.paper_client = paper_client
+        self.evidence_dir = evidence_dir
         self._circuit_breaker = CircuitBreakerState()
 
     def evidence_to_decision(
@@ -247,6 +249,29 @@ class OperatorPipeline:
         evidence_records: list[dict[str, Any]] = list(
             spec.get("evidence", spec.get("evidence_records", [])),
         )
+        # Load supplemental evidence from JSONL files (SoSoValue, SoDEX)
+        if self.evidence_dir is not None:
+            for filename in ("sosovalue.jsonl", "sodex_rest.jsonl"):
+                path = self.evidence_dir / filename
+                if path.exists():
+                    loaded = 0
+                    for raw_line in path.read_text(encoding="utf-8").splitlines():
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if isinstance(record, dict):
+                            evidence_records.append(record)
+                            loaded += 1
+                    if loaded:
+                        logger.info("Loaded %d evidence records from %s", loaded, path)
+                    else:
+                        logger.debug("No valid records in %s", path)
+                else:
+                    logger.debug("Evidence file not found: %s", path)
         runtime_cfg: dict[str, Any] = dict(spec.get("runtime", {}))
         signal = self.evidence_to_decision(evidence_records)
         portfolio_value = float(

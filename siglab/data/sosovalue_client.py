@@ -380,7 +380,52 @@ class SoSoValueClient(DataProvider):
 
     # --- ETF list/methods ---
 
+    async def etf_list(
+        self,
+        symbol: str = "",
+        country_code: str = "",
+    ) -> list[dict[str, Any]]:
+        """List available ETFs, optionally filtered by symbol and country code.
 
+        GET /etfs?symbol={symbol}&country_code={country_code}
+        """
+        params: dict[str, Any] = {}
+        if symbol:
+            params["symbol"] = symbol
+        if country_code:
+            params["country_code"] = country_code
+        spec = SoSoValueRequestSpec(
+            name="etf.list",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path="/etfs",
+            params=params,
+            ttl_s=300.0,
+        )
+        payload = await self.request(spec)
+        return self._rows_from_data(payload.get("data"), spec)
+
+    async def etf_market_snapshot(self, ticker: str) -> dict[str, Any]:
+        """Get detailed market snapshot for an ETF ticker (price, inflow, volume).
+
+        GET /etfs/{ticker}/market-snapshot
+        """
+        spec = SoSoValueRequestSpec(
+            name="etf.market_snapshot",
+            method="GET",
+            base_url=self.endpoints.openapi_base_url,
+            path=f"/etfs/{ticker}/market-snapshot",
+            ttl_s=300.0,
+        )
+        payload = await self.request(spec)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise SoSoValueApiError(
+                "etf.market_snapshot data was not an object",
+                status_code=None,
+                payload=data,
+            )
+        return dict(data)
 
     async def featured_news_by_currency(
         self,
@@ -406,6 +451,29 @@ class SoSoValueClient(DataProvider):
             method="GET",
             base_url=self.endpoints.news_base_url,
             path="/api/v1/news/featured/currency",
+            params=params,
+            ttl_s=60.0,
+        )
+        payload = await self.request(spec)
+        return self._rows_from_data(payload.get("data"), spec)
+
+    async def news_search(
+        self,
+        *,
+        keyword: str,
+        page_size: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Search news by keyword."""
+        if int(page_size) < 1 or int(page_size) > 100:
+            raise SoSoValueConfigError(
+                "SoSoValue news pageSize must be between 1 and 100",
+            )
+        params: dict[str, Any] = {"keyword": keyword, "pageSize": int(page_size)}
+        spec = SoSoValueRequestSpec(
+            name="news.search",
+            method="GET",
+            base_url=self.endpoints.news_base_url,
+            path="/api/v1/news/search",
             params=params,
             ttl_s=60.0,
         )

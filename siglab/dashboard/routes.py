@@ -9,20 +9,17 @@ from siglab.config import _DEFAULT_PORT
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from collections.abc import AsyncIterator
 
-from fastapi import (
-    APIRouter,
-    FastAPI,
-    HTTPException,
-    Request,
-    Response,
-)
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from starlette.middleware.base import BaseHTTPMiddleware
+if TYPE_CHECKING:
+    from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.templating import Jinja2Templates
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+from fastapi import APIRouter, Request, Response
 
 from siglab.config import SiglabConfig, load_settings
 from siglab.data.deployment_store import DeploymentStore
@@ -1185,6 +1182,7 @@ async def api_runs(
 
 @router.get("/api/experiments/{spec_hash}")
 async def api_experiment_detail(request: Request, spec_hash: str) -> dict[str, Any]:
+    from fastapi import HTTPException
     payload = request.app.state.dashboard.experiment_detail_payload(spec_hash)
     if payload is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
@@ -1193,6 +1191,7 @@ async def api_experiment_detail(request: Request, spec_hash: str) -> dict[str, A
 
 @router.get("/api/experiments/{spec_hash}/series")
 async def api_experiment_series(request: Request, spec_hash: str) -> dict[str, Any]:
+    from fastapi import HTTPException
     try:
         payload = request.app.state.dashboard.experiment_series_payload(spec_hash)
         if payload is None:
@@ -1204,6 +1203,7 @@ async def api_experiment_series(request: Request, spec_hash: str) -> dict[str, A
 
 @router.post("/api/experiments/{spec_hash}/deploy")
 async def api_experiment_deploy(request: Request, spec_hash: str) -> dict[str, Any]:
+    from fastapi import HTTPException
     try:
         body = await request.json()
     except (json.JSONDecodeError, TypeError, ValueError):
@@ -1355,6 +1355,7 @@ async def api_export_runs(
     family: str | None = None,
 ) -> Response:
     """Export runs as CSV or JSON."""
+    from fastapi import Response
     dashboard = request.app.state.dashboard
     data = dashboard.runs_payload(
         track=canonical_track_name(track) if track else None,
@@ -1391,6 +1392,7 @@ async def api_export_experiments(
     family: str | None = None,
 ) -> Response:
     """Export experiments as CSV or JSON."""
+    from fastapi import Response
     dashboard = request.app.state.dashboard
     data = dashboard.experiments_payload(
         track=canonical_track_name(track) if track else None,
@@ -1433,19 +1435,6 @@ async def api_export_experiments(
 async def api_ops(request: Request) -> dict[str, Any]:
     return request.app.state.dashboard.ops_payload()
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response: Response = await call_next(request)
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests; block-all-mixed-content;"
-        )
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=()"
-        )
-        return response
 
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state = DashboardState()
@@ -1474,6 +1463,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.static_dir = Path(__file__).resolve().parent / "static"
     state.start_time = time.time()
     _template_dir = Path(__file__).resolve().parent / "templates"
+    from fastapi.templating import Jinja2Templates
     state.templates = Jinja2Templates(directory=str(_template_dir))
     _env = state.templates.env
 
@@ -1519,6 +1509,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            response: Response = await call_next(request)
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests; block-all-mixed-content;"
+            )
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = (
+                "camera=(), microphone=(), geolocation=()"
+            )
+            return response
     app = FastAPI(title="SigLab Dashboard", version="0.1.0", lifespan=lifespan)
     _cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8080").split(",")
     _cors_origins_stripped = [o.strip() for o in _cors_origins if o.strip()]

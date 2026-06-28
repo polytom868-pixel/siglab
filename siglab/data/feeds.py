@@ -8,10 +8,11 @@ import logging
 import re
 import time
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 from siglab.config import SiglabConfig
 from siglab.config import AssetUniverse, SignalSpec
@@ -51,6 +52,7 @@ def _frame_column_or_default(
     *,
     default: float = 0.0,
 ) -> pd.Series:
+    import pandas as pd
     if column in frame.columns:
         series = pd.to_numeric(frame[column], errors="coerce")
         n_missing = int(series.isna().sum())
@@ -87,6 +89,7 @@ def _percentile_map(
     series: pd.Series,
     percentiles: list[float],
 ) -> dict[str, float | None]:
+    import pandas as pd
     clean = (
         pd.to_numeric(series, errors="coerce")
         .replace([float("inf"), float("-inf")], pd.NA)
@@ -105,6 +108,7 @@ def _aligned_funding_series(
     funding: pd.DataFrame,
     symbol: str,
 ) -> pd.Series:
+    import pandas as pd
     raw = (
         funding[symbol]
         if symbol in funding.columns
@@ -119,6 +123,7 @@ def _pair_calibration_snapshot(
     funding: pd.DataFrame,
     symbols: list[str],
 ) -> dict[str, Any]:
+    import pandas as pd
     if len(symbols) < 2:
         return {}
     asset_1_symbol, asset_2_symbol = symbols[:2]
@@ -448,6 +453,7 @@ class MarketDataProvider:
             return {key: value.copy() for key, value in cached.items()}
 
         async def _fetch_one(row: dict[str, Any]) -> tuple[str, pd.DataFrame]:
+            import pandas as pd
             label = self.market_label(row)
             cached = None
             if self._active_bundle_id is None:
@@ -548,6 +554,7 @@ class MarketDataProvider:
         *,
         lookback_days: int,
     ) -> dict[str, Any]:
+        import pandas as pd
         bundle_cache_key = self._bundle_cache_key(
             "lending_bundle",
             markets=[self.lending_market_label(row) for row in markets],
@@ -771,6 +778,7 @@ class MarketDataProvider:
         lookback_days: int,
         interval: str,
     ) -> dict[str, Any]:
+        import pandas as pd
 
         if self.sodex_feeds is None:
             self.sodex_feeds = SoDEXFeeds(lake=self.lake)
@@ -1125,6 +1133,7 @@ class SoDEXFeeds:
 
     @staticmethod
     def _empty_klines_frame() -> pd.DataFrame:
+        import pandas as pd
         frame = pd.DataFrame(
             {
                 "open": pd.Series(dtype=float),
@@ -1144,6 +1153,7 @@ class SoDEXFeeds:
         *,
         interval: str | None = None,
     ) -> pd.DataFrame:
+        import pandas as pd
         if not rows:
             return SoDEXFeeds._empty_klines_frame()
         data = [_kline_to_row(k) for k in rows]
