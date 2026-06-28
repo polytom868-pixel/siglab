@@ -1,0 +1,17 @@
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+agent_workspace
+scripts
+tmp
+sessions
+mutable
+challenges
+tracks
+local:
+.impeccable
+.agents
+.omc
+benchmarks
+live

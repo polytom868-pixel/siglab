@@ -153,7 +153,6 @@ docs/tuning-guide.md
 .github/
 AGENTS.md
 CONTRIBUTING.md
-Dockerfile
 mypy.ini
 poetry.lock
 pytest.ini
@@ -170,3 +169,4 @@ siglab/dashboard/static/app.js
 siglab/evaluation/__init__.py
 siglab/live/__init__.py
 siglab/operator/__init__.py
+.vercel

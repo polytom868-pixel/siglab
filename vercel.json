@@ -1,12 +1,4 @@
 {
-  "buildCommand": "pip install -r requirements.txt",
-  "outputDirectory": ".",
-  "installCommand": "pip install poetry && poetry export -f requirements.txt --without-hashes --output requirements.txt",
   "framework": "fastapi",
-  "functions": {
-    "api/**/*.py": {
-      "memory": 512,
-      "maxDuration": 30
-    }
-  }
+  "installCommand": "pip install -r requirements.txt && find . -path '*/tests' -type d -exec rm -rf {} + 2>/dev/null; find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null; find . -name '*.pyc' -delete 2>/dev/null; find . -path '*.dist-info/RECORD' -delete 2>/dev/null; find . -path '*.dist-info/INSTALLER' -delete 2>/dev/null; find . -path '*.dist-info/REQUESTED' -delete 2>/dev/null; find . -path '*.dist-info/entry_points.txt' -delete 2>/dev/null; find . -path '*.dist-info/WHEEL' -delete 2>/dev/null; find . -path '*.dist-info/METADATA' -delete 2>/dev/null; find . -path '*.dist-info/top_level.txt' -delete 2>/dev/null; find . -path '**/pandas/**/tests' -type d -exec rm -rf {} + 2>/dev/null; find . -path '**/numpy/**/tests' -type d -exec rm -rf {} + 2>/dev/null; find . -path '**/pyarrow/**/tests' -type d -exec rm -rf {} + 2>/dev/null"
 }
