@@ -1,5 +1,5 @@
 {
   "framework": "fastapi",
   "buildCommand": "cp -r siglab api/",
-  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets rich"
+  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets rich jinja2"
 }
