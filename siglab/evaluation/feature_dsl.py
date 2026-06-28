@@ -5,8 +5,6 @@ from pathlib import Path
 import functools
 from typing import Any, cast
 
-import numpy as np
-import pandas as pd
 import yaml
 
 from siglab.config import storage_track_name
@@ -46,6 +44,7 @@ _ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 def _validate_guard(f):
     @functools.wraps(f)
     def wrapper(self, *args, validate_only=False, **kwargs):
+        import pandas as pd
         if validate_only:
             return pd.DataFrame()
         return f(self, *args, validate_only=validate_only, **kwargs)
@@ -88,6 +87,7 @@ def valid_expr(
     aliases: dict[str, str],
     raw_series: set[str],
 ) -> bool:
+    import pandas as pd
     try:
         _eval(
             expression,
@@ -107,6 +107,7 @@ def resolve_feature_frames(
     aliases: dict[str, str],
     raw_frames: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
+    import pandas as pd
     cache: dict[str, pd.DataFrame] = {}
     resolved: dict[str, pd.DataFrame] = {}
     for ft in features:
@@ -128,6 +129,7 @@ def _eval(
     cache: dict[str, pd.DataFrame],
     validate_only: bool,
 ) -> pd.DataFrame:
+    import pandas as pd
     expr = expr.strip()
     if expr in cache:
         return cache[expr]
@@ -171,6 +173,7 @@ def _earg(
     cache: dict[str, pd.DataFrame],
     validate_only: bool,
 ) -> pd.DataFrame | float:
+    import pandas as pd
     s = token.strip()
     return (
         float(s)
@@ -241,6 +244,7 @@ def _apply(
     *,
     validate_only: bool,
 ) -> pd.DataFrame:
+    import pandas as pd
     h = _OP_REG.get(fn)
     if h is None:
         raise ValueError(f"Unsupported feature operator: {fn}")
@@ -248,12 +252,14 @@ def _apply(
 
 
 def _ef(args: list[pd.DataFrame | float], *, expected: int) -> pd.DataFrame:
+    import pandas as pd
     if len(args) != expected or not isinstance(args[0], pd.DataFrame):
         raise ValueError("Expected dataframe argument")
     return args[0]
 
 
 def _efi(args: list[pd.DataFrame | float]) -> tuple[pd.DataFrame, int]:
+    import pandas as pd
     if (
         len(args) != 2
         or not isinstance(args[0], pd.DataFrame)
@@ -264,6 +270,7 @@ def _efi(args: list[pd.DataFrame | float]) -> tuple[pd.DataFrame, int]:
 
 
 def _e2fi(args: list[pd.DataFrame | float]) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    import pandas as pd
     if (
         len(args) != 3
         or not isinstance(args[0], pd.DataFrame)
@@ -275,6 +282,7 @@ def _e2fi(args: list[pd.DataFrame | float]) -> tuple[pd.DataFrame, pd.DataFrame,
 
 
 def _ef2i(args: list[pd.DataFrame | float]) -> tuple[pd.DataFrame, int, int]:
+    import pandas as pd
     if (
         len(args) != 3
         or not isinstance(args[0], pd.DataFrame)
@@ -288,6 +296,7 @@ def _ef2i(args: list[pd.DataFrame | float]) -> tuple[pd.DataFrame, int, int]:
 def _eka(
     args: list[pd.DataFrame | float],
 ) -> tuple[pd.DataFrame, pd.DataFrame, float, float]:
+    import pandas as pd
     if (
         len(args) == 2
         and isinstance(args[0], pd.DataFrame)
@@ -309,6 +318,7 @@ def _eka(
 
 @_validate_guard
 def _op_rolling_zscore(args, *, validate_only):
+    import numpy as np
     f, w = _efi(args)
     m = f.rolling(w).mean()
     s = f.rolling(w).std().replace(0.0, np.nan)
@@ -329,6 +339,7 @@ def _op_rolling_autocorr(args, *, validate_only):
 
 @_validate_guard
 def _op_rolling_beta(args, *, validate_only):
+    import numpy as np
     left, r, w = _e2fi(args)
     return (
         left.rolling(w)
@@ -340,6 +351,7 @@ def _op_rolling_beta(args, *, validate_only):
 
 @_validate_guard
 def _op_rolling_hurst(args, *, validate_only):
+    import pandas as pd
     f, w = _efi(args)
     out = pd.DataFrame(index=f.index, columns=f.columns, dtype=float)
     for c in f.columns:
@@ -349,6 +361,8 @@ def _op_rolling_hurst(args, *, validate_only):
 
 @_validate_guard
 def _op_mean_reversion_halflife(args, *, validate_only):
+    import pandas as pd
+    import numpy as np
     f, w = _efi(args)
     lagged = f.shift(1)
     delta = f.diff()
@@ -379,6 +393,7 @@ def _op_kalman_residual(args, *, validate_only):
 
 @_validate_guard
 def _op_rsi(args, *, validate_only):
+    import numpy as np
     f, w = _efi(args)
     d = f.diff()
     gains = d.clip(lower=0.0)
@@ -393,6 +408,7 @@ def _op_rsi(args, *, validate_only):
 
 @_validate_guard
 def _op_sign_flip_prob(args, *, validate_only):
+    import numpy as np
     f, w = _efi(args)
     return f.apply(np.sign).diff().ne(0).astype(float).rolling(w).mean()
 
@@ -405,6 +421,8 @@ def _op_abs(args, *, validate_only):
 
 @_validate_guard
 def _op_log(args, *, validate_only):
+    import pandas as pd
+    import numpy as np
     f = _ef(args, expected=1)
     return cast(pd.DataFrame, np.log(f.where(f > 0.0)))
 
@@ -489,6 +507,7 @@ def _bin(
     right: pd.DataFrame | float,
     op: Callable[[Any, Any], pd.DataFrame],
 ) -> pd.DataFrame:
+    import pandas as pd
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         lf, rf = _afp(left, right)
         return cast(pd.DataFrame, op(lf, rf))
@@ -517,6 +536,7 @@ def _ap(
     left: pd.DataFrame | float,
     right: pd.DataFrame | float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    import pandas as pd
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         return _afp(left, right)
     if isinstance(left, pd.DataFrame):
@@ -530,6 +550,8 @@ def _ap(
 
 
 def _afp(left: pd.DataFrame, right: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    import pandas as pd
+    import numpy as np
     li, ri = left.align(right, join="outer", axis=0)
     lc = list(left.columns)
     rc = list(right.columns)
@@ -546,6 +568,7 @@ def _afp(left: pd.DataFrame, right: pd.DataFrame) -> tuple[pd.DataFrame, pd.Data
 
 
 def _bcast(frame: pd.DataFrame, *, target_columns: list[str]) -> pd.DataFrame:
+    import pandas as pd
     if len(frame.columns) != 1:
         raise ValueError("broadcast_single_column_frame requires exactly one column")
     return pd.DataFrame(
@@ -555,6 +578,8 @@ def _bcast(frame: pd.DataFrame, *, target_columns: list[str]) -> pd.DataFrame:
 
 
 def _sdiv(left: pd.DataFrame | float, right: pd.DataFrame | float) -> pd.DataFrame:
+    import pandas as pd
+    import numpy as np
     if isinstance(left, pd.DataFrame) and isinstance(right, pd.DataFrame):
         out = left.div(right.replace(0.0, np.nan))
     elif isinstance(left, pd.DataFrame):
@@ -569,6 +594,7 @@ def _sdiv(left: pd.DataFrame | float, right: pd.DataFrame | float) -> pd.DataFra
 
 
 def _hurst(values: np.ndarray) -> float:
+    import numpy as np
     arr = np.asarray(values, dtype=float)[np.isfinite(np.asarray(values, dtype=float))]
     if arr.size < 32:
         return float("nan")
@@ -601,6 +627,8 @@ def _kbf(
     process_noise: float,
     observation_noise: float,
 ) -> pd.DataFrame:
+    import pandas as pd
+    import numpy as np
     al, ar = left.align(right, join="outer")
     out = pd.DataFrame(index=al.index, columns=al.columns, dtype=float)
     q = max(float(process_noise), 1e-10)

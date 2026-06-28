@@ -3,13 +3,12 @@ from __future__ import annotations
 import math
 from typing import Any, cast
 
-import numpy as np
-import pandas as pd
 
 from siglab.utils import dget, safe_float as _sf
 
 
 def mean_pairwise_rolling_corr(returns: pd.DataFrame, *, window: int) -> pd.Series:
+    import pandas as pd
     cols = list(returns.columns)
     if not cols:
         return pd.Series(dtype=float)
@@ -21,6 +20,8 @@ def mean_pairwise_rolling_corr(returns: pd.DataFrame, *, window: int) -> pd.Seri
 
 
 def _mpsigs(frame: pd.DataFrame, *, eps_: float = 1e-09) -> pd.Series:
+    import pandas as pd
+    import numpy as np
     arr = frame.to_numpy(dtype=float, na_value=np.nan)
     result: list[tuple[tuple[str, int], ...]] = []
     for row in arr:
@@ -44,6 +45,7 @@ def _mpsigs(frame: pd.DataFrame, *, eps_: float = 1e-09) -> pd.Series:
 
 
 def _rdl_np(values: np.ndarray, cols: list[str], eps_: float = 1e-09) -> str:
+    import numpy as np
     vals = np.where(np.isfinite(values), values, 0.0)
     pos = np.abs(vals) > eps_
     if not pos.any():
@@ -62,6 +64,8 @@ def _rdl_np(values: np.ndarray, cols: list[str], eps_: float = 1e-09) -> str:
 
 
 def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
+    import pandas as pd
+    import numpy as np
     if tw.empty:
         return []
     sigs = _mpsigs(tw)
@@ -70,6 +74,8 @@ def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
     sts: pd.Timestamp | None = None
     pts: pd.Timestamp | None = None
     def _addep(es: pd.Timestamp, ee: pd.Timestamp, sig: tuple[tuple[str, int], ...]) -> None:
+        import pandas as pd
+        import numpy as np
         if not sig:
             return
         et = tw.loc[es:ee]
@@ -112,6 +118,7 @@ def _ppeps(*, tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
 
 
 def _episode_stats(matched: list[dict[str, Any]], returns: list[float]) -> dict[str, Any]:
+    import numpy as np
     cnt: dict[str, int] = {}
     for e in matched:
         d = e.get("direction", "")
@@ -128,6 +135,8 @@ def _episode_stats(matched: list[dict[str, Any]], returns: list[float]) -> dict[
 
 
 def _hpb(tw: pd.DataFrame, r: pd.Series) -> list[dict[str, Any]]:
+    import pandas as pd
+    import numpy as np
     eps = _ppeps(tw=tw, r=r)
     specs = [
         ("bars_1_6", 1, 6),
@@ -161,6 +170,7 @@ def _sps(
     mask: pd.Series,
     label: str,
 ) -> dict[str, Any]:
+    import pandas as pd
     am = mask.reindex(r.index).fillna(value=False).astype(dtype=bool)
     subset = r[am].dropna()
     esub = gross_exposure.reindex(r.index).fillna(0.0)[am]
@@ -197,6 +207,8 @@ def _prs(
     tw: pd.DataFrame,
     funding_rates: pd.DataFrame | None,
 ) -> dict[str, Any]:
+    import pandas as pd
+    import numpy as np
     if prices.empty:
         return {"available": False}
     prices = prices.sort_index()
@@ -292,12 +304,14 @@ def _prd(
     funding_rates: pd.DataFrame | None,
     r: pd.Series,
 ) -> dict[str, Any]:
+    import pandas as pd
     rs = _prs(prices=prices, tw=tw, funding_rates=funding_rates)
     if not rs.get("available"):
         return {"available": False}
     th = rs.get("thresholds", {}) or {}
 
     def _bs(label, mask, hi_label, lo_label):
+        import pandas as pd
         median_val = th.get(f"{label}_median")
         has_median = median_val is not None
         median_float = float(median_val) if has_median else 0.0
@@ -392,6 +406,7 @@ def _fraction_while_flat(
     fm1: object,
 ) -> float | None:
 
+    import numpy as np
     if hasattr(fm1, "to_numpy"):
         fm1_arr: np.ndarray = fm1.to_numpy()  # type: ignore[attr-defined]
     else:
@@ -411,6 +426,8 @@ def _pgd(
     ei: int | None,
     regime_gate_mask: pd.Series | None = None,
 ) -> dict[str, Any]:
+    import pandas as pd
+    import numpy as np
     if signal_score is None or signal_score.empty or tw.empty:
         return {}
     lim = (

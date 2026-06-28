@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from siglab.cli.rich_utils import print_error, print_json
 from siglab.config import load_settings
 from siglab.data.feeds import SoDEXFeeds
 from siglab.data.store import ParquetLake
@@ -43,6 +42,7 @@ def add_subparser(
 
 
 async def run_operator(args: argparse.Namespace) -> None:
+    from siglab.cli.rich_utils import print_error, print_json
     settings = load_settings()
     sessions_dir = args.sessions_dir or str(settings.root_dir / "sessions")
     dry_run = not args.live

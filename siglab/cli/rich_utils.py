@@ -4,40 +4,34 @@ import json
 import os
 import sys
 
-from rich.console import Console
-from rich.json import JSON
-from rich.table import Table
-from rich.text import Text
-from rich.theme import Theme
 
-SIGLAB_THEME = Theme(
-    {
-        "success": "bold green",
-        "error": "bold red",
-        "warning": "bold yellow",
-        "info": "bold blue",
-        "muted": "dim",
-        "accent": "bold cyan",
-        "label": "bold",
-        "value": "",
-    },
-)
+_SIGLAB_THEME_STYLES = {
+    "success": "bold green",
+    "error": "bold red",
+    "warning": "bold yellow",
+    "info": "bold blue",
+    "muted": "dim",
+    "accent": "bold cyan",
+    "label": "bold",
+    "value": "",
+}
 
 
 def make_console(*, force_no_color: bool = False) -> Console:
     """Build a Rich Console respecting NO_COLOR and --no-color."""
+    from rich.console import Console
+    from rich.theme import Theme
+
     no_color = force_no_color or bool(os.environ.get("NO_COLOR"))
     is_tty = sys.stdout.isatty()
     return Console(
-        theme=SIGLAB_THEME,
+        theme=Theme(_SIGLAB_THEME_STYLES),
         no_color=no_color,
         highlight=not no_color and is_tty,
         stderr=False,
         force_terminal=is_tty if not no_color else False,
         force_jupyter=False,
     )
-
-
 _console: Console | None = None
 
 
@@ -57,6 +51,8 @@ def init_console(*, force_no_color: bool = False) -> Console:
 
 def print_json(data: object, *, indent: int = 2, sort_keys: bool = True) -> None:
     """Print JSON with syntax highlighting in terminal, plain JSON when piped/no_color."""
+    from rich.json import JSON
+
     console = get_console()
     no_color = (
         console.no_color
@@ -78,6 +74,8 @@ def make_table(
     border_style: str = "muted",
     row_styles: tuple[str, ...] = ("", "dim"),
 ) -> Table:
+    from rich.table import Table
+
     return Table(
         title=title,
         show_lines=show_lines,
@@ -90,6 +88,8 @@ def make_table(
 
 def print_status_line(message: str, *, style: str = "info") -> None:
     """Print a single styled status line (replaces bare print of status text)."""
+    from rich.text import Text
+
     console = get_console()
     console.print(Text(message, style=style))
 

@@ -2,15 +2,6 @@ from __future__ import annotations
 
 import argparse
 
-from rich.text import Text
-
-from siglab.cli.helpers import sodex_preflight_report
-from siglab.cli.rich_utils import (
-    get_console,
-    make_table,
-    print_json,
-    status_style,
-)
 
 
 
@@ -22,6 +13,14 @@ def add_subparser(
 
 
 def run_sodex_preflight(args: argparse.Namespace) -> None:
+    from rich.text import Text
+    from siglab.cli.helpers import sodex_preflight_report
+    from siglab.cli.rich_utils import (
+        get_console,
+        make_table,
+        print_json,
+        status_style,
+    )
     report = sodex_preflight_report()
     if getattr(args, "json", False):
         print_json(report)

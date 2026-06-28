@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import math
 
-import pandas as pd
 
 
 
 def convert_to_spot(prices: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    import pandas as pd
+
     funding = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
     return (prices.copy(), funding)
 

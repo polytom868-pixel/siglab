@@ -12,8 +12,6 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-import numpy as np
-import pandas as pd
 
 from siglab.config import load_settings
 from siglab.data import MarketDataProvider, ParquetLake
@@ -554,6 +552,7 @@ class SoDEXPaperPerpsClient:
         *,
         symbol: str | None = None,
     ) -> list[dict[str, Any]]:
+        import pandas as pd
         s = self.get_session(session_id)
         fills: list[dict[str, Any]] = []
         if self._expire(s):
@@ -610,6 +609,7 @@ class SoDEXPaperPerpsClient:
         *,
         symbol: str | None = None,
     ) -> list[dict[str, Any]]:
+        import pandas as pd
         return [
             {
                 "t": int(pd.Timestamp(idx).timestamp() * 1000)
@@ -902,6 +902,7 @@ class SoDEXPaperPerpsClient:
 
     @staticmethod
     def _read_sf(path: Path) -> dict[str, Any]:
+        import numpy as np
         jp = path if path.suffix == ".json" else path.with_suffix(".json")
         np_ = path.with_suffix(".npy")
         if jp.exists():

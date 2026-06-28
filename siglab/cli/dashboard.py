@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import subprocess
 
-from siglab.cli.rich_utils import print_error, print_info, print_success
 from siglab.config import _DEFAULT_PORT
 
 
@@ -64,6 +63,7 @@ def add_subparser(
 
 
 def run_dashboard_start(args: argparse.Namespace) -> None:
+    from siglab.cli.rich_utils import print_info
     import uvicorn
 
     host = str(args.host)
@@ -85,6 +85,7 @@ def run_dashboard(args: argparse.Namespace) -> None:
 
 
 def run_dashboard_stop(args: argparse.Namespace) -> None:
+    from siglab.cli.rich_utils import print_error, print_success
     import os as _os
     import signal as _signal
 

@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, NamedTuple, cast
 
-import numpy as np
-import pandas as pd
 
 from siglab.config import SiglabConfig
 from siglab.data.feeds import MarketDataProvider
@@ -39,6 +37,7 @@ def _ssp(
     pd.Series | None,
     dict[str, Any],
 ]:
+    import pandas as pd
     shifted = {k: v.shift(1) for k, v in raw_frames.items()}
     ff = resolve_feature_frames(spec.features, aliases=aliases, raw_frames=shifted)
     score = _ws(ff, spec.features, fw, return_components=False)
@@ -69,6 +68,7 @@ def _bsm(
     prices: pd.DataFrame,
     **extra: Any,
 ) -> dict[str, Any]:
+    import pandas as pd
     assert "prices" not in extra, "prices passed both as param and in extra"
     return {
         "track": spec.track,
@@ -91,12 +91,16 @@ def _bsm(
 
 
 def _cs_z(frame: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+    import numpy as np
     c = frame.replace([np.inf, -np.inf], np.nan)
     m = c.mean(axis=1)
     return c.sub(m, axis=0).div(c.std(axis=1).replace(0.0, np.nan), axis=0).fillna(0.0)
 
 
 def _ts_z(frame: pd.DataFrame, *, window: int) -> pd.DataFrame:
+    import pandas as pd
+    import numpy as np
     mp = max(8, window // 4)
     rm = frame.rolling(window, min_periods=mp).mean()
     rs = frame.rolling(window, min_periods=mp).std().replace(0.0, np.nan)
@@ -142,6 +146,7 @@ def _ws(
 
 
 def _align_cs(frame: pd.DataFrame, *, symbols: list[str]) -> pd.DataFrame:
+    import pandas as pd
     if frame.empty:
         return pd.DataFrame(0.0, index=frame.index, columns=symbols)
     clean = frame.apply(pd.to_numeric, errors="coerce")
@@ -168,6 +173,7 @@ def _align_cs_comp(
     *,
     symbols: list[str],
 ) -> dict[str, pd.DataFrame]:
+    import pandas as pd
     return {n: _align_cs(f, symbols=symbols) for n, f in components.items()}
 
 
@@ -175,10 +181,12 @@ def _mask_ff(
     ff: dict[str, pd.DataFrame],
     eligible: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
+    import pandas as pd
     return {n: f.where(eligible.reindex_like(f).fillna(value=False)) for n, f in ff.items()}
 
 
 def _ensure_elig(score: pd.DataFrame, eligible: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
     adj = score.copy()
     ea = eligible.reindex_like(adj).fillna(value=False)
     for ts in ea.sum(axis=1)[ea.sum(axis=1) == 1].index:
@@ -195,6 +203,7 @@ def _ensure_elig(score: pd.DataFrame, eligible: pd.DataFrame) -> pd.DataFrame:
 
 
 def _rgm(idx: pd.Index, rgm: pd.Series | None) -> pd.Series:
+    import pandas as pd
     return (
         rgm.reindex(idx).ffill().fillna(value=False).astype(dtype=bool)
         if rgm is not None
@@ -214,6 +223,8 @@ def _brp(
     require_both_sides: bool = False,
     regime_gate_mask: pd.Series | None = None,
 ) -> pd.DataFrame:
+    import pandas as pd
+    import numpy as np
     n, m = score.shape
     arr = score.to_numpy(dtype=float, na_value=np.nan)
     result = np.zeros((n, m), dtype=float)
@@ -274,6 +285,7 @@ def _bpp(
     max_asset_weight: float,
     regime_gate_mask: pd.Series | None = None,
 ) -> pd.DataFrame:
+    import pandas as pd
     cols = [f"{s}_SPOT" for s in score.columns] + [f"{s}_PERP" for s in score.columns]
     target = pd.DataFrame(0.0, index=score.index, columns=cols)
     gm = _rgm(score.index, regime_gate_mask)
@@ -311,6 +323,7 @@ def _bptp(
     regime_gate_mask: pd.Series | None = None,
     exit_on_regime_break: bool = True,
 ) -> pd.DataFrame:
+    import pandas as pd
     target = pd.DataFrame(0.0, index=score.index, columns=[a1, a2])
     pc = score.columns[0]
     ps = 0
@@ -454,6 +467,7 @@ def _gmff(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> pd.Series:
+    import pandas as pd
     num = frame.apply(pd.to_numeric, errors="coerce")
     if minimum is None and maximum is None:
         return cast(pd.Series, num.fillna(0.0).gt(0.0).all(axis=1))
@@ -471,6 +485,7 @@ def _rrg(
     aliases: dict[str, str],
     raw_frames: dict[str, pd.DataFrame],
 ) -> tuple[pd.Series | None, dict[str, Any]]:
+    import pandas as pd
     pld = regime_gates or {}
     entry = list(pld.get("entry") or [])
     eob = bool(pld.get("exit_on_break", True))
@@ -528,10 +543,12 @@ def _rrg(
 
 
 def _gf(s: pd.Series) -> pd.DataFrame:
+    import pandas as pd
     return pd.to_numeric(s, errors="coerce").rename("GLOBAL").to_frame()
 
 
 def _pgrf(prices: pd.DataFrame, funding: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    import pandas as pd
     prices = prices.sort_index()
     funding = _reindex_ffill_fillna(funding, prices.index)
     r1h = prices.pct_change()
@@ -546,6 +563,7 @@ def _pgrf(prices: pd.DataFrame, funding: pd.DataFrame) -> dict[str, pd.DataFrame
 
 
 def _prf(prices: pd.DataFrame, funding: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    import pandas as pd
     return {"price": prices, "funding": funding, **_pgrf(prices, funding)}
 
 
@@ -556,6 +574,8 @@ def _pair_rf(
     a1: str,
     a2: str,
 ) -> dict[str, pd.DataFrame]:
+    import pandas as pd
+    import numpy as np
     p1 = prices[a1].replace([np.inf, -np.inf], np.nan)
     p2 = prices[a2].replace([np.inf, -np.inf], np.nan)
     f1 = funding[a1].replace([np.inf, -np.inf], np.nan)
@@ -582,6 +602,7 @@ def _pt_rf(
     total_tvl: pd.DataFrame,
     dte: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
+    import pandas as pd
     return {
         "pt_price": prices,
         "implied_apy": implied_apy,
@@ -592,9 +613,11 @@ def _pt_rf(
 
 
 def _ppt_mf(provider: MarketDataProvider, markets, histories: dict[str, pd.DataFrame]):
+    import pandas as pd
     labels = list(histories)
 
     def _mf(column: str) -> pd.DataFrame:
+        import pandas as pd
         return _ffill_wow(
             pd.concat(
                 [
@@ -632,6 +655,8 @@ def _ppt_mf(provider: MarketDataProvider, markets, histories: dict[str, pd.DataF
 
 
 def _ffill_wow(frame: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+    import numpy as np
     filled = frame.sort_index().ffill()
     for col in filled.columns:
         obs = frame[col].dropna()
@@ -650,6 +675,7 @@ def _bpt_hp(
     hedge_symbols: list[str],
     hr: float,
 ) -> pd.DataFrame:
+    import pandas as pd
     cols = [f"{s}_PERP" for s in hedge_symbols]
     hp = pd.DataFrame(0.0, index=pt_positions.index, columns=cols)
     for ml, hs in m2hs.items():
@@ -663,6 +689,8 @@ def _bpt_hp(
 
 
 def _blpf(root_prices: pd.DataFrame, carry_apy: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+    import numpy as np
     if root_prices.empty:
         return root_prices
     dty = root_prices.index.to_series().diff().dt.total_seconds().fillna(0.0) / (
@@ -678,6 +706,7 @@ def _blpf(root_prices: pd.DataFrame, carry_apy: pd.DataFrame) -> pd.DataFrame:
 
 
 def _hb(frame: pd.DataFrame) -> dict[str, str | None]:
+    import pandas as pd
     if frame.empty:
         return {"history_start": None, "history_end": None}
     return {
@@ -687,6 +716,7 @@ def _hb(frame: pd.DataFrame) -> dict[str, str | None]:
 
 
 def _reindex_ffill_fillna(frame: pd.DataFrame, target_index: pd.Index) -> pd.DataFrame:
+    import pandas as pd
     return frame.reindex(target_index).ffill().fillna(0.0)
 
 
@@ -703,6 +733,7 @@ async def _apply_hedge(
     lookback_days: int,
     interval: str = "1h",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, str]:
+    import pandas as pd
     hb = await provider.fetch_perp_bundle(
         symbols=hedge_symbols,
         lookback_days=lookback_days,
@@ -735,6 +766,7 @@ def _pt_lm(
     expired_or_untradable: pd.DataFrame,
     roll_events: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    import pandas as pd
     return {
         "lifecycle_policy": {
             "open_ended_policy": "continuous_rotation",
@@ -774,6 +806,7 @@ def _lrf(
     borrow_apr: pd.DataFrame,
     borrow_tvl_usd: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
+    import pandas as pd
     return {
         "lending_price": lending_prices,
         "combined_supply_apy": combined_supply_apy,
@@ -834,6 +867,7 @@ def _build_compiled_child(
     prices_for_meta: pd.DataFrame | None = None,
     **extra_meta: Any,
 ) -> CompiledChild:
+    import pandas as pd
     kwargs: dict[str, Any] = {
         "prices": prices,
         "target_positions": target_positions,
@@ -996,6 +1030,7 @@ async def _compile_basis_spread(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
+    import pandas as pd
     symbols = await provider.discover_perp_symbols(
         spec.universe.basis_groups,
         limit=spec.universe.max_symbols,
@@ -1050,6 +1085,7 @@ async def _compile_stable_pt(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
+    import pandas as pd
     markets = await provider.discover_stable_pt_markets(
         spec.universe,
         limit=spec.universe.max_symbols,
@@ -1129,6 +1165,7 @@ async def _compile_pt_yield(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
+    import pandas as pd
     markets = await provider.discover_pt_markets(
         spec.universe,
         limit=spec.universe.max_symbols,
@@ -1232,6 +1269,7 @@ async def _compile_lending_carry(
     provider: MarketDataProvider,
     spec: SignalSpec,
 ) -> CompiledChild:
+    import pandas as pd
     markets = await provider.discover_lending_markets(
         spec.universe,
         limit=spec.universe.max_symbols,

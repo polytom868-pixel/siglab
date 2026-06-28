@@ -12,7 +12,6 @@ from siglab.cli.helpers import (
     sodex_preflight_report,
 )
 from siglab.cli.helpers import build_market_report
-from siglab.cli.rich_utils import print_json, print_success
 from siglab.telemetry import (
     build_telemetry_payload,
     evidence_paths_for_telemetry,
@@ -48,6 +47,7 @@ def add_subparser(
 
 
 def run_demo_run(args: argparse.Namespace) -> None:
+    from siglab.cli.rich_utils import print_json, print_success
     """One-shot judge-friendly demo summary: collection -> manifest -> summary."""
     settings = load_settings()
     output_path: Path | None = None
@@ -205,6 +205,7 @@ def _demo_run_html(payload: dict[str, Any]) -> str:
 
 
 def run_demo_manifest(args: argparse.Namespace) -> None:
+    from siglab.cli.rich_utils import print_json, print_success
     settings = load_settings()
     manifest = _build_demo_manifest(settings)
     output = (
