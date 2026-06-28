@@ -43,3 +43,8 @@ dev = [
     "respx (>=0.21.1,<0.22.0)",
     "coverage (>=7.6.0,<8.0.0)"
 ]
+
+dashboard = [
+    "fastapi>=0.136.3",
+    "uvicorn>=0.48.0",
+]

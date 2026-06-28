@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-import pandas as pd
 
 from siglab.config import resolve_track
 
@@ -27,6 +26,7 @@ def classify_pt_market_state(
     max_days_to_expiry: int,
 ) -> dict[str, pd.DataFrame]:
 
+    import pandas as pd
     availability = prices.notna()
     for frame in required_frames:
         availability = availability & frame.reindex_like(prices).notna()
@@ -60,6 +60,7 @@ def summarize_pt_universe(
     expired_or_untradable: pd.DataFrame,
 ) -> dict[str, Any]:
 
+    import pandas as pd
     eligible_counts = eligible.sum(axis=1)
     dynamic_entries = [
         column
@@ -98,6 +99,7 @@ def detect_pt_roll_events(
     days_to_expiry: pd.DataFrame,
 ) -> list[dict[str, Any]]:
 
+    import pandas as pd
     events: list[dict[str, Any]] = []
     positive_positions = pt_positions.fillna(0.0).gt(0.0)
     for index in range(1, len(pt_positions.index)):

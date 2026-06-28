@@ -204,7 +204,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 
 DEFAULT_RISK_WEIGHTS: dict[str, float] = {
     "sharpe": 0.25,
@@ -297,6 +296,7 @@ STALE_THRESHOLD_SECONDS = 7 * 24 * 3600
 
 
 def load_equity_curves(sessions_dir: Path) -> list[tuple[str, np.ndarray]]:
+    import numpy as np
     npy_files = sorted(sessions_dir.glob("*.npy"))
     curves: list[tuple[str, np.ndarray]] = []
     for npy_file in npy_files:
@@ -517,6 +517,7 @@ def compute_composite_score(
 
 
 def _dd_series(equity_curve: np.ndarray) -> np.ndarray:
+    import numpy as np
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size == 0:
         return np.array([], dtype=float)
     peak = np.maximum.accumulate(equity_curve)
@@ -525,11 +526,13 @@ def _dd_series(equity_curve: np.ndarray) -> np.ndarray:
 
 
 def max_drawdown(equity_curve: np.ndarray) -> float:
+    import numpy as np
     dd = _dd_series(equity_curve)
     return 0.0 if dd.size == 0 else float(np.min(dd))
 
 
 def current_drawdown(equity_curve: np.ndarray) -> float:
+    import numpy as np
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size == 0:
         return 0.0
     peak = np.maximum.accumulate(equity_curve)
@@ -541,6 +544,7 @@ def current_drawdown(equity_curve: np.ndarray) -> float:
 
 
 def recovery_time(equity_curve: np.ndarray) -> int | None:
+    import numpy as np
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size < 2:
         return None
     peak = np.maximum.accumulate(equity_curve)
@@ -560,6 +564,7 @@ def recovery_time(equity_curve: np.ndarray) -> int | None:
 
 
 def correlation_matrix(strategy_returns: list[np.ndarray]) -> np.ndarray:
+    import numpy as np
     n = len(strategy_returns)
     if n < 2:
         return np.empty((0, 0))
@@ -588,6 +593,7 @@ def correlation_matrix(strategy_returns: list[np.ndarray]) -> np.ndarray:
 
 
 def track_drawdown_events(equity_curve: np.ndarray) -> list[DrawdownEvent]:
+    import numpy as np
     if not isinstance(equity_curve, np.ndarray) or equity_curve.size < 2:
         return []
 
