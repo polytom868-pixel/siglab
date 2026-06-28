@@ -94,89 +94,14 @@ class CircuitBreakerOpenError(RuntimeError):
 class DataProvider(ABC):
     """Abstract base for API clients with retry, backoff, metrics, and circuit breaker.
 
-    Subclasses must implement:
-      - _do_request(endpoint, ...) -> dict
-      - Error classification methods
-
-    The retry loop is provided by _request_with_retry().
+    Subclasses provide their own request method; the retry loop, backoff,
+    metrics, and circuit breaker are available via DataProvider.
     """
 
     def __init__(self, *, retries: int = 3) -> None:
         self.retries = max(0, int(retries))
         self._metrics_store: dict[str, _Metrics] = {}
         self._circuit_breaker = CircuitBreaker()
-
-    # --- Subclass hooks ---
-
-    async def _do_request(self, endpoint: str) -> dict[str, Any]:
-        """Execute one HTTP request attempt. Override in subclass or use _request_with_retry directly."""
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement _do_request or override _request_with_retry",
-        )
-
-    def _is_rate_limit_error(self, exc: Exception) -> bool:
-        return False
-
-    def _is_transport_error(self, exc: Exception) -> bool:
-        return False
-
-    def _is_retryable_error(self, exc: Exception) -> bool:
-        return False
-
-    def _retry_after_from(self, exc: Exception) -> float | None:
-        return None
-
-    # --- Shared retry loop ---
-
-    async def _request_with_retry(self, endpoint: str) -> dict[str, Any]:
-        """Retry loop wrapping _do_request() with metrics, backoff, and circuit breaker."""
-        metrics = self._metrics_for(endpoint)
-
-        # Check circuit breaker before first attempt
-        try:
-            self._circuit_breaker.acquire(endpoint)
-        except CircuitBreakerOpenError:
-            metrics.circuit_breaks += 1
-            raise
-
-        last_error: Exception | None = None
-        for attempt in range(self.retries + 1):
-            metrics.attempts += 1
-            started = time.perf_counter()
-            try:
-                result = await self._do_request(endpoint)
-                elapsed_ms = (time.perf_counter() - started) * 1000.0
-                metrics.latencies_ms.append(elapsed_ms)
-                metrics.successes += 1
-                self._circuit_breaker.on_success(endpoint)
-                return result
-            except CircuitBreakerOpenError:
-                raise
-            except Exception as exc:
-                if self._is_rate_limit_error(exc):
-                    metrics.rate_limits += 1
-                    last_error = exc
-                elif self._is_transport_error(exc):
-                    metrics.transport_failures += 1
-                    last_error = exc
-                elif self._is_retryable_error(exc):
-                    last_error = exc
-                else:
-                    raise
-
-            if attempt >= self.retries:
-                break
-            metrics.retries += 1
-            self._circuit_breaker.on_failure(endpoint)
-
-            # Use server-provided retry-after if available, else exponential backoff
-            retry_after = self._retry_after_from(last_error) if last_error is not None else None
-            if retry_after is not None and retry_after > 0:
-                await asyncio.sleep(float(retry_after))
-            else:
-                await asyncio.sleep(self._backoff_s(attempt))
-
-        raise last_error or RuntimeError(f"{endpoint} request failed without a captured error")
 
     def _backoff_s(self, attempt: int) -> float:
         """Exponential backoff with jitter, capped at 2s."""

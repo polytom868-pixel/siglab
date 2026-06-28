@@ -81,19 +81,37 @@ class OperatorPipeline:
         total_weight = 0.0
         symbols: dict[str, float] = {}
         for record in evidence_records:
-            weight = float(record.get("weight", 1.0))
+            # Map EvidenceRecord fields to decision fields:
+            #   weight    -> confidence (EvidenceRecord has no "weight" field)
+            #   signal    -> infer from relation direction
+            #   symbol    -> entity (EvidenceRecord uses "entity" not "symbol")
+            confidence_val = max(0.0, min(1.0, float(record.get("confidence", 0.5))))
+            weight = confidence_val
             if weight <= 0.0:
                 continue
-            signal_dir = str(record.get("signal", "HOLD")).strip().upper()
-            confidence = max(0.0, min(1.0, float(record.get("confidence", 0.5))))
-            symbol = str(record.get("symbol", "")).strip().upper()
+            relation = str(record.get("relation", "")).strip().lower()
+            value = str(record.get("value", "")).strip().lower()
+            # Infer signal direction from relation and value
+            if "inflow" in relation or "buy" in relation or "positive" in relation:
+                signal_dir = "BUY"
+            elif "outflow" in relation or "sell" in relation or "negative" in relation:
+                signal_dir = "SELL"
+            elif "neutral" in relation or "hold" in relation:
+                signal_dir = "HOLD"
+            elif value.startswith("-"):
+                signal_dir = "SELL"
+            elif value and not value.startswith("-") and value not in ("0", "0.0", ""):
+                signal_dir = "BUY"
+            else:
+                signal_dir = "HOLD"
+            symbol = str(record.get("entity", record.get("symbol", ""))).strip().upper()
             if signal_dir == "BUY":
-                buy_score += weight * confidence
+                buy_score += weight * confidence_val
             elif signal_dir == "SELL":
-                sell_score += weight * confidence
+                sell_score += weight * confidence_val
             total_weight += weight
             if symbol:
-                symbols[symbol] = symbols.get(symbol, 0.0) + weight * confidence
+                symbols[symbol] = symbols.get(symbol, 0.0) + weight * confidence_val
         if total_weight <= 0.0:
             return TradeSignal(
                 direction="HOLD",

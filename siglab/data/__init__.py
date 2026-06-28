@@ -4,10 +4,8 @@ from siglab.data.evidence import (
     etf_inflow_evidence,
     news_evidence,
     sodex_rest_evidence,
-    sodex_ws_evidence,
     sodex_quote_evidence,
     _news_relevance_score,
-    summarize_evidence,
 )
 from siglab.data.feeds import (
     MarketDataProvider,
@@ -42,7 +40,5 @@ __all__ = [
     "etf_inflow_evidence",
     "news_evidence",
     "sodex_rest_evidence",
-    "sodex_ws_evidence",
     "sodex_quote_evidence",
-    "summarize_evidence",
 ]

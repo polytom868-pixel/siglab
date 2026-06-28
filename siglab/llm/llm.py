@@ -138,22 +138,27 @@ class ClaudeClient:
         # Convert OpenAI-format messages to Anthropic Messages API format
         system_prompt = None
         anthropic_messages: list[dict[str, Any]] = []
-        for msg in messages:
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
             role = msg.get("role", "")
             if role == "system":
                 system_prompt = str(msg.get("content") or "")
+                i += 1
                 continue
             if role == "tool":
-                anthropic_messages.append({
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": str(msg.get("tool_call_id", "")),
-                            "content": str(msg.get("content") or ""),
-                        }
-                    ],
-                })
+                # Batch consecutive tool messages into one user message
+                # with multiple tool_result content blocks (Anthropic API requirement)
+                content_blocks = []
+                while i < len(messages) and messages[i].get("role") == "tool":
+                    tool_msg = messages[i]
+                    content_blocks.append({
+                        "type": "tool_result",
+                        "tool_use_id": str(tool_msg.get("tool_call_id", "")),
+                        "content": str(tool_msg.get("content") or ""),
+                    })
+                    i += 1
+                anthropic_messages.append({"role": "user", "content": content_blocks})
                 continue
             if role == "assistant" and msg.get("tool_calls"):
                 content_blocks: list[dict[str, Any]] = []
@@ -173,8 +178,10 @@ class ClaudeClient:
                         "input": tc_input,
                     })
                 anthropic_messages.append({"role": "assistant", "content": content_blocks})
+                i += 1
                 continue
             anthropic_messages.append({"role": role, "content": str(msg.get("content") or "")})
+            i += 1
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -343,7 +350,7 @@ class ClaudeClient:
         *,
         system_prompt: str,
         user_prompt: str,
-        max_tokens: int = 2000,
+        max_tokens: int = 4096,
         timeout_s: float | None = None,
         json_mode: bool = True,
         thinking_override: str | None = None,
@@ -363,7 +370,7 @@ class ClaudeClient:
         *,
         system_prompt: str,
         messages: Sequence[dict[str, Any]],
-        max_tokens: int = 2000,
+        max_tokens: int = 4096,
         timeout_s: float | None = None,
         json_mode: bool = False,
         thinking_override: str | None = None,
@@ -409,7 +416,7 @@ class ClaudeClient:
         *,
         system_prompt: str,
         user_prompt: str,
-        max_tokens: int = 2000,
+        max_tokens: int = 4096,
         timeout_s: float | None = None,
         thinking_override: str | None = None,
         stage: str | None = None,
@@ -455,7 +462,7 @@ class ClaudeClient:
         *,
         user_prompt: str,
         system_prompt: str | None = "You are a crypto research assistant with access to real-time data tools. Use them to answer the user's questions factually.",
-        max_tokens: int = 2000,
+        max_tokens: int = 4096,
         timeout_s: float | None = None,
         max_tool_rounds: int = 5,
         stage: str | None = None,

@@ -8,7 +8,6 @@ import json
 import logging
 import ssl
 import time
-from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -102,10 +101,8 @@ class SoSoValueClient(DataProvider):
         pool_timeout_s: float = 3.0,
         retries: int = 4,
         max_concurrency: int = 8,
-        conservative_rate_limit_per_minute: int = 10,
         verify: ssl.SSLContext | str | bool | None = None,
         client: httpx.AsyncClient | None = None,
-        cache_enabled: bool = True,
     ) -> None:
         super().__init__(retries=retries)
         self.api_key = api_key
@@ -118,31 +115,12 @@ class SoSoValueClient(DataProvider):
         self._client = client
         self._owns_client = client is None
         self._semaphore = asyncio.Semaphore(max(1, int(max_concurrency)))
-        self.conservative_rate_limit_per_minute = int(conservative_rate_limit_per_minute)
-        self._rate_limit_events: deque[float] = deque()
-        self._rate_limit_lock = asyncio.Lock()
-        self._inflight: dict[str, asyncio.Task[dict[str, Any]]] = {}
-        self._response_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-        self._max_cache_size: int = 500
-        self._cache_enabled: bool = bool(cache_enabled)
-        self._cache_hits: int = 0
-        self._cache_misses: int = 0
 
     @property
     def is_configured(self) -> bool:
         return bool(str(self.api_key or "").strip())
 
     async def close(self) -> None:
-        if self._cache_hits + self._cache_misses > 0:
-            hit_rate = self._cache_hits / max(1, self._cache_hits + self._cache_misses)
-            logger.debug(
-                "sosovalue_cache cache_enabled=%s hits=%d misses=%d hit_rate=%.1f%% size=%d",
-                self._cache_enabled,
-                self._cache_hits,
-                self._cache_misses,
-                hit_rate * 100.0,
-                len(self._response_cache),
-            )
         if self._owns_client and self._client is not None:
             await self._client.aclose()
         await super().close()
@@ -154,30 +132,11 @@ class SoSoValueClient(DataProvider):
             raise SoSoValueConfigError(
                 "SOSOVALUE_API_KEY is required for SoSoValue API calls",
             )
-        key = self._cache_key(spec)
-        if self._cache_enabled and spec.ttl_s > 0:
-            cached = self._response_cache.get(key)
-            if cached is not None:
-                expiry, payload = cached
-                if time.monotonic() < expiry:
-                    self._cache_hits += 1
-                    return payload
-                self._response_cache.pop(key, None)
-        self._cache_misses += 1
-        task = self._inflight.get(key)
-        if task is None:
-            task = asyncio.create_task(self._request_uncached(spec, key))
-            self._inflight[key] = task
-        try:
-            return await task
-        finally:
-            if self._inflight.get(key) is task:
-                self._inflight.pop(key, None)
+        return await self._request_uncached(spec)
 
     async def _request_uncached(
         self,
         spec: SoSoValueRequestSpec,
-        cache_key: str,
     ) -> dict[str, Any]:
         last_error: SoSoValueApiError | None = None
         for attempt in range(self.retries + 1):
@@ -191,7 +150,6 @@ class SoSoValueClient(DataProvider):
             started = time.perf_counter()
             try:
                 async with self._semaphore:
-                    await self._acquire_rate_slot()
                     # Check circuit breaker before the HTTP call
                     self._circuit_breaker.acquire(spec.name)
                     payload = await self._single_http_attempt(spec)
@@ -201,8 +159,6 @@ class SoSoValueClient(DataProvider):
                 m2.latencies_ms.append(elapsed_ms)
                 m2.successes += 1
                 self._circuit_breaker.on_success(spec.name)
-                if self._cache_enabled and spec.ttl_s > 0 and cache_key:
-                    self._store_in_cache(cache_key, payload, spec.ttl_s)
                 return payload
             except CircuitBreakerOpenError:
                 m3 = self._metrics_for(spec.name)
@@ -373,9 +329,6 @@ class SoSoValueClient(DataProvider):
         if spec.require_non_empty and (not rows):
             raise SoSoValueApiError(f"{spec.name} returned empty data", payload=data)
         if needs_validation:
-            optional = tuple(
-                f for f in spec.required_fields if f not in spec.identity_fields
-            )
             for idx, row in enumerate(rows):
                 missing_id = [f for f in spec.identity_fields if f not in row]
                 if missing_id:
@@ -383,29 +336,8 @@ class SoSoValueClient(DataProvider):
                         f"{spec.name} row {idx} missing identity fields: {', '.join(missing_id)}",
                         payload=row,
                     )
-                self._fill_optional_fields(row, optional, f"{spec.name} row {idx}")
         return rows
 
-    def _paginate(
-        self,
-        fetch_page: Any,
-        max_pages: int,
-        **page_kwargs: Any,
-    ) -> asyncio.Task[list[dict[str, Any]]]:
-        async def _run() -> list[dict[str, Any]]:
-            pages = await asyncio.gather(
-                *(
-                    fetch_page(page_num=page_num, **page_kwargs)
-                    for page_num in range(1, max(1, int(max_pages)) + 1)
-                ),
-            )
-            rows: list[dict[str, Any]] = []
-            for page_rows in pages:
-                if not page_rows:
-                    break
-                rows.extend(page_rows)
-            return rows
-        return asyncio.ensure_future(_run())
 
     # --- ETF methods ---
 
@@ -436,19 +368,6 @@ class SoSoValueClient(DataProvider):
 
     # --- Currency methods ---
 
-    async def listed_currencies(self) -> list[dict[str, Any]]:
-        spec = SoSoValueRequestSpec(
-            name="currency.list",
-            method="POST",
-            base_url=self.endpoints.openapi_base_url,
-            path="/data/default/coin/list",
-            json_body={},
-            ttl_s=86400.0,
-            require_non_empty=True,
-        )
-        payload = await self.request(spec)
-        return self._rows_from_data(payload.get("data"), spec)
-
     async def currency_market_snapshot(self, currency_id: int) -> dict[str, Any]:
         spec = SoSoValueRequestSpec(
             name="currency.market_snapshot",
@@ -459,138 +378,9 @@ class SoSoValueClient(DataProvider):
         )
         return await self.request(spec)
 
-    async def currency_klines(
-        self,
-        currency_id: int,
-        interval: str = "1d",
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        spec = SoSoValueRequestSpec(
-            name="currency.klines",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path=f"/currencies/{currency_id}/klines",
-            params={"interval": interval, "limit": limit},
-            ttl_s=60.0,
-        )
-        payload = await self.request(spec)
-        return (payload or {}).get("data") or []
-
     # --- ETF list/methods ---
 
-    async def etf_list(self, symbol: str = "", country_code: str = "") -> list[dict[str, Any]]:
-        spec = SoSoValueRequestSpec(
-            name="etf.list",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path="/etfs",
-            params={"symbol": symbol, "country_code": country_code},
-            ttl_s=300.0,
-        )
-        payload = await self.request(spec)
-        return (payload or {}).get("data") or []
 
-    async def etf_summary_history(self, symbol: str, country_code: str = "") -> list[dict[str, Any]]:
-        spec = SoSoValueRequestSpec(
-            name="etf.summary_history",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path="/etfs/summary-history",
-            params={"symbol": symbol, "country_code": country_code},
-            ttl_s=300.0,
-        )
-        payload = await self.request(spec)
-        return (payload or {}).get("data") or []
-
-    async def etf_market_snapshot(self, ticker: str) -> dict[str, Any]:
-        spec = SoSoValueRequestSpec(
-            name="etf.market_snapshot",
-            method="GET",
-            base_url=self.endpoints.openapi_base_url,
-            path=f"/etfs/{ticker}/market-snapshot",
-            ttl_s=300.0,
-        )
-        return await self.request(spec)
-
-    # --- News methods ---
-
-    def _build_news_params(
-        self,
-        *,
-        page_num: int,
-        page_size: int,
-        currency_id: int | None = None,
-        category_list: list[int] | None = None,
-    ) -> dict[str, Any]:
-        self._validate_news_page_size(page_size)
-        params: dict[str, Any] = {"pageNum": int(page_num), "pageSize": int(page_size)}
-        if currency_id is not None:
-            params["currencyId"] = int(currency_id)
-        if category_list:
-            params["categoryList"] = ",".join(
-                str(int(value)) for value in category_list
-            )
-        return params
-
-    async def featured_news(
-        self,
-        page_num: int = 1,
-        page_size: int = 10,
-    ) -> list[dict[str, Any]]:
-        return await self._fetch_featured_news_page(
-            page_num=page_num,
-            page_size=page_size,
-        )
-
-    async def _fetch_featured_news_page(
-        self,
-        *,
-        page_num: int = 1,
-        page_size: int = 10,
-        category_list: list[int] | None = None,
-    ) -> list[dict[str, Any]]:
-        params = self._build_news_params(
-            page_num=page_num,
-            page_size=page_size,
-            category_list=category_list,
-        )
-        spec = SoSoValueRequestSpec(
-            name="news.featured",
-            method="GET",
-            base_url=self.endpoints.news_base_url,
-            path="/api/v1/news/featured",
-            params=params,
-            ttl_s=60.0,
-        )
-        payload = await self.request(spec)
-        return self._rows_from_data(payload.get("data"), spec)
-
-    async def news_search(self, keyword: str, page_num: int = 1, page_size: int = 10) -> list[dict[str, Any]]:
-        spec = SoSoValueRequestSpec(
-            name="news.search",
-            method="GET",
-            base_url=self.endpoints.news_base_url,
-            path="/api/v1/news/search",
-            params={"keyword": keyword, "pageNum": page_num, "pageSize": page_size},
-            ttl_s=60.0,
-        )
-        payload = await self.request(spec)
-        return (payload or {}).get("data", {}).get("list") or []
-
-    async def featured_news_pages(
-        self,
-        *,
-        max_pages: int = 1,
-        page_size: int = 10,
-        category_list: list[int] | None = None,
-    ) -> list[dict[str, Any]]:
-        fetch = await self._paginate(
-            self._fetch_featured_news_page,
-            max_pages,
-            page_size=page_size,
-            category_list=category_list,
-        )
-        return fetch
 
     async def featured_news_by_currency(
         self,
@@ -600,12 +390,17 @@ class SoSoValueClient(DataProvider):
         currency_id: int | None = None,
         category_list: list[int] | None = None,
     ) -> list[dict[str, Any]]:
-        params = self._build_news_params(
-            page_num=page_num,
-            page_size=page_size,
-            currency_id=currency_id,
-            category_list=category_list,
-        )
+        if int(page_size) < 1 or int(page_size) > 100:
+            raise SoSoValueConfigError(
+                "SoSoValue news pageSize must be between 1 and 100",
+            )
+        params: dict[str, Any] = {"pageNum": int(page_num), "pageSize": int(page_size)}
+        if currency_id is not None:
+            params["currencyId"] = int(currency_id)
+        if category_list:
+            params["categoryList"] = ",".join(
+                str(int(value)) for value in category_list
+            )
         spec = SoSoValueRequestSpec(
             name="news.featured_by_currency",
             method="GET",
@@ -617,21 +412,6 @@ class SoSoValueClient(DataProvider):
         payload = await self.request(spec)
         return self._rows_from_data(payload.get("data"), spec)
 
-    async def featured_news_by_currency_pages(
-        self,
-        *,
-        max_pages: int = 1,
-        page_size: int = 10,
-        currency_id: int | None = None,
-        category_list: list[int] | None = None,
-    ) -> list[dict[str, Any]]:
-        return await self._paginate(
-            self.featured_news_by_currency,
-            max_pages,
-            page_size=page_size,
-            currency_id=currency_id,
-            category_list=category_list,
-        )
 
     # --- Internal helpers ---
 
@@ -660,62 +440,6 @@ class SoSoValueClient(DataProvider):
     def _url(self, base_url: str, path: str) -> str:
         return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
-    def _cache_key(self, spec: SoSoValueRequestSpec) -> str:
-        return json.dumps(
-            {
-                "method": spec.method.upper(),
-                "url": self._url(spec.base_url, spec.path),
-                "params": spec.params or {},
-                "json": spec.json_body or {},
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-
-    def _validate_news_page_size(self, page_size: int) -> None:
-        if int(page_size) < 1 or int(page_size) > 100:
-            raise SoSoValueConfigError(
-                "SoSoValue news pageSize must be between 1 and 100",
-            )
-
-    def _fill_optional_fields(
-        self,
-        row: dict[str, Any],
-        fields: tuple[str, ...],
-        label: str,
-    ) -> None:
-        missing = [f for f in fields if f not in row]
-        if missing:
-            logger.warning(
-                "%s missing optional fields: %s; filling with None",
-                label,
-                ", ".join(missing),
-            )
-            for f in missing:
-                row.setdefault(f, None)
-
-    async def _acquire_rate_slot(self) -> None:
-        limit = int(self.conservative_rate_limit_per_minute)
-        if limit <= 0:
-            return
-        async with self._rate_limit_lock:
-            while True:
-                now = time.monotonic()
-                cutoff = now - 60.0
-                while self._rate_limit_events and self._rate_limit_events[0] <= cutoff:
-                    self._rate_limit_events.popleft()
-                if len(self._rate_limit_events) < limit:
-                    self._rate_limit_events.append(now)
-                    return
-                sleep_for = max(0.0, 60.0 - (now - self._rate_limit_events[0]))
-                await asyncio.sleep(sleep_for)
-
-    def _store_in_cache(self, key: str, payload: dict[str, Any], ttl_s: float) -> None:
-        expiry = time.monotonic() + ttl_s
-        if len(self._response_cache) >= self._max_cache_size:
-            with contextlib.suppress(StopIteration):
-                self._response_cache.pop(next(iter(self._response_cache)), None)
-        self._response_cache[key] = (expiry, payload)
 
     def _verify_config(self) -> ssl.SSLContext | bool:
         if self.verify is not None:
