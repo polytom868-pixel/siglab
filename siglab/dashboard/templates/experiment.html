@@ -8,11 +8,9 @@
 {% block content %}
 <header class="hero experiment-hero">
   <div>
-    <h1 id="experimentTitle" x-text="$store.selection.selectedHash || 'Experiment'">Experiment</h1>
+    <h1 id="experimentTitle">Experiment</h1>
     <p id="experimentSubtitle" class="subhead"></p>
-    <p class="freshness-indicator" id="freshnessIndicator"
-       x-show="$store.refresh.lastUpdated"
-       x-text="'Last updated: ' + $store.refresh.lastUpdated"></p>
+    <p class="freshness-indicator" id="freshnessIndicator"></p>
   </div>
   <div class="hero-controls">
     <a id="backLink" class="button-link experiment-back-link" href="/">← Back to Dashboard</a>
@@ -107,9 +105,7 @@
   <label class="inline-control" for="displayCapitalInput">
     <span>Display Capital (USD)</span>
   </label>
-  <input id="displayCapitalInput" type="number" min="1000" step="1000"
-         x-model="$store.displayCapital.usd"
-         @change="PAGE_STATE.displayCapitalUsd = parseInt($store.displayCapital.usd, 10); renderTrades(PAGE_STATE.payload?.canonical_run?.trades || [])" />
+  <input id="displayCapitalInput" type="number" min="1000" step="1000" />
   <div class="table-wrap custom-scrollbar">
     <table>
       <thead>

@@ -1339,7 +1339,6 @@ pre {
   #marketState, #sodexBoundary, #telemetryState, #blockers {
     min-height: 40px;
   }
-}
 
 .compact-chart-wrap {
   height: 300px;
