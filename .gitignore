@@ -170,3 +170,4 @@ siglab/evaluation/__init__.py
 siglab/live/__init__.py
 siglab/operator/__init__.py
 .vercel
+skills-lock.json
