@@ -1,4 +1,5 @@
 {
   "framework": "fastapi",
-  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets && pip install . --no-deps"
+  "buildCommand": "cp -r siglab api/",
+  "installCommand": "pip install fastapi uvicorn anthropic httpx pydantic pyyaml websockets"
 }
